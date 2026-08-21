@@ -70,11 +70,21 @@ contra los servicios de infraestructura (`postgres`, `redis`, `minio`,
 `mailhog`) levantados por `docker compose up -d postgres redis minio
 minio-init mailhog`.
 
+**Si el puerto 3000 ya lo usa otra cosa en tu máquina** (otro proyecto,
+otro contenedor), no hace falta tocar código: define `WEB_PORT` y
+`APP_URL` acordes antes de levantar todo, por ejemplo:
+
+```bash
+sed -i '' 's#^APP_URL=.*#APP_URL=http://localhost:3002#' .env   # certificados/CORS/recordatorios usan esta misma URL
+export WEB_PORT=3002
+pnpm dev
+```
+
 ## URLs locales
 
 | Servicio | URL |
 |---|---|
-| Web (Next.js) | http://localhost:3000 |
+| Web (Next.js) | http://localhost:3000 (o `$WEB_PORT` si lo definiste) |
 | API (NestJS) | http://localhost:4000 |
 | Swagger (docs de la API) | http://localhost:4000/docs |
 | Mailhog (bandeja de correo de prueba) | http://localhost:8025 |
