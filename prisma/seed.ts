@@ -15,6 +15,20 @@
 // encuentra igual. Ver IMPLEMENTATION-NOTES.md para más detalle.
 // ============================================================================
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import dotenv from "dotenv";
+
+// `tsx prisma/seed.ts` se ejecuta como script standalone (no pasa por el CLI
+// de Prisma, que sí carga `.env` automáticamente) — sin esto, `DATABASE_URL`
+// nunca llega a `process.env` y el script falla incluso con un `.env`
+// presente en la raíz del repo.
+dotenv.config({ path: join(__dirname, "../.env") });
+if (!existsSync(join(__dirname, "../.env"))) {
+  // eslint-disable-next-line no-console
+  console.warn("Aviso: no se encontró .env en la raíz del repo; usando solo variables de entorno del proceso.");
+}
+
 import argon2 from "argon2";
 import { prisma } from "../packages/db/src";
 
@@ -610,6 +624,7 @@ async function main() {
       emailVerifiedAt: new Date(),
       country: "PE",
       city: "Lima",
+      profileCompletedAt: new Date(),
     },
   });
 
@@ -625,6 +640,7 @@ async function main() {
       country: "PE",
       city: "Lima",
       jobTitle: "Gerente de Capacitación",
+      profileCompletedAt: new Date(),
     },
   });
 
@@ -637,6 +653,9 @@ async function main() {
       displayName: "Diego Huamán",
       globalRole: "SUPPORT",
       emailVerifiedAt: new Date(),
+      country: "PE",
+      city: "Lima",
+      profileCompletedAt: new Date(),
     },
   });
 
@@ -649,6 +668,9 @@ async function main() {
       displayName: "Valeria Chang",
       globalRole: "ADMIN",
       emailVerifiedAt: new Date(),
+      country: "PE",
+      city: "Lima",
+      profileCompletedAt: new Date(),
     },
   });
 

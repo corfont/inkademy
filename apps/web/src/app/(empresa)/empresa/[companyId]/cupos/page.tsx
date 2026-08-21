@@ -2,17 +2,18 @@ import type { Metadata } from "next";
 import { getTranslations, getLocale } from "next-intl/server";
 import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { Card, CardContent } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { formatDate } from "@/lib/format";
+import { formatDate, localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Cupos" };
 
 interface SeatPoolLike {
   id: string;
-  offeringTitle: string;
+  offeringTitle: string | Record<string, string>;
   seatsPurchased: number;
   seatsUsed: number;
   expiresAt?: string | null;
@@ -26,8 +27,12 @@ const MOCK_POOLS: SeatPoolLike[] = [
 export default async function SeatPoolsPage({ params }: { params: { companyId: string } }) {
   const t = await getTranslations("empresa.seats");
   const locale = await getLocale();
+  const accessToken = getServerAccessToken();
 
-  const { data: pools, live } = await withFallback(() => companyApi.seatPools(params.companyId), MOCK_POOLS);
+  const { data: pools, live } = await withFallback(
+    () => companyApi.seatPools(params.companyId, accessToken),
+    MOCK_POOLS,
+  );
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -39,7 +44,9 @@ export default async function SeatPoolsPage({ params }: { params: { companyId: s
           <Card key={pool.id}>
             <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1">
-                <p className="font-medium text-ink-900">{pool.offeringTitle}</p>
+                <p className="font-medium text-ink-900">
+                  {typeof pool.offeringTitle === "string" ? pool.offeringTitle : localize(pool.offeringTitle, locale)}
+                </p>
                 <p className="text-sm text-ash-500">
                   {t("used")}: {pool.seatsUsed} / {t("purchased")}: {pool.seatsPurchased}
                 </p>

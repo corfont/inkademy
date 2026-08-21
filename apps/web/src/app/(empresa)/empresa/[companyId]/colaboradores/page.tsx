@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { InviteCollaboratorForm } from "@/components/empresa/InviteCollaboratorForm";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
@@ -23,10 +24,26 @@ const MOCK_MEMBERS: MemberLike[] = [
   { id: "m3", name: "Paola Reyes", email: "paola.reyes@andina.pe", role: "PARTICIPANT", team: "Comercial", status: "INVITED" },
 ];
 
+/** Normaliza tanto el shape real de la API (`{ user: {...}, role, team, status }`)
+ * como el mock plano (`{ name, email, role, team, status }`) a una forma única
+ * para renderizar la tabla. */
+function normalizeMember(raw: any): MemberLike {
+  if (raw?.user) {
+    const name = raw.user.displayName ?? [raw.user.firstName, raw.user.lastName].filter(Boolean).join(" ");
+    return { id: raw.id, name, email: raw.user.email, role: raw.role, team: raw.team, status: raw.status };
+  }
+  return raw as MemberLike;
+}
+
 export default async function CollaboratorsPage({ params }: { params: { companyId: string } }) {
   const t = await getTranslations("empresa.collaborators");
+  const accessToken = getServerAccessToken();
 
-  const { data: members, live } = await withFallback(() => companyApi.members(params.companyId), MOCK_MEMBERS);
+  const { data: rawMembers, live } = await withFallback(
+    () => companyApi.members(params.companyId, {}, accessToken),
+    MOCK_MEMBERS,
+  );
+  const members = rawMembers.map(normalizeMember);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">

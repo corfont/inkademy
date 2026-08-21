@@ -1,12 +1,13 @@
 import { join } from "node:path";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_FILTER, APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { QueuesModule } from "./common/queues/queues.module";
 import { CommonModule } from "./common/common.module";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
+import { StripSensitiveFieldsInterceptor } from "./common/interceptors/strip-sensitive-fields.interceptor";
 import { StorageModule } from "./storage/storage.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "./modules/users/users.module";
@@ -54,6 +55,10 @@ import { AdminModule } from "./modules/admin/admin.module";
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    // Defensa en profundidad: nunca dejar salir `passwordHash` aunque algún
+    // endpoint use `include: { user: true }` — ver el comentario del
+    // interceptor para el detalle.
+    { provide: APP_INTERCEPTOR, useClass: StripSensitiveFieldsInterceptor },
   ],
 })
 export class AppModule {}

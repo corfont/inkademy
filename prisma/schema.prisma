@@ -256,6 +256,7 @@ model Course {
   staff                  CourseStaff[]
   programCourses         ProgramCourse[]
   certificates           Certificate[]
+  seatPools              CompanySeatPool[]
 
   @@index([areaId])
   @@index([status])
@@ -379,6 +380,7 @@ model Program {
   courses               ProgramCourse[]
   enrollments           Enrollment[]
   certificates          Certificate[]
+  seatPools             CompanySeatPool[]
 }
 
 model ProgramCourse {
@@ -700,7 +702,9 @@ model CompanySeatPool {
   company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   offeringKind  OfferingKind
   courseId      String?
+  course        Course?   @relation(fields: [courseId], references: [id])
   programId     String?
+  program       Program?  @relation(fields: [programId], references: [id])
   seatsPurchased Int
   seatsUsed      Int      @default(0)
   expiresAt     DateTime?

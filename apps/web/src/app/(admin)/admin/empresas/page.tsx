@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_COMPANY_DASHBOARD } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
@@ -15,7 +16,12 @@ const MOCK_COMPANIES = [
 ];
 
 export default async function AdminCompaniesPage() {
-  const { data: companies, live } = await withFallback(() => adminApi.companies(), MOCK_COMPANIES);
+  const accessToken = getServerAccessToken();
+  // Nota: `GET /admin/companies` devuelve la fila `Company` cruda — no
+  // incluye `seatsUsed` agregado (esa columna solo tiene datos reales en el
+  // fallback simulado); calcularlo requeriría agregar sobre CompanySeatPool
+  // en el backend, pendiente para una próxima iteración.
+  const { data: companies, live } = await withFallback(() => adminApi.companies(accessToken), MOCK_COMPANIES);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

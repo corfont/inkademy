@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_COURSES } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -8,8 +9,15 @@ import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Catálogo (admin)" };
 
+// `GET /admin/courses` incluye `area: { ... }` completo (Prisma), no un
+// `areaSlug` plano — ver `AdminService.listCourses`.
+function areaLabel(course: any): string {
+  return course.areaSlug ?? course.area?.slug ?? "—";
+}
+
 export default async function AdminCatalogPage() {
-  const { data: courses, live } = await withFallback(() => adminApi.courses(), MOCK_COURSES);
+  const accessToken = getServerAccessToken();
+  const { data: courses, live } = await withFallback(() => adminApi.courses(accessToken), MOCK_COURSES);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -34,10 +42,12 @@ export default async function AdminCatalogPage() {
             {courses.map((course: any) => (
               <tr key={course.id}>
                 <td className="p-4 font-medium text-ink-900">{course.title.es ?? course.title}</td>
-                <td className="p-4 text-ash-600">{course.areaSlug}</td>
+                <td className="p-4 text-ash-600">{areaLabel(course)}</td>
                 <td className="p-4 text-ash-600">{course.modality}</td>
                 <td className="p-4">
-                  <Badge variant="success">Publicado</Badge>
+                  <Badge variant={course.status === "PUBLISHED" ? "success" : "outline"}>
+                    {course.status === "PUBLISHED" ? "Publicado" : course.status === "ARCHIVED" ? "Archivado" : "Borrador"}
+                  </Badge>
                 </td>
                 <td className="p-4">
                   <Button size="sm" variant="ghost">

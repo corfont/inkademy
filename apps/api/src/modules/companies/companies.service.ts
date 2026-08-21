@@ -145,7 +145,19 @@ export class CompaniesService {
   }
 
   async listSeatPools(companyId: string) {
-    return this.prisma.companySeatPool.findMany({ where: { companyId } });
+    const pools = await this.prisma.companySeatPool.findMany({
+      where: { companyId },
+      include: { course: { select: { title: true } }, program: { select: { title: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return pools.map((p) => ({
+      id: p.id,
+      offeringKind: p.offeringKind,
+      offeringTitle: (p.course?.title ?? p.program?.title ?? {}) as Record<string, string>,
+      seatsPurchased: p.seatsPurchased,
+      seatsUsed: p.seatsUsed,
+      expiresAt: p.expiresAt,
+    }));
   }
 
   async assignSeat(companyId: string, poolId: string, userId: string) {

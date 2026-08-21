@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations, getLocale } from "next-intl/server";
 import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { formatDate } from "@/lib/format";
@@ -30,8 +31,9 @@ const STATUS_VARIANT: Record<QuoteLike["status"], "neutral" | "warning" | "succe
 export default async function QuotesPage({ params }: { params: { companyId: string } }) {
   const t = await getTranslations("empresa.quotes");
   const locale = await getLocale();
+  const accessToken = getServerAccessToken();
 
-  const { data: quotes, live } = await withFallback(() => companyApi.quotes(params.companyId), MOCK_QUOTES);
+  const { data: quotes, live } = await withFallback(() => companyApi.quotes(params.companyId, accessToken), MOCK_QUOTES);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">

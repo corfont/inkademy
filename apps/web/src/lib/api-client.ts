@@ -203,19 +203,24 @@ export const liveSessionApi = {
 // Empresas / B2B
 // ---------------------------------------------------------------------------
 export const companyApi = {
-  create: (input: unknown) => apiFetch<any>("/companies", { method: "POST", body: JSON.stringify(input) }),
+  create: (input: unknown, accessToken?: string | null) =>
+    apiFetch<any>("/companies", { method: "POST", body: JSON.stringify(input), accessToken }),
   dashboard: (id: string, accessToken?: string | null) =>
     apiFetch<CompanyDashboardSummaryDTO>(`/companies/${id}/dashboard`, { accessToken }),
-  members: (id: string, query: Record<string, string | undefined> = {}) =>
-    apiFetch<any[]>(`/companies/${id}/members`, { query }),
-  inviteMember: (id: string, input: unknown) => apiFetch<any>(`/companies/${id}/members/invite`, { method: "POST", body: JSON.stringify(input) }),
-  removeMember: (id: string, membershipId: string) => apiFetch<void>(`/companies/${id}/members/${membershipId}`, { method: "DELETE" }),
-  seatPools: (id: string) => apiFetch<any[]>(`/companies/${id}/seat-pools`),
-  assignSeat: (id: string, poolId: string, userId: string) =>
-    apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/assign`, { method: "POST", body: JSON.stringify({ userId }) }),
-  reports: (id: string, query: Record<string, string | undefined> = {}) => apiFetch<any>(`/companies/${id}/reports`, { query }),
-  requestQuote: (id: string, input: unknown) => apiFetch<any>(`/companies/${id}/quotes`, { method: "POST", body: JSON.stringify(input) }),
-  quotes: (id: string) => apiFetch<any[]>(`/companies/${id}/quotes`),
+  members: (id: string, query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
+    apiFetch<any[]>(`/companies/${id}/members`, { query, accessToken }),
+  inviteMember: (id: string, input: unknown, accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/members/invite`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  removeMember: (id: string, membershipId: string, accessToken?: string | null) =>
+    apiFetch<void>(`/companies/${id}/members/${membershipId}`, { method: "DELETE", accessToken }),
+  seatPools: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/seat-pools`, { accessToken }),
+  assignSeat: (id: string, poolId: string, userId: string, accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/assign`, { method: "POST", body: JSON.stringify({ userId }), accessToken }),
+  reports: (id: string, query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/reports`, { query, accessToken }),
+  requestQuote: (id: string, input: unknown, accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/quotes`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  quotes: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/quotes`, { accessToken }),
 };
 
 // ---------------------------------------------------------------------------
@@ -234,12 +239,16 @@ export const supportApi = {
 export const adminApi = {
   kpis: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpis", { accessToken }),
   exceptions: (accessToken?: string | null) => apiFetch<AdminExceptionDTO[]>("/admin/exceptions", { accessToken }),
-  courses: () => apiFetch<any[]>("/admin/courses"),
-  programs: () => apiFetch<any[]>("/admin/programs"),
-  areas: () => apiFetch<any[]>("/admin/areas"),
-  pendingReview: () => apiFetch<any[]>("/admin/attempts/pending-review"),
-  gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }) =>
-    apiFetch<any>(`/admin/attempts/${attemptId}/answers/${answerId}/grade`, { method: "POST", body: JSON.stringify(input) }),
-  certificateTemplates: () => apiFetch<any[]>("/admin/certificate-templates"),
-  companies: () => apiFetch<any[]>("/admin/companies"),
+  courses: (accessToken?: string | null) => apiFetch<any[]>("/admin/courses", { accessToken }),
+  programs: (accessToken?: string | null) => apiFetch<any[]>("/admin/programs", { accessToken }),
+  areas: (accessToken?: string | null) => apiFetch<any[]>("/admin/areas", { accessToken }),
+  pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
+  gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/attempts/${attemptId}/answers/${answerId}/grade`, {
+      method: "POST",
+      body: JSON.stringify(input),
+      accessToken,
+    }),
+  certificateTemplates: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificate-templates", { accessToken }),
+  companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
 };

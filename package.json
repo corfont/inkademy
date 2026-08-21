@@ -16,10 +16,16 @@
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down"
   },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
   "devDependencies": {
     "@playwright/test": "^1.47.0",
     "prisma": "^5.19.0",
     "tsx": "^4.16.0",
     "typescript": "^5.5.4"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
