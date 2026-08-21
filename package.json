@@ -1,0 +1,25 @@
+{
+  "name": "inkademy",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plataforma de educación y capacitación virtual (B2C + B2B) — Perú y LatAm",
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "prisma:generate": "pnpm --filter @inkademy/api exec prisma generate --schema ../../prisma/schema.prisma",
+    "prisma:migrate": "pnpm --filter @inkademy/api exec prisma migrate dev --schema ../../prisma/schema.prisma",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "prisma": "^5.19.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.4"
+  }
+}

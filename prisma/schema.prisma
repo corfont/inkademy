@@ -1,0 +1,874 @@
+// ============================================================================
+// Inkademy — Modelo de datos
+// Ver docs/DATA-MODEL.md para el diagrama ER y la explicación de cada bloque.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../packages/db/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// IDENTIDAD Y ORGANIZACIÓN
+// ---------------------------------------------------------------------------
+
+enum GlobalRole {
+  STUDENT
+  TEACHER
+  SUPPORT
+  ADMIN
+}
+
+enum OAuthProviderType {
+  GOOGLE
+  MICROSOFT
+}
+
+enum ExperienceLevel {
+  ENTRY
+  MID
+  SENIOR
+  EXECUTIVE
+}
+
+model User {
+  id                    String   @id @default(uuid())
+  email                 String   @unique
+  passwordHash          String? // null si solo usa OAuth
+  firstName             String
+  lastName              String
+  displayName           String?
+  globalRole            GlobalRole @default(STUDENT)
+  locale                String   @default("es")
+  timezone              String   @default("America/Lima")
+  emailVerifiedAt       DateTime?
+  status                String   @default("active") // active | disabled
+
+  // Perfil progresivo (persona natural) — se completa antes de pago/certificado.
+  documentType          String? // DNI, CE, PASSPORT, RUC... (según país)
+  documentNumber        String?
+  country               String? // ISO-3166 alpha-2
+  city                  String?
+  phone                 String?
+  jobTitle              String?
+  companyFreeText       String?
+  sector                String?
+  interests             String[] @default([])
+  experienceLevel       ExperienceLevel?
+  marketingConsentEmail    Boolean @default(false)
+  marketingConsentWhatsapp Boolean @default(false)
+  profileCompletedAt    DateTime?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  oauthAccounts         OAuthAccount[]
+  companyMemberships    CompanyMembership[]
+  enrollments           Enrollment[]
+  orders                Order[]
+  assessmentAttempts    AssessmentAttempt[]
+  certificates          Certificate[]
+  attendances           Attendance[]
+  lessonProgress        LessonProgress[]
+  calendarEvents        CalendarEvent[]
+  notifications         Notification[]
+  supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
+  supportMessages       SupportMessage[]
+  recommendations       Recommendation[]
+  auditLogs             AuditLog[]
+  teachingCourses       CourseStaff[]
+  gradedAnswers         Answer[]             @relation("GradedBy")
+
+  @@index([email])
+}
+
+model OAuthAccount {
+  id                String            @id @default(uuid())
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          OAuthProviderType
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  createdAt         DateTime          @default(now())
+
+  @@unique([provider, providerAccountId])
+}
+
+enum CompanySize {
+  MICRO
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
+}
+
+model Company {
+  id             String   @id @default(uuid())
+  legalName      String
+  taxIdType      String   // RUC, NIT, EIN, ...
+  taxId          String
+  country        String
+  billingAddress String?
+  sector         String?
+  size           CompanySize?
+  interests      String[] @default([])
+  status         String   @default("active") // active | suspended
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  memberships    CompanyMembership[]
+  enrollments    Enrollment[]
+  seatPools      CompanySeatPool[]
+  quotes         Quote[]
+  orders         Order[]
+  supportTickets SupportTicket[]
+  auditLogs      AuditLog[]
+
+  @@unique([country, taxIdType, taxId])
+}
+
+enum CompanyMembershipRole {
+  COMPANY_ADMIN
+  PARTICIPANT
+}
+
+enum CompanyMembershipStatus {
+  INVITED
+  ACTIVE
+  REMOVED
+}
+
+model CompanyMembership {
+  id        String                  @id @default(uuid())
+  companyId String
+  company   Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      CompanyMembershipRole
+  status    CompanyMembershipStatus @default(INVITED)
+  invitedBy String?
+  team      String? // agrupación libre para reportes (área/equipo/sede)
+  joinedAt  DateTime?
+  createdAt DateTime                @default(now())
+
+  @@unique([companyId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// CATÁLOGO
+// ---------------------------------------------------------------------------
+
+model Area {
+  id        String     @id @default(uuid())
+  slug      String     @unique
+  name      Json // { "es": "Gestión", "en": "Management" }
+  icon      String?
+  order     Int        @default(0)
+  subareas  Subarea[]
+  courses   Course[]
+}
+
+model Subarea {
+  id     String  @id @default(uuid())
+  slug   String  @unique
+  name   Json
+  areaId String
+  area   Area    @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  courses Course[]
+}
+
+enum OfferingModality {
+  RECORDED
+  LIVE
+  HYBRID
+}
+
+enum OfferingType {
+  COURSE
+  WORKSHOP
+  SEMINAR
+  MASTERCLASS
+  PROGRAM
+  DIPLOMA
+  CORPORATE_INHOUSE
+}
+
+enum OfferingLevel {
+  INITIAL
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum AccessDurationPolicy {
+  DAYS_30
+  MONTHS_6
+  PERMANENT
+}
+
+enum OfferingStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Course {
+  id                     String                @id @default(uuid())
+  slug                   String                @unique
+  title                  Json // { es, en }
+  subtitle               Json? // beneficio ("Aprende a liderar equipos remotos")
+  description            Json?
+  areaId                 String
+  area                   Area                  @relation(fields: [areaId], references: [id])
+  subareaId              String?
+  subarea                Subarea?              @relation(fields: [subareaId], references: [id])
+  modality               OfferingModality
+  type                   OfferingType          @default(COURSE)
+  level                  OfferingLevel
+  language               String                @default("es")
+  subtitleLanguages      String[]              @default([])
+  durationHours          Float
+  coverImageAssetId      String?
+  priceAmount            Decimal               @db.Decimal(10, 2)
+  priceCurrency          String                @default("PEN")
+  certificationIncluded  Boolean               @default(true)
+  accessDurationPolicy   AccessDurationPolicy  @default(PERMANENT)
+  status                 OfferingStatus        @default(DRAFT)
+  b2bAvailable           Boolean               @default(true)
+  b2bPriceAmount          Decimal?             @db.Decimal(10, 2)
+
+  // Rutas progresivas / recomendación
+  prerequisiteCourseIds  String[]              @default([])
+  nextRecommendedCourseIds String[]            @default([])
+
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  modules                CourseModule[]
+  liveSessions           LiveSession[]
+  assessments            Assessment[]
+  enrollments            Enrollment[]
+  staff                  CourseStaff[]
+  programCourses         ProgramCourse[]
+  certificates           Certificate[]
+
+  @@index([areaId])
+  @@index([status])
+}
+
+enum CourseStaffRole {
+  TEACHER
+  CO_TEACHER
+  MODERATOR
+}
+
+model CourseStaff {
+  id       String          @id @default(uuid())
+  courseId String
+  course   Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     CourseStaffRole
+
+  @@unique([courseId, userId, role])
+}
+
+model CourseModule {
+  id       String   @id @default(uuid())
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order    Int
+  title    Json
+  lessons  Lesson[]
+
+  @@index([courseId])
+}
+
+enum LessonContentType {
+  VIDEO
+  PDF
+  LINK
+  TEXT
+  ASSIGNMENT
+}
+
+model Lesson {
+  id              String             @id @default(uuid())
+  moduleId        String
+  module          CourseModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  order           Int
+  title           Json
+  contentType     LessonContentType
+  videoAssetId    String?
+  durationMinutes Int?
+  isFreePreview   Boolean            @default(false)
+  materials       Material[]
+  progress        LessonProgress[]
+
+  @@index([moduleId])
+}
+
+model Material {
+  id        String   @id @default(uuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title     String
+  assetId   String
+  kind      String // pdf | slide | template | link
+  createdAt DateTime @default(now())
+}
+
+enum LiveSessionStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum VirtualClassroomProviderType {
+  TEAMS
+}
+
+model LiveSession {
+  id               String                       @id @default(uuid())
+  courseId         String
+  course           Course                       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title            Json?
+  startsAt         DateTime
+  endsAt           DateTime
+  timezone         String                       @default("America/Lima")
+  capacity         Int?
+  status           LiveSessionStatus            @default(SCHEDULED)
+
+  // Integración de aula virtual (Microsoft Teams vía Graph API)
+  provider         VirtualClassroomProviderType @default(TEAMS)
+  providerMeetingId String?
+  joinUrl          String?
+  organizerUpn     String?
+  recordingUrl     String?
+
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  attendances      Attendance[]
+  calendarEvents   CalendarEvent[]
+
+  @@index([courseId])
+  @@index([startsAt])
+}
+
+model Program {
+  id                    String          @id @default(uuid())
+  slug                  String          @unique
+  title                 Json
+  description           Json?
+  type                  OfferingType    @default(PROGRAM) // PROGRAM | DIPLOMA
+  coverImageAssetId     String?
+  priceAmount           Decimal         @db.Decimal(10, 2)
+  priceCurrency         String          @default("PEN")
+  certificationIncluded Boolean         @default(true)
+  status                OfferingStatus  @default(DRAFT)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  courses               ProgramCourse[]
+  enrollments           Enrollment[]
+  certificates          Certificate[]
+}
+
+model ProgramCourse {
+  id         String  @id @default(uuid())
+  programId  String
+  program    Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course  @relation(fields: [courseId], references: [id])
+  order      Int
+  isRequired Boolean @default(true)
+
+  @@unique([programId, courseId])
+}
+
+// ---------------------------------------------------------------------------
+// MATRÍCULA Y PROGRESO
+// ---------------------------------------------------------------------------
+
+enum OfferingKind {
+  COURSE
+  PROGRAM
+}
+
+enum EnrollmentSource {
+  B2C_PURCHASE
+  B2B_SEAT
+  FREE
+  ADMIN_GRANTED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+model Enrollment {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offeringKind    OfferingKind
+  courseId        String?
+  course          Course?          @relation(fields: [courseId], references: [id])
+  programId       String?
+  program         Program?         @relation(fields: [programId], references: [id])
+  companyId       String? // si vino de un cupo B2B
+  company         Company?         @relation(fields: [companyId], references: [id])
+  source          EnrollmentSource
+  status          EnrollmentStatus @default(ACTIVE)
+  accessExpiresAt DateTime?
+  progressPct     Float            @default(0)
+  enrolledAt      DateTime         @default(now())
+  completedAt     DateTime?
+
+  lessonProgress  LessonProgress[]
+  attempts        AssessmentAttempt[]
+  certificate     Certificate?
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([courseId])
+  @@index([programId])
+}
+
+model LessonProgress {
+  id           String     @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId     String
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completed    Boolean    @default(false)
+  lastPositionSeconds Int @default(0)
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([enrollmentId, lessonId])
+}
+
+model Attendance {
+  id            String      @id @default(uuid())
+  liveSessionId String
+  liveSession   LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt      DateTime?
+  leftAt        DateTime?
+  durationMin   Int?
+  source        String      @default("teams_graph_report") // teams_graph_report | manual
+
+  @@unique([liveSessionId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// EVALUACIÓN Y CERTIFICACIÓN
+// ---------------------------------------------------------------------------
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  OPEN
+}
+
+model QuestionBank {
+  id        String     @id @default(uuid())
+  areaId    String?
+  name      String
+  questions Question[]
+}
+
+model Question {
+  id             String        @id @default(uuid())
+  questionBankId String?
+  questionBank   QuestionBank? @relation(fields: [questionBankId], references: [id])
+  assessmentId   String?
+  assessment     Assessment?   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  type           QuestionType
+  text           Json
+  options        Json? // [{ id, text }] para choice/true_false
+  correctAnswer  Json? // string | string[] según tipo (null para OPEN)
+  points         Float         @default(1)
+  tags           String[]      @default([])
+
+  answers        Answer[]
+}
+
+enum AssessmentQuestionOrder {
+  FIXED
+  RANDOM
+}
+
+model Assessment {
+  id                String                  @id @default(uuid())
+  courseId          String
+  course            Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title             Json
+  type              String                  @default("quiz") // quiz | exam | assignment
+  minScore          Float                   @default(70)
+  maxAttempts       Int                     @default(3)
+  timeLimitMinutes  Int?
+  questionOrder     AssessmentQuestionOrder @default(FIXED)
+  randomizeOptions  Boolean                 @default(false)
+  questionsPerAttempt Int? // selección aleatoria desde banco
+  availableFrom     DateTime?
+  availableUntil    DateTime?
+
+  questions         Question[]
+  attempts          AssessmentAttempt[]
+
+  @@index([courseId])
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  GRADED
+  PENDING_REVIEW
+  PASSED
+  FAILED
+}
+
+model AssessmentAttempt {
+  id            String        @id @default(uuid())
+  assessmentId  String
+  assessment    Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  enrollmentId  String
+  enrollment    Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attemptNumber Int
+  startedAt     DateTime      @default(now())
+  submittedAt   DateTime?
+  score         Float?
+  status        AttemptStatus @default(IN_PROGRESS)
+
+  answers       Answer[]
+
+  @@index([assessmentId, userId])
+}
+
+model Answer {
+  id           String             @id @default(uuid())
+  attemptId    String
+  attempt      AssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     Question           @relation(fields: [questionId], references: [id])
+  response     Json
+  isCorrect    Boolean?
+  score        Float?
+  gradedById   String?
+  gradedBy     User?              @relation("GradedBy", fields: [gradedById], references: [id])
+  gradedAt     DateTime?
+
+  @@unique([attemptId, questionId])
+}
+
+// Reglas de habilitación de certificado por curso.
+model ApprovalRule {
+  id                 String  @id @default(uuid())
+  courseId           String  @unique
+  minProgressPct     Float   @default(100)
+  minAttendancePct   Float?  // solo aplica si el curso tiene sesiones en vivo
+  minScore           Float   @default(70)
+  requiresAssignment Boolean @default(false)
+}
+
+model CertificateTemplate {
+  id           String   @id @default(uuid())
+  name         String
+  locale       String   @default("es")
+  htmlTemplate String   @db.Text
+  version      Int      @default(1)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  certificates Certificate[]
+}
+
+model Certificate {
+  id               String               @id @default(uuid())
+  code             String               @unique @default(cuid())
+  userId           String
+  user             User                 @relation(fields: [userId], references: [id])
+  courseId         String?
+  course           Course?              @relation(fields: [courseId], references: [id])
+  programId        String?
+  program          Program?             @relation(fields: [programId], references: [id])
+  enrollmentId     String               @unique
+  enrollment       Enrollment           @relation(fields: [enrollmentId], references: [id])
+  templateId       String
+  template         CertificateTemplate  @relation(fields: [templateId], references: [id])
+  templateVersion  Int
+  finalScore       Float?
+  issuedAt         DateTime             @default(now())
+  pdfAssetId       String?
+  qrUrl            String?
+  criteriaSnapshot Json // reglas cumplidas al momento de emitir, para trazabilidad
+  revoked          Boolean              @default(false)
+
+  @@index([userId])
+  @@index([code])
+}
+
+// ---------------------------------------------------------------------------
+// COMERCIO
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  companyId   String?
+  company     Company?    @relation(fields: [companyId], references: [id])
+  subtotal    Decimal     @db.Decimal(10, 2)
+  discount    Decimal     @default(0) @db.Decimal(10, 2)
+  tax         Decimal     @default(0) @db.Decimal(10, 2)
+  total       Decimal     @db.Decimal(10, 2)
+  currency    String      @default("PEN")
+  status      OrderStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items       OrderItem[]
+  payments    Payment[]
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  offeringKind OfferingKind
+  courseId   String?
+  programId  String?
+  seatPoolQty Int? // si la compra es de cupos B2B
+  unitPrice  Decimal  @db.Decimal(10, 2)
+  quantity   Int      @default(1)
+}
+
+enum PaymentProviderType {
+  CULQI
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id          String              @id @default(uuid())
+  orderId     String
+  order       Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider    PaymentProviderType
+  providerRef String? // charge id / payment intent id
+  status      PaymentStatus       @default(PENDING)
+  amount      Decimal             @db.Decimal(10, 2)
+  currency    String
+  receiptUrl  String?
+  paidAt      DateTime?
+  createdAt   DateTime            @default(now())
+}
+
+model CompanySeatPool {
+  id            String    @id @default(uuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  offeringKind  OfferingKind
+  courseId      String?
+  programId     String?
+  seatsPurchased Int
+  seatsUsed      Int      @default(0)
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([companyId])
+}
+
+enum QuoteStatus {
+  REQUESTED
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+model Quote {
+  id                  String      @id @default(uuid())
+  companyId           String
+  company             Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedByUserId    String
+  offeringDescription String      @db.Text
+  status              QuoteStatus @default(REQUESTED)
+  salesOwner          String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// AGENDA, NOTIFICACIONES Y SOPORTE
+// ---------------------------------------------------------------------------
+
+enum CalendarEventType {
+  LIVE_CLASS
+  COURSE_START
+  COURSE_DEADLINE
+  ASSIGNMENT_DUE
+  EXAM
+  MENTORSHIP
+  ACCESS_EXPIRATION
+}
+
+model CalendarEvent {
+  id            String            @id @default(uuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          CalendarEventType
+  title         String
+  startsAt      DateTime
+  endsAt        DateTime?
+  icsUid        String            @unique @default(uuid())
+  liveSessionId String?
+  liveSession   LiveSession?      @relation(fields: [liveSessionId], references: [id])
+  createdAt     DateTime          @default(now())
+
+  @@index([userId, startsAt])
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Notification {
+  id        String               @id @default(uuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   NotificationChannel
+  template  String
+  payload   Json?
+  status    NotificationStatus   @default(PENDING)
+  sentAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([userId])
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id          String          @id @default(uuid())
+  createdById String
+  createdBy   User            @relation("TicketCreatedBy", fields: [createdById], references: [id])
+  companyId   String?
+  company     Company?        @relation(fields: [companyId], references: [id])
+  category    String
+  priority    TicketPriority  @default(MEDIUM)
+  status      TicketStatus    @default(OPEN)
+  subject     String
+  channel     String          @default("web") // web | whatsapp
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  messages    SupportMessage[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model SupportMessage {
+  id         String        @id @default(uuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User          @relation(fields: [authorId], references: [id])
+  body       String        @db.Text
+  attachmentAssetId String?
+  createdAt  DateTime      @default(now())
+}
+
+model Recommendation {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId    String?
+  programId   String?
+  reason      String // completed_related | interest_match | level_progression | company_assigned
+  score       Float    @default(0)
+  generatedAt DateTime @default(now())
+  dismissed   Boolean  @default(false)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// SISTEMA
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id])
+  action     String
+  entity     String
+  entityId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+model CountryConfig {
+  id           String   @id @default(uuid())
+  country      String   @unique // ISO-3166 alpha-2
+  documentTypes Json    // [{ code: "DNI", label: {...}, length: 8 }, ...]
+  currency     String
+  phonePrefix  String
+  taxIdLabel   String? // "RUC", "NIT", ...
+}

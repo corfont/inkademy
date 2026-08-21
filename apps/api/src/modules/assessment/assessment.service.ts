@@ -1,0 +1,246 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import type { PrismaClient, Question } from "@inkademy/db";
+import type { AssessmentAttemptSubmission, AssessmentResultDTO } from "@inkademy/shared";
+import { PRISMA } from "../../common/prisma/prisma.module";
+import { CertificateService } from "../certificate/certificate.service";
+
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function isObjective(type: Question["type"]) {
+  return type === "SINGLE_CHOICE" || type === "MULTI_CHOICE" || type === "TRUE_FALSE";
+}
+
+function gradeObjective(question: Question, response: unknown): { isCorrect: boolean; score: number } {
+  const correct = question.correctAnswer as unknown;
+  let isCorrect = false;
+  if (question.type === "MULTI_CHOICE") {
+    const a = new Set(Array.isArray(response) ? response : []);
+    const b = new Set(Array.isArray(correct) ? (correct as string[]) : []);
+    isCorrect = a.size === b.size && [...a].every((v) => b.has(v as string));
+  } else {
+    isCorrect = JSON.stringify(response) === JSON.stringify(correct);
+  }
+  return { isCorrect, score: isCorrect ? question.points : 0 };
+}
+
+@Injectable()
+export class AssessmentService {
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly certificateService: CertificateService,
+  ) {}
+
+  /** Preguntas para presentar al alumno, sin `correctAnswer`, respetando orden/aleatoriedad configurados. */
+  async getForStudent(assessmentId: string) {
+    const assessment = await this.prisma.assessment.findUnique({
+      where: { id: assessmentId },
+      include: { questions: true },
+    });
+    if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+
+    let pool = assessment.questions;
+    if (assessment.questionsPerAttempt && assessment.questionsPerAttempt < pool.length) {
+      pool = shuffle(pool).slice(0, assessment.questionsPerAttempt);
+    }
+    if (assessment.questionOrder === "RANDOM") pool = shuffle(pool);
+
+    const questions = pool.map((q) => {
+      let options = q.options as { id: string; text: unknown }[] | null;
+      if (options && assessment.randomizeOptions) options = shuffle(options);
+      return {
+        id: q.id,
+        type: q.type,
+        text: q.text,
+        options,
+        points: q.points,
+      };
+    });
+
+    return {
+      id: assessment.id,
+      title: assessment.title,
+      type: assessment.type,
+      timeLimitMinutes: assessment.timeLimitMinutes,
+      maxAttempts: assessment.maxAttempts,
+      minScore: assessment.minScore,
+      questions,
+    };
+  }
+
+  async createAttempt(assessmentId: string, userId: string) {
+    const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId } });
+    if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+
+    const now = new Date();
+    if (assessment.availableFrom && now < assessment.availableFrom) {
+      throw new ForbiddenException("Esta evaluación todavía no está disponible");
+    }
+    if (assessment.availableUntil && now > assessment.availableUntil) {
+      throw new ForbiddenException("Esta evaluación ya cerró");
+    }
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { userId, courseId: assessment.courseId, offeringKind: "COURSE" },
+      orderBy: { enrolledAt: "desc" },
+    });
+    if (!enrollment) throw new ForbiddenException("No estás matriculado en el curso de esta evaluación");
+
+    const attemptsCount = await this.prisma.assessmentAttempt.count({ where: { assessmentId, userId } });
+    if (attemptsCount >= assessment.maxAttempts) {
+      throw new ForbiddenException("Alcanzaste el número máximo de intentos");
+    }
+
+    return this.prisma.assessmentAttempt.create({
+      data: {
+        assessmentId,
+        enrollmentId: enrollment.id,
+        userId,
+        attemptNumber: attemptsCount + 1,
+      },
+    });
+  }
+
+  async submitAttempt(
+    attemptId: string,
+    userId: string,
+    input: AssessmentAttemptSubmission,
+  ): Promise<AssessmentResultDTO> {
+    const attempt = await this.prisma.assessmentAttempt.findUnique({
+      where: { id: attemptId },
+      include: { assessment: true },
+    });
+    if (!attempt) throw new NotFoundException("Intento no encontrado");
+    if (attempt.userId !== userId) throw new ForbiddenException("No puedes enviar el intento de otro usuario");
+    if (attempt.status !== "IN_PROGRESS") throw new BadRequestException("Este intento ya fue enviado");
+
+    const questionIds = input.answers.map((a) => a.questionId);
+    const questions = await this.prisma.question.findMany({ where: { id: { in: questionIds } } });
+    const questionById = new Map(questions.map((q) => [q.id, q]));
+
+    let pendingReviewCount = 0;
+    for (const answer of input.answers) {
+      const question = questionById.get(answer.questionId);
+      if (!question) continue;
+
+      let isCorrect: boolean | null = null;
+      let score: number | null = null;
+      if (isObjective(question.type)) {
+        const graded = gradeObjective(question, answer.response);
+        isCorrect = graded.isCorrect;
+        score = graded.score;
+      } else {
+        // SHORT_ANSWER / OPEN: quedan pendientes de revisión manual (cola pending_review).
+        pendingReviewCount += 1;
+      }
+
+      await this.prisma.answer.upsert({
+        where: { attemptId_questionId: { attemptId, questionId: answer.questionId } },
+        create: {
+          attemptId,
+          questionId: answer.questionId,
+          response: answer.response as object,
+          isCorrect,
+          score,
+        },
+        update: { response: answer.response as object, isCorrect, score },
+      });
+    }
+
+    const allAnswers = await this.prisma.answer.findMany({ where: { attemptId } });
+    const stillPending = allAnswers.some((a) => a.isCorrect === null);
+
+    let status: "PENDING_REVIEW" | "PASSED" | "FAILED" = "PENDING_REVIEW";
+    let finalScore: number | null = null;
+    if (!stillPending) {
+      const maxPoints = questions.reduce((sum, q) => sum + q.points, 0) || 1;
+      const earned = allAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
+      finalScore = Math.round((earned / maxPoints) * 10000) / 100;
+      status = finalScore >= attempt.assessment.minScore ? "PASSED" : "FAILED";
+    }
+
+    const updated = await this.prisma.assessmentAttempt.update({
+      where: { id: attemptId },
+      data: { submittedAt: new Date(), score: finalScore, status },
+    });
+
+    if (!stillPending) {
+      await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
+    }
+
+    return {
+      attemptId: updated.id,
+      score: updated.score,
+      status: updated.status,
+      pendingReviewCount: allAnswers.filter((a) => a.isCorrect === null).length,
+    };
+  }
+
+  async getAttempt(attemptId: string, userId: string, isPrivileged: boolean) {
+    const attempt = await this.prisma.assessmentAttempt.findUnique({
+      where: { id: attemptId },
+      include: { answers: true, assessment: true },
+    });
+    if (!attempt) throw new NotFoundException("Intento no encontrado");
+    if (!isPrivileged && attempt.userId !== userId) {
+      throw new ForbiddenException("No puedes ver el intento de otro usuario");
+    }
+    return attempt;
+  }
+
+  // --- Usado por AdminModule ---
+
+  async listPendingReview() {
+    return this.prisma.answer.findMany({
+      where: { isCorrect: null, question: { type: { in: ["OPEN", "SHORT_ANSWER"] } } },
+      include: {
+        question: true,
+        attempt: { include: { user: true, assessment: { include: { course: true } } } },
+      },
+      orderBy: { id: "asc" },
+    });
+  }
+
+  async gradeAnswer(attemptId: string, answerId: string, graderId: string, input: { score: number; isCorrect: boolean }) {
+    const answer = await this.prisma.answer.findUnique({ where: { id: answerId } });
+    if (!answer || answer.attemptId !== attemptId) throw new NotFoundException("Respuesta no encontrada");
+
+    await this.prisma.answer.update({
+      where: { id: answerId },
+      data: { score: input.score, isCorrect: input.isCorrect, gradedById: graderId, gradedAt: new Date() },
+    });
+
+    const attempt = await this.prisma.assessmentAttempt.findUniqueOrThrow({
+      where: { id: attemptId },
+      include: { assessment: { include: { questions: true } }, answers: true },
+    });
+    const refreshedAnswers = await this.prisma.answer.findMany({ where: { attemptId } });
+    const stillPending = refreshedAnswers.some((a) => a.isCorrect === null);
+
+    if (!stillPending) {
+      const maxPoints = attempt.assessment.questions.reduce((sum, q) => sum + q.points, 0) || 1;
+      const earned = refreshedAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
+      const finalScore = Math.round((earned / maxPoints) * 10000) / 100;
+      const status = finalScore >= attempt.assessment.minScore ? "PASSED" : "FAILED";
+      await this.prisma.assessmentAttempt.update({
+        where: { id: attemptId },
+        data: { score: finalScore, status },
+      });
+      await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
+    }
+
+    return { graded: true };
+  }
+}

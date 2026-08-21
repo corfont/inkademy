@@ -1,0 +1,50 @@
+import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { submitAttemptSchema } from "@inkademy/shared";
+import type { AssessmentAttemptSubmission } from "@inkademy/shared";
+import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import type { RequestUser } from "../../common/guards/jwt-auth.guard";
+import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { AssessmentService } from "./assessment.service";
+
+@ApiTags("assessments")
+@ApiBearerAuth()
+@Controller("assessments")
+export class AssessmentController {
+  constructor(private readonly assessmentService: AssessmentService) {}
+
+  @Get(":id")
+  @ApiOperation({ summary: "Preguntas de una evaluación (sin correctAnswer, orden según config)" })
+  getAssessment(@Param("id") id: string) {
+    return this.assessmentService.getForStudent(id);
+  }
+
+  @Post(":id/attempts")
+  @ApiOperation({ summary: "Inicia un nuevo intento (valida matrícula, fechas e intentos restantes)" })
+  createAttempt(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.assessmentService.createAttempt(id, user.id);
+  }
+}
+
+@ApiTags("attempts")
+@ApiBearerAuth()
+@Controller("attempts")
+export class AttemptsController {
+  constructor(private readonly assessmentService: AssessmentService) {}
+
+  @Post(":id/submit")
+  @ApiOperation({ summary: "Envía respuestas: autocorrige objetivas, abiertas quedan PENDING_REVIEW" })
+  submit(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(submitAttemptSchema)) dto: AssessmentAttemptSubmission,
+  ) {
+    return this.assessmentService.submitAttempt(id, user.id, dto);
+  }
+
+  @Get(":id")
+  @ApiOperation({ summary: "Estado/resultado de un intento" })
+  get(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.assessmentService.getAttempt(id, user.id, user.globalRole === "ADMIN" || user.globalRole === "TEACHER");
+  }
+}

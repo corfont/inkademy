@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Tokens de color — Inkademy
+   "ink"  = color de marca (azul tinta profundo, prestigio académico)
+   "paper"= neutro cálido de fondo
+   "ash"  = neutro cálido para texto/bordes
+   "gold" = acento para CTAs y precios
+   ------------------------------------------------------------------------- */
+:root {
+  --ink-50: 222 45% 97%;
+  --ink-100: 222 38% 93%;
+  --ink-200: 221 34% 85%;
+  --ink-300: 220 32% 72%;
+  --ink-400: 220 34% 56%;
+  --ink-500: 221 45% 42%;
+  --ink-600: 222 52% 32%;
+  --ink-700: 222 56% 25%;
+  --ink-800: 223 58% 18%;
+  --ink-900: 224 60% 13%;
+  --ink-950: 225 62% 8%;
+
+  --paper: 40 33% 98%;
+  --paper-muted: 38 27% 95%;
+  --paper-border: 35 18% 88%;
+
+  --ash-50: 30 20% 97%;
+  --ash-100: 30 15% 93%;
+  --ash-200: 28 12% 86%;
+  --ash-300: 27 10% 75%;
+  --ash-400: 25 9% 58%;
+  --ash-500: 24 9% 45%;
+  --ash-600: 23 11% 35%;
+  --ash-700: 22 13% 26%;
+  --ash-800: 22 16% 17%;
+  --ash-900: 22 20% 10%;
+
+  --gold-50: 42 88% 96%;
+  --gold-100: 40 82% 90%;
+  --gold-200: 38 78% 79%;
+  --gold-300: 36 72% 66%;
+  --gold-400: 34 68% 56%;
+  --gold-500: 32 66% 47%;
+  --gold-600: 30 62% 39%;
+  --gold-700: 28 58% 31%;
+
+  --success: 152 52% 32%;
+  --success-bg: 150 45% 94%;
+  --warning: 38 85% 40%;
+  --warning-bg: 45 88% 93%;
+  --danger: 4 68% 44%;
+  --danger-bg: 4 65% 95%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: 224 32% 8%;
+    --paper-muted: 224 28% 12%;
+    --paper-border: 223 22% 20%;
+
+    --ash-50: 220 18% 14%;
+    --ash-100: 220 14% 20%;
+    --ash-200: 220 12% 28%;
+    --ash-300: 24 8% 42%;
+    --ash-400: 25 9% 58%;
+    --ash-500: 27 10% 70%;
+    --ash-600: 28 12% 80%;
+    --ash-700: 30 15% 88%;
+    --ash-800: 30 20% 93%;
+    --ash-900: 30 25% 97%;
+
+    --ink-50: 222 40% 12%;
+    --ink-100: 222 38% 18%;
+    --ink-200: 221 34% 28%;
+    --ink-300: 220 32% 40%;
+    --ink-400: 220 40% 58%;
+    --ink-500: 219 62% 72%;
+    --ink-600: 218 68% 80%;
+    --ink-700: 218 72% 87%;
+    --ink-800: 220 60% 93%;
+    --ink-900: 222 50% 96%;
+    --ink-950: 222 45% 98%;
+  }
+}
+
+* {
+  border-color: hsl(var(--paper-border));
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: hsl(var(--paper));
+  color: hsl(var(--ash-800));
+  font-feature-settings: "kern", "liga";
+}
+
+/* Foco visible y consistente en toda la app (accesibilidad) */
+:focus-visible {
+  outline: 2px solid hsl(var(--ink-500));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 100;
+}
+
+/* Line-clamp utilitario (evita depender de plugins) */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

@@ -1,0 +1,196 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
+import * as argon2 from "argon2";
+import { randomUUID } from "crypto";
+import type { PrismaClient, User } from "@inkademy/db";
+import type { AuthUser, RegisterInput } from "@inkademy/shared";
+import { PRISMA } from "../../common/prisma/prisma.module";
+import { toAuthUser } from "../../common/utils/map-user";
+import { NotificationService } from "../notification/notification.service";
+
+export interface AccessTokenPayload {
+  sub: string;
+  email: string;
+  globalRole: string;
+  typ: "access";
+}
+
+interface OAuthProfile {
+  provider: "GOOGLE" | "MICROSOFT";
+  providerAccountId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+    private readonly notifications: NotificationService,
+  ) {}
+
+  toAuthUser(user: User): AuthUser {
+    return toAuthUser(user);
+  }
+
+  async register(input: RegisterInput) {
+    const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) throw new ConflictException("Ya existe una cuenta con ese correo");
+
+    const passwordHash = await argon2.hash(input.password);
+    const user = await this.prisma.user.create({
+      data: {
+        email: input.email,
+        passwordHash,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        locale: input.locale ?? "es",
+        marketingConsentEmail: input.marketingConsentEmail ?? false,
+      },
+    });
+
+    const verifyToken = this.signPurposeToken(user.id, "verify_email", "1d");
+    await this.notifications.sendWelcome(user.email, user.firstName, user.id);
+    await this.notifications.sendVerifyEmail(user.email, verifyToken, user.id);
+
+    const accessToken = this.signAccessToken(user);
+    return { user: this.toAuthUser(user), accessToken };
+  }
+
+  async validateLocalUser(email: string, password: string): Promise<User> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException("Credenciales inválidas");
+    }
+    const valid = await argon2.verify(user.passwordHash, password);
+    if (!valid) throw new UnauthorizedException("Credenciales inválidas");
+    if (user.status !== "active") throw new UnauthorizedException("Cuenta deshabilitada");
+    return user;
+  }
+
+  login(user: User) {
+    return { user: this.toAuthUser(user), accessToken: this.signAccessToken(user) };
+  }
+
+  signAccessToken(user: User): string {
+    const payload: AccessTokenPayload = {
+      sub: user.id,
+      email: user.email,
+      globalRole: user.globalRole,
+      typ: "access",
+    };
+    return this.jwt.sign(payload, {
+      secret: this.config.get<string>("JWT_ACCESS_SECRET"),
+      expiresIn: this.config.get<string>("JWT_ACCESS_TTL", "15m"),
+    });
+  }
+
+  signRefreshToken(user: User): string {
+    return this.jwt.sign(
+      { sub: user.id, typ: "refresh", jti: randomUUID() },
+      {
+        secret: this.config.get<string>("JWT_REFRESH_SECRET"),
+        expiresIn: this.config.get<string>("JWT_REFRESH_TTL", "30d"),
+      },
+    );
+  }
+
+  async refresh(refreshToken: string | undefined) {
+    if (!refreshToken) throw new UnauthorizedException("Falta refresh token");
+    try {
+      const payload = this.jwt.verify<{ sub: string; typ: string }>(refreshToken, {
+        secret: this.config.get<string>("JWT_REFRESH_SECRET"),
+      });
+      if (payload.typ !== "refresh") throw new Error("token type inválido");
+      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      if (!user || user.status !== "active") throw new Error("usuario inválido");
+      return { accessToken: this.signAccessToken(user), user };
+    } catch {
+      throw new UnauthorizedException("Refresh token inválido o expirado");
+    }
+  }
+
+  /** Tokens con propósito específico (reset de password / verificación de email), stateless. */
+  private signPurposeToken(userId: string, purpose: string, ttl: string): string {
+    return this.jwt.sign(
+      { sub: userId, purpose },
+      { secret: this.config.get<string>("JWT_ACCESS_SECRET"), expiresIn: ttl },
+    );
+  }
+
+  private verifyPurposeToken(token: string, purpose: string): { sub: string } {
+    try {
+      const payload = this.jwt.verify<{ sub: string; purpose: string }>(token, {
+        secret: this.config.get<string>("JWT_ACCESS_SECRET"),
+      });
+      if (payload.purpose !== purpose) throw new Error("purpose mismatch");
+      return payload;
+    } catch {
+      throw new BadRequestException("Token inválido o expirado");
+    }
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Nunca revelamos si el correo existe (evita enumeración de usuarios).
+    if (user) {
+      const token = this.signPurposeToken(user.id, "reset_password", "1h");
+      await this.notifications.sendForgotPassword(user.email, token, user.id);
+    }
+    return;
+  }
+
+  async resetPassword(token: string, password: string) {
+    const { sub } = this.verifyPurposeToken(token, "reset_password");
+    const passwordHash = await argon2.hash(password);
+    await this.prisma.user.update({ where: { id: sub }, data: { passwordHash } });
+  }
+
+  async verifyEmail(token: string) {
+    const { sub } = this.verifyPurposeToken(token, "verify_email");
+    await this.prisma.user.update({ where: { id: sub }, data: { emailVerifiedAt: new Date() } });
+  }
+
+  async findOrCreateFromOAuth(profile: OAuthProfile) {
+    const oauthAccount = await this.prisma.oAuthAccount.findUnique({
+      where: {
+        provider_providerAccountId: {
+          provider: profile.provider,
+          providerAccountId: profile.providerAccountId,
+        },
+      },
+      include: { user: true },
+    });
+    if (oauthAccount) return oauthAccount.user;
+
+    let user = await this.prisma.user.findUnique({ where: { email: profile.email } });
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email: profile.email,
+          firstName: profile.firstName || "Usuario",
+          lastName: profile.lastName || "Inkademy",
+          emailVerifiedAt: new Date(),
+        },
+      });
+    }
+    await this.prisma.oAuthAccount.create({
+      data: {
+        userId: user.id,
+        provider: profile.provider,
+        providerAccountId: profile.providerAccountId,
+      },
+    });
+    return user;
+  }
+}

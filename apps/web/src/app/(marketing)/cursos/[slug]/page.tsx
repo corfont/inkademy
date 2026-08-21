@@ -1,0 +1,154 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { BadgeCheck, Clock, Radio, User } from "lucide-react";
+import { getTranslations, getLocale } from "next-intl/server";
+import { catalogApi } from "@/lib/api-client";
+import { withFallback } from "@/lib/safe-fetch";
+import { MOCK_COURSE_DETAIL, MOCK_COURSES } from "@/lib/mock-data";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { localize, formatPrice, formatDateTime, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
+
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const detail = MOCK_COURSE_DETAIL[params.slug];
+  return { title: detail ? localize(detail.title, "es") : "Curso" };
+}
+
+export default async function CourseDetailPage({ params }: { params: { slug: string } }) {
+  const locale = await getLocale();
+  const t = await getTranslations("courseDetail");
+  const tc = await getTranslations("common");
+
+  const fallback = MOCK_COURSE_DETAIL[params.slug];
+  const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback as any);
+
+  if (!course) notFound();
+
+  const accessLabel =
+    course.accessDurationPolicy === "PERMANENT"
+      ? t("accessPermanent")
+      : course.accessDurationPolicy === "DAYS_30"
+        ? t("access30Days")
+        : t("access6Months");
+
+  const related = MOCK_COURSES.filter((c) => course.nextRecommendedCourseIds?.includes(c.id));
+
+  return (
+    <div className="container py-10">
+      {!live && (
+        <Callout variant="info" className="mb-6">
+          {tc("offlineNotice")}
+        </Callout>
+      )}
+
+      <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
+        <div>
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            <Badge variant="ink">{MODALITY_LABEL[course.modality]?.[locale as "es" | "en"] ?? course.modality}</Badge>
+            <Badge variant="outline">{TYPE_LABEL[course.type]?.[locale as "es" | "en"] ?? course.type}</Badge>
+            <Badge variant="outline">{LEVEL_LABEL[course.level]?.[locale as "es" | "en"] ?? course.level}</Badge>
+          </div>
+
+          <h1 className="font-serif text-3xl font-semibold text-ink-900 sm:text-4xl">{localize(course.title, locale)}</h1>
+          {course.subtitle && <p className="mt-3 text-lg text-ash-600">{localize(course.subtitle, locale)}</p>}
+
+          <dl className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ash-600">
+            {course.teacherName && (
+              <div className="flex items-center gap-1.5">
+                <User className="h-4 w-4 text-ash-400" aria-hidden="true" />
+                <span>
+                  <dt className="sr-only">{t("teacherTitle")}</dt>
+                  <dd>{course.teacherName}</dd>
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-ash-400" aria-hidden="true" />
+              <dd>
+                {course.durationHours} {tc("hours")}
+              </dd>
+            </div>
+            {course.liveSessions?.[0] && (
+              <div className="flex items-center gap-1.5">
+                <Radio className="h-4 w-4 text-ash-400" aria-hidden="true" />
+                <dd>
+                  {t("nextSession")}: {formatDateTime(course.liveSessions[0].startsAt, locale, course.liveSessions[0].timezone)}
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          {course.description && (
+            <section className="mt-8">
+              <h2 className="font-serif text-xl font-semibold text-ink-900">{t("aboutCourse")}</h2>
+              <p className="mt-3 max-w-prose text-ash-700">{localize(course.description, locale)}</p>
+            </section>
+          )}
+
+          <section className="mt-10">
+            <h2 className="font-serif text-xl font-semibold text-ink-900">{t("modules")}</h2>
+            <div className="mt-4 divide-y divide-paper-border rounded-lg border border-paper-border">
+              {course.modules.map((mod) => (
+                <details key={mod.id} className="group p-4 open:bg-paper-muted/50">
+                  <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-ink-900">
+                    <span>{localize(mod.title, locale)}</span>
+                    <span className="text-sm text-ash-500">{t("lessonsCount", { count: mod.lessons.length })}</span>
+                  </summary>
+                  <ul className="mt-3 flex flex-col gap-2 pl-1">
+                    {mod.lessons.map((lesson) => (
+                      <li key={lesson.id} className="flex items-center justify-between text-sm text-ash-600">
+                        <span>{localize(lesson.title, locale)}</span>
+                        <span className="flex items-center gap-2">
+                          {lesson.isFreePreview && <Badge variant="gold">{t("freePreview")}</Badge>}
+                          {lesson.durationMinutes && <span>{lesson.durationMinutes} min</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          </section>
+
+          {related.length > 0 && (
+            <section className="mt-10">
+              <h2 className="font-serif text-xl font-semibold text-ink-900">{t("relatedPaths")}</h2>
+              <ul className="mt-3 flex flex-col gap-2">
+                {related.map((r) => (
+                  <li key={r.id}>
+                    <Link href={`/cursos/${r.slug}`} className="text-ink-700 hover:underline">
+                      {localize(r.title, locale)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-lg border border-paper-border bg-paper p-6 shadow-card">
+            <p className="text-sm text-ash-500">{t("priceLabel")}</p>
+            <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">
+              {formatPrice(course.priceAmount, course.priceCurrency, locale)}
+            </p>
+            {course.certificationIncluded && (
+              <p className="mt-3 flex items-center gap-2 text-sm text-success">
+                <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+                {t("certificationIncluded")}
+              </p>
+            )}
+            <p className="mt-2 text-sm text-ash-500">{accessLabel}</p>
+            <Link href={`/checkout?courseId=${course.id}`} className="mt-5 block">
+              <Button className="w-full" size="lg">
+                {tc("enroll")}
+              </Button>
+            </Link>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

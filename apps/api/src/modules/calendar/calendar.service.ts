@@ -1,0 +1,108 @@
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { createEvents, type EventAttributes } from "ics";
+import type { CalendarEventType, PrismaClient } from "@inkademy/db";
+import { PRISMA } from "../../common/prisma/prisma.module";
+
+@Injectable()
+export class CalendarService {
+  constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
+
+  async listMine(userId: string, from?: Date, to?: Date) {
+    return this.prisma.calendarEvent.findMany({
+      where: {
+        userId,
+        ...(from || to
+          ? { startsAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
+          : {}),
+      },
+      orderBy: { startsAt: "asc" },
+    });
+  }
+
+  async createMine(
+    userId: string,
+    input: { type: CalendarEventType; title: string; startsAt: Date; endsAt?: Date; liveSessionId?: string },
+  ) {
+    return this.prisma.calendarEvent.create({ data: { userId, ...input } });
+  }
+
+  async updateMine(
+    userId: string,
+    id: string,
+    input: Partial<{ type: CalendarEventType; title: string; startsAt: Date; endsAt?: Date }>,
+  ) {
+    const event = await this.prisma.calendarEvent.findUnique({ where: { id } });
+    if (!event || event.userId !== userId) throw new NotFoundException("Evento no encontrado");
+    return this.prisma.calendarEvent.update({ where: { id }, data: input });
+  }
+
+  async deleteMine(userId: string, id: string) {
+    const event = await this.prisma.calendarEvent.findUnique({ where: { id } });
+    if (!event) throw new NotFoundException("Evento no encontrado");
+    if (event.userId !== userId) throw new ForbiddenException("No puedes borrar el evento de otro usuario");
+    await this.prisma.calendarEvent.delete({ where: { id } });
+  }
+
+  /**
+   * Genera/actualiza la agenda de un usuario tras una matrícula: inicio de
+   * curso, expiración de acceso y cada sesión en vivo programada.
+   */
+  async scheduleForEnrollment(
+    userId: string,
+    course: { id: string; title: unknown },
+    accessExpiresAt: Date | null,
+  ) {
+    const title = (course.title as Record<string, string>)?.es ?? "Curso Inkademy";
+
+    await this.prisma.calendarEvent.create({
+      data: { userId, type: "COURSE_START", title: `Inicio: ${title}`, startsAt: new Date() },
+    });
+
+    if (accessExpiresAt) {
+      await this.prisma.calendarEvent.create({
+        data: {
+          userId,
+          type: "ACCESS_EXPIRATION",
+          title: `Vence tu acceso a: ${title}`,
+          startsAt: accessExpiresAt,
+        },
+      });
+    }
+
+    const liveSessions = await this.prisma.liveSession.findMany({
+      where: { courseId: course.id, startsAt: { gt: new Date() } },
+    });
+    for (const session of liveSessions) {
+      await this.prisma.calendarEvent.create({
+        data: {
+          userId,
+          type: "LIVE_CLASS",
+          title: `Clase en vivo: ${title}`,
+          startsAt: session.startsAt,
+          endsAt: session.endsAt,
+          liveSessionId: session.id,
+        },
+      });
+    }
+  }
+
+  async generateIcsForUser(userId: string): Promise<string> {
+    const events = await this.prisma.calendarEvent.findMany({ where: { userId } });
+    const icsEvents: EventAttributes[] = events.map((e) => {
+      const start = e.startsAt;
+      const end = e.endsAt ?? new Date(start.getTime() + 60 * 60 * 1000);
+      return {
+        uid: e.icsUid,
+        title: e.title,
+        start: [start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate(), start.getUTCHours(), start.getUTCMinutes()],
+        end: [end.getUTCFullYear(), end.getUTCMonth() + 1, end.getUTCDate(), end.getUTCHours(), end.getUTCMinutes()],
+        startInputType: "utc",
+        endInputType: "utc",
+        calName: "Inkademy",
+      };
+    });
+    const { error, value } = createEvents(icsEvents);
+    if (error) throw error;
+    return value ?? "";
+  }
+}

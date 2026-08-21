@@ -1,0 +1,33 @@
+{
+  "name": "@inkademy/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Inkademy — procesos en background (BullMQ + Redis): email, certificados, recordatorios, sincronización de asistencia (Teams/Graph) y recomendaciones",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "echo \"(sin linter configurado para @inkademy/worker)\" && exit 0",
+    "test": "echo \"(sin tests automatizados para @inkademy/worker todavia)\" && exit 0"
+  },
+  "dependencies": {
+    "@inkademy/db": "workspace:*",
+    "@inkademy/shared": "workspace:*",
+    "@aws-sdk/client-s3": "^3.632.0",
+    "@azure/msal-node": "^2.13.1",
+    "bullmq": "^5.12.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "nodemailer": "^6.9.14",
+    "puppeteer": "^22.15.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/nodemailer": "^6.4.15",
+    "@types/qrcode": "^1.5.5",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.4"
+  }
+}

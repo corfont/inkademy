@@ -1,0 +1,443 @@
+{
+  "nav": {
+    "catalog": "Catálogo",
+    "companies": "Empresas",
+    "help": "Ayuda",
+    "login": "Iniciar sesión",
+    "register": "Crear cuenta",
+    "myCampus": "Mi campus",
+    "logout": "Cerrar sesión",
+    "primaryNav": "Navegación principal",
+    "skipToContent": "Saltar al contenido principal",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú"
+  },
+  "help": {
+    "title": "¿Necesitas ayuda?",
+    "description": "Consulta las preguntas frecuentes o crea un ticket y te responderemos a la brevedad.",
+    "faqLink": "Ir al centro de ayuda",
+    "ticketLink": "Crear ticket de soporte",
+    "open": "Abrir ayuda",
+    "close": "Cerrar"
+  },
+  "footer": {
+    "tagline": "Capacitación profesional con certificación, para personas y empresas en Perú y LatAm.",
+    "platform": "Plataforma",
+    "catalog": "Catálogo",
+    "companies": "Empresas",
+    "help": "Ayuda",
+    "verifyCertificate": "Verificar certificado",
+    "legal": "Legal",
+    "privacy": "Privacidad",
+    "terms": "Términos y condiciones",
+    "cookies": "Cookies",
+    "contact": "Contacto",
+    "rightsReserved": "Todos los derechos reservados."
+  },
+  "common": {
+    "seeProgram": "Ver programa",
+    "enroll": "Inscribirme",
+    "requestProposal": "Solicitar propuesta",
+    "learnMore": "Ver más",
+    "loading": "Cargando…",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "continue": "Continuar",
+    "back": "Volver",
+    "send": "Enviar",
+    "search": "Buscar",
+    "apply": "Aplicar",
+    "clearFilters": "Limpiar filtros",
+    "hours": "horas",
+    "teacher": "Docente",
+    "certified": "Con certificación",
+    "nextLiveSession": "Próxima clase en vivo",
+    "offlineNotice": "No pudimos conectar con el servidor en este momento. Mostrando información de referencia.",
+    "requiredField": "Este campo es obligatorio",
+    "viewAll": "Ver todo"
+  },
+  "home": {
+    "heroTitle": "Aprende lo que tu carrera necesita",
+    "heroSubtitle": "Cursos, talleres y diplomados con certificación, dictados por profesionales en ejercicio.",
+    "searchPlaceholder": "¿Qué quieres aprender?",
+    "splitB2CTitle": "Quiero capacitarme",
+    "splitB2CBody": "Elige un curso, avanza a tu ritmo y obtén tu certificado.",
+    "splitB2CCta": "Explorar catálogo",
+    "splitB2BTitle": "Quiero capacitar a mi equipo",
+    "splitB2BBody": "Programas a medida, reportes de avance y gestión de cupos para tu empresa.",
+    "splitB2BCta": "Ver soluciones para empresas",
+    "areasTitle": "Áreas temáticas",
+    "featuredTitle": "Destacados",
+    "upcomingLiveTitle": "Próximos en vivo",
+    "newTitle": "Nuevos",
+    "pathsTitle": "Rutas recomendadas",
+    "mostDemandedTitle": "Más demandados"
+  },
+  "catalog": {
+    "title": "Catálogo",
+    "subtitle": "Explora nuestra oferta curada por área, modalidad y nivel.",
+    "resultsCount": "{count} resultados",
+    "noResults": "No encontramos cursos con estos filtros.",
+    "filters": {
+      "title": "Filtros",
+      "area": "Área",
+      "subarea": "Subtema",
+      "modality": "Modalidad",
+      "level": "Nivel",
+      "type": "Tipo de oferta",
+      "language": "Idioma",
+      "certification": "Certificación",
+      "certificationOnly": "Solo con certificación",
+      "price": "Precio",
+      "minPrice": "Mínimo",
+      "maxPrice": "Máximo",
+      "allAreas": "Todas las áreas",
+      "allModalities": "Todas",
+      "allLevels": "Todos",
+      "allTypes": "Todos"
+    }
+  },
+  "courseCard": {
+    "priceFrom": "Desde"
+  },
+  "courseDetail": {
+    "modules": "Contenido del curso",
+    "lessonsCount": "{count} lecciones",
+    "freePreview": "Vista previa gratuita",
+    "aboutCourse": "Sobre el curso",
+    "teacherTitle": "Docente",
+    "nextSession": "Próxima sesión en vivo",
+    "priceLabel": "Inversión",
+    "certificationIncluded": "Incluye certificado digital verificable",
+    "accessPermanent": "Acceso permanente",
+    "access30Days": "Acceso por 30 días",
+    "access6Months": "Acceso por 6 meses",
+    "relatedPaths": "Continúa tu ruta con"
+  },
+  "programDetail": {
+    "coursesInProgram": "Cursos incluidos",
+    "required": "Obligatorio",
+    "optional": "Opcional",
+    "totalSeparate": "Comprando por separado",
+    "savings": "Ahorras",
+    "finalCertification": "Certificación final del diplomado"
+  },
+  "companies": {
+    "heroTitle": "Capacitación corporativa con resultados medibles",
+    "heroSubtitle": "Programas a medida, seguimiento de avance por equipo y certificación para todo tu personal.",
+    "benefitsTitle": "¿Por qué Inkademy para tu empresa?",
+    "benefit1Title": "Programas a medida",
+    "benefit1Body": "Diseñamos rutas según los objetivos de cada área.",
+    "benefit2Title": "Reportes por equipo",
+    "benefit2Body": "Visibilidad del avance, asistencia y notas de cada colaborador.",
+    "benefit3Title": "Gestión de cupos",
+    "benefit3Body": "Asigna y reasigna cupos sin fricción cuando cambie tu equipo.",
+    "formTitle": "Solicita una cotización",
+    "formSubtitle": "Cuéntanos qué necesita tu equipo y te contactaremos en menos de 48 horas.",
+    "form": {
+      "legalName": "Razón social",
+      "taxId": "RUC / identificación tributaria",
+      "contactEmail": "Correo de contacto",
+      "contactPhone": "Teléfono",
+      "offeringDescription": "¿Qué necesita tu equipo?",
+      "offeringDescriptionPlaceholder": "Cuéntanos el número de colaboradores, temas de interés y plazos.",
+      "submit": "Enviar solicitud",
+      "success": "Recibimos tu solicitud. Nuestro equipo comercial te contactará pronto."
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Inicia sesión",
+      "subtitle": "Continúa tu aprendizaje donde lo dejaste.",
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "submit": "Iniciar sesión",
+      "forgot": "¿Olvidaste tu contraseña?",
+      "noAccount": "¿Aún no tienes cuenta?",
+      "createAccount": "Crear cuenta",
+      "orContinueWith": "o continúa con",
+      "google": "Continuar con Google",
+      "microsoft": "Continuar con Microsoft"
+    },
+    "register": {
+      "title": "Crea tu cuenta",
+      "subtitle": "Empieza a aprender en minutos.",
+      "firstName": "Nombres",
+      "lastName": "Apellidos",
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "passwordHint": "Mínimo 8 caracteres.",
+      "marketingConsent": "Quiero recibir novedades y recomendaciones por correo.",
+      "submit": "Crear cuenta",
+      "hasAccount": "¿Ya tienes cuenta?",
+      "signIn": "Inicia sesión"
+    },
+    "recover": {
+      "title": "Recupera tu contraseña",
+      "subtitle": "Te enviaremos un enlace para restablecerla.",
+      "email": "Correo electrónico",
+      "submit": "Enviar enlace",
+      "success": "Si el correo existe en nuestro sistema, enviamos instrucciones para restablecer tu contraseña.",
+      "backToLogin": "Volver a inicio de sesión"
+    },
+    "completeProfile": {
+      "title": "Completa tu perfil",
+      "subtitle": "Necesitamos estos datos para emitir tu certificado y personalizar tu experiencia.",
+      "documentType": "Tipo de documento",
+      "documentNumber": "Número de documento",
+      "country": "País",
+      "city": "Ciudad",
+      "phone": "Teléfono",
+      "jobTitle": "Cargo actual",
+      "sector": "Sector",
+      "interests": "Áreas de interés",
+      "experienceLevel": "Nivel de experiencia",
+      "experienceLevels": {
+        "ENTRY": "Inicial",
+        "MID": "Intermedio",
+        "SENIOR": "Senior",
+        "EXECUTIVE": "Ejecutivo"
+      },
+      "submit": "Guardar y continuar",
+      "skip": "Completar más tarde"
+    },
+    "callback": {
+      "processing": "Iniciando sesión…",
+      "error": "No pudimos completar el inicio de sesión con el proveedor externo."
+    }
+  },
+  "campus": {
+    "nav": {
+      "dashboard": "Inicio",
+      "courses": "Mis cursos",
+      "agenda": "Agenda",
+      "certificates": "Certificados",
+      "payments": "Pagos",
+      "support": "Soporte",
+      "profile": "Perfil",
+      "recommendations": "Recomendaciones"
+    },
+    "dashboard": {
+      "greeting": "Hola, {name}",
+      "continueLearning": "Continúa donde lo dejaste",
+      "nextClass": "Tu próxima clase",
+      "nextAssessment": "Tu próxima evaluación",
+      "quickAccess": "Accesos rápidos",
+      "noContinue": "Aún no has iniciado ningún curso.",
+      "browseCatalog": "Explorar catálogo"
+    },
+    "courses": {
+      "title": "Mis cursos",
+      "inProgress": "En progreso",
+      "completed": "Finalizados",
+      "upcoming": "Próximos",
+      "saved": "Guardados",
+      "progress": "{pct}% completado",
+      "missingTitle": "Para aprobar te falta:",
+      "noMissing": "Cumples todos los requisitos de aprobación.",
+      "empty": "No tienes cursos en esta categoría todavía."
+    },
+    "classroom": {
+      "modules": "Módulos",
+      "materials": "Materiales",
+      "missingToApprove": "Qué falta para aprobar",
+      "markComplete": "Marcar como completada",
+      "completed": "Completada",
+      "goToAssessment": "Ir a la evaluación",
+      "downloadMaterial": "Descargar"
+    },
+    "assessment": {
+      "title": "Evaluación",
+      "questionOf": "Pregunta {current} de {total}",
+      "timeRemaining": "Tiempo restante",
+      "submit": "Enviar evaluación",
+      "confirmSubmitTitle": "¿Enviar evaluación?",
+      "confirmSubmitBody": "No podrás modificar tus respuestas después de enviarlas.",
+      "confirmSubmit": "Sí, enviar",
+      "resultTitle": "Resultado",
+      "passed": "¡Aprobaste!",
+      "failed": "No alcanzaste el puntaje mínimo",
+      "pendingReview": "Algunas respuestas quedarán pendientes de revisión manual",
+      "score": "Puntaje: {score}"
+    },
+    "agenda": {
+      "title": "Agenda académica",
+      "addToCalendar": "Agregar a mi calendario (.ics)",
+      "empty": "No tienes eventos programados.",
+      "joinClass": "Unirme a la clase"
+    },
+    "certificates": {
+      "title": "Certificados",
+      "issuedOn": "Emitido el {date}",
+      "download": "Descargar PDF",
+      "verify": "Ver verificación pública",
+      "empty": "Aún no tienes certificados emitidos."
+    },
+    "payments": {
+      "title": "Historial de pagos",
+      "order": "Orden",
+      "date": "Fecha",
+      "amount": "Monto",
+      "status": "Estado",
+      "receipt": "Comprobante",
+      "empty": "Todavía no registras compras."
+    },
+    "support": {
+      "title": "Soporte",
+      "newTicket": "Nuevo ticket",
+      "subject": "Asunto",
+      "category": "Categoría",
+      "priority": "Prioridad",
+      "description": "Describe tu problema",
+      "submit": "Crear ticket",
+      "empty": "No tienes tickets abiertos."
+    },
+    "profile": {
+      "title": "Perfil",
+      "personalData": "Datos personales",
+      "preferences": "Preferencias",
+      "language": "Idioma",
+      "timezone": "Zona horaria",
+      "communication": "Comunicaciones",
+      "emailConsent": "Recibir novedades por correo",
+      "whatsappConsent": "Recibir novedades por WhatsApp",
+      "saved": "Perfil actualizado."
+    },
+    "recommendations": {
+      "title": "Recomendado para ti",
+      "reasonLabel": "Por qué te lo recomendamos",
+      "empty": "Todavía no tenemos recomendaciones para ti."
+    }
+  },
+  "empresa": {
+    "nav": {
+      "dashboard": "Panel",
+      "seats": "Cupos",
+      "collaborators": "Colaboradores",
+      "reports": "Reportes",
+      "certificates": "Certificados",
+      "quotes": "Cotizaciones"
+    },
+    "dashboard": {
+      "activeParticipants": "Colaboradores activos",
+      "seatsAvailable": "Cupos disponibles",
+      "seatsUsed": "Cupos usados",
+      "averageProgress": "Avance promedio",
+      "atRisk": "En riesgo",
+      "upcomingLive": "Próximas clases en vivo"
+    },
+    "seats": {
+      "title": "Cupos",
+      "purchased": "Comprados",
+      "used": "Usados",
+      "assign": "Asignar",
+      "expiresOn": "Vence el {date}"
+    },
+    "collaborators": {
+      "title": "Colaboradores",
+      "invite": "Invitar colaborador",
+      "email": "Correo",
+      "role": "Rol",
+      "team": "Equipo",
+      "status": "Estado",
+      "remove": "Eliminar"
+    },
+    "reports": {
+      "title": "Reportes",
+      "filterByArea": "Filtrar por área",
+      "filterByTeam": "Filtrar por equipo"
+    },
+    "quotes": {
+      "title": "Cotizaciones",
+      "status": "Estado",
+      "requestedOn": "Solicitada el {date}"
+    }
+  },
+  "admin": {
+    "nav": {
+      "dashboard": "Panel",
+      "catalog": "Catálogo",
+      "companies": "Empresas",
+      "support": "Soporte",
+      "certificates": "Certificados",
+      "pendingReview": "Evaluaciones pendientes"
+    },
+    "dashboard": {
+      "kpisTitle": "Indicadores",
+      "exceptionsTitle": "Excepciones que requieren atención",
+      "exceptionsEmpty": "Sin excepciones abiertas. Todo en orden.",
+      "sales": "Ventas",
+      "enrollments": "Matrículas",
+      "activeStudents": "Alumnos activos",
+      "atRiskStudents": "Alumnos en riesgo",
+      "certificatesIssued": "Certificados emitidos",
+      "openTickets": "Tickets abiertos"
+    },
+    "exceptions": {
+      "severity": {
+        "LOW": "Baja",
+        "MEDIUM": "Media",
+        "HIGH": "Alta"
+      }
+    },
+    "pendingReview": {
+      "title": "Evaluaciones pendientes de revisión",
+      "grade": "Calificar",
+      "empty": "No hay respuestas pendientes de revisión."
+    }
+  },
+  "checkout": {
+    "title": "Finalizar compra",
+    "cartTitle": "Tu carrito",
+    "empty": "Tu carrito está vacío.",
+    "goToCatalog": "Ir al catálogo",
+    "subtotal": "Subtotal",
+    "total": "Total",
+    "billingTitle": "Datos de facturación",
+    "paymentTitle": "Datos de pago",
+    "cardNumber": "Número de tarjeta",
+    "cardExpiry": "Vencimiento (MM/AA)",
+    "cardCvc": "CVC",
+    "cardName": "Nombre en la tarjeta",
+    "testCardNotice": "Modo de prueba: usa la tarjeta 4111 1111 1111 1111 con cualquier fecha futura y CVC.",
+    "pay": "Pagar",
+    "processing": "Procesando pago…",
+    "success": "¡Pago exitoso! Ya tienes acceso a tu curso.",
+    "error": "No pudimos procesar tu pago. Intenta nuevamente.",
+    "asCompany": "Comprar a nombre de una empresa"
+  },
+  "legal": {
+    "privacidad": "Política de Privacidad",
+    "terminos": "Términos y Condiciones",
+    "cookies": "Política de Cookies",
+    "lastUpdated": "Última actualización: {date}"
+  },
+  "verify": {
+    "title": "Verificación de certificado",
+    "subtitle": "Ingresa el código impreso en el certificado para validar su autenticidad.",
+    "codeLabel": "Código de certificado",
+    "valid": "Certificado válido y vigente",
+    "revoked": "Este certificado fue revocado",
+    "invalid": "No encontramos un certificado con ese código",
+    "holder": "Otorgado a",
+    "course": "Programa",
+    "issuedOn": "Fecha de emisión"
+  },
+  "help_page": {
+    "title": "Centro de ayuda",
+    "subtitle": "Encuentra respuestas rápidas o contáctanos.",
+    "contactCta": "Crear ticket de soporte",
+    "faqs": [
+      { "q": "¿Cómo accedo a mis cursos?", "a": "Inicia sesión y ve a \"Mi campus\" → \"Mis cursos\" para ver todo tu contenido activo." },
+      { "q": "¿Cómo obtengo mi certificado?", "a": "Al cumplir los requisitos de aprobación del curso, el certificado se emite automáticamente y aparece en \"Certificados\"." },
+      { "q": "¿Puedo pagar en soles o dólares?", "a": "Sí, aceptamos PEN y USD según tu ubicación y el método de pago elegido." },
+      { "q": "¿Qué pasa si mi empresa me asignó un cupo?", "a": "Verás el curso activo en tu campus sin necesidad de pagar; tu empresa gestiona el cupo." },
+      { "q": "¿Cómo verifico un certificado de un tercero?", "a": "Usa la página pública \"Verificar certificado\" con el código impreso en el documento." }
+    ]
+  },
+  "notFound": {
+    "title": "No encontramos esta página",
+    "body": "El contenido que buscas no existe o fue movido.",
+    "cta": "Volver al inicio"
+  }
+}

@@ -1,0 +1,110 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { cookies } from "next/headers";
+import { getTranslations, getLocale } from "next-intl/server";
+import { meApi } from "@/lib/api-client";
+import { withFallback } from "@/lib/safe-fetch";
+import { MOCK_ENROLLMENTS } from "@/lib/mock-data";
+import { ACCESS_TOKEN_COOKIE } from "@/lib/auth";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { ProgressBar } from "@/components/ui/ProgressBar";
+import { Callout } from "@/components/ui/Callout";
+import { localize } from "@/lib/format";
+import type { EnrollmentSummaryDTO } from "@inkademy/shared";
+
+export const metadata: Metadata = { title: "Mis cursos" };
+
+function EnrollmentCard({ enrollment, locale, t }: { enrollment: EnrollmentSummaryDTO; locale: string; t: any }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <p className="font-serif text-lg font-semibold text-ink-900">{localize(enrollment.title, locale)}</p>
+            <Badge variant="outline">{enrollment.offeringKind === "PROGRAM" ? "Programa" : "Curso"}</Badge>
+          </div>
+          <ProgressBar value={enrollment.progressPct} label={t("progress", { pct: enrollment.progressPct })} className="mt-3 max-w-sm" />
+          <p className="mt-1 text-sm text-ash-500">{t("progress", { pct: Math.round(enrollment.progressPct) })}</p>
+
+          <div className="mt-3">
+            {enrollment.approvalMissing.length > 0 ? (
+              <>
+                <p className="text-sm font-medium text-ink-800">{t("missingTitle")}</p>
+                <ul className="mt-1 list-inside list-disc text-sm text-ash-600">
+                  {enrollment.approvalMissing.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="text-sm text-success">{t("noMissing")}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:items-end">
+          <Link href={`/campus/cursos/${enrollment.id}`}>
+            <Button size="sm">{enrollment.nextActionLabel ?? "Ver curso"}</Button>
+          </Link>
+          {enrollment.certificateAvailable && (
+            <Link href="/campus/certificados" className="text-sm text-ink-700 hover:underline">
+              Ver certificado
+            </Link>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default async function MyCoursesPage() {
+  const t = await getTranslations("campus.courses");
+  const locale = await getLocale();
+  const accessToken = cookies().get(ACCESS_TOKEN_COOKIE)?.value ?? null;
+
+  const { data: enrollments, live } = await withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS);
+
+  const inProgress = enrollments.filter((e) => e.status === "ACTIVE" && e.progressPct > 0);
+  const completed = enrollments.filter((e) => e.status === "COMPLETED");
+  const upcoming = enrollments.filter((e) => e.status === "ACTIVE" && e.progressPct === 0);
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-6">
+      <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("title")}</h1>
+      {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+
+      <Tabs defaultValue="inProgress">
+        <TabsList aria-label={t("title")}>
+          <TabsTrigger value="inProgress">{t("inProgress")}</TabsTrigger>
+          <TabsTrigger value="completed">{t("completed")}</TabsTrigger>
+          <TabsTrigger value="upcoming">{t("upcoming")}</TabsTrigger>
+          <TabsTrigger value="saved">{t("saved")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="inProgress">
+          <div className="flex flex-col gap-4">
+            {inProgress.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : inProgress.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
+          </div>
+        </TabsContent>
+        <TabsContent value="completed">
+          <div className="flex flex-col gap-4">
+            {completed.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : completed.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
+          </div>
+        </TabsContent>
+        <TabsContent value="upcoming">
+          <div className="flex flex-col gap-4">
+            {upcoming.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : upcoming.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
+          </div>
+        </TabsContent>
+        <TabsContent value="saved">
+          {/* El esquema de datos aún no define un modelo de "guardados"/wishlist;
+              esta pestaña queda lista en la UI a la espera de ese endpoint. */}
+          <p className="text-ash-500">{t("empty")}</p>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
