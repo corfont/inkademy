@@ -23,9 +23,9 @@ flowchart LR
   end
 
   subgraph Datos["Datos"]
-    Postgres[("PostgreSQL\n(managed en prod)")]
+    Postgres[("PostgreSQL\n(Supabase en prod)")]
     Redis[("Redis\n(colas BullMQ)")]
-    S3[("Object storage S3-compatible\n(MinIO en dev)")]
+    S3[("Object storage S3-compatible\n(MinIO en dev, Supabase Storage en prod)")]
   end
 
   subgraph Externos["Integraciones externas"]
@@ -70,7 +70,9 @@ flowchart LR
 - **Redis**: exclusivamente como backend de colas BullMQ (no se usa como
   caché de sesión — los JWT son stateless).
 - **Object storage S3-compatible**: videos/PDFs/certificados/adjuntos de
-  soporte. MinIO en dev, S3/Azure Blob/GCS (vía API S3) en prod.
+  soporte. MinIO en dev, **Supabase Storage** (vía su endpoint S3-compatible)
+  en producción/demo pública — o S3/Azure Blob/GCS si se opta por un
+  hyperscaler más adelante, vía la misma API S3.
 
 ## 2. Justificación de decisiones técnicas
 
@@ -86,7 +88,7 @@ flowchart LR
 | **Zod (`packages/shared/validation.ts`) + class-validator** | Un único esquema de validación fuente de verdad reusado en formularios del frontend (react-hook-form) y como base de los DTOs de NestJS, evitando reglas de validación duplicadas y divergentes. |
 | **Culqi + Stripe (adapter de pagos)** | Culqi cubre medios de pago locales peruanos (Yape, PagoEfectivo, tarjetas locales); Stripe cubre compradores internacionales/tarjetas globales. Ambos detrás de una interfaz `PaymentProvider` común en la API — agregar PayPal en Fase 2 es otro adapter, no un rediseño. |
 | **Microsoft Graph/Teams para aulas virtuales** | La mayoría de clientes corporativos LatAm ya usan Microsoft 365/Teams; reutilizar Teams evita pedirle a cada alumno una cuenta nueva en una plataforma de videollamadas distinta. El mismo tenant de Azure AD sirve para "Login con Microsoft" y para crear/gestionar las reuniones. |
-| **Object storage S3-compatible en vez de disco local** | Los assets (videos, PDFs, certificados) deben sobrevivir redeploys de contenedores stateless y ser servibles vía URL firmada/CDN; MinIO en dev es API-compatible con S3/Azure Blob/GCS en prod sin cambiar código. |
+| **Object storage S3-compatible en vez de disco local** | Los assets (videos, PDFs, certificados) deben sobrevivir redeploys de contenedores stateless y ser servibles vía URL firmada/CDN; MinIO en dev es API-compatible con Supabase Storage (elegido para prod/demo pública) o S3/Azure Blob/GCS en prod sin cambiar código. |
 
 ## 3. Multi-tenancy B2B
 
@@ -130,11 +132,16 @@ Inkademy es **single-tenant en base de datos, multi-tenant a nivel de fila**
   Esto absorbe picos (p.ej. fin de un curso masivo que dispara cientos de
   certificados) sin degradar la latencia de la API; `apps/worker` escala
   horizontalmente ajustando `concurrency` por cola y el número de réplicas.
-- **Base de datos**: PostgreSQL administrado en producción (RDS / Cloud SQL
-  / Azure Database for PostgreSQL) con réplica de lectura si el reporting
-  B2B empieza a competir con el tráfico transaccional; connection pooling
-  (PgBouncer o el pooler del proveedor) para no agotar conexiones con N
-  réplicas de API + worker.
+- **Base de datos**: PostgreSQL administrado en producción — **Supabase**
+  (Postgres + Storage administrados; no se usa Supabase Auth/SDK, la
+  autenticación sigue siendo JWT propio en `apps/api`) es la opción elegida
+  para producción/demo pública por simplicidad operativa; el motor sigue
+  siendo PostgreSQL puro, así que migrar a RDS/Cloud SQL/Azure Database for
+  PostgreSQL más adelante es solo cambiar `DATABASE_URL` (ver
+  `docs/DEPLOYMENT.md`). Connection pooling vía el pooler de Supabase (modo
+  `pgbouncer`, puerto 6543) para no agotar conexiones con N réplicas de
+  API + worker; réplica de lectura si el reporting B2B empieza a competir
+  con el tráfico transaccional.
 - **Redis administrado** (ElastiCache/Azure Cache/Upstash) — solo backend
   de colas, sin estado de negocio, así que es reemplazable/reiniciable sin
   pérdida de datos críticos (los jobs no procesados se reintentan; el

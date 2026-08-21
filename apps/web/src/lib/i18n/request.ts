@@ -1,10 +1,9 @@
 import { getRequestConfig } from "next-intl/server";
 import { cookies, headers } from "next/headers";
+import { AppLocale, DEFAULT_LOCALE, LOCALE_COOKIE, SUPPORTED_LOCALES } from "./locales";
 
-export const SUPPORTED_LOCALES = ["es", "en"] as const;
-export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
-export const DEFAULT_LOCALE: AppLocale = "es";
-export const LOCALE_COOKIE = "inkademy_locale";
+export { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_COOKIE };
+export type { AppLocale };
 
 function resolveLocale(): AppLocale {
   const fromCookie = cookies().get(LOCALE_COOKIE)?.value;
@@ -21,6 +20,6 @@ function resolveLocale(): AppLocale {
 // o desde Accept-Language en la primera visita.
 export default getRequestConfig(async () => {
   const locale = resolveLocale();
-  const messages = (await import(`../messages/${locale}.json`)).default;
+  const messages = (await import(`../../messages/${locale}.json`)).default;
   return { locale, messages };
 });

@@ -13,7 +13,8 @@ import { localize, formatPrice } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
-  return { title: fallback ? localize(fallback.title, "es") : "Programa" };
+  const program = await catalogApi.program(params.slug).catch(() => fallback);
+  return { title: program ? `${localize(program.title, "es")} · Inkademy` : "Programa · Inkademy" };
 }
 
 export default async function ProgramDetailPage({ params }: { params: { slug: string } }) {
@@ -22,7 +23,7 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
   const tc = await getTranslations("common");
 
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
-  const { data: program, live } = await withFallback(() => catalogApi.program(params.slug), fallback as any);
+  const { data: program, live } = await withFallback(() => catalogApi.program(params.slug), fallback);
 
   if (!program) notFound();
 

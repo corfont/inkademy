@@ -20,7 +20,7 @@ export class EnrollmentService {
   ) {}
 
   private async computeApprovalMissing(courseId: string, enrollmentId: string): Promise<string[]> {
-    const [rule, enrollment, bestAttempt, attendanceStats] = await Promise.all([
+    const [rule, enrollment, bestAttempt, attendanceStats, assessmentCount] = await Promise.all([
       this.prisma.approvalRule.findUnique({ where: { courseId } }),
       this.prisma.enrollment.findUnique({ where: { id: enrollmentId } }),
       this.prisma.assessmentAttempt.findFirst({
@@ -28,6 +28,7 @@ export class EnrollmentService {
         orderBy: { score: "desc" },
       }),
       this.prisma.liveSession.count({ where: { courseId } }),
+      this.prisma.assessment.count({ where: { courseId } }),
     ]);
     if (!rule || !enrollment) return [];
 
@@ -48,11 +49,16 @@ export class EnrollmentService {
         );
       }
     }
-    const bestScore = bestAttempt?.score ?? null;
-    if (bestScore === null || bestScore < rule.minScore) {
-      missing.push(
-        `Aprueba una evaluación con nota mínima ${rule.minScore}${bestScore !== null ? ` (tu mejor nota: ${bestScore})` : ""}`,
-      );
+    // Solo exigir nota mínima si el curso tiene al menos una evaluación configurada
+    // — de lo contrario un `minScore: 0` (curso sin examen) generaría un requisito
+    // sin sentido ("aprueba una evaluación con nota mínima 0").
+    if (assessmentCount > 0) {
+      const bestScore = bestAttempt?.score ?? null;
+      if (bestScore === null || bestScore < rule.minScore) {
+        missing.push(
+          `Aprueba una evaluación con nota mínima ${rule.minScore}${bestScore !== null ? ` (tu mejor nota: ${bestScore})` : ""}`,
+        );
+      }
     }
     if (rule.requiresAssignment) {
       const gradedAssignment = await this.prisma.answer.findFirst({

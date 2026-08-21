@@ -4,6 +4,9 @@
 FROM node:20-alpine AS base
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
+# Se usa el Chromium del sistema en runtime (ver stage runtime); evita que
+# puppeteer intente descargar su propio binario durante `pnpm install`.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # ---- deps: instala dependencias de todo el monorepo (necesario para workspace deps) ----
 FROM base AS deps
@@ -19,6 +22,8 @@ COPY prisma ./prisma
 COPY packages ./packages
 COPY apps/worker ./apps/worker
 RUN pnpm --filter @inkademy/db run generate
+RUN pnpm --filter @inkademy/shared run build
+RUN pnpm --filter @inkademy/db run build
 RUN pnpm --filter @inkademy/worker run build
 
 # ---- runtime ----

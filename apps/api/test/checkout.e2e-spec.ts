@@ -5,15 +5,14 @@ import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { JwtModule, JwtService } from "@nestjs/jwt";
-import { getQueueToken } from "@nestjs/bullmq";
-import * as request from "supertest";
+import request from "supertest";
 import { AuthModule } from "../src/modules/auth/auth.module";
 import { CommerceModule } from "../src/modules/commerce/commerce.module";
 import { JwtAuthGuard } from "../src/common/guards/jwt-auth.guard";
-import { PRISMA } from "../src/common/prisma/prisma.module";
-import { QUEUE_NAMES } from "../src/common/queues/queue.constants";
+import { PrismaModule, PRISMA } from "../src/common/prisma/prisma.module";
+import { QueuesModule } from "../src/common/queues/queues.module";
 import { createMockPrisma, type MockPrisma } from "./utils/mock-prisma";
-import { createMockQueue } from "./utils/mock-queue";
+import { allMockQueueOverrides } from "./utils/mock-queue";
 
 const FAKE_USER = {
   id: "u1",
@@ -25,7 +24,7 @@ const FAKE_USER = {
 };
 
 const FAKE_COURSE = {
-  id: "course1",
+  id: "11111111-1111-4111-8111-111111111111",
   slug: "liderazgo-remoto",
   title: { es: "Liderazgo remoto" },
   status: "PUBLISHED",
@@ -64,26 +63,29 @@ describe("Checkout (e2e)", () => {
       total: 100,
       currency: "PEN",
       items: [
-        { id: "oi1", offeringKind: "COURSE", courseId: "course1", programId: null, seatPoolQty: null, unitPrice: 100, quantity: 1 },
+        { id: "oi1", offeringKind: "COURSE", courseId: "11111111-1111-4111-8111-111111111111", programId: null, seatPoolQty: null, unitPrice: 100, quantity: 1 },
       ],
       payments: [{ status: "SUCCEEDED", receiptUrl: null }],
       user: FAKE_USER,
     } as never);
 
-    const moduleRef = await Test.createTestingModule({
+    const builder = Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         JwtModule.register({ secret: process.env.JWT_ACCESS_SECRET }),
+        PrismaModule,
+        QueuesModule,
         AuthModule,
         CommerceModule,
       ],
       providers: [JwtAuthGuard],
-    })
-      .overrideProvider(PRISMA)
-      .useValue(prisma)
-      .overrideProvider(getQueueToken(QUEUE_NAMES.EMAIL))
-      .useValue(createMockQueue())
-      .compile();
+    }).overrideProvider(PRISMA).useValue(prisma);
+
+    for (const [token, mockQueue] of allMockQueueOverrides()) {
+      builder.overrideProvider(token).useValue(mockQueue);
+    }
+
+    const moduleRef = await builder.compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalGuards(app.get(JwtAuthGuard));

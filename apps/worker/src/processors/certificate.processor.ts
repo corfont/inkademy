@@ -25,8 +25,10 @@ function renderPlaceholders(html: string, vars: Record<string, string>): string 
  * envió el correo "certificate-ready" (con la URL de verificación, sin
  * esperar el PDF). El trabajo del worker es solo:
  * 1. Resolver la plantilla, el usuario y el curso/programa asociados.
- * 2. Generar el QR -> {API_URL}/certificates/verify/{code} (misma URL que
- *    ya usó `apps/api` en el correo — ver `CertificateService.verificationUrl`).
+ * 2. Generar el QR -> {APP_URL}/verificar/{code} (misma URL humana que ya
+ *    usó `apps/api` en el correo — ver `CertificateService.verificationUrl`;
+ *    esa página del frontend consume por debajo el endpoint JSON
+ *    `GET /certificates/verify/:code`).
  * 3. Renderizar el HTML -> PDF con puppeteer y subirlo a S3/MinIO.
  * 4. Actualizar `Certificate.pdfAssetId` / `qrUrl`.
  */
@@ -53,10 +55,10 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
   const offeringName = pickLocale(offeringTitle as LocalizedText, locale);
 
   // Misma convención que apps/api/src/modules/certificate/certificate.service.ts
-  // (verificationUrl): API_URL, no APP_URL — es el endpoint público de la API,
-  // no una página del frontend.
-  const apiUrl = process.env.API_URL ?? "http://localhost:4000";
-  const verificationUrl = `${apiUrl}/certificates/verify/${certificate.code}`;
+  // (verificationUrl): APP_URL — la página humana del frontend en
+  // /verificar/:codigo, no el endpoint JSON de la API.
+  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const verificationUrl = `${appUrl}/verificar/${certificate.code}`;
   const qrDataUrl = await QRCode.toDataURL(verificationUrl);
 
   const studentName = certificate.user.displayName ?? `${certificate.user.firstName} ${certificate.user.lastName}`;

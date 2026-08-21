@@ -197,7 +197,23 @@ export class AssessmentService {
     if (!isPrivileged && attempt.userId !== userId) {
       throw new ForbiddenException("No puedes ver el intento de otro usuario");
     }
-    return attempt;
+
+    // No exponer `correctAnswer` de las preguntas ni intentos de otros usuarios.
+    return {
+      id: attempt.id,
+      assessmentId: attempt.assessmentId,
+      attemptNumber: attempt.attemptNumber,
+      startedAt: attempt.startedAt,
+      submittedAt: attempt.submittedAt,
+      score: attempt.score,
+      status: attempt.status,
+      answers: attempt.answers.map((a) => ({
+        questionId: a.questionId,
+        response: a.response,
+        isCorrect: a.isCorrect,
+        score: a.score,
+      })),
+    };
   }
 
   // --- Usado por AdminModule ---

@@ -27,9 +27,15 @@ export class CertificateService {
     @InjectQueue(QUEUE_NAMES.CERTIFICATE) private readonly certificateQueue: Queue,
   ) {}
 
+  /**
+   * Link público de verificación (va en el QR del PDF y en el DTO expuesto
+   * al alumno). Debe apuntar a la página humana del frontend (`/verificar/:codigo`,
+   * ver apps/web), NO al endpoint JSON de la API — este último (`GET
+   * /certificates/verify/:code`) es el que esa página consume por debajo.
+   */
   private verificationUrl(code: string) {
-    const apiUrl = this.config.get<string>("API_URL", "http://localhost:4000");
-    return `${apiUrl}/certificates/verify/${code}`;
+    const appUrl = this.config.get<string>("APP_URL", "http://localhost:3000");
+    return `${appUrl}/verificar/${code}`;
   }
 
   /**

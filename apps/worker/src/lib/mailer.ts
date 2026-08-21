@@ -9,7 +9,11 @@ let transporter: Transporter | null = null;
 export function getMailTransport(): Transporter {
   if (transporter) return transporter;
 
-  const host = process.env.SMTP_HOST ?? "localhost";
+  // "127.0.0.1" en vez de "localhost": en macOS/Docker Desktop, Node puede
+  // resolver "localhost" a "::1" (IPv6) primero, y el mapeo de puertos de
+  // Docker a veces no escucha ahí — eso produce timeouts largos e
+  // intermitentes ("Greeting never received") en vez de un error inmediato.
+  const host = process.env.SMTP_HOST ?? "127.0.0.1";
   const port = Number(process.env.SMTP_PORT ?? 1025);
   const secure = process.env.SMTP_SECURE === "true";
   const user = process.env.SMTP_USER;

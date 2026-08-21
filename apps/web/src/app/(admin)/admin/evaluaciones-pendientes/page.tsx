@@ -24,7 +24,7 @@ const MOCK_PENDING: PendingAnswer[] = [
 export default async function PendingReviewPage() {
   const t = await getTranslations("admin.pendingReview");
 
-  const { data: pending, live } = await withFallback(() => adminApi.pendingReview(), MOCK_PENDING as any[]);
+  const { data: pending, live } = await withFallback(() => adminApi.pendingReview(), MOCK_PENDING);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">

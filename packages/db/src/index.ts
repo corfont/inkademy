@@ -1,9 +1,9 @@
 // Cliente Prisma compartido por apps/api y apps/worker.
 // El cliente se genera en ./generated (ver generator "client" en prisma/schema.prisma)
 // para evitar ambigüedades de resolución de node_modules en el monorepo pnpm.
-import { PrismaClient } from "../generated";
+import { PrismaClient } from "../generated/index.js";
 
-export * from "../generated";
+export * from "../generated/index.js";
 
 declare global {
   // eslint-disable-next-line no-var

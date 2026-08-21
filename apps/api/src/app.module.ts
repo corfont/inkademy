@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
@@ -23,7 +24,15 @@ import { AdminModule } from "./modules/admin/admin.module";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // En Docker las variables llegan como env reales del contenedor (no hay
+      // .env que leer). En desarrollo local ("pnpm --filter @inkademy/api dev"
+      // o "start:prod"), el cwd es apps/api, así que además del .env local
+      // buscamos el de la raíz del monorepo. @nestjs/config usa el primero
+      // que exista y no sobreescribe variables ya presentes en process.env.
+      envFilePath: [".env", join(__dirname, "../../../.env")],
+    }),
     PrismaModule,
     QueuesModule,
     CommonModule,

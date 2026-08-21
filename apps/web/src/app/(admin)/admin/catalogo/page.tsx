@@ -9,7 +9,7 @@ import { Callout } from "@/components/ui/Callout";
 export const metadata: Metadata = { title: "Catálogo (admin)" };
 
 export default async function AdminCatalogPage() {
-  const { data: courses, live } = await withFallback(() => adminApi.courses(), MOCK_COURSES as any[]);
+  const { data: courses, live } = await withFallback(() => adminApi.courses(), MOCK_COURSES);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

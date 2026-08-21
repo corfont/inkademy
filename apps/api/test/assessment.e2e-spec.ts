@@ -5,15 +5,14 @@ import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { JwtModule, JwtService } from "@nestjs/jwt";
-import { getQueueToken } from "@nestjs/bullmq";
-import * as request from "supertest";
+import request from "supertest";
 import { AuthModule } from "../src/modules/auth/auth.module";
 import { AssessmentModule } from "../src/modules/assessment/assessment.module";
 import { JwtAuthGuard } from "../src/common/guards/jwt-auth.guard";
-import { PRISMA } from "../src/common/prisma/prisma.module";
-import { QUEUE_NAMES } from "../src/common/queues/queue.constants";
+import { PrismaModule, PRISMA } from "../src/common/prisma/prisma.module";
+import { QueuesModule } from "../src/common/queues/queues.module";
 import { createMockPrisma, type MockPrisma } from "./utils/mock-prisma";
-import { createMockQueue } from "./utils/mock-queue";
+import { allMockQueueOverrides } from "./utils/mock-queue";
 
 const FAKE_USER = {
   id: "u1",
@@ -25,7 +24,7 @@ const FAKE_USER = {
 };
 
 const QUESTION = {
-  id: "q1",
+  id: "22222222-2222-4222-8222-222222222222",
   type: "SINGLE_CHOICE",
   text: { es: "¿2 + 2?" },
   options: [
@@ -62,20 +61,23 @@ describe("Assessment (e2e)", () => {
     prisma.user.findUnique.mockResolvedValue(FAKE_USER as never);
     prisma.user.findUniqueOrThrow.mockResolvedValue(FAKE_USER as never);
 
-    const moduleRef = await Test.createTestingModule({
+    const builder = Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         JwtModule.register({ secret: process.env.JWT_ACCESS_SECRET }),
+        PrismaModule,
+        QueuesModule,
         AuthModule,
         AssessmentModule,
       ],
       providers: [JwtAuthGuard],
-    })
-      .overrideProvider(PRISMA)
-      .useValue(prisma)
-      .overrideProvider(getQueueToken(QUEUE_NAMES.EMAIL))
-      .useValue(createMockQueue())
-      .compile();
+    }).overrideProvider(PRISMA).useValue(prisma);
+
+    for (const [token, mockQueue] of allMockQueueOverrides()) {
+      builder.overrideProvider(token).useValue(mockQueue);
+    }
+
+    const moduleRef = await builder.compile();
 
     app = moduleRef.createNestApplication();
     app.useGlobalGuards(app.get(JwtAuthGuard));
@@ -153,7 +155,7 @@ describe("Assessment (e2e)", () => {
     const res = await request(app.getHttpServer())
       .post("/attempts/att1/submit")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ answers: [{ questionId: "q1", response: "b" }] })
+      .send({ answers: [{ questionId: "22222222-2222-4222-8222-222222222222", response: "b" }] })
       .expect(201);
 
     expect(res.body.status).toBe("PASSED");

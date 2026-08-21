@@ -1,4 +1,16 @@
-import "dotenv/config";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import dotenv from "dotenv";
+
+// En Docker las variables llegan como env reales del contenedor (no hay
+// .env que leer, y dotenv simplemente no encuentra nada, lo cual está bien).
+// En desarrollo local ("pnpm --filter @inkademy/worker dev"), el cwd es
+// apps/worker, así que buscamos primero un .env local y si no existe caemos
+// al de la raíz del monorepo — igual que hace apps/api en app.module.ts.
+const localEnv = join(process.cwd(), ".env");
+const rootEnv = join(__dirname, "../../../.env");
+dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
+
 import { Worker, type Job } from "bullmq";
 import { QUEUE_NAMES, REMINDER_SWEEP_JOB } from "./queues";
 import { createRedisConnection } from "./lib/redis";

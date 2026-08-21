@@ -218,11 +218,11 @@ export class AdminService {
     const { courseIds, ...rest } = input;
     return this.prisma.program.create({
       data: {
-        ...(rest as never),
+        ...rest,
         ...(courseIds
           ? { courses: { create: courseIds.map((courseId, i) => ({ courseId, order: i, isRequired: true })) } }
           : {}),
-      },
+      } as never,
     });
   }
 

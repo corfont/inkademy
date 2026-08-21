@@ -26,6 +26,7 @@ COPY pnpm-workspace.yaml package.json ./
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter @inkademy/shared run build
 RUN pnpm --filter @inkademy/web build
 
 # --- runner: imagen final mínima con el output standalone ------------------

@@ -145,10 +145,7 @@ export class CompaniesService {
   }
 
   async listSeatPools(companyId: string) {
-    return this.prisma.companySeatPool.findMany({
-      where: { companyId },
-      include: { company: false },
-    });
+    return this.prisma.companySeatPool.findMany({ where: { companyId } });
   }
 
   async assignSeat(companyId: string, poolId: string, userId: string) {

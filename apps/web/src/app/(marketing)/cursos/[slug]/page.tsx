@@ -12,8 +12,8 @@ import { Callout } from "@/components/ui/Callout";
 import { localize, formatPrice, formatDateTime, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const detail = MOCK_COURSE_DETAIL[params.slug];
-  return { title: detail ? localize(detail.title, "es") : "Curso" };
+  const detail = await catalogApi.course(params.slug).catch(() => MOCK_COURSE_DETAIL[params.slug]);
+  return { title: detail ? `${localize(detail.title, "es")} · Inkademy` : "Curso · Inkademy" };
 }
 
 export default async function CourseDetailPage({ params }: { params: { slug: string } }) {
@@ -22,7 +22,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const tc = await getTranslations("common");
 
   const fallback = MOCK_COURSE_DETAIL[params.slug];
-  const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback as any);
+  const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback);
 
   if (!course) notFound();
 

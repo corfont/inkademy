@@ -13,11 +13,21 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
   const locale = await getLocale();
 
   const matchingMock = MOCK_CERTIFICATES.find((c) => c.code === params.codigo);
+  // Shape exacto de `GET /certificates/verify/:code`
+  // (ver apps/api/src/modules/certificate/certificate.service.ts#verifyByCode).
   const fallback = matchingMock
-    ? { valid: true, revoked: false, holderName: "Alumno de ejemplo", courseTitle: localize(matchingMock.title, locale), issuedAt: matchingMock.issuedAt }
-    : { valid: false, revoked: false };
+    ? {
+        valid: true,
+        code: matchingMock.code,
+        status: "VALID" as const,
+        holderName: "Alumno de ejemplo",
+        title: matchingMock.title,
+        issuedAt: matchingMock.issuedAt,
+      }
+    : { valid: false, code: params.codigo, status: "VALID" as const, holderName: "", title: {}, issuedAt: null as string | null };
 
-  const { data: result } = await withFallback(() => certificateApi.verify(params.codigo), fallback as any);
+  const { data: result } = await withFallback(() => certificateApi.verify(params.codigo), fallback);
+  const revoked = result.status === "REVOKED";
 
   return (
     <div className="container flex min-h-[60vh] items-center justify-center py-16">
@@ -26,7 +36,7 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
         <p className="mt-2 text-sm text-ash-600">{t("subtitle")}</p>
 
         <div className="mt-8 rounded-md border border-paper-border p-6">
-          {result.revoked ? (
+          {revoked ? (
             <div className="flex flex-col items-center gap-2 text-danger">
               <ShieldAlert className="h-10 w-10" aria-hidden="true" />
               <p className="font-medium">{t("revoked")}</p>
@@ -42,7 +52,7 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
                 </div>
                 <div className="flex justify-between border-b border-paper-border pb-2">
                   <dt className="font-medium">{t("course")}</dt>
-                  <dd>{result.courseTitle}</dd>
+                  <dd>{localize(result.title, locale)}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="font-medium">{t("issuedOn")}</dt>

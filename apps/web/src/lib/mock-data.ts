@@ -154,10 +154,9 @@ export const MOCK_SECTIONS = {
   mostDemanded: [MOCK_COURSES[0], MOCK_COURSES[3], MOCK_COURSES[5], MOCK_COURSES[6]],
 };
 
-export const MOCK_COURSE_DETAIL: Record<string, CourseDetailDTO> = Object.fromEntries(
-  MOCK_COURSES.map((c) => [
-    c.slug,
-    {
+export const MOCK_COURSE_DETAIL: Record<string, CourseDetailDTO> = MOCK_COURSES.reduce<Record<string, CourseDetailDTO>>(
+  (acc, c) => {
+    acc[c.slug] = {
       ...c,
       description: {
         es: `Un curso práctico y aplicado, diseñado para profesionales que necesitan resultados desde la primera semana. Combina teoría breve, casos reales de empresas en Perú y LatAm, y ejercicios evaluados.`,
@@ -198,8 +197,10 @@ export const MOCK_COURSE_DETAIL: Record<string, CourseDetailDTO> = Object.fromEn
       liveSessions: c.nextLiveSessionAt
         ? [{ id: `${c.id}-live1`, startsAt: c.nextLiveSessionAt, endsAt: c.nextLiveSessionAt, timezone: "America/Lima" }]
         : [],
-    },
-  ]),
+    };
+    return acc;
+  },
+  {},
 );
 
 export const MOCK_PROGRAM: ProgramDetailDTO = {

@@ -13,12 +13,14 @@ COPY packages/db/package.json packages/db/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --frozen-lockfile=false
 
-# ---- build: genera el cliente Prisma y compila la API ----
+# ---- build: genera el cliente Prisma, compila los paquetes compartidos y la API ----
 FROM deps AS build
 COPY prisma ./prisma
 COPY packages ./packages
 COPY apps/api ./apps/api
 RUN pnpm --filter @inkademy/db run generate
+RUN pnpm --filter @inkademy/shared run build
+RUN pnpm --filter @inkademy/db run build
 RUN pnpm --filter @inkademy/api run build
 
 # ---- runtime ----

@@ -14,6 +14,7 @@ import type {
   CompanyDashboardSummaryDTO,
   SupportTicketSummaryDTO,
   AdminExceptionDTO,
+  LocalizedText,
 } from "@inkademy/shared";
 import { getClientAccessToken, setClientAccessToken, clearClientAccessToken } from "./auth";
 
@@ -177,10 +178,17 @@ export const assessmentApi = {
 // Certificados
 // ---------------------------------------------------------------------------
 export const certificateApi = {
+  // Shape exacto de apps/api CertificateService.verifyByCode: {valid, code,
+  // holderName, title (LocalizedText), issuedAt, status: "VALID"|"REVOKED"}.
   verify: (code: string) =>
-    apiFetch<{ valid: boolean; revoked: boolean; holderName?: string; courseTitle?: string; issuedAt?: string }>(
-      `/certificates/verify/${code}`,
-    ),
+    apiFetch<{
+      valid: boolean;
+      code: string;
+      holderName?: string;
+      title?: LocalizedText;
+      issuedAt?: string | null;
+      status: "VALID" | "REVOKED";
+    }>(`/certificates/verify/${code}`),
   pdfUrl: (id: string) => `${API_URL}/certificates/${id}/pdf`,
 };
 

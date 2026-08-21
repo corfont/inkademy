@@ -2,7 +2,7 @@
 
 import { useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
-import { LOCALE_COOKIE, SUPPORTED_LOCALES } from "@/i18n/request";
+import { LOCALE_COOKIE, SUPPORTED_LOCALES } from "@/lib/i18n/locales";
 import { cn } from "@/lib/cn";
 
 const LABELS: Record<string, string> = { es: "ES", en: "EN" };

@@ -15,7 +15,7 @@ const MOCK_COMPANIES = [
 ];
 
 export default async function AdminCompaniesPage() {
-  const { data: companies, live } = await withFallback(() => adminApi.companies(), MOCK_COMPANIES as any[]);
+  const { data: companies, live } = await withFallback(() => adminApi.companies(), MOCK_COMPANIES);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

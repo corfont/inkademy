@@ -6,15 +6,14 @@ process.env.JWT_REFRESH_TTL = "30d";
 import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { getQueueToken } from "@nestjs/bullmq";
-import * as cookieParser from "cookie-parser";
-import * as request from "supertest";
+import cookieParser from "cookie-parser";
+import request from "supertest";
 import { AuthModule } from "../src/modules/auth/auth.module";
 import { JwtAuthGuard } from "../src/common/guards/jwt-auth.guard";
-import { PRISMA } from "../src/common/prisma/prisma.module";
-import { QUEUE_NAMES } from "../src/common/queues/queue.constants";
+import { PrismaModule, PRISMA } from "../src/common/prisma/prisma.module";
+import { QueuesModule } from "../src/common/queues/queues.module";
 import { createMockPrisma, type MockPrisma } from "./utils/mock-prisma";
-import { createMockQueue } from "./utils/mock-queue";
+import { allMockQueueOverrides } from "./utils/mock-queue";
 
 describe("Auth (e2e)", () => {
   let app: INestApplication;
@@ -23,15 +22,16 @@ describe("Auth (e2e)", () => {
   beforeAll(async () => {
     prisma = createMockPrisma();
 
-    const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule],
+    const builder = Test.createTestingModule({
+      imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, QueuesModule, AuthModule],
       providers: [JwtAuthGuard],
-    })
-      .overrideProvider(PRISMA)
-      .useValue(prisma)
-      .overrideProvider(getQueueToken(QUEUE_NAMES.EMAIL))
-      .useValue(createMockQueue())
-      .compile();
+    }).overrideProvider(PRISMA).useValue(prisma);
+
+    for (const [token, mockQueue] of allMockQueueOverrides()) {
+      builder.overrideProvider(token).useValue(mockQueue);
+    }
+
+    const moduleRef = await builder.compile();
 
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
