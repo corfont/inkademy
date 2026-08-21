@@ -14,7 +14,8 @@
     "prisma:migrate": "pnpm --filter @inkademy/api exec prisma migrate dev --schema ../../prisma/schema.prisma",
     "prisma:seed": "tsx prisma/seed.ts",
     "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "postinstall": "pnpm --filter @inkademy/db run generate && pnpm --filter @inkademy/shared run build && pnpm --filter @inkademy/db run build"
   },
   "dependencies": {
     "dotenv": "^16.4.5"
