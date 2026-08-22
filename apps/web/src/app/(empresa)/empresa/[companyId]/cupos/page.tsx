@@ -5,8 +5,8 @@ import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { Card, CardContent } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { AssignSeatButton } from "@/components/empresa/AssignSeatButton";
 import { formatDate, localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Cupos" };
@@ -53,9 +53,7 @@ export default async function SeatPoolsPage({ params }: { params: { companyId: s
                 <ProgressBar value={(pool.seatsUsed / pool.seatsPurchased) * 100} className="mt-2 max-w-xs" />
                 {pool.expiresAt && <p className="mt-1 text-xs text-ash-400">{t("expiresOn", { date: formatDate(pool.expiresAt, locale) })}</p>}
               </div>
-              <Button size="sm" variant="outline">
-                {t("assign")}
-              </Button>
+              <AssignSeatButton companyId={params.companyId} poolId={pool.id} disabled={pool.seatsUsed >= pool.seatsPurchased} />
             </CardContent>
           </Card>
         ))}

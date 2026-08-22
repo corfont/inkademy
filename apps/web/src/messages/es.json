@@ -180,6 +180,17 @@
       "success": "Si el correo existe en nuestro sistema, enviamos instrucciones para restablecer tu contraseña.",
       "backToLogin": "Volver a inicio de sesión"
     },
+    "resetPassword": {
+      "title": "Elige una nueva contraseña",
+      "subtitle": "Escribe tu nueva contraseña para terminar de restablecerla.",
+      "password": "Nueva contraseña",
+      "passwordHint": "Mínimo 8 caracteres.",
+      "submit": "Restablecer contraseña",
+      "success": "Tu contraseña se actualizó. Ya puedes iniciar sesión.",
+      "goToLogin": "Ir a iniciar sesión",
+      "invalidToken": "Este enlace no es válido o ya expiró. Solicita uno nuevo.",
+      "requestNewLink": "Solicitar un nuevo enlace"
+    },
     "completeProfile": {
       "title": "Completa tu perfil",
       "subtitle": "Necesitamos estos datos para emitir tu certificado y personalizar tu experiencia.",

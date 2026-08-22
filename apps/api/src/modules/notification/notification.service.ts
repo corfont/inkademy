@@ -1,5 +1,6 @@
 import { InjectQueue } from "@nestjs/bullmq";
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import type { Queue } from "bullmq";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -26,6 +27,7 @@ export class NotificationService {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @InjectQueue(QUEUE_NAMES.EMAIL) private readonly emailQueue: Queue,
+    private readonly config: ConfigService,
   ) {}
 
   private async enqueueEmail(jobName: string, payload: EmailJobPayload, userId?: string) {
@@ -75,13 +77,15 @@ export class NotificationService {
   }
 
   sendForgotPassword(to: string, token: string, userId: string) {
+    const appUrl = this.config.get<string>("APP_URL") ?? "http://localhost:3000";
+    const link = `${appUrl}/restablecer-password?token=${encodeURIComponent(token)}`;
     return this.enqueueEmail(
       EMAIL_JOBS.FORGOT_PASSWORD,
       {
         to,
         subject: "Recupera tu contraseña — Inkademy",
-        html: `<p>Usa este token para restablecer tu contraseña: <b>${token}</b>. Expira en 1 hora.</p>`,
-        meta: { token },
+        html: `<p>Haz clic para restablecer tu contraseña: <a href="${link}">${link}</a>. Expira en 1 hora.</p>`,
+        meta: { token, link },
       },
       userId,
     );

@@ -180,6 +180,17 @@
       "success": "If that email exists in our system, we sent instructions to reset your password.",
       "backToLogin": "Back to sign in"
     },
+    "resetPassword": {
+      "title": "Choose a new password",
+      "subtitle": "Enter your new password to finish resetting it.",
+      "password": "New password",
+      "passwordHint": "Minimum 8 characters.",
+      "submit": "Reset password",
+      "success": "Your password was updated. You can sign in now.",
+      "goToLogin": "Go to sign in",
+      "invalidToken": "This link is invalid or already expired. Request a new one.",
+      "requestNewLink": "Request a new link"
+    },
     "completeProfile": {
       "title": "Complete your profile",
       "subtitle": "We need this information to issue your certificate and personalize your experience.",

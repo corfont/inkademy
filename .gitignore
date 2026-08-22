@@ -16,3 +16,4 @@ storage-data/
 # Cliente Prisma generado (packages/db/generate) — se regenera en install/build,
 # incluye binarios de motor específicos de plataforma que no deben versionarse.
 packages/db/generated/
+*.tsbuildinfo

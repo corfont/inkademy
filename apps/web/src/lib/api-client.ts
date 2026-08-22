@@ -197,6 +197,12 @@ export const certificateApi = {
 // ---------------------------------------------------------------------------
 export const liveSessionApi = {
   join: (id: string) => apiFetch<{ joinUrl: string; role: string }>(`/live-sessions/${id}/join`),
+  create: (
+    input: { courseId: string; title?: string; startsAt: string; endsAt: string; timezone?: string; capacity?: number },
+    accessToken?: string | null,
+  ) => apiFetch<any>("/live-sessions", { method: "POST", body: JSON.stringify(input), accessToken }),
+  syncAttendance: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/live-sessions/${id}/sync-attendance`, { method: "POST", accessToken }),
 };
 
 // ---------------------------------------------------------------------------
@@ -251,4 +257,34 @@ export const adminApi = {
     }),
   certificateTemplates: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificate-templates", { accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
+
+  // --- Catálogo: crear/editar cursos ---
+  createCourse: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/courses", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateCourse: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  courseDetail: (id: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${id}`, { accessToken }),
+
+  // --- Contenido: módulos / lecciones / materiales ---
+  createModule: (courseId: string, input: { title: Record<string, string>; order?: number }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/modules`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateModule: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/modules/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteModule: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/modules/${id}`, { method: "DELETE", accessToken }),
+  createLesson: (moduleId: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/modules/${moduleId}/lessons`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateLesson: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/lessons/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteLesson: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/lessons/${id}`, { method: "DELETE", accessToken }),
+  createMaterial: (lessonId: string, input: { title: string; assetId: string; kind: string }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/lessons/${lessonId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  deleteMaterial: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/materials/${id}`, { method: "DELETE", accessToken }),
+  uploadAsset: (file: File, accessToken?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<{ assetId: string; url: string }>("/admin/uploads", { method: "POST", body: form, accessToken });
+  },
 };

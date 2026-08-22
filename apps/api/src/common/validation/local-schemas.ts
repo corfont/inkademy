@@ -83,6 +83,29 @@ export const upsertCourseSchema = z.object({
 });
 export const updateCourseSchema = upsertCourseSchema.partial();
 
+// --- Contenido de curso: módulos / lecciones / materiales ---
+export const upsertModuleSchema = z.object({
+  title: localizedTextSchema,
+  order: z.number().int().nonnegative().optional(),
+});
+export const updateModuleSchema = upsertModuleSchema.partial();
+
+export const upsertLessonSchema = z.object({
+  title: localizedTextSchema,
+  order: z.number().int().nonnegative().optional(),
+  contentType: z.enum(["VIDEO", "PDF", "LINK", "TEXT"]),
+  videoAssetId: z.string().optional(),
+  durationMinutes: z.number().int().positive().optional(),
+  isFreePreview: z.boolean().optional(),
+});
+export const updateLessonSchema = upsertLessonSchema.partial();
+
+export const upsertMaterialSchema = z.object({
+  title: z.string().min(1),
+  assetId: z.string().min(1),
+  kind: z.string().min(1),
+});
+
 export const upsertProgramSchema = z.object({
   slug: z.string().min(1),
   title: localizedTextSchema,

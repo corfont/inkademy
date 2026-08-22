@@ -1,12 +1,17 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
+import { StorageService } from "../../storage/storage.service";
 
 @Injectable()
 export class AdminService {
-  constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly storageService: StorageService,
+  ) {}
 
   async getKpis() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -208,6 +213,80 @@ export class AdminService {
 
   updateCourse(id: string, input: Record<string, unknown>) {
     return this.prisma.course.update({ where: { id }, data: input as never });
+  }
+
+  async getCourseDetail(id: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { id },
+      include: {
+        area: true,
+        modules: { orderBy: { order: "asc" }, include: { lessons: { orderBy: { order: "asc" }, include: { materials: true } } } },
+        liveSessions: { orderBy: { startsAt: "asc" } },
+      },
+    });
+    if (!course) throw new NotFoundException("Curso no encontrado");
+    // Decimal de Prisma no serializa a JSON como número plano por defecto
+    // (llega como {s,e,d} internos) — normalizamos antes de devolverlo.
+    return {
+      ...course,
+      priceAmount: decimalToString(course.priceAmount),
+      b2bPriceAmount: course.b2bPriceAmount ? decimalToString(course.b2bPriceAmount) : null,
+    };
+  }
+
+  // --- Contenido: módulos / lecciones / materiales ---
+
+  createModule(courseId: string, input: { title: object; order?: number }) {
+    return this.prisma.courseModule.create({ data: { courseId, title: input.title, order: input.order ?? 0 } });
+  }
+
+  updateModule(id: string, input: Partial<{ title: object; order: number }>) {
+    return this.prisma.courseModule.update({ where: { id }, data: input });
+  }
+
+  async deleteModule(id: string) {
+    await this.prisma.courseModule.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  createLesson(
+    moduleId: string,
+    input: {
+      title: object;
+      order?: number;
+      contentType: "VIDEO" | "PDF" | "LINK" | "TEXT";
+      videoAssetId?: string;
+      durationMinutes?: number;
+      isFreePreview?: boolean;
+    },
+  ) {
+    return this.prisma.lesson.create({ data: { moduleId, ...input, order: input.order ?? 0 } as never });
+  }
+
+  updateLesson(id: string, input: Record<string, unknown>) {
+    return this.prisma.lesson.update({ where: { id }, data: input as never });
+  }
+
+  async deleteLesson(id: string) {
+    await this.prisma.lesson.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  createMaterial(lessonId: string, input: { title: string; assetId: string; kind: string }) {
+    return this.prisma.material.create({ data: { lessonId, ...input } });
+  }
+
+  async deleteMaterial(id: string) {
+    await this.prisma.material.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  /** Sube un archivo (material/video/portada) a S3/MinIO y devuelve el assetId + una URL para previsualizarlo. */
+  async uploadAsset(file: { originalname: string; buffer: Buffer; mimetype: string }) {
+    const key = `admin-uploads/${randomUUID()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    await this.storageService.uploadBuffer(key, file.buffer, file.mimetype);
+    const url = this.storageService.getPublicUrl(key) ?? (await this.storageService.getSignedUrl(key, 60 * 60 * 24 * 7));
+    return { assetId: key, url };
   }
 
   listPrograms() {

@@ -6,8 +6,8 @@ import { meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { ACCESS_TOKEN_COOKIE } from "@/lib/auth";
 import { AddToCalendarButton } from "@/components/campus/AddToCalendarButton";
+import { JoinClassButton } from "@/components/campus/JoinClassButton";
 import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { formatDateTime } from "@/lib/format";
 
@@ -63,7 +63,7 @@ export default async function AgendaPage() {
                       <p className="text-sm text-ash-500">{formatDateTime(event.startsAt, locale)}</p>
                     </div>
                   </div>
-                  {event.liveSessionId && <Button size="sm">{t("joinClass")}</Button>}
+                  {event.liveSessionId && <JoinClassButton liveSessionId={event.liveSessionId} />}
                 </CardContent>
               </Card>
             ))}

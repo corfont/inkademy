@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
@@ -23,7 +24,9 @@ export default async function AdminCatalogPage() {
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Catálogo</h1>
-        <Button>Nuevo curso</Button>
+        <Link href="/admin/catalogo/nuevo">
+          <Button>Nuevo curso</Button>
+        </Link>
       </div>
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
 
@@ -50,9 +53,11 @@ export default async function AdminCatalogPage() {
                   </Badge>
                 </td>
                 <td className="p-4">
-                  <Button size="sm" variant="ghost">
-                    Editar
-                  </Button>
+                  <Link href={`/admin/catalogo/${course.id}`}>
+                    <Button size="sm" variant="ghost">
+                      Editar
+                    </Button>
+                  </Link>
                 </td>
               </tr>
             ))}
