@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { GraduationCap, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { cn } from "@/lib/cn";
 
@@ -56,9 +57,8 @@ export function SidebarShell({
         Saltar al contenido principal
       </a>
       <aside className="hidden w-64 flex-none flex-col bg-ink-900 p-5 text-paper lg:flex">
-        <Link href={brandHref} className="mb-8 flex items-center gap-2 font-serif text-lg font-semibold">
-          <GraduationCap className="h-6 w-6 text-gold-400" aria-hidden="true" />
-          Inkademy
+        <Link href={brandHref} className="mb-8 flex items-center" aria-label="Inkademy">
+          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-7 w-auto" />
         </Link>
         {nav}
         <div className="mt-auto pt-6">{topRight}</div>
@@ -66,9 +66,8 @@ export function SidebarShell({
 
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-paper-border bg-paper px-4 lg:hidden">
-          <Link href={brandHref} className="flex items-center gap-2 font-serif text-lg font-semibold text-ink-900">
-            <GraduationCap className="h-5 w-5 text-gold-500" aria-hidden="true" />
-            Inkademy
+          <Link href={brandHref} className="flex items-center" aria-label="Inkademy">
+            <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-7 w-auto" />
           </Link>
           <button
             type="button"

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
-import { Menu, X, GraduationCap, ChevronDown } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { LocaleSwitcher } from "./LocaleSwitcher";
@@ -27,9 +28,8 @@ export function Header() {
         {t("skipToContent")}
       </a>
       <div className="container flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2 font-serif text-xl font-semibold text-ink-900">
-          <GraduationCap className="h-6 w-6 text-gold-500" aria-hidden="true" />
-          Inkademy
+        <Link href="/" className="flex items-center" aria-label="Inkademy">
+          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} priority className="h-9 w-auto" />
         </Link>
 
         <nav aria-label={t("primaryNav")} className="hidden items-center gap-6 md:flex">

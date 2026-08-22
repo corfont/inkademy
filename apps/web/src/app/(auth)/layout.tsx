@@ -1,14 +1,13 @@
 import Link from "next/link";
-import { GraduationCap } from "lucide-react";
+import Image from "next/image";
 import { LocaleSwitcher } from "@/components/layout/LocaleSwitcher";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-paper-muted">
       <header className="container flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 font-serif text-xl font-semibold text-ink-900">
-          <GraduationCap className="h-6 w-6 text-gold-500" aria-hidden="true" />
-          Inkademy
+        <Link href="/" aria-label="Inkademy">
+          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-8 w-auto" />
         </Link>
         <LocaleSwitcher />
       </header>

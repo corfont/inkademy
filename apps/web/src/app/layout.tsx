@@ -1,19 +1,27 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Outfit, Work_Sans } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { HelpButton } from "@/components/layout/HelpButton";
 import "./globals.css";
 
-const fraunces = Fraunces({
+// Tipografía real del manual de marca Inkapitales: Outfit para
+// titulares/logotipo, Work Sans para cuerpo de texto (ver docs del manual).
+// La variable sigue llamándose "--font-fraunces"/"--font-inter" y la utilidad
+// de Tailwind sigue llamándose "font-serif" por compatibilidad con el resto
+// del código (que ya usa esas clases en decenas de componentes) — solo
+// cambia la tipografía real detrás de cada una.
+const outfit = Outfit({
   subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
   variable: "--font-fraunces",
   display: "swap",
 });
 
-const inter = Inter({
+const workSans = Work_Sans({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-inter",
   display: "swap",
 });
@@ -32,7 +40,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const messages = await getMessages();
 
   return (
-    <html lang={locale} className={`${fraunces.variable} ${inter.variable}`}>
+    <html lang={locale} className={`${outfit.variable} ${workSans.variable}`}>
       <body className="min-h-screen bg-paper font-sans text-ash-800 antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <AuthProvider>

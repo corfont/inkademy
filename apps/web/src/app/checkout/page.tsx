@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { GraduationCap, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import type { CourseCardDTO, ProgramDetailDTO } from "@inkademy/shared";
 import { catalogApi, commerceApi, ApiError } from "@/lib/api-client";
@@ -109,9 +110,8 @@ function CheckoutForm() {
 
   return (
     <div className="min-h-screen bg-paper-muted">
-      <header className="container flex h-16 items-center gap-2 font-serif text-xl font-semibold text-ink-900">
-        <GraduationCap className="h-6 w-6 text-gold-500" aria-hidden="true" />
-        Inkademy
+      <header className="container flex h-16 items-center">
+        <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-8 w-auto" />
       </header>
 
       <div className="container grid gap-8 pb-16 lg:grid-cols-[1fr_20rem]">

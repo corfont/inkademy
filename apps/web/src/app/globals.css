@@ -4,23 +4,29 @@
 
 /* ---------------------------------------------------------------------------
    Tokens de color — Inkademy
-   "ink"  = color de marca (azul tinta profundo, prestigio académico)
-   "paper"= neutro cálido de fondo
-   "ash"  = neutro cálido para texto/bordes
-   "gold" = acento para CTAs y precios
+   Paleta real del manual de marca Inkapitales (sub-marca "inkademy" —
+   Inkapital Executive Academy):
+     "ink"  = azul de marca #489BF4 (hsl 211 89% 62%) — vive en ink-400.
+     "gold" = acento dorado de marca #D8B26C (hsl 39 58% 64%) — vive en gold-400.
+   El resto de cada escala se derivó manteniendo el mismo matiz (hue) y
+   ajustando saturación/luminosidad para que cada paso cumpla contraste
+   WCAG AA donde el componente lo usa como texto o como fondo con texto
+   blanco (ink-600/700/900 y gold-500/600/700 verificados ≥ 4.5:1 sobre
+   blanco). "paper"/"ash" son neutros cálidos, sin cambios respecto al
+   sistema anterior — funcionan con cualquier azul de marca.
    ------------------------------------------------------------------------- */
 :root {
-  --ink-50: 222 45% 97%;
-  --ink-100: 222 38% 93%;
-  --ink-200: 221 34% 85%;
-  --ink-300: 220 32% 72%;
-  --ink-400: 220 34% 56%;
-  --ink-500: 221 45% 42%;
-  --ink-600: 222 52% 32%;
-  --ink-700: 222 56% 25%;
-  --ink-800: 223 58% 18%;
-  --ink-900: 224 60% 13%;
-  --ink-950: 225 62% 8%;
+  --ink-50: 212 90% 97%;
+  --ink-100: 212 85% 93%;
+  --ink-200: 212 84% 86%;
+  --ink-300: 212 85% 76%;
+  --ink-400: 211 89% 63%;
+  --ink-500: 213 82% 54%;
+  --ink-600: 215 75% 44%;
+  --ink-700: 218 68% 34%;
+  --ink-800: 221 62% 25%;
+  --ink-900: 223 58% 16%;
+  --ink-950: 225 55% 10%;
 
   --paper: 40 33% 98%;
   --paper-muted: 38 27% 95%;
@@ -37,14 +43,14 @@
   --ash-800: 22 16% 17%;
   --ash-900: 22 20% 10%;
 
-  --gold-50: 42 88% 96%;
-  --gold-100: 40 82% 90%;
-  --gold-200: 38 78% 79%;
-  --gold-300: 36 72% 66%;
-  --gold-400: 34 68% 56%;
-  --gold-500: 32 66% 47%;
-  --gold-600: 30 62% 39%;
-  --gold-700: 28 58% 31%;
+  --gold-50: 39 88% 96%;
+  --gold-100: 39 82% 90%;
+  --gold-200: 39 78% 79%;
+  --gold-300: 38 74% 68%;
+  --gold-400: 39 58% 64%;
+  --gold-500: 34 62% 38%;
+  --gold-600: 32 60% 30%;
+  --gold-700: 29 56% 23%;
 
   --success: 152 52% 32%;
   --success-bg: 150 45% 94%;
@@ -71,17 +77,17 @@
     --ash-800: 30 20% 93%;
     --ash-900: 30 25% 97%;
 
-    --ink-50: 222 40% 12%;
-    --ink-100: 222 38% 18%;
-    --ink-200: 221 34% 28%;
-    --ink-300: 220 32% 40%;
-    --ink-400: 220 40% 58%;
-    --ink-500: 219 62% 72%;
-    --ink-600: 218 68% 80%;
-    --ink-700: 218 72% 87%;
-    --ink-800: 220 60% 93%;
-    --ink-900: 222 50% 96%;
-    --ink-950: 222 45% 98%;
+    --ink-50: 220 40% 12%;
+    --ink-100: 219 38% 18%;
+    --ink-200: 217 36% 26%;
+    --ink-300: 215 40% 38%;
+    --ink-400: 213 55% 55%;
+    --ink-500: 211 75% 68%;
+    --ink-600: 211 85% 76%;
+    --ink-700: 211 88% 84%;
+    --ink-800: 211 85% 91%;
+    --ink-900: 212 70% 95%;
+    --ink-950: 212 60% 97%;
   }
 }
 
