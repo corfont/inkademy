@@ -41,7 +41,7 @@ function LoginForm() {
       const user = await login(values.email, values.password);
       const next = searchParams.get("next");
       if (!user.profileCompletedAt) {
-        router.push("/completar-perfil");
+        router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
       } else {
         router.push(next ?? "/campus");
       }
@@ -99,7 +99,10 @@ function LoginForm() {
 
         <p className="mt-6 text-center text-sm text-ash-600">
           {t("noAccount")}{" "}
-          <Link href="/registro" className="font-medium text-ink-700 hover:underline">
+          <Link
+            href={searchParams.get("next") ? `/registro?next=${encodeURIComponent(searchParams.get("next")!)}` : "/registro"}
+            className="font-medium text-ink-700 hover:underline"
+          >
             {t("createAccount")}
           </Link>
         </p>

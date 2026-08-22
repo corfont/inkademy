@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { completeProfileSchema, type CompleteProfileInput } from "@inkademy/shared";
@@ -24,9 +25,21 @@ const COUNTRIES = [
 ];
 
 export default function CompleteProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <CompleteProfileForm />
+    </Suspense>
+  );
+}
+
+function CompleteProfileForm() {
   const t = useTranslations("auth.completeProfile");
   const { user, setUser } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Preserva a dónde iba el visitante antes de que se le pidiera completar el
+  // perfil (p.ej. volver a /checkout?courseId=... tras iniciar sesión desde ahí).
+  const next = searchParams.get("next") ?? "/campus";
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),
   });
@@ -40,7 +53,7 @@ export default function CompleteProfilePage() {
       // Si la API no responde, avanzamos igual con los datos locales para no bloquear al usuario.
       if (user) setUser({ ...user, profileCompletedAt: new Date().toISOString() });
     } finally {
-      router.push("/campus");
+      router.push(next);
     }
   }
 
@@ -125,7 +138,7 @@ export default function CompleteProfilePage() {
             <Button type="submit" size="lg" disabled={isSubmitting}>
               {isSubmitting ? "…" : t("submit")}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => router.push("/campus")}>
+            <Button type="button" variant="ghost" onClick={() => router.push(next)}>
               {t("skip")}
             </Button>
           </div>

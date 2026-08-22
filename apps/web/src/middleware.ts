@@ -1,17 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
 
-const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin"];
+// "/checkout" también requiere sesión: el endpoint POST /checkout de la API
+// exige un usuario autenticado (@CurrentUser), y sin este guard un visitante
+// sin cuenta podía llenar los datos de tarjeta y recién enterarse del 401 al
+// final, en vez de que se le pida iniciar sesión antes de escribir nada.
+const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/checkout"];
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   if (!isProtected) return NextResponse.next();
 
   const session = request.cookies.get(SESSION_COOKIE)?.value;
   if (!session) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
+    // Incluye el querystring (p.ej. ?courseId=...) para que al volver de login
+    // el checkout siga apuntando al mismo curso/programa que el visitante eligió.
+    loginUrl.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -31,5 +37,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/campus/:path*", "/campus", "/empresa/:path*", "/empresa", "/admin/:path*", "/admin"],
+  matcher: ["/campus/:path*", "/campus", "/empresa/:path*", "/empresa", "/admin/:path*", "/admin", "/checkout"],
 };

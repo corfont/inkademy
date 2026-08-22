@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, type RegisterInput } from "@inkademy/shared";
@@ -16,10 +16,22 @@ import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const t = useTranslations("auth.register");
   const locale = useLocale() as "es" | "en";
   const { register: doRegister } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Preserva a dónde iba el visitante (p.ej. volver a /checkout?courseId=...
+  // tras crear su cuenta desde ahí en vez de iniciar sesión).
+  const next = searchParams.get("next");
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -35,7 +47,7 @@ export default function RegisterPage() {
     setServerError(null);
     try {
       await doRegister(values);
-      router.push("/completar-perfil");
+      router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : "No pudimos crear tu cuenta.");
     }
@@ -80,7 +92,10 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-sm text-ash-600">
           {t("hasAccount")}{" "}
-          <Link href="/login" className="font-medium text-ink-700 hover:underline">
+          <Link
+            href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+            className="font-medium text-ink-700 hover:underline"
+          >
             {t("signIn")}
           </Link>
         </p>
