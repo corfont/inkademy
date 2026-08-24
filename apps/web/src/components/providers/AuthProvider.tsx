@@ -3,7 +3,7 @@
 import type { AuthUser } from "@inkademy/shared";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { authApi } from "@/lib/api-client";
+import { authApi, tryRefresh } from "@/lib/api-client";
 import { clearClientAccessToken, persistSession, readSessionCookie, SESSION_COOKIE } from "@/lib/auth";
 
 interface AuthContextValue {
@@ -33,6 +33,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (cached) setUser(cached);
     setLoading(false);
   }, []);
+
+  // Refresco proactivo del access token mientras la sesión esté abierta —
+  // antes solo se refrescaba reactivamente (después de que un fetch de
+  // CLIENTE ya había fallado con 401). Las páginas server-rendered
+  // (/campus, /admin, /docente) leen la cookie legible `inkademy_at`
+  // directamente y nunca disparaban ese refresco reactivo, así que esa
+  // cookie de 15 min (JWT_ACCESS_TTL) expiraba en cualquier sesión activa
+  // de más de un cuarto de hora, mostrando la pantalla de "sesión expirada"
+  // en la próxima navegación aunque el usuario siguiera activo. Se
+  // refresca una vez al montar (por si la pestaña estuvo inactiva) y luego
+  // cada 10 min — con margen sobre los 15 min de vida del token.
+  useEffect(() => {
+    if (!user) return;
+    void tryRefresh();
+    const interval = setInterval(() => {
+      void tryRefresh();
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(user)]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -94,7 +94,18 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   return body as T;
 }
 
-async function tryRefresh(): Promise<string | null> {
+/**
+ * Expuesto para que AuthProvider pueda refrescar el access token de forma
+ * proactiva (ver setInterval en AuthProvider.tsx) — antes solo se refrescaba
+ * de forma reactiva, una vez que un fetch YA había fallado con 401. Eso
+ * cubre los fetches del cliente, pero las páginas server-rendered
+ * (Server Components, la mayoría del contenido de /campus, /admin,
+ * /docente) leen la cookie legible `inkademy_at` directamente — sin este
+ * refresco proactivo, esa cookie expiraba a los 15 min (JWT_ACCESS_TTL) y
+ * cualquier navegación server-side entre esa expiración y el próximo fetch
+ * de cliente exitoso mostraba la pantalla de "sesión expirada".
+ */
+export async function tryRefresh(): Promise<string | null> {
   try {
     const data = await apiFetch<AuthTokens>("/auth/refresh", { method: "POST", skipRefresh: true });
     if (data?.accessToken) {
