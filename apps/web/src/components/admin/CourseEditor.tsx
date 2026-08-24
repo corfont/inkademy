@@ -55,6 +55,8 @@ export function CourseEditor({ course }: { course: any }) {
       <ContentSection course={course} busy={busy} run={run} />
 
       <LiveSessionsSection course={course} busy={busy} run={run} />
+
+      <AssessmentsSection courseId={course.id} />
     </div>
   );
 }
@@ -482,5 +484,400 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ============================================================================
+// Evaluaciones (exámenes/quizzes) y sus preguntas — antes no existía ningún
+// módulo de autoría: el alumno podía presentar exámenes y el staff podía
+// calificar respuestas abiertas, pero la única forma de crear una
+// Assessment/Question era editando prisma/seed.ts a mano.
+// ============================================================================
+
+const QUESTION_TYPE_LABEL: Record<string, string> = {
+  SINGLE_CHOICE: "Opción única",
+  MULTI_CHOICE: "Opción múltiple",
+  TRUE_FALSE: "Verdadero/Falso",
+  SHORT_ANSWER: "Respuesta corta",
+  OPEN: "Respuesta abierta (calificación manual)",
+};
+
+function AssessmentsSection({ courseId }: { courseId: string }) {
+  const [assessments, setAssessments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+
+  async function refresh() {
+    try {
+      const data = await adminApi.assessments(courseId);
+      setAssessments(data);
+    } catch {
+      setAssessments([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+
+  async function handleCreate() {
+    if (!newTitle.trim()) return;
+    setCreating(true);
+    try {
+      await adminApi.createAssessment(courseId, { title: { es: newTitle } });
+      setNewTitle("");
+      await refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos crear la evaluación.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Evaluaciones</h2>
+        {loading ? (
+          <p className="text-sm text-ash-500">Cargando…</p>
+        ) : assessments.length === 0 ? (
+          <p className="text-sm text-ash-500">Todavía no hay evaluaciones para este curso.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {assessments.map((a) => (
+              <AssessmentBlock key={a.id} assessment={a} onChange={refresh} />
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 border-t border-paper-border pt-4">
+          <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+          <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
+            + Nueva evaluación
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [minScore, setMinScore] = useState(String(assessment.minScore));
+  const [maxAttempts, setMaxAttempts] = useState(String(assessment.maxAttempts));
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState(assessment.timeLimitMinutes ? String(assessment.timeLimitMinutes) : "");
+  const [busy, setBusy] = useState(false);
+
+  async function handleSaveRules() {
+    setBusy(true);
+    try {
+      await adminApi.updateAssessment(assessment.id, {
+        minScore: Number(minScore),
+        maxAttempts: Number(maxAttempts),
+        timeLimitMinutes: timeLimitMinutes ? Number(timeLimitMinutes) : undefined,
+      });
+      onChange();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar las reglas.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`¿Eliminar "${assessment.title?.es}"? Solo se puede si nadie la ha presentado todavía.`)) return;
+    setBusy(true);
+    try {
+      await adminApi.deleteAssessment(assessment.id);
+      onChange();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos eliminar la evaluación.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-paper-border p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-medium text-ink-900">{assessment.title?.es}</p>
+          <p className="text-xs text-ash-500">
+            {assessment.questions?.length ?? 0} pregunta{assessment.questions?.length === 1 ? "" : "s"} ·{" "}
+            {assessment._count?.attempts ?? 0} intento(s) de alumnos
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setExpanded((e) => !e)}>
+            {expanded ? "Ocultar" : "Gestionar"}
+          </Button>
+          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 flex flex-col gap-4 border-t border-paper-border pt-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label htmlFor={`minScore-${assessment.id}`}>Nota mínima (%)</Label>
+              <Input
+                id={`minScore-${assessment.id}`}
+                type="number"
+                min="0"
+                max="100"
+                value={minScore}
+                onChange={(e) => setMinScore(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`maxAttempts-${assessment.id}`}>Intentos máximos</Label>
+              <Input
+                id={`maxAttempts-${assessment.id}`}
+                type="number"
+                min="1"
+                value={maxAttempts}
+                onChange={(e) => setMaxAttempts(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`timeLimit-${assessment.id}`}>Límite de tiempo (min)</Label>
+              <Input
+                id={`timeLimit-${assessment.id}`}
+                type="number"
+                min="1"
+                value={timeLimitMinutes}
+                onChange={(e) => setTimeLimitMinutes(e.target.value)}
+                placeholder="Sin límite"
+              />
+            </div>
+          </div>
+          <Button size="sm" variant="outline" disabled={busy} onClick={handleSaveRules} className="self-start">
+            Guardar reglas
+          </Button>
+
+          <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
+            <h3 className="text-sm font-semibold text-ink-900">Preguntas</h3>
+            {(assessment.questions ?? []).map((q: any) => (
+              <QuestionRow key={q.id} question={q} onChange={onChange} />
+            ))}
+            <NewQuestionForm assessmentId={assessment.id} onChange={onChange} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionRow({ question, onChange }: { question: any; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm("¿Eliminar esta pregunta?")) return;
+    setBusy(true);
+    try {
+      await adminApi.deleteQuestion(question.id);
+      onChange();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos eliminar la pregunta.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-md bg-paper-muted p-3 text-sm">
+      <div>
+        <p className="text-ink-900">{question.text?.es}</p>
+        <p className="text-xs text-ash-500">
+          {QUESTION_TYPE_LABEL[question.type] ?? question.type} · {question.points} pto(s)
+          {question.options?.length ? ` · ${question.options.length} opciones` : ""}
+        </p>
+      </div>
+      <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+      </Button>
+    </div>
+  );
+}
+
+function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onChange: () => void }) {
+  const [type, setType] = useState("SINGLE_CHOICE");
+  const [text, setText] = useState("");
+  const [optionsText, setOptionsText] = useState(""); // una opción por línea
+  const [correctIndex, setCorrectIndex] = useState(0); // SINGLE_CHOICE/TRUE_FALSE
+  const [correctIndexes, setCorrectIndexes] = useState<number[]>([]); // MULTI_CHOICE
+  const [shortAnswer, setShortAnswer] = useState("");
+  const [points, setPoints] = useState("1");
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const needsOptions = type === "SINGLE_CHOICE" || type === "MULTI_CHOICE";
+  const optionLines = optionsText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  async function handleSubmit() {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      let options: { id: string; text: string }[] | undefined;
+      let correctAnswer: string | string[] | undefined;
+
+      if (type === "TRUE_FALSE") {
+        options = [
+          { id: "true", text: "Verdadero" },
+          { id: "false", text: "Falso" },
+        ];
+        correctAnswer = correctIndex === 0 ? "true" : "false";
+      } else if (needsOptions) {
+        options = optionLines.map((line, i) => ({ id: `opt-${i}`, text: line }));
+        correctAnswer = type === "SINGLE_CHOICE" ? `opt-${correctIndex}` : correctIndexes.map((i) => `opt-${i}`);
+      } else if (type === "SHORT_ANSWER") {
+        correctAnswer = shortAnswer;
+      }
+
+      await adminApi.createQuestion(assessmentId, {
+        type,
+        text: { es: text },
+        options,
+        correctAnswer,
+        points: Number(points) || 1,
+      });
+      setText("");
+      setOptionsText("");
+      setShortAnswer("");
+      setPoints("1");
+      setCorrectIndex(0);
+      setCorrectIndexes([]);
+      setOpen(false);
+      onChange();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos crear la pregunta.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="self-start">
+        + Agregar pregunta
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-paper-border p-4">
+      <div>
+        <Label htmlFor="q-type">Tipo de pregunta</Label>
+        <Select
+          id="q-type"
+          value={type}
+          onChange={(e) => {
+            setType(e.target.value);
+            setCorrectIndex(0);
+            setCorrectIndexes([]);
+          }}
+        >
+          <option value="SINGLE_CHOICE">Opción única</option>
+          <option value="MULTI_CHOICE">Opción múltiple</option>
+          <option value="TRUE_FALSE">Verdadero/Falso</option>
+          <option value="SHORT_ANSWER">Respuesta corta</option>
+          <option value="OPEN">Respuesta abierta (calificación manual)</option>
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="q-text">Pregunta</Label>
+        <Input id="q-text" value={text} onChange={(e) => setText(e.target.value)} />
+      </div>
+
+      {type === "TRUE_FALSE" && (
+        <div>
+          <Label>Respuesta correcta</Label>
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input type="radio" checked={correctIndex === 0} onChange={() => setCorrectIndex(0)} /> Verdadero
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input type="radio" checked={correctIndex === 1} onChange={() => setCorrectIndex(1)} /> Falso
+            </label>
+          </div>
+        </div>
+      )}
+
+      {needsOptions && (
+        <div>
+          <Label htmlFor="q-options">Opciones (una por línea)</Label>
+          <textarea
+            id="q-options"
+            className="min-h-[5rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+            value={optionsText}
+            onChange={(e) => setOptionsText(e.target.value)}
+            placeholder={"Opción A\nOpción B\nOpción C"}
+          />
+          {optionLines.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              <p className="text-xs text-ash-500">Marca la(s) correcta(s):</p>
+              {optionLines.map((line, i) =>
+                type === "SINGLE_CHOICE" ? (
+                  <label key={i} className="flex items-center gap-1.5 text-sm">
+                    <input type="radio" checked={correctIndex === i} onChange={() => setCorrectIndex(i)} />
+                    {line}
+                  </label>
+                ) : (
+                  <label key={i} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={correctIndexes.includes(i)}
+                      onChange={(e) =>
+                        setCorrectIndexes((prev) => (e.target.checked ? [...prev, i] : prev.filter((x) => x !== i)))
+                      }
+                    />
+                    {line}
+                  </label>
+                ),
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {type === "SHORT_ANSWER" && (
+        <div>
+          <Label htmlFor="q-short">Respuesta correcta (coincidencia exacta)</Label>
+          <Input id="q-short" value={shortAnswer} onChange={(e) => setShortAnswer(e.target.value)} />
+        </div>
+      )}
+
+      {type === "OPEN" && (
+        <Callout variant="info">Esta pregunta queda pendiente de calificación manual (ver "Evaluaciones pendientes").</Callout>
+      )}
+
+      <div>
+        <Label htmlFor="q-points">Puntos</Label>
+        <Input
+          id="q-points"
+          type="number"
+          min="0"
+          step="0.5"
+          value={points}
+          onChange={(e) => setPoints(e.target.value)}
+          className="max-w-[6rem]"
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+          Cancelar
+        </Button>
+        <Button size="sm" disabled={busy || !text.trim()} onClick={handleSubmit}>
+          {busy ? "Guardando…" : "Agregar pregunta"}
+        </Button>
+      </div>
+    </div>
   );
 }

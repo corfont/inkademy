@@ -426,6 +426,22 @@ export const adminApi = {
     return apiFetch<{ assetId: string; url: string }>("/admin/uploads", { method: "POST", body: form, accessToken });
   },
 
+  // --- Evaluaciones (exámenes/quizzes) y preguntas ---
+  assessments: (courseId: string, accessToken?: string | null) =>
+    apiFetch<any[]>(`/admin/courses/${courseId}/assessments`, { accessToken }),
+  createAssessment: (courseId: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/assessments`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateAssessment: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/assessments/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteAssessment: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/assessments/${id}`, { method: "DELETE", accessToken }),
+  createQuestion: (assessmentId: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/assessments/${assessmentId}/questions`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateQuestion: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/questions/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteQuestion: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/questions/${id}`, { method: "DELETE", accessToken }),
+
   // --- Apariencia de la plataforma ---
   updateSettings: (input: Partial<Omit<PlatformSettingsDTO, "id">>, accessToken?: string | null) =>
     apiFetch<PlatformSettingsDTO>("/admin/settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),

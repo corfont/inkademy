@@ -8,18 +8,22 @@ import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
   gradeAnswerSchema,
+  updateAssessmentSchema,
   updateCourseSchema,
   updateCertificateTemplateSchema,
   updateLessonSchema,
   updateModuleSchema,
   updateProgramSchema,
+  updateQuestionSchema,
   upsertAreaSchema,
+  upsertAssessmentSchema,
   upsertCertificateTemplateSchema,
   upsertCourseSchema,
   upsertLessonSchema,
   upsertMaterialSchema,
   upsertModuleSchema,
   upsertProgramSchema,
+  upsertQuestionSchema,
 } from "../../common/validation/local-schemas";
 import { AssessmentService } from "../assessment/assessment.service";
 import { AdminService } from "./admin.service";
@@ -161,6 +165,73 @@ export class AdminController {
   @ApiOperation({ summary: "Elimina un material" })
   deleteMaterial(@Param("id") id: string) {
     return this.adminService.deleteMaterial(id);
+  }
+
+  // --- Evaluaciones (exámenes/quizzes) y sus preguntas — TEACHER solo en cursos donde es CourseStaff ---
+
+  @Get("courses/:courseId/assessments")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Lista las evaluaciones de un curso, con sus preguntas" })
+  listAssessments(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string) {
+    return this.assessmentService.listForCourse(courseId, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Post("courses/:courseId/assessments")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Crea una evaluación (examen/quiz) para un curso" })
+  createAssessment(
+    @CurrentUser() user: RequestUser,
+    @Param("courseId") courseId: string,
+    @Body(new ZodValidationPipe(upsertAssessmentSchema)) dto: any,
+  ) {
+    return this.assessmentService.createAssessment(courseId, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Patch("assessments/:id")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Actualiza las reglas de una evaluación" })
+  updateAssessment(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateAssessmentSchema)) dto: any,
+  ) {
+    return this.assessmentService.updateAssessment(id, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Delete("assessments/:id")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Elimina una evaluación (falla si ya tiene intentos de alumnos)" })
+  deleteAssessment(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.assessmentService.deleteAssessment(id, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Post("assessments/:assessmentId/questions")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Agrega una pregunta a una evaluación" })
+  createQuestion(
+    @CurrentUser() user: RequestUser,
+    @Param("assessmentId") assessmentId: string,
+    @Body(new ZodValidationPipe(upsertQuestionSchema)) dto: any,
+  ) {
+    return this.assessmentService.createQuestion(assessmentId, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Patch("questions/:id")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Actualiza una pregunta" })
+  updateQuestion(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateQuestionSchema)) dto: any,
+  ) {
+    return this.assessmentService.updateQuestion(id, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Delete("questions/:id")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Elimina una pregunta" })
+  deleteQuestion(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.assessmentService.deleteQuestion(id, user.globalRole === "TEACHER" ? user.id : undefined);
   }
 
   @Post("uploads")

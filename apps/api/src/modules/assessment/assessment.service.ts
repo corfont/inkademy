@@ -271,4 +271,73 @@ export class AssessmentService {
 
     return { graded: true };
   }
+
+  // ==========================================================================
+  // Autoría de evaluaciones (crear/editar exámenes y preguntas) — antes no
+  // existía NADA de esto: el estudiante podía presentar exámenes y el staff
+  // podía calificar respuestas abiertas, pero la única forma de crear un
+  // Assessment/Question era prisma/seed.ts. TEACHER solo puede autorear
+  // evaluaciones de cursos donde es CourseStaff; ADMIN/SUPPORT (sin
+  // teacherUserId) no tiene esa restricción.
+  // ==========================================================================
+
+  private async assertTeacherOwnsCourse(courseId: string, teacherUserId: string) {
+    const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
+    if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+  }
+
+  private async assertTeacherOwnsAssessment(assessmentId: string, teacherUserId: string) {
+    const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId }, select: { courseId: true } });
+    if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+    await this.assertTeacherOwnsCourse(assessment.courseId, teacherUserId);
+  }
+
+  async listForCourse(courseId: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+    return this.prisma.assessment.findMany({
+      where: { courseId },
+      include: { questions: true, _count: { select: { attempts: true } } },
+      orderBy: { id: "asc" },
+    });
+  }
+
+  async createAssessment(courseId: string, input: Record<string, unknown>, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+    return this.prisma.assessment.create({ data: { courseId, ...input } as never });
+  }
+
+  async updateAssessment(id: string, input: Record<string, unknown>, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(id, teacherUserId);
+    return this.prisma.assessment.update({ where: { id }, data: input as never });
+  }
+
+  async deleteAssessment(id: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(id, teacherUserId);
+    const attemptsCount = await this.prisma.assessmentAttempt.count({ where: { assessmentId: id } });
+    if (attemptsCount > 0) {
+      throw new BadRequestException("No se puede eliminar una evaluación con intentos de alumnos ya registrados");
+    }
+    await this.prisma.assessment.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  async createQuestion(assessmentId: string, input: Record<string, unknown>, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(assessmentId, teacherUserId);
+    return this.prisma.question.create({ data: { assessmentId, ...input } as never });
+  }
+
+  async updateQuestion(id: string, input: Record<string, unknown>, teacherUserId?: string) {
+    const question = await this.prisma.question.findUnique({ where: { id } });
+    if (!question) throw new NotFoundException("Pregunta no encontrada");
+    if (teacherUserId && question.assessmentId) await this.assertTeacherOwnsAssessment(question.assessmentId, teacherUserId);
+    return this.prisma.question.update({ where: { id }, data: input as never });
+  }
+
+  async deleteQuestion(id: string, teacherUserId?: string) {
+    const question = await this.prisma.question.findUnique({ where: { id } });
+    if (!question) throw new NotFoundException("Pregunta no encontrada");
+    if (teacherUserId && question.assessmentId) await this.assertTeacherOwnsAssessment(question.assessmentId, teacherUserId);
+    await this.prisma.question.delete({ where: { id } });
+    return { deleted: true };
+  }
 }

@@ -186,6 +186,33 @@ export const grantFreeAccessSchema = z
     message: "Indica courseSlug o programSlug, no ambos ni ninguno",
   });
 
+// --- Autoría de evaluaciones (exámenes/quizzes/preguntas) ---
+export const upsertAssessmentSchema = z.object({
+  title: localizedTextSchema,
+  type: z.string().min(1).default("quiz"), // quiz | exam | assignment
+  minScore: z.number().min(0).max(100).default(70),
+  maxAttempts: z.number().int().positive().default(3),
+  timeLimitMinutes: z.number().int().positive().optional(),
+  questionOrder: z.enum(["FIXED", "RANDOM"]).default("FIXED"),
+  randomizeOptions: z.boolean().default(false),
+  questionsPerAttempt: z.number().int().positive().optional(),
+  availableFrom: z.coerce.date().optional(),
+  availableUntil: z.coerce.date().optional(),
+});
+export const updateAssessmentSchema = upsertAssessmentSchema.partial();
+
+export const upsertQuestionSchema = z.object({
+  type: z.enum(["SINGLE_CHOICE", "MULTI_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "OPEN"]),
+  text: localizedTextSchema,
+  // [{ id, text }] para SINGLE_CHOICE/MULTI_CHOICE/TRUE_FALSE; vacío para SHORT_ANSWER/OPEN.
+  options: z.array(z.object({ id: z.string(), text: z.string() })).optional(),
+  // string (SINGLE_CHOICE/TRUE_FALSE/SHORT_ANSWER) | string[] (MULTI_CHOICE) — null para OPEN.
+  correctAnswer: z.union([z.string(), z.array(z.string())]).optional(),
+  points: z.number().positive().default(1),
+  tags: z.array(z.string()).optional(),
+});
+export const updateQuestionSchema = upsertQuestionSchema.partial();
+
 export const rescheduleLiveSessionSchema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
