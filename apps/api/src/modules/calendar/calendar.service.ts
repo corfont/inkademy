@@ -86,6 +86,19 @@ export class CalendarService {
     }
   }
 
+  /**
+   * Actualiza el horario en la agenda de TODOS los inscritos cuando se
+   * reprograma una sesión en vivo (ver LiveSessionService.reschedule) — sin
+   * esto, cada alumno seguía viendo la hora vieja en /campus/agenda aunque
+   * la sesión ya estuviera reprogramada en la base.
+   */
+  async rescheduleLiveSessionEvents(liveSessionId: string, startsAt: Date, endsAt: Date) {
+    return this.prisma.calendarEvent.updateMany({
+      where: { liveSessionId },
+      data: { startsAt, endsAt },
+    });
+  }
+
   async generateIcsForUser(userId: string): Promise<string> {
     const events = await this.prisma.calendarEvent.findMany({ where: { userId } });
     const icsEvents: EventAttributes[] = events.map((e) => {

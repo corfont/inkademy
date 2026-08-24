@@ -161,6 +161,14 @@ export const createLiveSessionSchema = z.object({
   organizerUpn: z.string().email().optional(),
 });
 
+export const rescheduleLiveSessionSchema = z.object({
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date(),
+  // Por qué se reprograma — se incluye tal cual en el correo a los
+  // inscritos, así que se pide explícito (no un default genérico).
+  reason: z.string().min(3),
+});
+
 export const addSupportMessageSchema = z.object({
   body: z.string().min(1),
 });

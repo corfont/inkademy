@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { RescheduleSessionControl } from "./RescheduleSessionControl";
 
 /**
  * Editor de contenido de un curso: metadata, módulos → lecciones →
@@ -360,7 +361,7 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
 
         <ul className="flex flex-col gap-2">
           {course.liveSessions.map((session: any) => (
-            <li key={session.id} className="flex items-center justify-between rounded-md bg-paper-muted p-3 text-sm">
+            <li key={session.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-paper-muted p-3 text-sm">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 text-ink-700" aria-hidden="true" />
                 <div>
@@ -373,6 +374,9 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
                   </p>
                 </div>
               </div>
+              {session.status !== "COMPLETED" && session.status !== "CANCELLED" && (
+                <RescheduleSessionControl sessionId={session.id} currentStartsAt={session.startsAt} currentEndsAt={session.endsAt} />
+              )}
             </li>
           ))}
         </ul>

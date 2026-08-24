@@ -6,6 +6,7 @@ import type {
   AttendanceRecord,
   CreateMeetingParams,
   CreateMeetingResult,
+  UpdateMeetingParams,
   VirtualClassroomProvider,
 } from "./virtual-classroom-provider.interface";
 
@@ -88,6 +89,33 @@ export class TeamsProvider implements VirtualClassroomProvider {
 
     const body = await res.json();
     return { providerMeetingId: body.id, joinUrl: body.joinWebUrl, simulated: false };
+  }
+
+  async updateMeeting(providerMeetingId: string, organizerUpn: string, params: UpdateMeetingParams): Promise<void> {
+    if (providerMeetingId.startsWith("simulated-")) {
+      this.logger.warn(`[SIMULADO] Reprogramando reunión placeholder ${providerMeetingId} — no hay nada real que actualizar`);
+      return;
+    }
+    const token = await this.getAccessToken();
+    if (!token) return; // sin credenciales configuradas — nada que hacer del lado de Graph
+
+    const res = await fetch(
+      `${GRAPH_BASE}/users/${encodeURIComponent(organizerUpn)}/onlineMeetings/${providerMeetingId}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDateTime: params.startsAt.toISOString(),
+          endDateTime: params.endsAt.toISOString(),
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      this.logger.error(`Graph onlineMeetings PATCH falló (${res.status}): ${errBody}`);
+      throw new Error(`No se pudo reprogramar la reunión de Teams (status ${res.status})`);
+    }
   }
 
   async getAttendanceReport(providerMeetingId: string, organizerUpn: string): Promise<AttendanceRecord[]> {

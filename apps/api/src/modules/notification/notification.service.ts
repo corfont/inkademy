@@ -128,6 +128,31 @@ export class NotificationService {
     );
   }
 
+  sendLiveSessionRescheduled(
+    to: string,
+    courseTitle: string,
+    previousStartsAt: Date,
+    newStartsAt: Date,
+    reason: string,
+    userId: string,
+  ) {
+    const fmt = (d: Date) =>
+      d.toLocaleString("es-PE", { dateStyle: "full", timeStyle: "short", timeZone: "America/Lima" });
+    return this.enqueueEmail(
+      EMAIL_JOBS.LIVE_SESSION_RESCHEDULED,
+      {
+        to,
+        subject: `Cambio de horario: ${courseTitle}`,
+        html: `<p>La clase en vivo de <b>${courseTitle}</b> cambió de horario.</p>
+<p>Antes: ${fmt(previousStartsAt)}<br/>Ahora: <b>${fmt(newStartsAt)}</b></p>
+<p>Motivo: ${reason}</p>
+<p>Tu agenda en Inkademy ya se actualizó automáticamente.</p>`,
+        meta: { previousStartsAt: previousStartsAt.toISOString(), newStartsAt: newStartsAt.toISOString(), reason },
+      },
+      userId,
+    );
+  }
+
   sendSupportTicketUpdate(to: string, subject: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.SUPPORT_TICKET_UPDATE,

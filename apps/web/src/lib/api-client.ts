@@ -233,6 +233,13 @@ export const liveSessionApi = {
   ) => apiFetch<any>("/live-sessions", { method: "POST", body: JSON.stringify(input), accessToken }),
   syncAttendance: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/live-sessions/${id}/sync-attendance`, { method: "POST", accessToken }),
+  // Reprograma fecha/hora y notifica por correo a todos los inscritos activos.
+  reschedule: (id: string, input: { startsAt: string; endsAt: string; reason: string }, accessToken?: string | null) =>
+    apiFetch<{ notifiedCount: number }>(`/live-sessions/${id}/reschedule`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+      accessToken,
+    }),
 };
 
 // ---------------------------------------------------------------------------
