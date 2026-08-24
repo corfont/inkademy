@@ -92,6 +92,9 @@ function MetadataSection({
   const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
   const [language, setLanguage] = useState(course.language ?? "es");
   const [templates, setTemplates] = useState<any[]>([]);
+  const [coverImageAssetId, setCoverImageAssetId] = useState(course.coverImageAssetId ?? null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState(course.coverImageUrl ?? null);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   useEffect(() => {
     adminApi
@@ -99,6 +102,19 @@ function MetadataSection({
       .then(setTemplates)
       .catch(() => setTemplates([]));
   }, []);
+
+  async function handleCoverUpload(file: File) {
+    setUploadingCover(true);
+    try {
+      const { assetId, url } = await adminApi.uploadAsset(file);
+      setCoverImageAssetId(assetId);
+      setCoverPreviewUrl(url);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos subir la imagen de portada.");
+    } finally {
+      setUploadingCover(false);
+    }
+  }
 
   return (
     <Card>
@@ -112,6 +128,30 @@ function MetadataSection({
           <div>
             <Label htmlFor="edit-price">Precio ({course.priceCurrency ?? "PEN"})</Label>
             <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <Label>Imagen de portada</Label>
+          <div className="mt-1 flex items-center gap-4">
+            {coverPreviewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverPreviewUrl} alt="" className="h-16 w-28 flex-none rounded-md object-cover" />
+            ) : (
+              <div className="flex h-16 w-28 flex-none items-center justify-center rounded-md bg-paper-muted text-xs text-ash-500">
+                Sin imagen
+              </div>
+            )}
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink-700 hover:underline">
+              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+              {uploadingCover ? "Subiendo…" : "Subir portada"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadingCover}
+                onChange={(e) => e.target.files?.[0] && handleCoverUpload(e.target.files[0])}
+              />
+            </label>
           </div>
         </div>
         <div className="max-w-xs">
@@ -144,6 +184,7 @@ function MetadataSection({
                 priceAmount: Number(priceAmount),
                 certificateTemplateId: certificateTemplateId || null,
                 language,
+                coverImageAssetId,
               })
             }
           >

@@ -39,6 +39,7 @@ export const EMAIL_JOBS = {
   CERTIFICATE_READY: "email.certificate-ready",
   SUPPORT_TICKET_UPDATE: "email.support-ticket-update",
   LIVE_SESSION_RESCHEDULED: "email.live-session-rescheduled",
+  CERTIFICATE_COPY: "email.certificate-copy",
   GENERIC: "email.generic",
 } as const;
 
@@ -76,6 +77,8 @@ export interface EmailJobPayload {
    * `email.processor.ts`.
    */
   meta?: Record<string, unknown>;
+  /** Ver SendMailInput en lib/mailer.ts — `path` puede ser una URL, nodemailer la descarga sola. */
+  attachments?: { filename: string; path: string }[];
 }
 
 // ---------------------------------------------------------------------------

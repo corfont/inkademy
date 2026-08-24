@@ -30,6 +30,7 @@ export const EMAIL_JOBS = {
   CERTIFICATE_READY: "email.certificate-ready",
   SUPPORT_TICKET_UPDATE: "email.support-ticket-update",
   LIVE_SESSION_RESCHEDULED: "email.live-session-rescheduled",
+  CERTIFICATE_COPY: "email.certificate-copy",
   GENERIC: "email.generic",
 } as const;
 

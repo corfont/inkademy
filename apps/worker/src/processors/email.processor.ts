@@ -23,7 +23,7 @@ const logger = createLogger("email.processor");
  * `meta.notificationId` y la actualización es exacta.
  */
 export async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> {
-  const { to, subject, html, text, meta } = job.data;
+  const { to, subject, html, text, meta, attachments } = job.data;
 
   if (!to) {
     logger.warn("job de email sin destinatario, se descarta", { jobId: job.id, jobName: job.name });
@@ -33,7 +33,7 @@ export async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> 
   const notificationId = typeof meta?.notificationId === "string" ? meta.notificationId : undefined;
 
   try {
-    await sendMail({ to, subject, html, text });
+    await sendMail({ to, subject, html, text, attachments });
     await markNotification(job.name, to, notificationId, "SENT");
   } catch (err) {
     logger.error("fallo al enviar email", { jobId: job.id, jobName: job.name, to, err: String(err) });

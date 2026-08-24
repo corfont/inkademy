@@ -12,6 +12,7 @@ export interface EmailJobPayload {
   html: string;
   text?: string;
   meta?: Record<string, unknown>;
+  attachments?: { filename: string; path: string }[];
 }
 
 /**
@@ -160,6 +161,26 @@ export class NotificationService {
         to,
         subject: `Te otorgamos acceso gratuito a "${offeringTitle}"`,
         html: `<p>El equipo de Inkademy te otorgó acceso gratuito a <b>${offeringTitle}</b>. Ya puedes verlo en tu campus.</p>`,
+      },
+      userId,
+    );
+  }
+
+  /**
+   * "Enviar por correo" desde /campus/certificados — antes solo existía
+   * descargar o ir a la verificación pública, sin forma de mandarse (o
+   * mandarle a un tercero, p.ej. RR.HH.) el PDF ya firmado por correo.
+   * `pdfUrl` es una URL http(s) — nodemailer la adjunta descargándola él
+   * mismo, no hace falta traer los bytes a mano en apps/api.
+   */
+  sendCertificateCopy(to: string, courseTitle: string, pdfUrl: string, userId: string) {
+    return this.enqueueEmail(
+      EMAIL_JOBS.CERTIFICATE_COPY,
+      {
+        to,
+        subject: `Tu certificado de "${courseTitle}"`,
+        html: `<p>Adjunto va tu certificado de <b>${courseTitle}</b>.</p>`,
+        attachments: [{ filename: `certificado-${courseTitle}.pdf`.replace(/\s+/g, "-"), path: pdfUrl }],
       },
       userId,
     );

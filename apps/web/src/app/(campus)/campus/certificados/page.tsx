@@ -10,6 +10,7 @@ import { ACCESS_TOKEN_COOKIE } from "@/lib/auth";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { SendCertificateEmailButton } from "@/components/campus/SendCertificateEmailButton";
 import { localize, formatDate } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Certificados" };
@@ -41,9 +42,9 @@ export default async function CertificatesPage() {
                     {cert.finalScore != null && <p className="text-sm text-ash-500">Nota final: {cert.finalScore}</p>}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {cert.pdfUrl && (
-                    <a href={cert.pdfUrl}>
+                    <a href={cert.pdfUrl} target="_blank" rel="noopener noreferrer">
                       <Button size="sm" variant="outline">
                         <Download className="h-4 w-4" aria-hidden="true" />
                         {t("download")}
@@ -56,6 +57,7 @@ export default async function CertificatesPage() {
                       {t("verify")}
                     </Button>
                   </Link>
+                  {cert.pdfUrl && <SendCertificateEmailButton certificateId={cert.id} />}
                 </div>
               </CardContent>
             </Card>

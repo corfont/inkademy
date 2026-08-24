@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res, UseGuards } from "@nestjs/common";
+import { Controller, Get, HttpCode, HttpStatus, Param, Post, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { Public } from "../../common/decorators/public.decorator";
@@ -34,6 +34,14 @@ export class CertificateController {
       user.globalRole === "ADMIN" || user.globalRole === "SUPPORT",
     );
     return res.redirect(url);
+  }
+
+  @ApiBearerAuth()
+  @Post("certificates/:id/email")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Reenvía el PDF del certificado por correo al propio usuario" })
+  emailToSelf(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.certificateService.emailToSelf(id, user.id);
   }
 
   @ApiBearerAuth()

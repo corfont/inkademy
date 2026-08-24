@@ -277,6 +277,9 @@ export const certificateApi = {
   // allá de "los míos" — /admin/certificados y /empresa/:id/certificados
   // mostraban siempre MOCK_CERTIFICATES sin importar los datos reales.
   listAll: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificates", { accessToken }),
+  // Reenvía el PDF del certificado por correo — antes solo se podía descargar o verificar.
+  emailToSelf: (id: string, accessToken?: string | null) =>
+    apiFetch<{ sent: boolean }>(`/certificates/${id}/email`, { method: "POST", accessToken }),
 };
 
 // ---------------------------------------------------------------------------

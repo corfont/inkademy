@@ -34,6 +34,12 @@ export interface SendMailInput {
   subject: string;
   html: string;
   text?: string;
+  /**
+   * `path` puede ser una URL http(s) — nodemailer la descarga él mismo al
+   * enviar, no hace falta traer los bytes a mano (usado para adjuntar el
+   * PDF de un certificado, ver certificate.processor / "reenviar por correo").
+   */
+  attachments?: { filename: string; path: string }[];
 }
 
 export async function sendMail(input: SendMailInput): Promise<void> {
@@ -45,6 +51,7 @@ export async function sendMail(input: SendMailInput): Promise<void> {
     subject: input.subject,
     html: input.html,
     text: input.text,
+    attachments: input.attachments,
   });
-  logger.info("email enviado", { to: input.to, subject: input.subject });
+  logger.info("email enviado", { to: input.to, subject: input.subject, attachments: input.attachments?.length ?? 0 });
 }

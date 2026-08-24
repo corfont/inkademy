@@ -319,6 +319,11 @@ export class AdminService {
       ...course,
       priceAmount: decimalToString(course.priceAmount),
       b2bPriceAmount: course.b2bPriceAmount ? decimalToString(course.b2bPriceAmount) : null,
+      // El editor de curso (CourseEditor) solo tenía coverImageAssetId (la
+      // key S3 cruda, no una URL mostrable) — sin esto no podía previsualizar
+      // la portada ya subida. catalog.service.ts ya hace esta misma
+      // resolución para el catálogo público.
+      coverImageUrl: course.coverImageAssetId ? this.storageService.getPublicUrl(course.coverImageAssetId) : null,
     };
   }
 

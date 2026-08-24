@@ -224,6 +224,30 @@ export class CertificateService {
     };
   }
 
+  /**
+   * "Enviar por correo" en /campus/certificados — antes solo había
+   * descarga directa o ir a la página pública de verificación, sin forma
+   * de mandárselo al propio correo (o para reenviarlo a un tercero, p.ej.
+   * RR.HH. de una empresa que lo pide como respaldo).
+   */
+  async emailToSelf(certificateId: string, requestingUserId: string) {
+    const certificate = await this.prisma.certificate.findUnique({
+      where: { id: certificateId },
+      include: { user: true, course: true, program: true },
+    });
+    if (!certificate) throw new NotFoundException("Certificado no encontrado");
+    if (certificate.userId !== requestingUserId) {
+      throw new ForbiddenException("No puedes enviar el certificado de otro usuario");
+    }
+    if (!certificate.pdfAssetId) {
+      throw new NotFoundException("El PDF del certificado todavía se está generando");
+    }
+    const pdfUrl = this.storage.getPublicUrl(certificate.pdfAssetId) ?? (await this.storage.getSignedUrl(certificate.pdfAssetId));
+    const courseTitle = ((certificate.course?.title ?? certificate.program?.title ?? {}) as Record<string, string>).es ?? "tu curso";
+    await this.notifications.sendCertificateCopy(certificate.user.email, courseTitle, pdfUrl, certificate.userId);
+    return { sent: true };
+  }
+
   async getDownloadRedirectUrl(certificateId: string, requestingUserId: string, isAdmin: boolean) {
     const certificate = await this.prisma.certificate.findUnique({ where: { id: certificateId } });
     if (!certificate) throw new NotFoundException("Certificado no encontrado");
