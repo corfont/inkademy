@@ -1,13 +1,13 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { completeProfileSchema, type CompleteProfileInput } from "@inkademy/shared";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { authApi } from "@/lib/api-client";
+import { authApi, catalogApi } from "@/lib/api-client";
 import { updateSessionUser } from "@/lib/auth";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +43,14 @@ function CompleteProfileForm() {
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),
   });
+  // Antes esta lista era siempre MOCK_AREAS, sin importar qué áreas hubiera
+  // realmente en el catálogo — si se agregaba/renombraba un área real, este
+  // formulario seguía mostrando las de ejemplo. MOCK_AREAS queda solo como
+  // valor inicial mientras carga, para no mostrar la lista vacía.
+  const [areas, setAreas] = useState(MOCK_AREAS);
+  useEffect(() => {
+    catalogApi.areas().then(setAreas).catch(() => {});
+  }, []);
 
   async function onSubmit(values: CompleteProfileInput) {
     try {
@@ -125,7 +133,7 @@ function CompleteProfileForm() {
           <fieldset>
             <legend className="mb-1.5 text-sm font-medium text-ash-700">{t("interests")}</legend>
             <div className="flex flex-wrap gap-3">
-              {MOCK_AREAS.map((area) => (
+              {areas.map((area) => (
                 <label key={area.id} className="flex items-center gap-1.5 text-sm text-ash-600">
                   <input type="checkbox" value={area.slug} {...register("interests")} />
                   {area.name.es}

@@ -247,10 +247,17 @@ export const companyApi = {
 // Soporte
 // ---------------------------------------------------------------------------
 export const supportApi = {
-  createTicket: (input: unknown) => apiFetch<any>("/support/tickets", { method: "POST", body: JSON.stringify(input) }),
-  tickets: (query: Record<string, string | undefined> = {}) => apiFetch<SupportTicketSummaryDTO[]>("/support/tickets", { query }),
-  ticket: (id: string) => apiFetch<any>(`/support/tickets/${id}`),
-  addMessage: (id: string, body: string) => apiFetch<any>(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
+  createTicket: (input: unknown, accessToken?: string | null) =>
+    apiFetch<any>("/support/tickets", { method: "POST", body: JSON.stringify(input), accessToken }),
+  // Antes sin `accessToken` acá: llamado desde un server component (sin
+  // localStorage) no mandaba Authorization, la API respondía 401, y
+  // withFallback (a propósito) relanza los 401 en vez de mostrar datos
+  // simulados — /campus/soporte y /admin/soporte crasheaban siempre.
+  tickets: (query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
+    apiFetch<SupportTicketSummaryDTO[]>("/support/tickets", { query, accessToken }),
+  ticket: (id: string, accessToken?: string | null) => apiFetch<any>(`/support/tickets/${id}`, { accessToken }),
+  addMessage: (id: string, body: string, accessToken?: string | null) =>
+    apiFetch<any>(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body }), accessToken }),
 };
 
 // ---------------------------------------------------------------------------

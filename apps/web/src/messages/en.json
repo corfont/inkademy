@@ -269,7 +269,8 @@
       "passed": "You passed!",
       "failed": "You didn't reach the minimum score",
       "pendingReview": "Some answers are pending manual review",
-      "score": "Score: {score}"
+      "score": "Score: {score}",
+      "submitError": "We couldn't submit your assessment. Your answers are still here — check your connection and try again."
     },
     "agenda": {
       "title": "Academic schedule",

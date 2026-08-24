@@ -76,12 +76,12 @@ export function AssessmentRunner({ assessment }: { assessment: AssessmentDefinit
       const res = await assessmentApi.submit(attemptIdRef.current, payload);
       setResult(res);
     } catch (err) {
-      if (err instanceof ApiError && err.statusCode !== 0) {
-        setError(err.message);
-      } else {
-        // Sin API disponible: calculamos un resultado simulado para no bloquear la demo.
-        setResult({ score: 82, status: "PASSED", pendingReviewCount: 0 });
-      }
+      // Antes, cualquier falla que no fuera un ApiError con status real
+      // (p.ej. sin conexión) fabricaba un resultado "PASSED" con nota 82 en
+      // silencio — el alumno creía haber aprobado sin que la evaluación
+      // hubiera llegado siquiera al servidor. Ahora siempre se muestra el
+      // error real y se preservan las respuestas para reintentar.
+      setError(err instanceof ApiError ? err.message : t("submitError"));
     } finally {
       setSubmitting(false);
       setConfirmOpen(false);

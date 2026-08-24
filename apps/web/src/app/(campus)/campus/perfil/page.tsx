@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const t = useTranslations("campus.profile");
   const { user, setUser } = useAuth();
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   const { register, handleSubmit, formState: { isSubmitting } } = useForm({
     defaultValues: {
@@ -31,21 +32,24 @@ export default function ProfilePage() {
 
   async function onSubmit(values: any) {
     setSaved(false);
+    setSaveError(false);
     try {
       const updated = await authApi.completeProfile({
+        firstName: values.firstName,
+        lastName: values.lastName,
+        locale: values.locale,
+        timezone: values.timezone,
         marketingConsentEmail: values.marketingConsentEmail,
         marketingConsentWhatsapp: values.marketingConsentWhatsapp,
       });
       setUser(updated);
       updateSessionUser(updated);
-    } catch {
-      if (user) {
-        const merged = { ...user, locale: values.locale, timezone: values.timezone };
-        setUser(merged);
-        updateSessionUser(merged);
-      }
-    } finally {
       setSaved(true);
+    } catch {
+      // Si la API no responde, no fingimos que se guardó — antes esto
+      // actualizaba el estado local igual y mostraba "Guardado" aunque
+      // nada se hubiera persistido de verdad.
+      setSaveError(true);
     }
   }
 
@@ -55,6 +59,7 @@ export default function ProfilePage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 flex flex-col gap-8">
         {saved && <Callout variant="success">{t("saved")}</Callout>}
+        {saveError && <Callout variant="danger">No pudimos guardar tus cambios. Intenta de nuevo.</Callout>}
 
         <section>
           <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("personalData")}</h2>

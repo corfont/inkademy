@@ -269,7 +269,8 @@
       "passed": "¡Aprobaste!",
       "failed": "No alcanzaste el puntaje mínimo",
       "pendingReview": "Algunas respuestas quedarán pendientes de revisión manual",
-      "score": "Puntaje: {score}"
+      "score": "Puntaje: {score}",
+      "submitError": "No pudimos enviar tu evaluación. Tus respuestas siguen aquí — revisa tu conexión e inténtalo de nuevo."
     },
     "agenda": {
       "title": "Agenda académica",

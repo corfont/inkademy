@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Callout } from "@/components/ui/Callout";
 import { AssignSeatButton } from "@/components/empresa/AssignSeatButton";
+import { BuyMoreSeatsButton } from "@/components/empresa/BuyMoreSeatsButton";
 import { formatDate, localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Cupos" };
@@ -14,14 +15,16 @@ export const metadata: Metadata = { title: "Cupos" };
 interface SeatPoolLike {
   id: string;
   offeringTitle: string | Record<string, string>;
+  courseId?: string | null;
+  programId?: string | null;
   seatsPurchased: number;
   seatsUsed: number;
   expiresAt?: string | null;
 }
 
 const MOCK_POOLS: SeatPoolLike[] = [
-  { id: "pool1", offeringTitle: "Liderazgo de equipos remotos", seatsPurchased: 50, seatsUsed: 38, expiresAt: "2026-12-31T00:00:00.000Z" },
-  { id: "pool2", offeringTitle: "Compliance y protección de datos personales", seatsPurchased: 70, seatsUsed: 46, expiresAt: "2026-09-01T00:00:00.000Z" },
+  { id: "pool1", offeringTitle: "Liderazgo de equipos remotos", courseId: null, seatsPurchased: 50, seatsUsed: 38, expiresAt: "2026-12-31T00:00:00.000Z" },
+  { id: "pool2", offeringTitle: "Compliance y protección de datos personales", courseId: null, seatsPurchased: 70, seatsUsed: 46, expiresAt: "2026-09-01T00:00:00.000Z" },
 ];
 
 export default async function SeatPoolsPage({ params }: { params: { companyId: string } }) {
@@ -53,7 +56,10 @@ export default async function SeatPoolsPage({ params }: { params: { companyId: s
                 <ProgressBar value={(pool.seatsUsed / pool.seatsPurchased) * 100} className="mt-2 max-w-xs" />
                 {pool.expiresAt && <p className="mt-1 text-xs text-ash-400">{t("expiresOn", { date: formatDate(pool.expiresAt, locale) })}</p>}
               </div>
-              <AssignSeatButton companyId={params.companyId} poolId={pool.id} disabled={pool.seatsUsed >= pool.seatsPurchased} />
+              <div className="flex flex-col items-end gap-2">
+                <AssignSeatButton companyId={params.companyId} poolId={pool.id} disabled={pool.seatsUsed >= pool.seatsPurchased} />
+                <BuyMoreSeatsButton companyId={params.companyId} courseId={pool.courseId} programId={pool.programId} />
+              </div>
             </CardContent>
           </Card>
         ))}

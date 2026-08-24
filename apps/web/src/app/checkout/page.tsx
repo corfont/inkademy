@@ -45,11 +45,19 @@ function CheckoutForm() {
 
   const courseId = searchParams.get("courseId");
   const programId = searchParams.get("programId");
+  // Presentes cuando se llega desde "Comprar más cupos" en
+  // /empresa/:id/cupos — antes el checkout solo sabía comprar 1 curso/
+  // programa para una sola persona, sin forma de comprar cupos B2B por
+  // cantidad (el backend ya soportaba seatPoolQty en /checkout, pero
+  // ninguna pantalla lo usaba).
+  const seatPoolQtyParam = searchParams.get("seatPoolQty");
+  const companyIdParam = searchParams.get("companyId");
+  const seatPoolQty = seatPoolQtyParam ? Math.max(1, Number(seatPoolQtyParam) || 1) : null;
 
   const [course, setCourse] = useState<CourseCardDTO | null>(null);
   const [program, setProgram] = useState<ProgramDetailDTO | null>(null);
-  const [asCompany, setAsCompany] = useState(false);
-  const [companyId, setCompanyId] = useState("");
+  const [asCompany, setAsCompany] = useState(Boolean(companyIdParam));
+  const [companyId, setCompanyId] = useState(companyIdParam ?? "");
   const [card, setCard] = useState({ number: "", expiry: "", cvc: "", name: "" });
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -68,7 +76,8 @@ function CheckoutForm() {
   }, [courseId, programId]);
 
   const currency = course?.priceCurrency ?? program?.priceCurrency ?? "PEN";
-  const amount = course?.priceAmount ?? program?.priceAmount ?? "0";
+  const unitAmount = Number(course?.priceAmount ?? program?.priceAmount ?? "0");
+  const amount = seatPoolQty ? unitAmount * seatPoolQty : unitAmount;
   const title = course ? localize(course.title, locale) : program ? localize(program.title, locale) : "";
 
   async function handleSubmit(e: React.FormEvent) {
@@ -82,6 +91,7 @@ function CheckoutForm() {
             offeringKind: course ? "COURSE" : "PROGRAM",
             courseId: course?.id,
             programId: program?.id,
+            seatPoolQty: seatPoolQty ?? undefined,
           },
         ],
         currency: currency as "PEN" | "USD",
@@ -138,14 +148,30 @@ function CheckoutForm() {
                     </div>
                   </div>
                   <label className="mt-4 flex items-center gap-2 text-sm text-ash-600">
-                    <input type="checkbox" checked={asCompany} onChange={(e) => setAsCompany(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={asCompany}
+                      disabled={Boolean(companyIdParam)}
+                      onChange={(e) => setAsCompany(e.target.checked)}
+                    />
                     {t("asCompany")}
                   </label>
                   {asCompany && (
                     <div className="mt-3">
                       <Label htmlFor="companyId">Company ID</Label>
-                      <Input id="companyId" value={companyId} onChange={(e) => setCompanyId(e.target.value)} placeholder="uuid" />
+                      <Input
+                        id="companyId"
+                        value={companyId}
+                        disabled={Boolean(companyIdParam)}
+                        onChange={(e) => setCompanyId(e.target.value)}
+                        placeholder="uuid"
+                      />
                     </div>
+                  )}
+                  {seatPoolQty && (
+                    <Callout variant="info" className="mt-3">
+                      Estás comprando {seatPoolQty} cupo{seatPoolQty === 1 ? "" : "s"} para colaboradores de tu empresa.
+                    </Callout>
                   )}
                 </CardContent>
               </Card>
@@ -213,6 +239,11 @@ function CheckoutForm() {
             <CardContent className="p-6">
               <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">{t("cartTitle")}</h2>
               <p className="text-sm font-medium text-ink-900">{title}</p>
+              {seatPoolQty && (
+                <p className="mt-1 text-xs text-ash-500">
+                  {formatPrice(unitAmount, currency, locale)} × {seatPoolQty} cupos
+                </p>
+              )}
               <div className="mt-4 flex justify-between border-t border-paper-border pt-4 text-sm">
                 <span className="text-ash-600">{t("subtotal")}</span>
                 <span>{formatPrice(amount, currency, locale)}</span>

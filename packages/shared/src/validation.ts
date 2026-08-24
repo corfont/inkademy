@@ -20,6 +20,13 @@ export const loginSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const completeProfileSchema = z.object({
+  // Antes /campus/perfil dejaba editar estos campos pero PATCH /profile no
+  // los aceptaba en absoluto — el nombre/idioma/zona horaria nunca se
+  // guardaban de verdad, ni al tener éxito ni al fallar la llamada.
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  locale: z.enum(["es", "en"]).optional(),
+  timezone: z.string().optional(),
   documentType: z.string().optional(),
   documentNumber: z.string().optional(),
   country: z.string().length(2).optional(),

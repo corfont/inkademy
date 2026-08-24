@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { supportApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_SUPPORT_TICKETS } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
@@ -18,7 +20,8 @@ const PRIORITY_VARIANT: Record<string, "danger" | "warning" | "neutral"> = {
 
 export default async function AdminSupportPage() {
   const locale = await getLocale();
-  const { data: tickets, live } = await withFallback(() => supportApi.tickets(), MOCK_SUPPORT_TICKETS);
+  const accessToken = getServerAccessToken();
+  const { data: tickets, live } = await withFallback(() => supportApi.tickets({}, accessToken), MOCK_SUPPORT_TICKETS);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -38,8 +41,12 @@ export default async function AdminSupportPage() {
           </thead>
           <tbody className="divide-y divide-paper-border">
             {tickets.map((ticket) => (
-              <tr key={ticket.id}>
-                <td className="p-4 font-medium text-ink-900">{ticket.subject}</td>
+              <tr key={ticket.id} className="cursor-pointer hover:bg-paper-muted">
+                <td className="p-0">
+                  <Link href={`/admin/soporte/${ticket.id}`} className="block p-4 font-medium text-ink-900">
+                    {ticket.subject}
+                  </Link>
+                </td>
                 <td className="p-4 text-ash-600">{ticket.category}</td>
                 <td className="p-4 text-ash-600">{formatDate(ticket.createdAt, locale)}</td>
                 <td className="p-4">

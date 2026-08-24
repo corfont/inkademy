@@ -154,6 +154,10 @@ export class CompaniesService {
       id: p.id,
       offeringKind: p.offeringKind,
       offeringTitle: (p.course?.title ?? p.program?.title ?? {}) as Record<string, string>,
+      // Para poder armar el link de "comprar más cupos de esto mismo" desde
+      // el frontend (/empresa/:id/cupos) sin otra llamada.
+      courseId: p.courseId,
+      programId: p.programId,
       seatsPurchased: p.seatsPurchased,
       seatsUsed: p.seatsUsed,
       expiresAt: p.expiresAt,

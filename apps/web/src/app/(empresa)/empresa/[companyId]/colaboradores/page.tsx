@@ -4,6 +4,7 @@ import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { InviteCollaboratorForm } from "@/components/empresa/InviteCollaboratorForm";
+import { RemoveMemberButton } from "@/components/empresa/RemoveMemberButton";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 
@@ -62,6 +63,7 @@ export default async function CollaboratorsPage({ params }: { params: { companyI
               <th className="p-4 font-medium">{t("team")}</th>
               <th className="p-4 font-medium">{t("role")}</th>
               <th className="p-4 font-medium">{t("status")}</th>
+              <th className="p-4 font-medium">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-paper-border">
@@ -77,6 +79,11 @@ export default async function CollaboratorsPage({ params }: { params: { companyI
                   <Badge variant={member.status === "ACTIVE" ? "success" : member.status === "INVITED" ? "warning" : "neutral"}>
                     {member.status}
                   </Badge>
+                </td>
+                <td className="p-4">
+                  {member.status !== "REMOVED" && (
+                    <RemoveMemberButton companyId={params.companyId} membershipId={member.id} memberName={member.name} />
+                  )}
                 </td>
               </tr>
             ))}
