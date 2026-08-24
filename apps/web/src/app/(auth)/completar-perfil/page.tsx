@@ -115,9 +115,14 @@ function CompleteProfileForm() {
               <Input id="jobTitle" {...register("jobTitle")} />
             </div>
             <div>
-              <Label htmlFor="sector">{t("sector")}</Label>
-              <Input id="sector" {...register("sector")} />
+              <Label htmlFor="companyFreeText">{t("companyFreeText")}</Label>
+              <Input id="companyFreeText" {...register("companyFreeText")} />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="sector">{t("sector")}</Label>
+            <Input id="sector" {...register("sector")} />
           </div>
 
           <div>

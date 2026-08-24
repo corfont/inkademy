@@ -1,4 +1,4 @@
-import { Body, Controller, Patch, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { completeProfileSchema } from "@inkademy/shared";
@@ -15,6 +15,12 @@ import { ApiBody } from "@nestjs/swagger";
 @Controller("profile")
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get()
+  @ApiOperation({ summary: "Perfil completo del usuario autenticado (todos los campos, sin passwordHash) — antes solo existía PATCH, sin forma de leerlo de vuelta" })
+  async getProfile(@CurrentUser() user: RequestUser) {
+    return this.usersService.getProfile(user.id);
+  }
 
   @Patch()
   @ApiOperation({ summary: "Completa/actualiza el perfil progresivo del usuario (persona natural)" })

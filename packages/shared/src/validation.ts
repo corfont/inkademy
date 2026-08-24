@@ -19,6 +19,16 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+// Redes sociales del perfil — todas opcionales, cualquier subconjunto.
+export const socialLinksSchema = z.object({
+  linkedin: z.string().url().optional().or(z.literal("")),
+  instagram: z.string().url().optional().or(z.literal("")),
+  facebook: z.string().url().optional().or(z.literal("")),
+  twitter: z.string().url().optional().or(z.literal("")),
+  tiktok: z.string().url().optional().or(z.literal("")),
+});
+export type SocialLinksInput = z.infer<typeof socialLinksSchema>;
+
 export const completeProfileSchema = z.object({
   // Antes /campus/perfil dejaba editar estos campos pero PATCH /profile no
   // los aceptaba en absoluto — el nombre/idioma/zona horaria nunca se
@@ -31,12 +41,17 @@ export const completeProfileSchema = z.object({
   documentNumber: z.string().optional(),
   country: z.string().length(2).optional(),
   city: z.string().optional(),
+  // Antes solo existía country/city — sin una dirección exacta ni fecha de
+  // nacimiento, ambas pedidas explícitamente para el perfil.
+  address: z.string().optional(),
+  birthDate: z.coerce.date().optional(),
   phone: z.string().optional(),
   jobTitle: z.string().optional(),
   companyFreeText: z.string().optional(),
   sector: z.string().optional(),
   interests: z.array(z.string()).optional(),
   experienceLevel: z.enum(["ENTRY", "MID", "SENIOR", "EXECUTIVE"]).optional(),
+  socialLinks: socialLinksSchema.optional(),
   marketingConsentEmail: z.boolean().optional(),
   marketingConsentWhatsapp: z.boolean().optional(),
 });

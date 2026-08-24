@@ -13,6 +13,18 @@ export class UsersService {
     private readonly storageService: StorageService,
   ) {}
 
+  /**
+   * Perfil completo (todos los campos editables, sin passwordHash) — antes
+   * no existía ningún GET, así que /campus/perfil no podía mostrar ni
+   * pre-llenar documento/teléfono/dirección/redes sociales/etc.; el
+   * AuthUser del login/sesión es deliberadamente liviano (solo lo que hace
+   * falta para pintar rol/nombre), no alcanza para esto.
+   */
+  async getProfile(userId: string) {
+    const { passwordHash, ...user } = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    return user;
+  }
+
   async completeProfile(userId: string, input: CompleteProfileInput) {
     const current = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 

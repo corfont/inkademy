@@ -55,12 +55,17 @@ model User {
   documentNumber        String?
   country               String? // ISO-3166 alpha-2
   city                  String?
+  address               String?
+  birthDate             DateTime?
   phone                 String?
   jobTitle              String?
   companyFreeText       String?
   sector                String?
   interests             String[] @default([])
   experienceLevel       ExperienceLevel?
+  // Redes sociales — objeto libre con claves conocidas (linkedin, instagram,
+  // facebook, twitter, tiktok); ver socialLinksSchema en packages/shared.
+  socialLinks           Json?
   marketingConsentEmail    Boolean @default(false)
   marketingConsentWhatsapp Boolean @default(false)
   profileCompletedAt    DateTime?

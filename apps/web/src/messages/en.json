@@ -211,7 +211,8 @@
         "EXECUTIVE": "Executive"
       },
       "submit": "Save and continue",
-      "skip": "Complete later"
+      "skip": "Complete later",
+      "companyFreeText": "Employer"
     },
     "callback": {
       "processing": "Signing you in…",
@@ -314,7 +315,12 @@
       "communication": "Communications",
       "emailConsent": "Receive updates by email",
       "whatsappConsent": "Receive updates by WhatsApp",
-      "saved": "Profile updated."
+      "saved": "Profile updated.",
+      "address": "Address",
+      "birthDate": "Date of birth",
+      "companyFreeText": "Employer",
+      "socialLinks": "Social media",
+      "workData": "Work information"
     },
     "recommendations": {
       "title": "Recommended for you",

@@ -211,7 +211,8 @@
         "EXECUTIVE": "Ejecutivo"
       },
       "submit": "Guardar y continuar",
-      "skip": "Completar más tarde"
+      "skip": "Completar más tarde",
+      "companyFreeText": "Empresa / centro laboral"
     },
     "callback": {
       "processing": "Iniciando sesión…",
@@ -314,7 +315,12 @@
       "communication": "Comunicaciones",
       "emailConsent": "Recibir novedades por correo",
       "whatsappConsent": "Recibir novedades por WhatsApp",
-      "saved": "Perfil actualizado."
+      "saved": "Perfil actualizado.",
+      "address": "Dirección",
+      "birthDate": "Fecha de nacimiento",
+      "companyFreeText": "Empresa / centro laboral",
+      "socialLinks": "Redes sociales",
+      "workData": "Datos laborales"
     },
     "recommendations": {
       "title": "Recomendado para ti",

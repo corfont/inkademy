@@ -110,6 +110,33 @@ async function tryRefresh(): Promise<string | null> {
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
+export interface SocialLinks {
+  linkedin?: string;
+  instagram?: string;
+  facebook?: string;
+  twitter?: string;
+  tiktok?: string;
+}
+
+/** Shape completo de GET /profile — todos los campos del perfil (sin passwordHash). */
+export interface FullProfileDTO extends AuthUser {
+  documentType: string | null;
+  documentNumber: string | null;
+  country: string | null;
+  city: string | null;
+  address: string | null;
+  birthDate: string | null;
+  phone: string | null;
+  jobTitle: string | null;
+  companyFreeText: string | null;
+  sector: string | null;
+  interests: string[];
+  experienceLevel: "ENTRY" | "MID" | "SENIOR" | "EXECUTIVE" | null;
+  socialLinks: SocialLinks | null;
+  marketingConsentEmail: boolean;
+  marketingConsentWhatsapp: boolean;
+}
+
 export const authApi = {
   register: (input: unknown) => apiFetch<{ user: AuthUser; accessToken: string }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
   login: (input: unknown) => apiFetch<{ user: AuthUser; accessToken: string }>("/auth/login", { method: "POST", body: JSON.stringify(input) }),
@@ -117,6 +144,7 @@ export const authApi = {
   me: (accessToken?: string | null) => apiFetch<AuthUser>("/auth/me", { accessToken }),
   forgotPassword: (email: string) => apiFetch<void>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (input: { token: string; password: string }) => apiFetch<void>("/auth/reset-password", { method: "POST", body: JSON.stringify(input) }),
+  getFullProfile: (accessToken?: string | null) => apiFetch<FullProfileDTO>("/profile", { accessToken, cache: "no-store" }),
   completeProfile: (input: unknown, accessToken?: string | null) => apiFetch<AuthUser>("/profile", { method: "PATCH", body: JSON.stringify(input), accessToken }),
   uploadAvatar: (file: File) => {
     const form = new FormData();
