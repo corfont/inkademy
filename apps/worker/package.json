@@ -23,6 +23,7 @@
     "jszip": "^3.10.1",
     "node-forge": "^1.4.0",
     "nodemailer": "^6.9.14",
+    "pdf-lib": "^1.17.1",
     "puppeteer": "^22.15.0",
     "qrcode": "^1.5.4",
     "xml-crypto": "^6.1.2"

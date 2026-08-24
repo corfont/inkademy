@@ -186,6 +186,10 @@ export interface PlatformSettingsDTO {
   contactPhone: string | null;
   contactAddress: string | null;
   courseCardFields: CourseCardFields;
+  institutionSignatureAssetId?: string | null;
+  institutionSignatureUrl?: string | null;
+  institutionSignatureName?: string | null;
+  institutionSignatureTitle?: string | null;
 }
 
 /** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */
@@ -310,6 +314,7 @@ export const certificateApi = {
       title?: LocalizedText;
       issuedAt?: string | null;
       status: "VALID" | "REVOKED";
+      pdfUrl?: string | null;
     }>(`/certificates/verify/${code}`),
   pdfUrl: (id: string) => `${API_URL}/certificates/${id}/pdf`,
   // Antes no existía ningún endpoint para listar certificados emitidos más
@@ -433,15 +438,10 @@ export const adminApi = {
       accessToken,
     }),
   certificateTemplates: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificate-templates", { accessToken }),
-  createCertificateTemplate: (
-    input: { name: string; locale?: string; htmlTemplate: string; active?: boolean },
-    accessToken?: string | null,
-  ) => apiFetch<any>("/admin/certificate-templates", { method: "POST", body: JSON.stringify(input), accessToken }),
-  updateCertificateTemplate: (
-    id: string,
-    input: Partial<{ name: string; htmlTemplate: string; active: boolean }>,
-    accessToken?: string | null,
-  ) => apiFetch<any>(`/admin/certificate-templates/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  createCertificateTemplate: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/certificate-templates", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateCertificateTemplate: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/certificate-templates/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
 
   // --- Catálogo: crear/editar cursos ---
@@ -495,8 +495,11 @@ export const adminApi = {
     apiFetch<any[]>("/admin/users", { query: params, accessToken, cache: "no-store" }),
   createUser: (input: { email: string; firstName: string; lastName: string; globalRole: string }, accessToken?: string | null) =>
     apiFetch<any>("/admin/users", { method: "POST", body: JSON.stringify(input), accessToken }),
-  updateUser: (id: string, input: { globalRole?: string; status?: string }, accessToken?: string | null) =>
-    apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  updateUser: (
+    id: string,
+    input: { globalRole?: string; status?: string; signatureAssetId?: string | null },
+    accessToken?: string | null,
+  ) => apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
 
   // --- Docentes asignados a un curso ---
   courseStaff: (courseId: string, accessToken?: string | null) =>

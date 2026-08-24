@@ -66,6 +66,13 @@ model User {
   // Redes sociales — objeto libre con claves conocidas (linkedin, instagram,
   // facebook, twitter, tiktok); ver socialLinksSchema en packages/shared.
   socialLinks           Json?
+
+  // Firma manuscrita/imagen del docente (PNG/JPG, idealmente fondo
+  // transparente) — se usa al generar el certificado si la plantilla
+  // incluye el tag {{teacherSignature}}. Solo tiene sentido para docentes,
+  // pero se guarda en User (no en un modelo aparte) porque el docente ya
+  // es un User con globalRole=TEACHER.
+  signatureAssetId      String?
   marketingConsentEmail    Boolean @default(false)
   marketingConsentWhatsapp Boolean @default(false)
   profileCompletedAt    DateTime?
@@ -631,14 +638,38 @@ model ApprovalRule {
   requiresAssignment Boolean @default(false)
 }
 
+// HTML: la plantilla es un documento HTML con tags {{tag}} (ver
+// certificate.processor.ts renderPlaceholders) que se renderiza con
+// Puppeteer. BACKGROUND: la plantilla es un archivo de diseño ya
+// maquetado (PDF, PNG o JPG, ver backgroundMimeType) sobre el que se
+// "estampan" los tags en las coordenadas de tagPositions usando pdf-lib
+// — si el fondo es PDF se preserva calidad vectorial; si es PNG/JPG se
+// incrusta como imagen de fondo de una página nueva.
+enum CertificateTemplateSourceType {
+  HTML
+  BACKGROUND
+}
+
 model CertificateTemplate {
   id           String   @id @default(uuid())
   name         String
   locale       String   @default("es")
-  htmlTemplate String   @db.Text
+  htmlTemplate String   @db.Text // solo aplica si sourceType=HTML (se guarda "" si es BACKGROUND)
   version      Int      @default(1)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
+
+  sourceType         CertificateTemplateSourceType @default(HTML)
+  backgroundAssetId  String? // PDF/PNG/JPG subido como diseño de fondo — solo si sourceType=BACKGROUND
+  backgroundMimeType String? // application/pdf | image/png | image/jpeg
+  // Tamaño de página en puntos PDF (72pt = 1 pulgada). Si el fondo es un PDF,
+  // se ignoran y se usa el tamaño real de esa página.
+  pageWidthPt  Float? @default(841.89) // A4 horizontal
+  pageHeightPt Float? @default(595.28)
+  // [{ tag, xPercent, yPercent, fontSizePt?, color?, align?, widthPercent?, heightPercent? }]
+  // Posición de cada tag relativa a la página (0-100%, origen arriba-izquierda,
+  // igual que en la vista previa) — solo aplica si sourceType=BACKGROUND.
+  tagPositions Json?
 
   certificates Certificate[]
   courses      Course[]
@@ -1057,6 +1088,13 @@ model PlatformSettings {
   // showCertificationBadge. Si una clave no está presente, se asume true
   // (comportamiento anterior, sin este control) — ver DEFAULT_COURSE_CARD_FIELDS.
   courseCardFields    Json?
+
+  // Firma institucional para certificados (p.ej. Gerente General/Responsable
+  // de Inkapitales) — se usa si la plantilla incluye
+  // {{institutionSignature}}/{{institutionSignatureName}}/{{institutionSignatureTitle}}.
+  institutionSignatureAssetId String?
+  institutionSignatureName    String? // p.ej. "Juan Pérez López"
+  institutionSignatureTitle   String? // p.ej. "Gerente General"
 
   updatedAt           DateTime @updatedAt
 }

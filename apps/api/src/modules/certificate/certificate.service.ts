@@ -269,6 +269,11 @@ export class CertificateService {
       title: (certificate.course?.title ?? certificate.program?.title ?? {}) as Record<string, string>,
       issuedAt: certificate.issuedAt.toISOString(),
       status: certificate.revoked ? "REVOKED" : "VALID",
+      // Antes /verificar/:codigo solo mostraba texto (titular/curso/fecha)
+      // sin forma de ver el PDF real ya llenado — es información pública
+      // (cualquiera con el código puede verificar), así que exponer el PDF
+      // acá es consistente con el propósito mismo de la verificación.
+      pdfUrl: certificate.pdfAssetId ? this.storage.getPublicUrl(certificate.pdfAssetId) : null,
     };
   }
 

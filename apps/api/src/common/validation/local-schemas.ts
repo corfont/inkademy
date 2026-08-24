@@ -126,16 +126,40 @@ export const upsertProgramSchema = z.object({
 });
 export const updateProgramSchema = upsertProgramSchema.partial();
 
+const tagPositionSchema = z.object({
+  tag: z.string().min(1),
+  xPercent: z.number().min(0).max(100),
+  yPercent: z.number().min(0).max(100),
+  fontSizePt: z.number().positive().optional(),
+  color: z.string().optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
+  widthPercent: z.number().positive().max(100).optional(),
+  heightPercent: z.number().positive().max(100).optional(),
+});
+
 export const upsertCertificateTemplateSchema = z.object({
   name: z.string().min(1),
   locale: z.string().optional(),
-  htmlTemplate: z.string().min(1),
+  // htmlTemplate es obligatorio si sourceType=HTML; se valida con .refine más abajo.
+  htmlTemplate: z.string().optional().default(""),
   active: z.boolean().optional(),
+  sourceType: z.enum(["HTML", "BACKGROUND"]).optional(),
+  backgroundAssetId: z.string().optional().nullable(),
+  backgroundMimeType: z.string().optional().nullable(),
+  pageWidthPt: z.number().positive().optional(),
+  pageHeightPt: z.number().positive().optional(),
+  tagPositions: z.array(tagPositionSchema).optional(),
 });
 export const updateCertificateTemplateSchema = z.object({
   name: z.string().min(1).optional(),
-  htmlTemplate: z.string().min(1).optional(),
+  htmlTemplate: z.string().optional(),
   active: z.boolean().optional(),
+  sourceType: z.enum(["HTML", "BACKGROUND"]).optional(),
+  backgroundAssetId: z.string().optional().nullable(),
+  backgroundMimeType: z.string().optional().nullable(),
+  pageWidthPt: z.number().positive().optional(),
+  pageHeightPt: z.number().positive().optional(),
+  tagPositions: z.array(tagPositionSchema).optional(),
 });
 
 export const createCalendarEventSchema = z.object({
@@ -229,6 +253,8 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z.object({
   globalRole: z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"]).optional(),
   status: z.enum(["active", "disabled"]).optional(),
+  // Firma manuscrita/imagen del docente, usada en certificados con tag {{teacherSignature}}.
+  signatureAssetId: z.string().optional().nullable(),
 });
 
 export const assignCourseStaffSchema = z.object({
@@ -319,4 +345,7 @@ export const upsertSettingsSchema = z.object({
       showCertificationBadge: z.boolean().optional(),
     })
     .optional(),
+  institutionSignatureAssetId: z.string().optional().nullable(),
+  institutionSignatureName: z.string().optional().nullable(),
+  institutionSignatureTitle: z.string().optional().nullable(),
 });

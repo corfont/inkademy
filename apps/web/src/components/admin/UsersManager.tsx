@@ -18,6 +18,8 @@ interface UserRow {
   globalRole: string;
   status: string;
   createdAt: string;
+  signatureAssetId?: string | null;
+  signatureUrl?: string | null;
 }
 
 export function UsersManager() {
@@ -84,6 +86,7 @@ export function UsersManager() {
                     <th className="p-2 font-medium">Nombre</th>
                     <th className="p-2 font-medium">Correo</th>
                     <th className="p-2 font-medium">Rol</th>
+                    <th className="p-2 font-medium">Firma</th>
                     <th className="p-2 font-medium">Estado</th>
                     <th className="p-2 font-medium">Acciones</th>
                   </tr>
@@ -132,6 +135,31 @@ function UserRowItem({ user, onChange }: { user: UserRow; onChange: () => void }
     }
   }
 
+  async function handleSignatureUpload(file: File) {
+    setBusy(true);
+    setRowError(null);
+    try {
+      const { assetId } = await adminApi.uploadAsset(file);
+      await adminApi.updateUser(user.id, { signatureAssetId: assetId });
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos subir la firma.");
+      setBusy(false);
+    }
+  }
+
+  async function handleSignatureRemove() {
+    setBusy(true);
+    setRowError(null);
+    try {
+      await adminApi.updateUser(user.id, { signatureAssetId: null });
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos quitar la firma.");
+      setBusy(false);
+    }
+  }
+
   return (
     <tr className="border-b border-paper-border last:border-0">
       <td className="p-2">
@@ -146,6 +174,30 @@ function UserRowItem({ user, onChange }: { user: UserRow; onChange: () => void }
             </option>
           ))}
         </Select>
+      </td>
+      <td className="p-2">
+        {user.globalRole !== "TEACHER" ? (
+          <span className="text-xs text-ash-400">Solo docentes</span>
+        ) : user.signatureUrl ? (
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={user.signatureUrl} alt="Firma" className="h-8 w-16 rounded border border-paper-border object-contain bg-paper" />
+            <Button size="sm" variant="ghost" disabled={busy} onClick={handleSignatureRemove}>
+              Quitar
+            </Button>
+          </div>
+        ) : (
+          <label className="cursor-pointer text-xs font-medium text-ink-700 hover:underline">
+            Subir firma
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              disabled={busy}
+              onChange={(e) => e.target.files?.[0] && handleSignatureUpload(e.target.files[0])}
+            />
+          </label>
+        )}
       </td>
       <td className="p-2">
         <Badge variant={user.status === "active" ? "success" : "danger"}>{user.status === "active" ? "Activa" : "Desactivada"}</Badge>

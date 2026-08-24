@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { CheckCircle2, XCircle, ShieldAlert } from "lucide-react";
+import { CheckCircle2, XCircle, ShieldAlert, FileDown } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { certificateApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { MOCK_CERTIFICATES } from "@/lib/mock-data";
+import { Button } from "@/components/ui/Button";
 import { formatDate, localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Verificar certificado" };
@@ -59,6 +60,16 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
                   <dd>{result.issuedAt ? formatDate(result.issuedAt, locale) : "—"}</dd>
                 </div>
               </dl>
+              {result.pdfUrl ? (
+                <a href={result.pdfUrl} target="_blank" rel="noreferrer" className="mt-6 block">
+                  <Button className="w-full gap-2">
+                    <FileDown className="h-4 w-4" aria-hidden="true" />
+                    Ver / descargar PDF del certificado
+                  </Button>
+                </a>
+              ) : (
+                <p className="mt-6 text-xs text-ash-400">El PDF todavía se está generando — vuelve a intentarlo en unos minutos.</p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 text-ash-500">

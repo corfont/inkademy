@@ -416,7 +416,24 @@ export class AdminService {
     return this.prisma.certificateTemplate.findMany({ orderBy: { createdAt: "desc" } });
   }
 
-  async createCertificateTemplate(input: { name: string; locale?: string; htmlTemplate: string; active?: boolean }) {
+  async createCertificateTemplate(input: {
+    name: string;
+    locale?: string;
+    htmlTemplate?: string;
+    active?: boolean;
+    sourceType?: "HTML" | "BACKGROUND";
+    backgroundAssetId?: string | null;
+    backgroundMimeType?: string | null;
+    pageWidthPt?: number;
+    pageHeightPt?: number;
+    tagPositions?: unknown;
+  }) {
+    if ((input.sourceType ?? "HTML") === "HTML" && !input.htmlTemplate?.trim()) {
+      throw new BadRequestException("El HTML de la plantilla es obligatorio para plantillas de tipo HTML");
+    }
+    if (input.sourceType === "BACKGROUND" && !input.backgroundAssetId) {
+      throw new BadRequestException("Falta subir el archivo de fondo (PDF/PNG/JPG) de la plantilla");
+    }
     const previousVersion = await this.prisma.certificateTemplate.findFirst({
       where: { name: input.name },
       orderBy: { version: "desc" },
@@ -425,15 +442,21 @@ export class AdminService {
       data: {
         name: input.name,
         locale: input.locale ?? "es",
-        htmlTemplate: input.htmlTemplate,
+        htmlTemplate: input.htmlTemplate ?? "",
         active: input.active ?? true,
         version: (previousVersion?.version ?? 0) + 1,
+        sourceType: input.sourceType ?? "HTML",
+        backgroundAssetId: input.backgroundAssetId,
+        backgroundMimeType: input.backgroundMimeType,
+        pageWidthPt: input.pageWidthPt,
+        pageHeightPt: input.pageHeightPt,
+        tagPositions: input.tagPositions as never,
       },
     });
   }
 
-  updateCertificateTemplate(id: string, input: Partial<{ name: string; htmlTemplate: string; active: boolean }>) {
-    return this.prisma.certificateTemplate.update({ where: { id }, data: input });
+  updateCertificateTemplate(id: string, input: Record<string, unknown>) {
+    return this.prisma.certificateTemplate.update({ where: { id }, data: input as never });
   }
 
   // --- Empresas ---
@@ -517,6 +540,10 @@ export class AdminService {
       globalRole: u.globalRole,
       status: u.status,
       createdAt: u.createdAt.toISOString(),
+      // Firma para certificados (solo tiene sentido para TEACHER, pero se
+      // devuelve para cualquier fila — la UI solo la ofrece para docentes).
+      signatureAssetId: u.signatureAssetId,
+      signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
     }));
   }
 
@@ -563,7 +590,7 @@ export class AdminService {
    * soportara. No se permite que un admin se desactive o se quite el rol
    * ADMIN a sí mismo (evita quedar sin ningún admin con acceso).
    */
-  async updateUser(id: string, actorId: string, input: { globalRole?: string; status?: string }) {
+  async updateUser(id: string, actorId: string, input: { globalRole?: string; status?: string; signatureAssetId?: string | null }) {
     if (id === actorId && (input.status === "disabled" || (input.globalRole && input.globalRole !== "ADMIN"))) {
       throw new BadRequestException("No puedes desactivar tu propia cuenta ni quitarte el rol de administrador");
     }

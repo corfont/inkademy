@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { StorageService } from "../../storage/storage.service";
 
 const SETTINGS_ID = "default";
 
@@ -27,7 +28,10 @@ const DEFAULTS = {
 
 @Injectable()
 export class SettingsService {
-  constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly storage: StorageService,
+  ) {}
 
   /**
    * Fila única; si nunca se guardó nada, devuelve los valores de marca
@@ -39,13 +43,14 @@ export class SettingsService {
    */
   async get() {
     const row = await this.prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
-    if (!row) return DEFAULTS;
+    if (!row) return { ...DEFAULTS, institutionSignatureAssetId: null, institutionSignatureUrl: null, institutionSignatureName: null, institutionSignatureTitle: null };
     return {
       ...row,
       contactEmail: row.contactEmail ?? DEFAULTS.contactEmail,
       contactPhone: row.contactPhone ?? DEFAULTS.contactPhone,
       contactAddress: row.contactAddress ?? DEFAULTS.contactAddress,
       courseCardFields: (row.courseCardFields as Record<string, boolean> | null) ?? DEFAULTS.courseCardFields,
+      institutionSignatureUrl: row.institutionSignatureAssetId ? this.storage.getPublicUrl(row.institutionSignatureAssetId) : null,
     };
   }
 

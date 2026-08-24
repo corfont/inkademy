@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 // Cliente S3-compatible. En dev apunta a MinIO; en prod a S3/Azure Blob/GCS
 // (interfaz S3) sin cambiar código — ver docs/DEPLOYMENT.md.
@@ -44,4 +44,28 @@ export async function uploadBuffer(
     assetId: key,
     publicUrl: `${base.replace(/\/$/, "")}/${key}`,
   };
+}
+
+/** URL pública directa de un asset ya subido (para que Puppeteer la cargue por red al renderizar HTML). */
+export function getPublicUrl(key: string): string | null {
+  const base = process.env.S3_PUBLIC_BASE_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/${key}`;
+}
+
+/**
+ * Descarga el contenido completo de un objeto (firma de docente, firma
+ * institucional, fondo de plantilla PDF/PNG/JPG) para incrustarlo con
+ * pdf-lib al generar el certificado — a diferencia de uploadBuffer/las URLs
+ * públicas (pensadas para que el navegador o Puppeteer las carguen), acá
+ * necesitamos los bytes crudos en el propio proceso del worker.
+ */
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const bucket = process.env.S3_BUCKET ?? "inkademy-assets";
+  const result = await getClient().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const chunks: Buffer[] = [];
+  for await (const chunk of result.Body as AsyncIterable<Buffer>) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 }

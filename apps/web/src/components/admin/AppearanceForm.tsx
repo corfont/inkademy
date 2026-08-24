@@ -51,6 +51,19 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
     }
   }
 
+  async function handleInstitutionSignatureUpload(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const { assetId, url } = await adminApi.uploadAsset(file);
+      setForm((f) => ({ ...f, institutionSignatureAssetId: assetId, institutionSignatureUrl: url }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos subir la firma.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -67,6 +80,9 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
         contactPhone: form.contactPhone,
         contactAddress: form.contactAddress,
         courseCardFields: form.courseCardFields,
+        institutionSignatureAssetId: form.institutionSignatureAssetId,
+        institutionSignatureName: form.institutionSignatureName,
+        institutionSignatureTitle: form.institutionSignatureTitle,
       });
       setSaved(true);
       router.refresh();
@@ -236,6 +252,62 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                 id="contact-address"
                 value={form.contactAddress ?? ""}
                 onChange={(e) => setForm((f) => ({ ...f, contactAddress: e.target.value }))}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Firma institucional (certificados)</h2>
+          <p className="text-sm text-ash-500">
+            Quien firma por Inkapitales en los certificados (p. ej. el Gerente General) — se usa si la plantilla del
+            certificado incluye los tags <code>{"{{institutionSignatureImage}}"}</code>, <code>{"{{institutionSignatureName}}"}</code>{" "}
+            y/o <code>{"{{institutionSignatureTitle}}"}</code>. La firma de cada docente se administra en{" "}
+            <a href="/admin/usuarios" className="underline">
+              Usuarios y roles
+            </a>
+            .
+          </p>
+          <div className="flex items-center gap-6">
+            <div className="flex h-16 w-32 items-center justify-center rounded-md border border-dashed border-paper-border bg-paper-muted">
+              {form.institutionSignatureUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.institutionSignatureUrl} alt="Firma institucional" className="max-h-full max-w-full object-contain" />
+              ) : (
+                <span className="text-xs text-ash-400">Sin firma</span>
+              )}
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 hover:underline">
+              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+              {uploading ? "Subiendo…" : "Subir imagen de firma"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => e.target.files?.[0] && handleInstitutionSignatureUpload(e.target.files[0])}
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="institution-signature-name">Nombre de quien firma</Label>
+              <Input
+                id="institution-signature-name"
+                value={form.institutionSignatureName ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, institutionSignatureName: e.target.value }))}
+                placeholder="Juan Pérez López"
+              />
+            </div>
+            <div>
+              <Label htmlFor="institution-signature-title">Cargo</Label>
+              <Input
+                id="institution-signature-title"
+                value={form.institutionSignatureTitle ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, institutionSignatureTitle: e.target.value }))}
+                placeholder="Gerente General"
               />
             </div>
           </div>
