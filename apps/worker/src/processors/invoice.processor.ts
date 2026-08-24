@@ -4,7 +4,8 @@ import type { InvoiceGenerateJobData } from "../queues";
 import { createLogger } from "../lib/logger";
 import { buildUblInvoiceXml, type SunatDocumentType } from "../lib/sunat/ubl-invoice";
 import { resolveSunatCertificate, signUblXml } from "../lib/sunat/sign";
-import { buildFileName, sendBill, zipSignedXml, type SunatEnv } from "../lib/sunat/soap-client";
+import { buildFileName, sendBill, zipSignedXml } from "../lib/sunat/soap-client";
+import { resolveSunatConfig } from "../lib/sunat/config";
 
 const logger = createLogger("invoice.processor");
 
@@ -66,9 +67,8 @@ export async function processInvoiceGenerateJob(job: Job<InvoiceGenerateJobData>
       .filter(Boolean)
       .join(" + ") || "Servicio educativo Inkademy";
 
-  const sunatRuc = process.env.SUNAT_RUC;
-  const solUser = process.env.SUNAT_SOL_USER;
-  const solPassword = process.env.SUNAT_SOL_PASSWORD;
+  const sunatConfig = await resolveSunatConfig();
+  const { ruc: sunatRuc, solUser, solPassword } = sunatConfig;
   const hasRealCredentials = Boolean(sunatRuc && solUser && solPassword);
 
   if (invoice.currency !== "PEN") {
@@ -92,7 +92,7 @@ export async function processInvoiceGenerateJob(job: Job<InvoiceGenerateJobData>
   // pero CADA EMPRESA debe confirmarlo con su contador según su caso
   // específico (p.ej. capacitación corporativa no reglada podría estar
   // gravada). Configurable vía SUNAT_TAX_AFFECTATION=GRAVADO para cambiarlo.
-  const igvExempt = (process.env.SUNAT_TAX_AFFECTATION ?? "EXONERADO").toUpperCase() !== "GRAVADO";
+  const igvExempt = sunatConfig.taxAffectation !== "GRAVADO";
 
   const documentTypeCode: "01" | "03" = invoice.documentType === "FACTURA" ? "01" : "03";
 
@@ -104,9 +104,9 @@ export async function processInvoiceGenerateJob(job: Job<InvoiceGenerateJobData>
     currency: invoice.currency as "PEN" | "USD",
     supplier: {
       ruc: sunatRuc ?? "20000000001",
-      legalName: process.env.SUNAT_RAZON_SOCIAL ?? "Inkapitales SAC",
-      address: process.env.SUNAT_ADDRESS ?? "Lima, Peru",
-      ubigeo: process.env.SUNAT_UBIGEO ?? "150101",
+      legalName: sunatConfig.razonSocial,
+      address: sunatConfig.address,
+      ubigeo: sunatConfig.ubigeo,
     },
     buyer: {
       documentType: invoice.buyerDocumentType,
@@ -117,7 +117,7 @@ export async function processInvoiceGenerateJob(job: Job<InvoiceGenerateJobData>
     line: { description, quantity: 1, unitPrice: Number(invoice.totalAmount) },
   });
 
-  const cert = resolveSunatCertificate(sunatRuc ?? "20000000001");
+  const cert = resolveSunatCertificate(sunatRuc ?? "20000000001", sunatConfig.certPem, sunatConfig.certKeyPem);
   const signedXml = signUblXml(unsignedXml, cert);
 
   if (!hasRealCredentials) {
@@ -136,10 +136,9 @@ export async function processInvoiceGenerateJob(job: Job<InvoiceGenerateJobData>
   try {
     const fileName = buildFileName(sunatRuc!, documentTypeCode, invoice.series, invoice.correlativo);
     const zipBuffer = await zipSignedXml(fileName, signedXml);
-    const env: SunatEnv = (process.env.SUNAT_ENV ?? "beta").toLowerCase() === "production" ? "production" : "beta";
 
     const result = await sendBill({
-      env,
+      env: sunatConfig.env,
       solUser: solUser!,
       solPassword: solPassword!,
       ruc: sunatRuc!,

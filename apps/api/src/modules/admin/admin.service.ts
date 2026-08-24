@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import * as argon2 from "argon2";
 import type { PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -469,5 +470,120 @@ export class AdminService {
       invoiceStatus: o.electronicInvoice?.status ?? null,
       createdAt: o.createdAt.toISOString(),
     }));
+  }
+
+  // ==========================================================================
+  // Usuarios y roles — antes no existía NINGÚN endpoint para listar cuentas,
+  // cambiar el rol de alguien, o desactivar un acceso. La única forma de
+  // crear una cuenta era el registro público (siempre STUDENT) o
+  // prisma/seed.ts a mano.
+  // ==========================================================================
+
+  async listUsers(params: { q?: string; role?: string }) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        ...(params.role ? { globalRole: params.role as never } : {}),
+        ...(params.q
+          ? {
+              OR: [
+                { email: { contains: params.q, mode: "insensitive" as const } },
+                { firstName: { contains: params.q, mode: "insensitive" as const } },
+                { lastName: { contains: params.q, mode: "insensitive" as const } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    return users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      displayName: u.displayName,
+      globalRole: u.globalRole,
+      status: u.status,
+      createdAt: u.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Crea una cuenta directamente (sin pasar por el registro público) —
+   * pensado para dar de alta docentes/soporte/otros admins. Genera una
+   * contraseña temporal aleatoria y la devuelve UNA sola vez en la
+   * respuesta (nunca se vuelve a poder leer) para que el admin se la pase
+   * a la persona; el usuario puede cambiarla luego con "¿Olvidaste tu
+   * contraseña?" si lo prefiere.
+   */
+  async createUser(input: { email: string; firstName: string; lastName: string; globalRole: string }) {
+    const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) throw new BadRequestException("Ya existe una cuenta con ese correo");
+
+    const tempPassword = randomUUID().slice(0, 12);
+    const passwordHash = await argon2.hash(tempPassword);
+    const user = await this.prisma.user.create({
+      data: {
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        globalRole: input.globalRole as never,
+        passwordHash,
+        emailVerifiedAt: new Date(), // creada directamente por un admin — se confía en el correo
+      },
+    });
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      globalRole: user.globalRole,
+      status: user.status,
+      tempPassword,
+    };
+  }
+
+  /**
+   * Cambia el rol global y/o el estado (activa/desactiva el acceso) de una
+   * cuenta. `status: "disabled"` ya lo respeta AuthService.login (rechaza
+   * con "Cuenta deshabilitada") — antes nada escribía ese campo, así que
+   * la desactivación de cuentas no era posible aunque el login ya la
+   * soportara. No se permite que un admin se desactive o se quite el rol
+   * ADMIN a sí mismo (evita quedar sin ningún admin con acceso).
+   */
+  async updateUser(id: string, actorId: string, input: { globalRole?: string; status?: string }) {
+    if (id === actorId && (input.status === "disabled" || (input.globalRole && input.globalRole !== "ADMIN"))) {
+      throw new BadRequestException("No puedes desactivar tu propia cuenta ni quitarte el rol de administrador");
+    }
+    return this.prisma.user.update({ where: { id }, data: input as never });
+  }
+
+  // --- Docentes asignados a un curso (CourseStaff) ---
+
+  async listCourseStaff(courseId: string) {
+    const rows = await this.prisma.courseStaff.findMany({ where: { courseId }, include: { user: true } });
+    return rows.map((s) => ({
+      id: s.id,
+      role: s.role,
+      userId: s.userId,
+      userEmail: s.user.email,
+      userName: `${s.user.firstName} ${s.user.lastName}`,
+    }));
+  }
+
+  /** Busca por correo en vez de pedir el id — el admin no tiene por qué saber el uuid de memoria. */
+  async assignCourseStaff(courseId: string, input: { email: string; role: string }) {
+    const user = await this.prisma.user.findUnique({ where: { email: input.email } });
+    if (!user) throw new NotFoundException("No existe un usuario con ese correo");
+    return this.prisma.courseStaff.upsert({
+      where: { courseId_userId_role: { courseId, userId: user.id, role: input.role as never } },
+      create: { courseId, userId: user.id, role: input.role as never },
+      update: {},
+    });
+  }
+
+  async removeCourseStaff(id: string) {
+    await this.prisma.courseStaff.delete({ where: { id } });
+    return { deleted: true };
   }
 }

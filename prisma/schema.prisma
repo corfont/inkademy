@@ -1040,3 +1040,28 @@ model PlatformSettings {
 
   updatedAt           DateTime @updatedAt
 }
+
+/// Credenciales y datos de facturación electrónica SUNAT (Perú), editables
+/// desde /admin/facturacion — antes SOLO se podían configurar vía variables
+/// de entorno (.env), sin ninguna pantalla. apps/worker (invoice.processor.ts
+/// / credit-note.processor.ts) lee esta fila primero y cae a las variables
+/// de entorno si no existe o algún campo viene vacío — así un despliegue
+/// existente que ya configuró todo por .env sigue funcionando igual.
+model SunatSettings {
+  id                  String   @id @default("default")
+  env                 String   @default("beta") // beta | production
+  ruc                 String?
+  solUser             String?
+  solPassword         String? // nunca se devuelve tal cual al frontend (ver SunatSettingsService.get)
+  razonSocial         String?
+  address             String?
+  ubigeo              String?
+  boletaSeries        String?
+  facturaSeries       String?
+  boletaCreditSeries  String?
+  facturaCreditSeries String?
+  certPem             String?  @db.Text // nunca se devuelve tal cual al frontend
+  certKeyPem          String?  @db.Text // nunca se devuelve tal cual al frontend
+  taxAffectation      String   @default("EXONERADO") // EXONERADO | GRAVADO
+  updatedAt           DateTime @updatedAt
+}

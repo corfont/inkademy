@@ -4,13 +4,17 @@ import { Public } from "../../common/decorators/public.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { upsertSettingsSchema } from "../../common/validation/local-schemas";
+import { upsertSettingsSchema, upsertSunatSettingsSchema } from "../../common/validation/local-schemas";
 import { SettingsService } from "./settings.service";
+import { SunatSettingsService } from "./sunat-settings.service";
 
 @ApiTags("settings")
 @Controller()
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly sunatSettingsService: SunatSettingsService,
+  ) {}
 
   @Public()
   @Get("settings")
@@ -26,5 +30,23 @@ export class SettingsController {
   @ApiOperation({ summary: "Actualiza la identidad visual de la plataforma" })
   update(@Body(new ZodValidationPipe(upsertSettingsSchema)) dto: any) {
     return this.settingsService.update(dto);
+  }
+
+  @Get("admin/sunat-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Configuración de facturación electrónica SUNAT (los secretos nunca se devuelven en texto plano)" })
+  getSunatSettings() {
+    return this.sunatSettingsService.get();
+  }
+
+  @Patch("admin/sunat-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Actualiza la configuración de facturación electrónica SUNAT" })
+  updateSunatSettings(@Body(new ZodValidationPipe(upsertSunatSettingsSchema)) dto: any) {
+    return this.sunatSettingsService.update(dto);
   }
 }

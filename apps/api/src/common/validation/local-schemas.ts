@@ -216,6 +216,42 @@ export const upsertQuestionSchema = z.object({
 });
 export const updateQuestionSchema = upsertQuestionSchema.partial();
 
+// --- Usuarios y roles (admin) ---
+export const createUserSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  globalRole: z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"]),
+});
+
+export const updateUserSchema = z.object({
+  globalRole: z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"]).optional(),
+  status: z.enum(["active", "disabled"]).optional(),
+});
+
+export const assignCourseStaffSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(["TEACHER", "CO_TEACHER", "MODERATOR"]),
+});
+
+// --- Facturación electrónica SUNAT (credenciales/series) ---
+export const upsertSunatSettingsSchema = z.object({
+  env: z.enum(["beta", "production"]).optional(),
+  ruc: z.string().length(11).optional().nullable(),
+  solUser: z.string().optional().nullable(),
+  solPassword: z.string().optional(), // vacío = "no cambiar" (ver SunatSettingsService.update)
+  razonSocial: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  ubigeo: z.string().optional().nullable(),
+  boletaSeries: z.string().optional().nullable(),
+  facturaSeries: z.string().optional().nullable(),
+  boletaCreditSeries: z.string().optional().nullable(),
+  facturaCreditSeries: z.string().optional().nullable(),
+  certPem: z.string().optional(),
+  certKeyPem: z.string().optional(),
+  taxAffectation: z.enum(["EXONERADO", "GRAVADO"]).optional(),
+});
+
 export const rescheduleLiveSessionSchema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),

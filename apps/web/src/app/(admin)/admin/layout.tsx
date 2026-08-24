@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, MessageSquarePlus, Receipt, Gift, LogOut } from "lucide-react";
+import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, MessageSquarePlus, Receipt, Gift, FileSpreadsheet, Users, LogOut } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -12,9 +12,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/catalogo", label: t("catalog"), icon: LibraryBig },
+    { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users },
     { href: "/admin/empresas", label: t("companies"), icon: Building2 },
     { href: "/admin/ordenes", label: "Órdenes", icon: Receipt },
     { href: "/admin/cortesias", label: "Cortesías", icon: Gift },
+    { href: "/admin/facturacion", label: "Facturación (SUNAT)", icon: FileSpreadsheet },
     { href: "/admin/soporte", label: t("support"), icon: LifeBuoy },
     { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus },
     { href: "/admin/certificados", label: t("certificates"), icon: Award },

@@ -4,7 +4,8 @@ import type { InvoiceGenerateNoteJobData } from "../queues";
 import { createLogger } from "../lib/logger";
 import { buildUblNoteXml, type SunatNoteType } from "../lib/sunat/ubl-credit-note";
 import { resolveSunatCertificate, signUblXml } from "../lib/sunat/sign";
-import { buildFileName, sendBill, zipSignedXml, type SunatEnv } from "../lib/sunat/soap-client";
+import { buildFileName, sendBill, zipSignedXml } from "../lib/sunat/soap-client";
+import { resolveSunatConfig } from "../lib/sunat/config";
 
 const logger = createLogger("credit-note.processor");
 
@@ -41,9 +42,8 @@ export async function processInvoiceGenerateNoteJob(job: Job<InvoiceGenerateNote
       }
     : { documentType: "1", documentNumber: "00000000", legalName: "Cliente varios" };
 
-  const sunatRuc = process.env.SUNAT_RUC;
-  const solUser = process.env.SUNAT_SOL_USER;
-  const solPassword = process.env.SUNAT_SOL_PASSWORD;
+  const sunatConfig = await resolveSunatConfig();
+  const { ruc: sunatRuc, solUser, solPassword } = sunatConfig;
   const hasRealCredentials = Boolean(sunatRuc && solUser && solPassword);
 
   if (note.currency !== "PEN") {
@@ -54,7 +54,7 @@ export async function processInvoiceGenerateNoteJob(job: Job<InvoiceGenerateNote
     return;
   }
 
-  const igvExempt = (process.env.SUNAT_TAX_AFFECTATION ?? "EXONERADO").toUpperCase() !== "GRAVADO";
+  const igvExempt = sunatConfig.taxAffectation !== "GRAVADO";
   const referenceDocTypeCode: "01" | "03" = note.referenceDocType === "FACTURA" ? "01" : "03";
   const noteDocTypeCode: "07" | "08" = note.noteType === "CREDIT" ? "07" : "08";
 
@@ -73,16 +73,16 @@ export async function processInvoiceGenerateNoteJob(job: Job<InvoiceGenerateNote
     reasonDescription: note.reasonDescription,
     supplier: {
       ruc: sunatRuc ?? "20000000001",
-      legalName: process.env.SUNAT_RAZON_SOCIAL ?? "Inkapitales SAC",
-      address: process.env.SUNAT_ADDRESS ?? "Lima, Peru",
-      ubigeo: process.env.SUNAT_UBIGEO ?? "150101",
+      legalName: sunatConfig.razonSocial,
+      address: sunatConfig.address,
+      ubigeo: sunatConfig.ubigeo,
     },
     buyer,
     igvExempt,
     line: { description: `Anulación: ${note.reasonDescription}`, quantity: 1, unitPrice: Number(note.totalAmount) },
   });
 
-  const cert = resolveSunatCertificate(sunatRuc ?? "20000000001");
+  const cert = resolveSunatCertificate(sunatRuc ?? "20000000001", sunatConfig.certPem, sunatConfig.certKeyPem);
   const signedXml = signUblXml(unsignedXml, cert);
 
   if (!hasRealCredentials) {
@@ -94,9 +94,8 @@ export async function processInvoiceGenerateNoteJob(job: Job<InvoiceGenerateNote
   try {
     const fileName = buildFileName(sunatRuc!, noteDocTypeCode, note.series, note.correlativo);
     const zipBuffer = await zipSignedXml(fileName, signedXml);
-    const env: SunatEnv = (process.env.SUNAT_ENV ?? "beta").toLowerCase() === "production" ? "production" : "beta";
 
-    const result = await sendBill({ env, solUser: solUser!, solPassword: solPassword!, ruc: sunatRuc!, fileName, zipBuffer });
+    const result = await sendBill({ env: sunatConfig.env, solUser: solUser!, solPassword: solPassword!, ruc: sunatRuc!, fileName, zipBuffer });
 
     if (result.hasCdr && result.responseCode === "0") {
       await prisma.electronicNote.update({

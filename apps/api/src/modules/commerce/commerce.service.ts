@@ -328,6 +328,27 @@ export class CommerceService {
    * matrícula, que ya ocurrió; queda como log de advertencia y la orden
    * simplemente no tiene electronicInvoice (se puede reintentar a mano).
    */
+  /**
+   * Lee la serie configurada en /admin/facturacion (fila SunatSettings) con
+   * fallback a la variable de entorno correspondiente y luego al default —
+   * mismo criterio de prioridad que apps/worker/src/lib/sunat/config.ts.
+   */
+  private async resolveSunatSeries(
+    field: "boletaSeries" | "facturaSeries" | "boletaCreditSeries" | "facturaCreditSeries",
+    fallbackDefault: string,
+  ): Promise<string> {
+    const settings = await this.prisma.sunatSettings.findUnique({ where: { id: "default" } });
+    const envKey =
+      field === "boletaSeries"
+        ? "SUNAT_BOLETA_SERIES"
+        : field === "facturaSeries"
+          ? "SUNAT_FACTURA_SERIES"
+          : field === "boletaCreditSeries"
+            ? "SUNAT_BOLETA_CREDIT_SERIES"
+            : "SUNAT_FACTURA_CREDIT_SERIES";
+    return settings?.[field] ?? process.env[envKey] ?? fallbackDefault;
+  }
+
   private async createElectronicInvoiceIfNeeded(order: {
     id: string;
     total: Prisma.Decimal;
@@ -344,7 +365,7 @@ export class CommerceService {
       }
 
       const documentType: ElectronicDocumentType = order.buyerDocumentType === "6" ? "FACTURA" : "BOLETA";
-      const series = documentType === "FACTURA" ? process.env.SUNAT_FACTURA_SERIES ?? "F001" : process.env.SUNAT_BOLETA_SERIES ?? "B001";
+      const series = await this.resolveSunatSeries(documentType === "FACTURA" ? "facturaSeries" : "boletaSeries", documentType === "FACTURA" ? "F001" : "B001");
 
       // Correlativo secuencial por (documentType, series). No es 100% a
       // prueba de condiciones de carrera bajo alta concurrencia (haría
@@ -433,10 +454,10 @@ export class CommerceService {
     ]);
 
     const noteType: ElectronicNoteType = "CREDIT";
-    const series =
-      invoice.documentType === "FACTURA"
-        ? (process.env.SUNAT_FACTURA_CREDIT_SERIES ?? "FC01")
-        : (process.env.SUNAT_BOLETA_CREDIT_SERIES ?? "BC01");
+    const series = await this.resolveSunatSeries(
+      invoice.documentType === "FACTURA" ? "facturaCreditSeries" : "boletaCreditSeries",
+      invoice.documentType === "FACTURA" ? "FC01" : "BC01",
+    );
 
     // Mismo enfoque de correlativo secuencial simple que createElectronicInvoiceIfNeeded.
     const last = await this.prisma.electronicNote.findFirst({

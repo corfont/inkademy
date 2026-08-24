@@ -7,6 +7,8 @@ import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
+  assignCourseStaffSchema,
+  createUserSchema,
   gradeAnswerSchema,
   updateAssessmentSchema,
   updateCourseSchema,
@@ -15,6 +17,7 @@ import {
   updateModuleSchema,
   updateProgramSchema,
   updateQuestionSchema,
+  updateUserSchema,
   upsertAreaSchema,
   upsertAssessmentSchema,
   upsertCertificateTemplateSchema,
@@ -316,5 +319,51 @@ export class AdminController {
   @ApiOperation({ summary: "Busca órdenes por id, email del comprador o razón social (para ubicarlas y cancelarlas)" })
   listOrders(@Query("q") q?: string) {
     return this.adminService.listOrders(q);
+  }
+
+  // --- Usuarios y roles ---
+
+  @Get("users")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Lista/busca cuentas de usuario (todas, sin importar el rol)" })
+  listUsers(@Query("q") q?: string, @Query("role") role?: string) {
+    return this.adminService.listUsers({ q, role });
+  }
+
+  @Post("users")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Crea una cuenta directamente (docente/soporte/otro admin) — devuelve una contraseña temporal una sola vez" })
+  createUser(@Body(new ZodValidationPipe(createUserSchema)) dto: any) {
+    return this.adminService.createUser(dto);
+  }
+
+  @Patch("users/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Cambia el rol y/o activa/desactiva una cuenta" })
+  updateUser(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateUserSchema)) dto: any) {
+    return this.adminService.updateUser(id, user.id, dto);
+  }
+
+  // --- Docentes asignados a un curso ---
+
+  @Get("courses/:courseId/staff")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Docentes/moderadores asignados a un curso" })
+  listCourseStaff(@Param("courseId") courseId: string) {
+    return this.adminService.listCourseStaff(courseId);
+  }
+
+  @Post("courses/:courseId/staff")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Asigna un docente/moderador a un curso (busca por correo)" })
+  assignCourseStaff(@Param("courseId") courseId: string, @Body(new ZodValidationPipe(assignCourseStaffSchema)) dto: any) {
+    return this.adminService.assignCourseStaff(courseId, dto);
+  }
+
+  @Delete("course-staff/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Quita a un docente/moderador de un curso" })
+  removeCourseStaff(@Param("id") id: string) {
+    return this.adminService.removeCourseStaff(id);
   }
 }

@@ -188,6 +188,25 @@ export interface PlatformSettingsDTO {
   courseCardFields: CourseCardFields;
 }
 
+/** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */
+export interface SunatSettingsDTO {
+  env: "beta" | "production";
+  ruc: string | null;
+  solUser: string | null;
+  razonSocial: string | null;
+  address: string | null;
+  ubigeo: string | null;
+  boletaSeries: string | null;
+  facturaSeries: string | null;
+  boletaCreditSeries: string | null;
+  facturaCreditSeries: string | null;
+  taxAffectation: "EXONERADO" | "GRAVADO";
+  hasSolPassword: boolean;
+  hasCertPem: boolean;
+  hasCertKeyPem: boolean;
+  updatedAt: string | null;
+}
+
 export const settingsApi = {
   // "no-store": la propia pantalla de /admin/apariencia promete que los
   // cambios se ven "al instante" — con el cache por defecto de fetch() en
@@ -453,7 +472,28 @@ export const adminApi = {
   deleteQuestion: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/questions/${id}`, { method: "DELETE", accessToken }),
 
+  // --- Usuarios y roles ---
+  users: (params: { q?: string; role?: string } = {}, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/users", { query: params, accessToken, cache: "no-store" }),
+  createUser: (input: { email: string; firstName: string; lastName: string; globalRole: string }, accessToken?: string | null) =>
+    apiFetch<any>("/admin/users", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateUser: (id: string, input: { globalRole?: string; status?: string }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+
+  // --- Docentes asignados a un curso ---
+  courseStaff: (courseId: string, accessToken?: string | null) =>
+    apiFetch<any[]>(`/admin/courses/${courseId}/staff`, { accessToken }),
+  assignCourseStaff: (courseId: string, input: { email: string; role: string }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/staff`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  removeCourseStaff: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/course-staff/${id}`, { method: "DELETE", accessToken }),
+
   // --- Apariencia de la plataforma ---
   updateSettings: (input: Partial<Omit<PlatformSettingsDTO, "id">>, accessToken?: string | null) =>
     apiFetch<PlatformSettingsDTO>("/admin/settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+
+  // --- Facturación electrónica SUNAT (los secretos nunca vuelven en texto plano) ---
+  sunatSettings: (accessToken?: string | null) => apiFetch<SunatSettingsDTO>("/admin/sunat-settings", { accessToken, cache: "no-store" }),
+  updateSunatSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<SunatSettingsDTO>("/admin/sunat-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
 };

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 /**
  * Editor de contenido de un curso: metadata, módulos → lecciones →
@@ -51,6 +52,8 @@ export function CourseEditor({ course }: { course: any }) {
       {error && <Callout variant="danger">{error}</Callout>}
 
       <MetadataSection course={course} busy={busy} onSave={(patch) => run(() => adminApi.updateCourse(course.id, patch))} />
+
+      <CourseStaffSection courseId={course.id} />
 
       <ContentSection course={course} busy={busy} run={run} />
 
@@ -915,5 +918,125 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
         </Button>
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// Docentes asignados a este curso (CourseStaff) — antes solo se podía
+// asignar un docente editando prisma/seed.ts a mano; no había ningún
+// endpoint ni pantalla para hacerlo. Solo ADMIN puede agregar/quitar (el
+// docente del propio curso puede VER quién más está asignado, pero no
+// modificarlo).
+// ============================================================================
+
+const STAFF_ROLE_LABEL: Record<string, string> = { TEACHER: "Docente", CO_TEACHER: "Co-docente", MODERATOR: "Moderador" };
+
+function CourseStaffSection({ courseId }: { courseId: string }) {
+  const { user } = useAuth();
+  const isAdmin = user?.globalRole === "ADMIN";
+  const [staff, setStaff] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("TEACHER");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    try {
+      const data = await adminApi.courseStaff(courseId);
+      setStaff(data);
+    } catch {
+      setStaff([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+
+  async function handleAssign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await adminApi.assignCourseStaff(courseId, { email: email.trim(), role });
+      setEmail("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos asignar al docente.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemove(id: string) {
+    if (!confirm("¿Quitar a este docente del curso?")) return;
+    setBusy(true);
+    try {
+      await adminApi.removeCourseStaff(id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos quitar al docente.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Docentes asignados</h2>
+        {error && <Callout variant="danger">{error}</Callout>}
+        {loading ? (
+          <p className="text-sm text-ash-500">Cargando…</p>
+        ) : staff.length === 0 ? (
+          <p className="text-sm text-ash-500">Todavía no hay ningún docente asignado a este curso.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {staff.map((s) => (
+              <li key={s.id} className="flex items-center justify-between gap-3 rounded-md bg-paper-muted p-3 text-sm">
+                <div>
+                  <p className="font-medium text-ink-900">{s.userName}</p>
+                  <p className="text-xs text-ash-500">
+                    {s.userEmail} · {STAFF_ROLE_LABEL[s.role] ?? s.role}
+                  </p>
+                </div>
+                {isAdmin && (
+                  <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleRemove(s.id)}>
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {isAdmin && (
+          <form onSubmit={handleAssign} className="flex flex-wrap items-end gap-2 border-t border-paper-border pt-4">
+            <div className="flex-1">
+              <Label htmlFor="staff-email">Correo del docente</Label>
+              <Input id="staff-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="staff-role">Rol</Label>
+              <Select id="staff-role" value={role} onChange={(e) => setRole(e.target.value)} className="h-11">
+                {Object.entries(STAFF_ROLE_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button type="submit" disabled={busy || !email.trim()}>
+              + Asignar
+            </Button>
+          </form>
+        )}
+      </CardContent>
+    </Card>
   );
 }

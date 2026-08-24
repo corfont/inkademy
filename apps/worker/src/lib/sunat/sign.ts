@@ -58,9 +58,7 @@ function getOrCreateSelfSignedCert(commonName: string): SunatCertificate {
   return cachedSelfSignedCert;
 }
 
-export function resolveSunatCertificate(rucForCommonName: string): SunatCertificate {
-  const certPem = process.env.SUNAT_CERT_PEM;
-  const keyPem = process.env.SUNAT_CERT_KEY_PEM;
+export function resolveSunatCertificate(rucForCommonName: string, certPem?: string, keyPem?: string): SunatCertificate {
   if (certPem && keyPem) {
     // Permite pegar el PEM con "\n" literales en la env var (patrón común
     // en .env de una sola línea).
