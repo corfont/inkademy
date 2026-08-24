@@ -76,6 +76,7 @@ export class AssessmentService {
       timeLimitMinutes: assessment.timeLimitMinutes,
       maxAttempts: assessment.maxAttempts,
       minScore: assessment.minScore,
+      displayMode: assessment.displayMode,
       questions,
     };
   }

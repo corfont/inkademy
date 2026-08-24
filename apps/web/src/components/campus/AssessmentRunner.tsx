@@ -19,7 +19,77 @@ export interface AssessmentDefinition {
   id: string;
   title: string;
   timeLimitMinutes: number | null;
+  displayMode?: "ALL_AT_ONCE" | "ONE_BY_ONE";
   questions: AssessmentQuestion[];
+}
+
+function QuestionFieldset({
+  question,
+  answers,
+  setAnswers,
+}: {
+  question: AssessmentQuestion;
+  answers: Record<string, unknown>;
+  setAnswers: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
+}) {
+  return (
+    <fieldset className="rounded-lg border border-paper-border bg-paper p-6">
+      <legend className="font-medium text-ink-900">{question.text}</legend>
+      <div className="mt-4 flex flex-col gap-2">
+        {question.type === "TRUE_FALSE" && (
+          <>
+            {[
+              { id: "true", text: "Verdadero" },
+              { id: "false", text: "Falso" },
+            ].map((opt) => (
+              <label key={opt.id} className="flex items-center gap-2 rounded-md border border-paper-border p-3 text-sm hover:bg-paper-muted">
+                <input
+                  type="radio"
+                  name={question.id}
+                  checked={answers[question.id] === opt.id}
+                  onChange={() => setAnswers((a) => ({ ...a, [question.id]: opt.id }))}
+                />
+                {opt.text}
+              </label>
+            ))}
+          </>
+        )}
+        {(question.type === "SINGLE_CHOICE" || question.type === "MULTI_CHOICE") &&
+          question.options?.map((opt) => (
+            <label key={opt.id} className="flex items-center gap-2 rounded-md border border-paper-border p-3 text-sm hover:bg-paper-muted">
+              <input
+                type={question.type === "SINGLE_CHOICE" ? "radio" : "checkbox"}
+                name={question.id}
+                checked={
+                  question.type === "SINGLE_CHOICE"
+                    ? answers[question.id] === opt.id
+                    : Array.isArray(answers[question.id]) && (answers[question.id] as string[]).includes(opt.id)
+                }
+                onChange={() => {
+                  if (question.type === "SINGLE_CHOICE") {
+                    setAnswers((a) => ({ ...a, [question.id]: opt.id }));
+                  } else {
+                    setAnswers((a) => {
+                      const prev = Array.isArray(a[question.id]) ? (a[question.id] as string[]) : [];
+                      const next = prev.includes(opt.id) ? prev.filter((x) => x !== opt.id) : [...prev, opt.id];
+                      return { ...a, [question.id]: next };
+                    });
+                  }
+                }}
+              />
+              {opt.text}
+            </label>
+          ))}
+        {(question.type === "SHORT_ANSWER" || question.type === "OPEN") && (
+          <textarea
+            className="min-h-[6rem] w-full rounded-md border border-paper-border p-3 text-sm"
+            value={(answers[question.id] as string) ?? ""}
+            onChange={(e) => setAnswers((a) => ({ ...a, [question.id]: e.target.value }))}
+          />
+        )}
+      </div>
+    </fieldset>
+  );
 }
 
 export function AssessmentRunner({ assessment }: { assessment: AssessmentDefinition }) {
@@ -120,75 +190,40 @@ export function AssessmentRunner({ assessment }: { assessment: AssessmentDefinit
 
       {error && <Callout variant="danger" className="mb-4">{error}</Callout>}
 
-      <p className="mb-2 text-sm text-ash-500">{t("questionOf", { current: current + 1, total: assessment.questions.length })}</p>
-
-      <fieldset className="rounded-lg border border-paper-border bg-paper p-6">
-        <legend className="font-medium text-ink-900">{question.text}</legend>
-        <div className="mt-4 flex flex-col gap-2">
-          {question.type === "TRUE_FALSE" && (
-            <>
-              {[
-                { id: "true", text: "Verdadero" },
-                { id: "false", text: "Falso" },
-              ].map((opt) => (
-                <label key={opt.id} className="flex items-center gap-2 rounded-md border border-paper-border p-3 text-sm hover:bg-paper-muted">
-                  <input
-                    type="radio"
-                    name={question.id}
-                    checked={answers[question.id] === opt.id}
-                    onChange={() => setAnswers((a) => ({ ...a, [question.id]: opt.id }))}
-                  />
-                  {opt.text}
-                </label>
-              ))}
-            </>
-          )}
-          {(question.type === "SINGLE_CHOICE" || question.type === "MULTI_CHOICE") &&
-            question.options?.map((opt) => (
-              <label key={opt.id} className="flex items-center gap-2 rounded-md border border-paper-border p-3 text-sm hover:bg-paper-muted">
-                <input
-                  type={question.type === "SINGLE_CHOICE" ? "radio" : "checkbox"}
-                  name={question.id}
-                  checked={
-                    question.type === "SINGLE_CHOICE"
-                      ? answers[question.id] === opt.id
-                      : Array.isArray(answers[question.id]) && (answers[question.id] as string[]).includes(opt.id)
-                  }
-                  onChange={() => {
-                    if (question.type === "SINGLE_CHOICE") {
-                      setAnswers((a) => ({ ...a, [question.id]: opt.id }));
-                    } else {
-                      setAnswers((a) => {
-                        const prev = Array.isArray(a[question.id]) ? (a[question.id] as string[]) : [];
-                        const next = prev.includes(opt.id) ? prev.filter((x) => x !== opt.id) : [...prev, opt.id];
-                        return { ...a, [question.id]: next };
-                      });
-                    }
-                  }}
-                />
-                {opt.text}
-              </label>
-            ))}
-          {(question.type === "SHORT_ANSWER" || question.type === "OPEN") && (
-            <textarea
-              className="min-h-[6rem] w-full rounded-md border border-paper-border p-3 text-sm"
-              value={(answers[question.id] as string) ?? ""}
-              onChange={(e) => setAnswers((a) => ({ ...a, [question.id]: e.target.value }))}
-            />
-          )}
+      {assessment.displayMode === "ALL_AT_ONCE" ? (
+        // Todas las preguntas juntas en una sola pantalla — a diferencia del
+        // modo por defecto (una por una, sin poder volver atrás una vez
+        // enviada), acá el alumno puede revisar y corregir cualquier
+        // respuesta antes de enviar todo junto.
+        <div className="flex flex-col gap-6">
+          {assessment.questions.map((q, idx) => (
+            <div key={q.id}>
+              <p className="mb-2 text-sm text-ash-500">{t("questionOf", { current: idx + 1, total: assessment.questions.length })}</p>
+              <QuestionFieldset question={q} answers={answers} setAnswers={setAnswers} />
+            </div>
+          ))}
+          <div className="flex justify-end">
+            <Button onClick={() => setConfirmOpen(true)}>{t("submit")}</Button>
+          </div>
         </div>
-      </fieldset>
+      ) : (
+        <>
+          <p className="mb-2 text-sm text-ash-500">{t("questionOf", { current: current + 1, total: assessment.questions.length })}</p>
 
-      <div className="mt-6 flex justify-between">
-        <Button variant="ghost" disabled={current === 0} onClick={() => setCurrent((c) => c - 1)}>
-          Anterior
-        </Button>
-        {current < assessment.questions.length - 1 ? (
-          <Button onClick={() => setCurrent((c) => c + 1)}>Siguiente</Button>
-        ) : (
-          <Button onClick={() => setConfirmOpen(true)}>{t("submit")}</Button>
-        )}
-      </div>
+          <QuestionFieldset question={question} answers={answers} setAnswers={setAnswers} />
+
+          <div className="mt-6 flex justify-between">
+            <Button variant="ghost" disabled={current === 0} onClick={() => setCurrent((c) => c - 1)}>
+              Anterior
+            </Button>
+            {current < assessment.questions.length - 1 ? (
+              <Button onClick={() => setCurrent((c) => c + 1)}>Siguiente</Button>
+            ) : (
+              <Button onClick={() => setConfirmOpen(true)}>{t("submit")}</Button>
+            )}
+          </div>
+        </>
+      )}
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title={t("confirmSubmitTitle")}>
         <p className="text-ash-600">{t("confirmSubmitBody")}</p>

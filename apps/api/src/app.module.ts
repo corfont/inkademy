@@ -24,6 +24,7 @@ import { CompaniesModule } from "./modules/companies/companies.module";
 import { AdminModule } from "./modules/admin/admin.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
+import { ChatbotModule } from "./modules/chatbot/chatbot.module";
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
     AdminModule,
     SettingsModule,
     SuggestionsModule,
+    ChatbotModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

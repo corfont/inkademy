@@ -6,6 +6,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { BrandSettingsProvider } from "@/components/providers/BrandSettingsProvider";
 import { HelpButton } from "@/components/layout/HelpButton";
+import { ChatWidget } from "@/components/layout/ChatWidget";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import { settingsApi, type PlatformSettingsDTO } from "@/lib/api-client";
 import { isCuratedFont, googleFontHref, type BrandFont } from "@/lib/brand-fonts";
@@ -112,6 +113,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AuthProvider>
               {children}
               <HelpButton />
+              <ChatWidget />
             </AuthProvider>
           </BrandSettingsProvider>
         </NextIntlClientProvider>

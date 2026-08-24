@@ -438,8 +438,20 @@ export class AdminService {
 
   // --- Empresas ---
 
-  listCompanies() {
-    return this.prisma.company.findMany({ orderBy: { createdAt: "desc" } });
+  // Antes devolvía la fila `Company` cruda sin `seatsUsed` (el frontend de
+  // /admin/empresas dependía del fallback simulado para esa columna). Ahora
+  // se agrega en una sola consulta adicional agrupando CompanySeatPool.
+  async listCompanies() {
+    const [companies, seatSums] = await Promise.all([
+      this.prisma.company.findMany({ orderBy: { createdAt: "desc" } }),
+      this.prisma.companySeatPool.groupBy({ by: ["companyId"], _sum: { seatsUsed: true, seatsPurchased: true } }),
+    ]);
+    const seatsByCompany = new Map(seatSums.map((s) => [s.companyId, s._sum]));
+    return companies.map((c) => ({
+      ...c,
+      seatsUsed: seatsByCompany.get(c.id)?.seatsUsed ?? 0,
+      seatsPurchased: seatsByCompany.get(c.id)?.seatsPurchased ?? 0,
+    }));
   }
 
   // --- Órdenes (para poder ubicar una orden y cancelarla — ver

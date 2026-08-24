@@ -71,6 +71,7 @@ export const upsertCourseSchema = z.object({
   language: z.string().optional(),
   subtitleLanguages: z.array(z.string()).optional(),
   durationHours: z.number().positive(),
+  durationUnit: z.enum(["HOURS", "WEEKS", "MONTHS"]).optional(),
   coverImageAssetId: z.string().optional(),
   priceAmount: z.number().nonnegative(),
   priceCurrency: z.string().optional(),
@@ -196,6 +197,7 @@ export const upsertAssessmentSchema = z.object({
   minScore: z.number().min(0).max(100).default(70),
   maxAttempts: z.number().int().positive().default(3),
   timeLimitMinutes: z.number().int().positive().optional(),
+  displayMode: z.enum(["ALL_AT_ONCE", "ONE_BY_ONE"]).default("ALL_AT_ONCE"),
   questionOrder: z.enum(["FIXED", "RANDOM"]).default("FIXED"),
   randomizeOptions: z.boolean().default(false),
   questionsPerAttempt: z.number().int().positive().optional(),
@@ -250,6 +252,24 @@ export const upsertSunatSettingsSchema = z.object({
   certPem: z.string().optional(),
   certKeyPem: z.string().optional(),
   taxAffectation: z.enum(["EXONERADO", "GRAVADO"]).optional(),
+});
+
+export const upsertChatbotSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  apiKey: z.string().optional(), // vacío = "no cambiar" (ver ChatbotSettingsService.update)
+  systemPrompt: z.string().optional().nullable(),
+});
+
+export const chatbotMessageSchema = z.object({
+  message: z.string().min(1).max(2000),
+  // Historial reciente de la conversación (para dar contexto sin guardar
+  // nada en el servidor) — se recorta a los últimos turnos en el servicio.
+  history: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
+    .max(20)
+    .optional(),
 });
 
 export const rescheduleLiveSessionSchema = z.object({

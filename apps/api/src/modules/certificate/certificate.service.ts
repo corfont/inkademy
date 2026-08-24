@@ -8,6 +8,7 @@ import {
 import { InjectQueue } from "@nestjs/bullmq";
 import { ConfigService } from "@nestjs/config";
 import type { Queue } from "bullmq";
+import { ZipArchive } from "archiver";
 import type { PrismaClient } from "@inkademy/db";
 import type { CertificateDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -169,9 +170,11 @@ export class CertificateService {
    * siempre datos de referencia porque no existía ningún endpoint para
    * listar certificados emitidos fuera de "los míos" (GET /me/certificates).
    */
-  async listAll(): Promise<Array<CertificateDTO & { holderName: string; revoked: boolean }>> {
+  async listAll(): Promise<
+    Array<CertificateDTO & { holderName: string; revoked: boolean; courseId: string | null; companyId: string | null; companyName: string | null }>
+  > {
     const certificates = await this.prisma.certificate.findMany({
-      include: { user: true, course: true, program: true },
+      include: { user: true, course: true, program: true, enrollment: { include: { company: true } } },
       orderBy: { issuedAt: "desc" },
       take: 200,
     });
@@ -185,7 +188,52 @@ export class CertificateService {
       verificationUrl: this.verificationUrl(c.code),
       holderName: c.user.displayName ?? `${c.user.firstName} ${c.user.lastName}`,
       revoked: c.revoked,
+      courseId: c.courseId,
+      companyId: c.enrollment.companyId,
+      companyName: c.enrollment.company?.legalName ?? null,
     }));
+  }
+
+  /**
+   * Descarga masiva de certificados en un solo .zip — antes solo se podía
+   * descargar de a uno (GET /certificates/:id/pdf). Admite los mismos
+   * filtros que la tabla de /admin/certificados (curso/empresa) para no
+   * forzar a descargar los 200 si el admin ya filtró la vista.
+   */
+  async exportZip(filters: { courseId?: string; companyId?: string }): Promise<{ filename: string; archive: ZipArchive }> {
+    const certificates = await this.prisma.certificate.findMany({
+      where: {
+        pdfAssetId: { not: null },
+        ...(filters.courseId ? { courseId: filters.courseId } : {}),
+        ...(filters.companyId ? { enrollment: { companyId: filters.companyId } } : {}),
+      },
+      include: { user: true, course: true, program: true },
+      orderBy: { issuedAt: "desc" },
+    });
+
+    // archiver@8 cambió su API: ya no exporta una función factory
+    // (archiver('zip', opts), como en versiones anteriores) sino la clase
+    // ZipArchive directamente.
+    const archive = new ZipArchive({ zlib: { level: 9 } });
+    // Se arma en segundo plano mientras Nest ya empezó a mandar la respuesta
+    // (streaming) — si un PDF individual falla (p.ej. se borró del bucket),
+    // se lo salta con un log en vez de tirar abajo el ZIP completo.
+    void (async () => {
+      for (const c of certificates) {
+        if (!c.pdfAssetId) continue;
+        try {
+          const buffer = await this.storage.getObjectBuffer(c.pdfAssetId);
+          const holderName = (c.user.displayName ?? `${c.user.firstName} ${c.user.lastName}`).replace(/[^\w\s-]/g, "").trim();
+          const courseTitle = ((c.course?.title ?? c.program?.title ?? {}) as Record<string, string>).es ?? "curso";
+          archive.append(buffer, { name: `${courseTitle} - ${holderName} - ${c.code}.pdf` });
+        } catch (err) {
+          this.logger.warn(`No se pudo incluir el certificado ${c.code} en el ZIP: ${(err as Error).message}`);
+        }
+      }
+      await archive.finalize();
+    })();
+
+    return { filename: `certificados-${new Date().toISOString().slice(0, 10)}.zip`, archive };
   }
 
   async listForCompany(companyId: string): Promise<Array<CertificateDTO & { holderName: string; revoked: boolean }>> {

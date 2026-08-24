@@ -32,16 +32,25 @@ export function formatDateTime(iso: string | Date, locale: string, timezone?: st
   }).format(date);
 }
 
-export function formatDuration(hours: number, locale: string) {
-  if (hours < 1) return locale === "en" ? `${Math.round(hours * 60)} min` : `${Math.round(hours * 60)} min`;
-  return locale === "en" ? `${hours} h` : `${hours} h`;
-}
-
 export const MODALITY_LABEL: Record<string, { es: string; en: string }> = {
   RECORDED: { es: "Grabado", en: "Recorded" },
   LIVE: { es: "En vivo", en: "Live" },
   HYBRID: { es: "Híbrido", en: "Hybrid" },
 };
+
+// Unidad en la que el admin capturó la duración del curso — durationHours
+// guarda el número tal cual en esa unidad (ver Course.durationUnit).
+export const DURATION_UNIT_LABEL: Record<string, { es: string; en: string; esSingular: string; enSingular: string }> = {
+  HOURS: { es: "horas", en: "hours", esSingular: "hora", enSingular: "hour" },
+  WEEKS: { es: "semanas", en: "weeks", esSingular: "semana", enSingular: "week" },
+  MONTHS: { es: "meses", en: "months", esSingular: "month", enSingular: "month" },
+};
+
+export function formatDuration(durationHours: number, durationUnit: string | undefined, locale: "es" | "en") {
+  const unit = DURATION_UNIT_LABEL[durationUnit ?? "HOURS"] ?? DURATION_UNIT_LABEL.HOURS;
+  const label = durationHours === 1 ? (locale === "en" ? unit.enSingular : unit.esSingular) : locale === "en" ? unit.en : unit.es;
+  return `${durationHours} ${label}`;
+}
 
 export const TYPE_LABEL: Record<string, { es: string; en: string }> = {
   COURSE: { es: "Curso", en: "Course" },

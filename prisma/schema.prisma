@@ -224,6 +224,17 @@ enum OfferingStatus {
   ARCHIVED
 }
 
+// Unidad en la que el admin captura la duración del curso (durationHours
+// sigue guardando el NÚMERO tal cual lo escribió el admin en esa unidad —
+// p. ej. durationUnit=WEEKS + durationHours=8 significa "8 semanas", no
+// horas — se renombra la interpretación, no la columna, para no romper a
+// todos los consumidores existentes de Course.durationHours).
+enum DurationUnit {
+  HOURS
+  WEEKS
+  MONTHS
+}
+
 model Course {
   id                     String                @id @default(uuid())
   slug                   String                @unique
@@ -240,6 +251,7 @@ model Course {
   language               String                @default("es")
   subtitleLanguages      String[]              @default([])
   durationHours          Float
+  durationUnit           DurationUnit          @default(HOURS)
   coverImageAssetId      String?
   priceAmount            Decimal               @db.Decimal(10, 2)
   priceCurrency          String                @default("PEN")
@@ -537,6 +549,13 @@ enum AssessmentQuestionOrder {
   RANDOM
 }
 
+// Cómo se le presentan las preguntas al alumno al rendir el examen: todas
+// juntas en una sola pantalla, o una por una (sin poder volver atrás).
+enum AssessmentDisplayMode {
+  ALL_AT_ONCE
+  ONE_BY_ONE
+}
+
 model Assessment {
   id                String                  @id @default(uuid())
   courseId          String
@@ -546,6 +565,7 @@ model Assessment {
   minScore          Float                   @default(70)
   maxAttempts       Int                     @default(3)
   timeLimitMinutes  Int?
+  displayMode       AssessmentDisplayMode   @default(ALL_AT_ONCE)
   questionOrder     AssessmentQuestionOrder @default(FIXED)
   randomizeOptions  Boolean                 @default(false)
   questionsPerAttempt Int? // selección aleatoria desde banco
@@ -1064,4 +1084,19 @@ model SunatSettings {
   certKeyPem          String?  @db.Text // nunca se devuelve tal cual al frontend
   taxAffectation      String   @default("EXONERADO") // EXONERADO | GRAVADO
   updatedAt           DateTime @updatedAt
+}
+
+/// Configuración del asistente/chatbot de IA (widget flotante en el campus),
+/// editable desde /admin/asistente-ia. La API key nunca se devuelve tal cual
+/// al frontend (mismo patrón que SunatSettings.solPassword) — solo un flag
+/// `hasApiKey`. Si no hay fila o `apiKey` viene vacío, se cae a la variable
+/// de entorno GEMINI_API_KEY (mismo patrón "DB primero, env de respaldo").
+model ChatbotSettings {
+  id            String   @id @default("default")
+  enabled       Boolean  @default(false)
+  provider      String   @default("gemini") // por ahora solo "gemini" (Google AI Studio, capa gratuita)
+  model         String   @default("gemini-2.5-flash")
+  apiKey        String? // nunca se devuelve tal cual al frontend
+  systemPrompt  String?  @db.Text
+  updatedAt     DateTime @updatedAt
 }

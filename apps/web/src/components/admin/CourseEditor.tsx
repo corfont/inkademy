@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
+import { FileDropzone } from "./FileDropzone";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 /**
@@ -66,18 +67,40 @@ export function CourseEditor({ course }: { course: any }) {
 
 function StatusToggle({ status, busy, onChange }: { status: string; busy: boolean; onChange: (s: string) => void }) {
   const variant = status === "PUBLISHED" ? "success" : status === "ARCHIVED" ? "outline" : "neutral";
-  const label = status === "PUBLISHED" ? "Publicado" : status === "ARCHIVED" ? "Archivado" : "Borrador";
+  const label = status === "PUBLISHED" ? "Publicado" : status === "ARCHIVED" ? "Archivado (oculto)" : "Borrador";
   return (
     <div className="flex items-center gap-3">
       <Badge variant={variant as any}>{label}</Badge>
-      {status !== "PUBLISHED" ? (
-        <Button size="sm" disabled={busy} onClick={() => onChange("PUBLISHED")}>
-          Publicar
+      {status === "ARCHIVED" ? (
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onChange("DRAFT")}>
+          Restaurar a borrador
         </Button>
       ) : (
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => onChange("DRAFT")}>
-          Volver a borrador
-        </Button>
+        <>
+          {status !== "PUBLISHED" ? (
+            <Button size="sm" disabled={busy} onClick={() => onChange("PUBLISHED")}>
+              Publicar
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onChange("DRAFT")}>
+              Volver a borrador
+            </Button>
+          )}
+          {/* Archivar: oculta el curso del catálogo público de inmediato (no aparece ni por URL directa),
+              a diferencia de "borrador" que es el estado normal antes de publicar por primera vez. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => {
+              if (confirm("¿Archivar este curso? Dejará de verse en el catálogo público de inmediato, incluso por URL directa. Los alumnos ya matriculados conservan su acceso.")) {
+                onChange("ARCHIVED");
+              }
+            }}
+          >
+            Ocultar (archivar)
+          </Button>
+        </>
       )}
     </div>
   );
@@ -97,6 +120,10 @@ function MetadataSection({
   const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
   const [language, setLanguage] = useState(course.language ?? "es");
   const [templates, setTemplates] = useState<any[]>([]);
+  const [areas, setAreas] = useState<any[]>([]);
+  const [areaId, setAreaId] = useState(course.areaId ?? course.area?.id ?? "");
+  const [durationHours, setDurationHours] = useState(String(course.durationHours ?? "0"));
+  const [durationUnit, setDurationUnit] = useState(course.durationUnit ?? "HOURS");
   const [coverImageAssetId, setCoverImageAssetId] = useState(course.coverImageAssetId ?? null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(course.coverImageUrl ?? null);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -105,12 +132,39 @@ function MetadataSection({
     course.discountExpiresAt ? new Date(course.discountExpiresAt).toISOString().slice(0, 10) : "",
   );
 
+  function refreshAreas() {
+    adminApi
+      .areas()
+      .then(setAreas)
+      .catch(() => setAreas([]));
+  }
+
   useEffect(() => {
     adminApi
       .certificateTemplates()
       .then(setTemplates)
       .catch(() => setTemplates([]));
+    refreshAreas();
   }, []);
+
+  async function handleCreateArea() {
+    const name = prompt("Nombre de la nueva área (español):");
+    if (!name || !name.trim()) return;
+    const slug = name
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    try {
+      const created = await adminApi.createArea({ slug, name: { es: name.trim(), en: name.trim() }, order: areas.length });
+      refreshAreas();
+      setAreaId(created.id);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos crear el área.");
+    }
+  }
 
   async function handleCoverUpload(file: File) {
     setUploadingCover(true);
@@ -137,6 +191,37 @@ function MetadataSection({
           <div>
             <Label htmlFor="edit-price">Precio ({course.priceCurrency ?? "PEN"})</Label>
             <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <div>
+            <Label htmlFor="edit-area">Área</Label>
+            <Select id="edit-area" value={areaId} onChange={(e) => setAreaId(e.target.value)}>
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name?.es ?? a.slug}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button type="button" size="sm" variant="outline" onClick={handleCreateArea}>
+              + Nueva área
+            </Button>
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+          <div>
+            <Label htmlFor="edit-duration">Duración</Label>
+            <Input id="edit-duration" type="number" min="0" step="0.5" value={durationHours} onChange={(e) => setDurationHours(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="edit-duration-unit">Unidad</Label>
+            <Select id="edit-duration-unit" value={durationUnit} onChange={(e) => setDurationUnit(e.target.value)}>
+              <option value="HOURS">Horas</option>
+              <option value="WEEKS">Semanas</option>
+              <option value="MONTHS">Meses</option>
+            </Select>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 rounded-md bg-paper-muted p-3">
@@ -180,17 +265,15 @@ function MetadataSection({
                 Sin imagen
               </div>
             )}
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink-700 hover:underline">
-              <UploadCloud className="h-4 w-4" aria-hidden="true" />
-              {uploadingCover ? "Subiendo…" : "Subir portada"}
-              <input
-                type="file"
+            <div className="flex-1">
+              <FileDropzone
                 accept="image/*"
-                className="hidden"
-                disabled={uploadingCover}
-                onChange={(e) => e.target.files?.[0] && handleCoverUpload(e.target.files[0])}
+                busy={uploadingCover}
+                label="Subir portada"
+                hint="Arrastra una imagen aquí o haz click (JPG/PNG)"
+                onFile={handleCoverUpload}
               />
-            </label>
+            </div>
           </div>
         </div>
         <div className="max-w-xs">
@@ -223,6 +306,9 @@ function MetadataSection({
                 priceAmount: Number(priceAmount),
                 certificateTemplateId: certificateTemplateId || null,
                 language,
+                areaId,
+                durationHours: Number(durationHours),
+                durationUnit,
                 coverImageAssetId,
                 discountPercent: discountPercent ? Number(discountPercent) : null,
                 discountExpiresAt: discountPercent && discountExpiresAt ? discountExpiresAt : null,
@@ -392,17 +478,7 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
           ) : (
             <span>Sin video todavía</span>
           )}
-          <label className="flex cursor-pointer items-center gap-1 text-ink-700 hover:underline">
-            <UploadCloud className="h-3.5 w-3.5" />
-            {uploading ? "Subiendo…" : "Subir video"}
-            <input
-              type="file"
-              accept="video/*"
-              className="hidden"
-              disabled={uploading}
-              onChange={(e) => e.target.files?.[0] && handleVideoUpload(e.target.files[0])}
-            />
-          </label>
+          <DropLabel accept="video/*" busy={uploading} label="Subir video" onFile={handleVideoUpload} />
         </div>
       )}
 
@@ -426,18 +502,58 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
           value={newMaterialTitle}
           onChange={(e) => setNewMaterialTitle(e.target.value)}
         />
-        <label className="flex cursor-pointer items-center gap-1 text-xs text-ink-700 hover:underline">
-          <UploadCloud className="h-3.5 w-3.5" />
-          {uploading ? "Subiendo…" : "Agregar material"}
-          <input
-            type="file"
-            className="hidden"
-            disabled={uploading}
-            onChange={(e) => e.target.files?.[0] && handleMaterialUpload(e.target.files[0])}
-          />
-        </label>
+        <DropLabel busy={uploading} label="Agregar material" small onFile={handleMaterialUpload} />
       </div>
     </li>
+  );
+}
+
+/** Etiqueta compacta de subida (click o arrastrar-y-soltar) para filas angostas — la versión completa con recuadro es `FileDropzone`. */
+function DropLabel({
+  accept,
+  busy,
+  label,
+  small,
+  onFile,
+}: {
+  accept?: string;
+  busy?: boolean;
+  label: string;
+  small?: boolean;
+  onFile: (file: File) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  return (
+    <label
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!busy) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file && !busy) onFile(file);
+      }}
+      className={`flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${small ? "text-xs" : "text-sm"} text-ink-700 hover:underline ${
+        dragging ? "bg-paper-muted ring-1 ring-ink-400" : ""
+      }`}
+    >
+      <UploadCloud className={small ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
+      {busy ? "Subiendo…" : label}
+      <input
+        type="file"
+        accept={accept}
+        className="hidden"
+        disabled={busy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFile(file);
+          e.target.value = "";
+        }}
+      />
+    </label>
   );
 }
 
@@ -608,6 +724,7 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
   const [minScore, setMinScore] = useState(String(assessment.minScore));
   const [maxAttempts, setMaxAttempts] = useState(String(assessment.maxAttempts));
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(assessment.timeLimitMinutes ? String(assessment.timeLimitMinutes) : "");
+  const [displayMode, setDisplayMode] = useState(assessment.displayMode ?? "ALL_AT_ONCE");
   const [busy, setBusy] = useState(false);
 
   async function handleSaveRules() {
@@ -617,6 +734,7 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
         minScore: Number(minScore),
         maxAttempts: Number(maxAttempts),
         timeLimitMinutes: timeLimitMinutes ? Number(timeLimitMinutes) : undefined,
+        displayMode,
       });
       onChange();
     } catch (err) {
@@ -692,6 +810,13 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
                 onChange={(e) => setTimeLimitMinutes(e.target.value)}
                 placeholder="Sin límite"
               />
+            </div>
+            <div>
+              <Label htmlFor={`displayMode-${assessment.id}`}>Cómo se muestran las preguntas</Label>
+              <Select id={`displayMode-${assessment.id}`} value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
+                <option value="ALL_AT_ONCE">Todas juntas en una pantalla</option>
+                <option value="ONE_BY_ONE">Una por una (sin volver atrás)</option>
+              </Select>
             </div>
           </div>
           <Button size="sm" variant="outline" disabled={busy} onClick={handleSaveRules} className="self-start">

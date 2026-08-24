@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
-import { localize, formatPrice, formatDateTime, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
+import { localize, formatPrice, formatDateTime, formatDuration, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export function CourseCard({ course }: { course: CourseCardDTO }) {
   const locale = useLocale();
@@ -63,9 +63,7 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
           {fields.showDuration && (
             <div className="flex items-center gap-1.5">
               <Clock className="h-4 w-4 text-ash-400" aria-hidden="true" />
-              <span>
-                {course.durationHours} {t("hours")}
-              </span>
+              <span>{formatDuration(course.durationHours, course.durationUnit, locale as "es" | "en")}</span>
             </div>
           )}
           {fields.showNextLiveSession && course.nextLiveSessionAt && (

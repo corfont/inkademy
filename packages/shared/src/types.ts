@@ -56,6 +56,7 @@ export interface CourseCardDTO {
   level: OfferingLevel;
   areaSlug: string;
   durationHours: number;
+  durationUnit?: "HOURS" | "WEEKS" | "MONTHS";
   coverImageUrl?: string | null;
   teacherName?: string | null;
   nextLiveSessionAt?: string | null;
@@ -140,6 +141,8 @@ export interface CheckoutResult {
 export interface EnrollmentSummaryDTO {
   id: string;
   offeringKind: "COURSE" | "PROGRAM";
+  courseId?: string | null;
+  programId?: string | null;
   title: LocalizedText;
   coverImageUrl?: string | null;
   progressPct: number;

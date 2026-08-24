@@ -20,22 +20,50 @@ export default function NewCoursePage() {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     slug: "",
+    slugTouched: false,
     titleEs: "",
     areaId: "",
     modality: "RECORDED",
     level: "INITIAL",
     durationHours: "1",
+    durationUnit: "HOURS",
     priceAmount: "0",
     priceCurrency: "PEN",
     certificationIncluded: true,
   });
 
-  useEffect(() => {
+  function refreshAreas() {
     adminApi
       .areas()
       .then(setAreas)
       .catch(() => setAreas([]));
+  }
+
+  useEffect(() => {
+    refreshAreas();
   }, []);
+
+  function slugify(text: string) {
+    return text
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  async function handleCreateArea() {
+    const name = prompt("Nombre de la nueva área (español):");
+    if (!name || !name.trim()) return;
+    try {
+      const created = await adminApi.createArea({ slug: slugify(name), name: { es: name.trim(), en: name.trim() }, order: areas.length });
+      refreshAreas();
+      setForm((f) => ({ ...f, areaId: created.id }));
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos crear el área.");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +77,7 @@ export default function NewCoursePage() {
         modality: form.modality,
         level: form.level,
         durationHours: Number(form.durationHours),
+        durationUnit: form.durationUnit,
         priceAmount: Number(form.priceAmount),
         priceCurrency: form.priceCurrency,
         certificationIncluded: form.certificationIncluded,
@@ -75,7 +104,15 @@ export default function NewCoursePage() {
                 id="titleEs"
                 required
                 value={form.titleEs}
-                onChange={(e) => setForm((f) => ({ ...f, titleEs: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    titleEs: e.target.value,
+                    // Autogenera el slug a partir del título mientras el admin no
+                    // lo haya tocado a mano — antes había que inventarlo desde cero.
+                    slug: f.slugTouched ? f.slug : slugify(e.target.value),
+                  }))
+                }
               />
             </div>
             <div>
@@ -85,19 +122,30 @@ export default function NewCoursePage() {
                 required
                 placeholder="mi-curso-nuevo"
                 value={form.slug}
-                onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value, slugTouched: true }))}
               />
+              <p className="mt-1 text-xs text-ash-500">
+                Es la parte final de la URL del curso: se verá en <code>inkademy.com/cursos/{form.slug || "tu-slug"}</code>. Se
+                genera solo desde el título; usa minúsculas, números y guiones, sin espacios ni tildes.
+              </p>
             </div>
-            <div>
-              <Label htmlFor="areaId">Área</Label>
-              <Select id="areaId" required value={form.areaId} onChange={(e) => setForm((f) => ({ ...f, areaId: e.target.value }))}>
-                <option value="">Selecciona un área</option>
-                {areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name?.es ?? a.slug}
-                  </option>
-                ))}
-              </Select>
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <div>
+                <Label htmlFor="areaId">Área</Label>
+                <Select id="areaId" required value={form.areaId} onChange={(e) => setForm((f) => ({ ...f, areaId: e.target.value }))}>
+                  <option value="">Selecciona un área</option>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name?.es ?? a.slug}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button type="button" size="sm" variant="outline" onClick={handleCreateArea}>
+                  + Nueva área
+                </Button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -117,9 +165,9 @@ export default function NewCoursePage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="durationHours">Duración (horas)</Label>
+                <Label htmlFor="durationHours">Duración</Label>
                 <Input
                   id="durationHours"
                   type="number"
@@ -129,6 +177,16 @@ export default function NewCoursePage() {
                   onChange={(e) => setForm((f) => ({ ...f, durationHours: e.target.value }))}
                 />
               </div>
+              <div>
+                <Label htmlFor="durationUnit">Unidad</Label>
+                <Select id="durationUnit" value={form.durationUnit} onChange={(e) => setForm((f) => ({ ...f, durationUnit: e.target.value }))}>
+                  <option value="HOURS">Horas</option>
+                  <option value="WEEKS">Semanas</option>
+                  <option value="MONTHS">Meses</option>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="priceAmount">Precio</Label>
                 <Input

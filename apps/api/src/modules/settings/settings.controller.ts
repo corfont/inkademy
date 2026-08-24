@@ -4,9 +4,10 @@ import { Public } from "../../common/decorators/public.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { upsertSettingsSchema, upsertSunatSettingsSchema } from "../../common/validation/local-schemas";
+import { upsertChatbotSettingsSchema, upsertSettingsSchema, upsertSunatSettingsSchema } from "../../common/validation/local-schemas";
 import { SettingsService } from "./settings.service";
 import { SunatSettingsService } from "./sunat-settings.service";
+import { ChatbotSettingsService } from "./chatbot-settings.service";
 
 @ApiTags("settings")
 @Controller()
@@ -14,6 +15,7 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly sunatSettingsService: SunatSettingsService,
+    private readonly chatbotSettingsService: ChatbotSettingsService,
   ) {}
 
   @Public()
@@ -48,5 +50,23 @@ export class SettingsController {
   @ApiOperation({ summary: "Actualiza la configuración de facturación electrónica SUNAT" })
   updateSunatSettings(@Body(new ZodValidationPipe(upsertSunatSettingsSchema)) dto: any) {
     return this.sunatSettingsService.update(dto);
+  }
+
+  @Get("admin/chatbot-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Configuración del asistente de IA (la API key nunca se devuelve en texto plano)" })
+  getChatbotSettings() {
+    return this.chatbotSettingsService.get();
+  }
+
+  @Patch("admin/chatbot-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Actualiza la configuración del asistente de IA" })
+  updateChatbotSettings(@Body(new ZodValidationPipe(upsertChatbotSettingsSchema)) dto: any) {
+    return this.chatbotSettingsService.update(dto);
   }
 }

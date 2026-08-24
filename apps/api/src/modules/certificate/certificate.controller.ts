@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post, Res, UseGuards } from "@nestjs/common";
+import { Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { Public } from "../../common/decorators/public.decorator";
@@ -58,5 +58,21 @@ export class CertificateController {
   @ApiOperation({ summary: "Todos los certificados emitidos (búsqueda global, admin)" })
   listAll() {
     return this.certificateService.listAll();
+  }
+
+  @ApiBearerAuth()
+  @Get("admin/certificates/export")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga en un .zip todos los certificados emitidos (o los filtrados por curso/empresa)" })
+  async exportZip(
+    @Query("courseId") courseId: string | undefined,
+    @Query("companyId") companyId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { filename, archive } = await this.certificateService.exportZip({ courseId, companyId });
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    archive.pipe(res);
   }
 }

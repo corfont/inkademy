@@ -46,6 +46,17 @@ export class StorageService {
     return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
   }
 
+  /** Descarga el contenido completo de un objeto (usado para armar el ZIP de certificados en batch). */
+  async getObjectBuffer(key: string): Promise<Buffer> {
+    const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const chunks: Buffer[] = [];
+    // El SDK v3 tipa Body como un stream genérico; en Node siempre es un Readable real.
+    for await (const chunk of result.Body as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
   /** URL pública directa (para buckets con lectura anónima habilitada, como en dev). */
   getPublicUrl(key: string): string | null {
     if (!this.publicBaseUrl) return null;

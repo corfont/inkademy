@@ -3,14 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, Clock, Radio, User } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
-import { catalogApi } from "@/lib/api-client";
+import { catalogApi, meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_COURSE_DETAIL, MOCK_COURSES } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { localize, formatPrice, formatDateTime, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
+import { localize, formatPrice, formatDateTime, formatDuration, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const detail = await catalogApi.course(params.slug).catch(() => MOCK_COURSE_DETAIL[params.slug]);
@@ -21,12 +21,31 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const locale = await getLocale();
   const t = await getTranslations("courseDetail");
   const tc = await getTranslations("common");
-  const isAuthenticated = Boolean(getServerAccessToken());
+  const accessToken = getServerAccessToken();
+  const isAuthenticated = Boolean(accessToken);
 
   const fallback = MOCK_COURSE_DETAIL[params.slug];
   const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback);
 
   if (!course) notFound();
+
+  // Si el alumno ya tiene una matrícula (comprada, otorgada gratis, o vía
+  // cupo B2B de su empresa) para este mismo curso, no debe volver a ver el
+  // precio ni el botón de "Inscribirse" — antes se le seguía mostrando el
+  // precio y un CTA que lo mandaba a /checkout aunque ya tuviera acceso
+  // (riesgo real de pago duplicado, y el caso explícito que reportó el
+  // admin: un trabajador con cupo pagado por su empresa no debería ver precio).
+  let myEnrollment: { id: string } | null = null;
+  if (isAuthenticated) {
+    try {
+      const mine = await meApi.enrollments(undefined, accessToken);
+      const match = mine.find((e) => e.offeringKind === "COURSE" && e.courseId === course.id && e.status !== "CANCELLED" && e.status !== "EXPIRED");
+      if (match) myEnrollment = { id: match.id };
+    } catch {
+      // si falla la consulta de matrículas, se degrada al comportamiento
+      // anterior (mostrar precio) en vez de romper la página del curso.
+    }
+  }
 
   const accessLabel =
     course.accessDurationPolicy === "PERMANENT"
@@ -68,9 +87,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
             )}
             <div className="flex items-center gap-1.5">
               <Clock className="h-4 w-4 text-ash-400" aria-hidden="true" />
-              <dd>
-                {course.durationHours} {tc("hours")}
-              </dd>
+              <dd>{formatDuration(course.durationHours, course.durationUnit, locale as "es" | "en")}</dd>
             </div>
             {course.liveSessions?.[0] && (
               <div className="flex items-center gap-1.5">
@@ -138,7 +155,12 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
                 <span className="rounded-full bg-danger px-2 py-0.5 text-xs font-semibold text-white">-{course.discountPercent}%</span>
               )}
             </div>
-            {isAuthenticated ? (
+            {myEnrollment ? (
+              <p className="mt-1 flex items-center gap-2 text-sm font-medium text-success">
+                <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+                Ya tienes acceso a este curso
+              </p>
+            ) : isAuthenticated ? (
               <>
                 {course.isOnSale && course.originalPriceAmount && (
                   <p className="mt-1 text-sm text-ash-500 line-through">
@@ -168,11 +190,19 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
               </p>
             )}
             <p className="mt-2 text-sm text-ash-500">{accessLabel}</p>
-            <Link href={`/checkout?courseId=${course.id}`} className="mt-5 block">
-              <Button className="w-full" size="lg">
-                {tc("enroll")}
-              </Button>
-            </Link>
+            {myEnrollment ? (
+              <Link href={`/campus/cursos/${myEnrollment.id}`} className="mt-5 block">
+                <Button className="w-full" size="lg">
+                  Ir al curso
+                </Button>
+              </Link>
+            ) : (
+              <Link href={`/checkout?courseId=${course.id}`} className="mt-5 block">
+                <Button className="w-full" size="lg">
+                  {tc("enroll")}
+                </Button>
+              </Link>
+            )}
           </div>
         </aside>
       </div>

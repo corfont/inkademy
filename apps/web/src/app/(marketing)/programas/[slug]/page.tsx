@@ -10,7 +10,7 @@ import { MOCK_PROGRAM } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { localize, formatPrice } from "@/lib/format";
+import { localize, formatPrice, formatDuration } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
@@ -59,7 +59,7 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
                           {localize(entry.course.title, locale)}
                         </Link>
                         <p className="text-sm text-ash-500">
-                          {entry.course.durationHours} {tc("hours")}
+                          {formatDuration(entry.course.durationHours, entry.course.durationUnit, locale as "es" | "en")}
                         </p>
                       </div>
                     </div>

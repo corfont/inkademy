@@ -56,6 +56,7 @@ export class CatalogService {
       level: course.level,
       areaSlug: course.area.slug,
       durationHours: course.durationHours,
+      durationUnit: course.durationUnit,
       coverImageUrl: course.coverImageAssetId
         ? this.storage.getPublicUrl(course.coverImageAssetId)
         : null,
@@ -159,8 +160,14 @@ export class CatalogService {
   }
 
   async getCourseBySlug(slug: string): Promise<CourseDetailDTO> {
-    const course = await this.prisma.course.findUnique({
-      where: { slug },
+    // findFirst (no findUnique) porque además del slug filtramos por
+    // status: un curso en DRAFT o ARCHIVED no debe ser visible por esta
+    // ruta pública aunque alguien tenga la URL directa — antes esto NO se
+    // filtraba y un curso "oculto" por el admin seguía siendo accesible
+    // por su slug. La vista de administración usa GET /admin/courses/:id
+    // (AdminService.getCourseDetail), que no pasa por este método.
+    const course = await this.prisma.course.findFirst({
+      where: { slug, status: "PUBLISHED" },
       include: {
         ...courseCardInclude,
         modules: { orderBy: { order: "asc" }, include: { lessons: { orderBy: { order: "asc" } } } },

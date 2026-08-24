@@ -207,6 +207,15 @@ export interface SunatSettingsDTO {
   updatedAt: string | null;
 }
 
+export interface ChatbotSettingsDTO {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  systemPrompt: string | null;
+  hasApiKey: boolean;
+  updatedAt: string | null;
+}
+
 export const settingsApi = {
   // "no-store": la propia pantalla de /admin/apariencia promete que los
   // cambios se ven "al instante" — con el cache por defecto de fetch() en
@@ -387,6 +396,15 @@ export const suggestionsApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Asistente de IA (chat flotante)
+// ---------------------------------------------------------------------------
+export const chatbotApi = {
+  status: () => apiFetch<{ enabled: boolean }>("/chatbot/status", { cache: "no-store" }),
+  sendMessage: (message: string, history: Array<{ role: "user" | "assistant"; content: string }>, accessToken?: string | null) =>
+    apiFetch<{ reply: string }>("/chatbot/message", { method: "POST", body: JSON.stringify({ message, history }), accessToken }),
+};
+
+// ---------------------------------------------------------------------------
 // Admin
 // ---------------------------------------------------------------------------
 export const adminApi = {
@@ -496,4 +514,7 @@ export const adminApi = {
   sunatSettings: (accessToken?: string | null) => apiFetch<SunatSettingsDTO>("/admin/sunat-settings", { accessToken, cache: "no-store" }),
   updateSunatSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<SunatSettingsDTO>("/admin/sunat-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  chatbotSettings: (accessToken?: string | null) => apiFetch<ChatbotSettingsDTO>("/admin/chatbot-settings", { accessToken, cache: "no-store" }),
+  updateChatbotSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<ChatbotSettingsDTO>("/admin/chatbot-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
 };

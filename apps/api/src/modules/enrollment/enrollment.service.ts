@@ -114,6 +114,8 @@ export class EnrollmentService {
         return {
           id: e.id,
           offeringKind: e.offeringKind,
+          courseId: e.courseId,
+          programId: e.programId,
           title: (offering?.title as Record<string, string>) ?? {},
           coverImageUrl:
             e.course?.coverImageAssetId ? this.storage.getPublicUrl(e.course.coverImageAssetId) : null,

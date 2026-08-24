@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { commerceApi, ApiError } from "@/lib/api-client";
+import { useEffect, useState } from "react";
+import { adminApi, commerceApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -18,6 +18,31 @@ export function GrantFreeAccessForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Antes había que escribir el slug del curso/programa de memoria (el
+  // backend recién avisaba con un error si no existía o no estaba
+  // publicado). Ahora se elige de una lista ya filtrada a lo que
+  // realmente se puede otorgar gratis: cursos/programas PUBLISHED.
+  const [courses, setCourses] = useState<any[]>([]);
+  const [programs, setPrograms] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+
+  useEffect(() => {
+    adminApi
+      .courses()
+      .then((rows) => setCourses(rows.filter((c: any) => c.status === "PUBLISHED")))
+      .catch(() => setCourses([]));
+    adminApi
+      .programs()
+      .then((rows) => setPrograms(rows.filter((p: any) => p.status === "PUBLISHED")))
+      .catch(() => setPrograms([]));
+    adminApi
+      .companies()
+      .then((rows) => setCompanies(rows))
+      .catch(() => setCompanies([]));
+  }, []);
+
+  const offerings = offeringKind === "COURSE" ? courses : programs;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,14 +85,33 @@ export function GrantFreeAccessForm() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="offeringKind">Tipo de oferta</Label>
-              <Select id="offeringKind" value={offeringKind} onChange={(e) => setOfferingKind(e.target.value as "COURSE" | "PROGRAM")}>
+              <Select
+                id="offeringKind"
+                value={offeringKind}
+                onChange={(e) => {
+                  setOfferingKind(e.target.value as "COURSE" | "PROGRAM");
+                  setSlug("");
+                }}
+              >
                 <option value="COURSE">Curso</option>
                 <option value="PROGRAM">Programa/diplomado</option>
               </Select>
             </div>
             <div>
-              <Label htmlFor="slug">{offeringKind === "COURSE" ? "Slug del curso" : "Slug del programa"}</Label>
-              <Input id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="p. ej. liderazgo-remoto" />
+              <Label htmlFor="slug">{offeringKind === "COURSE" ? "Curso" : "Programa/diplomado"}</Label>
+              <Select id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)}>
+                <option value="">Selecciona uno…</option>
+                {offerings.map((o) => (
+                  <option key={o.id} value={o.slug}>
+                    {o.title?.es ?? o.slug}
+                  </option>
+                ))}
+              </Select>
+              {offerings.length === 0 && (
+                <p className="mt-1 text-xs text-ash-500">
+                  No hay {offeringKind === "COURSE" ? "cursos" : "programas"} publicados todavía.
+                </p>
+              )}
             </div>
           </div>
 
@@ -87,8 +131,15 @@ export function GrantFreeAccessForm() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <Label htmlFor="companyId">ID de la empresa</Label>
-                <Input id="companyId" required value={companyId} onChange={(e) => setCompanyId(e.target.value)} placeholder="uuid" />
+                <Label htmlFor="companyId">Empresa</Label>
+                <Select id="companyId" required value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+                  <option value="">Selecciona una empresa…</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.legalName} ({c.taxId})
+                    </option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <Label htmlFor="seatPoolQty">Cupos gratuitos</Label>
