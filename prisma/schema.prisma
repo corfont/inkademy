@@ -681,6 +681,7 @@ model Order {
   items       OrderItem[]
   payments    Payment[]
   electronicInvoice ElectronicInvoice?
+  electronicNotes   ElectronicNote[]
 }
 
 enum ElectronicDocumentType {
@@ -725,6 +726,45 @@ model ElectronicInvoice {
   createdAt           DateTime                 @default(now())
 
   @@unique([documentType, series, correlativo])
+}
+
+enum ElectronicNoteType {
+  CREDIT // Nota de crédito — catálogo 09 SUNAT (anulación, descuento, etc.)
+  DEBIT  // Nota de débito — catálogo 10 SUNAT (intereses, aumento de valor, etc.)
+}
+
+/// Nota de crédito/débito SUNAT, ligada a la ElectronicInvoice original que
+/// ajusta. Hoy el único disparador real es "el comprador desiste de la
+/// compra" (CommerceService.cancelOrder) -> siempre genera CREDIT con
+/// motivo "01" (anulación de la operación). DEBIT queda modelado y con XML
+/// soportado (ver invoice.processor.ts en apps/worker) para casos futuros
+/// (p.ej. corrección de un cobro de menos) pero sin un endpoint que lo
+/// dispare todavía.
+model ElectronicNote {
+  id                   String                   @id @default(uuid())
+  orderId              String
+  order                Order                    @relation(fields: [orderId], references: [id])
+  noteType             ElectronicNoteType
+  series               String
+  correlativo          Int
+  // Documento SUNAT que esta nota ajusta (la ElectronicInvoice original).
+  referenceDocType     ElectronicDocumentType
+  referenceSeries      String
+  referenceCorrelativo Int
+  // Catálogo 09 (crédito) / catálogo 10 (débito) de SUNAT.
+  reasonCode           String
+  reasonDescription    String
+  currency             String
+  totalAmount          Decimal                  @db.Decimal(10, 2)
+  xml                  String?                  @db.Text
+  cdrXml               String?                  @db.Text
+  status               ElectronicDocumentStatus @default(PENDING)
+  sunatResponseCode    String?
+  sunatDescription     String?
+  pdfAssetId           String?
+  createdAt            DateTime                 @default(now())
+
+  @@unique([noteType, series, correlativo])
 }
 
 model OrderItem {

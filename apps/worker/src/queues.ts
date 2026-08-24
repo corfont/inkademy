@@ -169,8 +169,13 @@ export interface RegenerateRecommendationsJobData {
 // ---------------------------------------------------------------------------
 export const INVOICE_JOBS = {
   GENERATE: "invoice.generate",
+  GENERATE_NOTE: "invoice.generate-note",
 } as const;
 
 export interface InvoiceGenerateJobData {
   invoiceId: string;
+}
+
+export interface InvoiceGenerateNoteJobData {
+  noteId: string;
 }

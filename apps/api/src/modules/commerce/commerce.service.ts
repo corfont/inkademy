@@ -8,8 +8,8 @@ import {
 } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import type { Queue } from "bullmq";
-import type { AccessDurationPolicy, ElectronicDocumentType, Prisma, PrismaClient } from "@inkademy/db";
-import type { CheckoutInput, CheckoutResult } from "@inkademy/shared";
+import type { AccessDurationPolicy, ElectronicDocumentType, ElectronicNoteType, Prisma, PrismaClient } from "@inkademy/db";
+import type { CancelOrderInput, CheckoutInput, CheckoutResult } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { INVOICE_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
@@ -372,10 +372,98 @@ export class CommerceService {
     }
   }
 
+  /**
+   * Cancela una orden pagada: reembolsa el cobro original vía el mismo
+   * proveedor con el que se cobró, y emite la nota de crédito SUNAT que
+   * corresponde a la boleta/factura original ("el comprador desiste de la
+   * compra" — catálogo 09, motivo "01" = Anulación de la operación por
+   * defecto). Solo ADMIN/SUPPORT puede invocarla (ver commerce.controller.ts).
+   *
+   * Deliberadamente NO revoca la matrícula/acceso al curso — es una
+   * decisión de negocio aparte (¿cuánto contenido ya consumió el alumno?)
+   * que no estaba en el alcance de este pedido; queda para un endpoint
+   * separado si se necesita.
+   */
+  async cancelOrder(orderId: string, input: CancelOrderInput) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { payments: true, electronicInvoice: true },
+    });
+    if (!order) throw new NotFoundException("Orden no encontrada");
+    if (order.status !== "PAID") {
+      throw new BadRequestException("Solo se pueden cancelar órdenes en estado PAID");
+    }
+
+    const invoice = order.electronicInvoice;
+    if (!invoice || (invoice.status !== "ACCEPTED" && invoice.status !== "SIMULATED")) {
+      throw new BadRequestException(
+        "La orden no tiene un comprobante electrónico emitido todavía — espera a que se procese o revisa su estado",
+      );
+    }
+
+    const successfulPayment = order.payments.find((p) => p.status === "SUCCEEDED");
+    if (!successfulPayment) {
+      throw new BadRequestException("La orden no tiene un pago exitoso que reembolsar");
+    }
+
+    const provider = this.resolveProvider(successfulPayment.provider as CheckoutInput["paymentProvider"]);
+    const refundResult = await provider.refund({
+      providerRef: successfulPayment.providerRef ?? "",
+      amountInMinorUnits: Math.round(Number(order.total) * 100),
+      reason: input.reasonDescription,
+    });
+    if (!refundResult.success) {
+      throw new BadRequestException(refundResult.failureMessage ?? "No se pudo procesar el reembolso");
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } }),
+      this.prisma.payment.update({ where: { id: successfulPayment.id }, data: { status: "REFUNDED" } }),
+    ]);
+
+    const noteType: ElectronicNoteType = "CREDIT";
+    const series =
+      invoice.documentType === "FACTURA"
+        ? (process.env.SUNAT_FACTURA_CREDIT_SERIES ?? "FC01")
+        : (process.env.SUNAT_BOLETA_CREDIT_SERIES ?? "BC01");
+
+    // Mismo enfoque de correlativo secuencial simple que createElectronicInvoiceIfNeeded.
+    const last = await this.prisma.electronicNote.findFirst({
+      where: { noteType, series },
+      orderBy: { correlativo: "desc" },
+    });
+    const correlativo = (last?.correlativo ?? 0) + 1;
+
+    const note = await this.prisma.electronicNote.create({
+      data: {
+        orderId: order.id,
+        noteType,
+        series,
+        correlativo,
+        referenceDocType: invoice.documentType,
+        referenceSeries: invoice.series,
+        referenceCorrelativo: invoice.correlativo,
+        reasonCode: input.reasonCode,
+        reasonDescription: input.reasonDescription,
+        currency: invoice.currency,
+        totalAmount: invoice.totalAmount,
+        status: "PENDING",
+      },
+    });
+
+    await this.invoiceQueue.add(
+      INVOICE_JOBS.GENERATE_NOTE,
+      { noteId: note.id },
+      { attempts: 3, backoff: { type: "exponential", delay: 15000 }, removeOnComplete: true },
+    );
+
+    return { orderId: order.id, status: "REFUNDED" as const, noteId: note.id };
+  }
+
   async getOrderById(userId: string, orderId: string, isAdmin: boolean) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true, payments: true },
+      include: { items: true, payments: true, electronicInvoice: true, electronicNotes: true },
     });
     if (!order) throw new NotFoundException("Orden no encontrada");
     if (!isAdmin && order.userId !== userId) {
@@ -403,6 +491,23 @@ export class CommerceService {
         status: p.status,
         receiptUrl: p.receiptUrl,
         paidAt: p.paidAt?.toISOString() ?? null,
+      })),
+      electronicInvoice: order.electronicInvoice
+        ? {
+            documentType: order.electronicInvoice.documentType,
+            series: order.electronicInvoice.series,
+            correlativo: order.electronicInvoice.correlativo,
+            status: order.electronicInvoice.status,
+            sunatDescription: order.electronicInvoice.sunatDescription,
+          }
+        : null,
+      electronicNotes: order.electronicNotes.map((n) => ({
+        noteType: n.noteType,
+        series: n.series,
+        correlativo: n.correlativo,
+        status: n.status,
+        reasonDescription: n.reasonDescription,
+        sunatDescription: n.sunatDescription,
       })),
     };
   }

@@ -115,6 +115,7 @@ registrar processors con estos nombres exactos** (cola → job):
 | `attendance-sync` | `attendance-sync.sync-live-session` | `{liveSessionId}` | `LiveSessionService.syncAttendance` (además de sincronizar síncronamente en el mismo request) |
 | `recommendation` | `recommendation.regenerate-for-user` | `{userId}` | `EnrollmentService.updateLessonProgress` (cada vez que progresa una lección) — el worker debería recalcular y escribir filas en `Recommendation` |
 | `invoice` | `invoice.generate` | `{invoiceId}` | `CommerceService.finalizeOrderPaid` (siempre que una orden pasa a PAID y `order.total > 0` — se omite por completo en cursos gratuitos). El worker arma el XML UBL 2.1, lo firma y lo envía a SUNAT (o lo simula si no hay credenciales), y actualiza `ElectronicInvoice.status/xml/cdrXml/sunatResponseCode` |
+| `invoice` | `invoice.generate-note` | `{noteId}` | `CommerceService.cancelOrder` (ADMIN/SUPPORT cancela una orden PAID → reembolsa vía el proveedor original y crea una `ElectronicNote` tipo CREDIT). Comparte cola con `invoice.generate` (mismo dominio SUNAT); el worker despacha por nombre de job — ver `apps/worker/src/index.ts` |
 
 Todas las colas se registran globalmente en `QueuesModule`
 (`src/common/queues/queues.module.ts`, `@Global()`), leyendo `REDIS_URL`.

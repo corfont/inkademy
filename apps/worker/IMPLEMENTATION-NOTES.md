@@ -200,3 +200,13 @@ sin problema una vez que `pnpm install` corra desde la raíz.
   duplicados pero un choque haría fallar la creación de la fila (no hay
   reintento automático). Para el volumen de checkouts esperado es
   aceptable; con alto tráfico concurrente convendría una secuencia dedicada.
+- **Notas de crédito/débito** (`invoice.generate-note`,
+  `src/processors/credit-note.processor.ts`,
+  `src/lib/sunat/ubl-credit-note.ts`): reutiliza el mismo pipeline de firma/
+  envío/CDR validado para boletas/facturas — un envío de prueba real contra
+  SUNAT beta devolvió "La Nota de Credito numero BC01-97544, ha sido
+  aceptada". Solo hay un disparador real hoy (`CommerceService.cancelOrder`
+  → siempre CREDIT, motivo "01" Anulación de la operación); DEBIT está
+  soportado por el builder de XML pero sin ningún endpoint que lo cree —
+  si se necesita a futuro (p.ej. corregir un cobro de menos), solo falta
+  el endpoint/trigger del lado de `apps/api`, no tocar nada acá.

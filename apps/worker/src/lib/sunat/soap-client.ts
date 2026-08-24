@@ -18,8 +18,8 @@ export function sunatEndpoint(env: SunatEnv): string {
     : "https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService";
 }
 
-/** Nombre de archivo exigido por SUNAT: {RUC}-{tipo doc.}-{serie}-{correlativo}. */
-export function buildFileName(ruc: string, documentTypeCode: "01" | "03", series: string, correlativo: number): string {
+/** Nombre de archivo exigido por SUNAT: {RUC}-{tipo doc.}-{serie}-{correlativo}. Catálogo 01: 01=Factura, 03=Boleta, 07=Nota de Crédito, 08=Nota de Débito. */
+export function buildFileName(ruc: string, documentTypeCode: "01" | "03" | "07" | "08", series: string, correlativo: number): string {
   return `${ruc}-${documentTypeCode}-${series}-${correlativo}`;
 }
 

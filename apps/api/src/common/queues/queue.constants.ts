@@ -57,4 +57,5 @@ export const RECOMMENDATION_JOBS = {
 // --- Jobs de la cola "invoice" ---
 export const INVOICE_JOBS = {
   GENERATE: "invoice.generate",
+  GENERATE_NOTE: "invoice.generate-note",
 } as const;

@@ -1,10 +1,12 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { checkoutSchema } from "@inkademy/shared";
-import type { CheckoutInput } from "@inkademy/shared";
+import { cancelOrderSchema, checkoutSchema } from "@inkademy/shared";
+import type { CancelOrderInput, CheckoutInput } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Public } from "../../common/decorators/public.decorator";
+import { Roles } from "../../common/decorators/roles.decorator";
+import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { CommerceService } from "./commerce.service";
@@ -34,6 +36,17 @@ export class CommerceController {
   @ApiOperation({ summary: "Historial de compras/comprobantes del usuario" })
   listMine(@CurrentUser() user: RequestUser) {
     return this.commerceService.listMine(user.id);
+  }
+
+  @Post("orders/:id/cancel")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({
+    summary:
+      "Cancela una orden pagada: reembolsa el cobro original (Culqi/Stripe) y emite la nota de crédito SUNAT correspondiente",
+  })
+  cancelOrder(@Param("id") id: string, @Body(new ZodValidationPipe(cancelOrderSchema)) dto: CancelOrderInput) {
+    return this.commerceService.cancelOrder(id, dto);
   }
 }
 

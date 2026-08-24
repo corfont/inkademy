@@ -95,6 +95,15 @@ export const checkoutSchema = z.object({
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
+export const cancelOrderSchema = z.object({
+  // Catálogo 09 SUNAT (motivos de nota de crédito). "01" = Anulación de la
+  // operación, el motivo por defecto cuando el comprador simplemente
+  // desiste de la compra.
+  reasonCode: z.string().min(1).default("01"),
+  reasonDescription: z.string().min(3),
+});
+export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
+
 export const submitAttemptSchema = z.object({
   answers: z
     .array(

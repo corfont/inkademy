@@ -12,7 +12,7 @@ const rootEnv = join(__dirname, "../../../.env");
 dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
 
 import { Worker, type Job } from "bullmq";
-import { QUEUE_NAMES, REMINDER_SWEEP_JOB } from "./queues";
+import { INVOICE_JOBS, QUEUE_NAMES, REMINDER_SWEEP_JOB } from "./queues";
 import { createRedisConnection } from "./lib/redis";
 import { reminderQueue } from "./lib/queue-client";
 import { createLogger } from "./lib/logger";
@@ -22,6 +22,17 @@ import { processReminderJob } from "./processors/reminder.processor";
 import { processAttendanceSyncJob } from "./processors/attendance-sync.processor";
 import { processRecommendationJob } from "./processors/recommendation.processor";
 import { processInvoiceGenerateJob } from "./processors/invoice.processor";
+import { processInvoiceGenerateNoteJob } from "./processors/credit-note.processor";
+
+/**
+ * La cola "invoice" tiene dos jobs (boleta/factura y nota de crédito/
+ * débito) — comparten el mismo dominio SUNAT así que van en la misma cola,
+ * despachados por nombre de job en vez de crear una cola separada.
+ */
+function processInvoiceQueueJob(job: Job): Promise<void> {
+  if (job.name === INVOICE_JOBS.GENERATE_NOTE) return processInvoiceGenerateNoteJob(job);
+  return processInvoiceGenerateJob(job);
+}
 
 const logger = createLogger("worker");
 const connection = createRedisConnection();
@@ -42,7 +53,7 @@ const workers: Worker[] = [
   new Worker(QUEUE_NAMES.REMINDER, processReminderJob, { connection, concurrency: 5 }),
   new Worker(QUEUE_NAMES.ATTENDANCE_SYNC, processAttendanceSyncJob, { connection, concurrency: 3 }),
   new Worker(QUEUE_NAMES.RECOMMENDATION, processRecommendationJob, { connection, concurrency: 5 }),
-  new Worker(QUEUE_NAMES.INVOICE, processInvoiceGenerateJob, { connection, concurrency: 2 }),
+  new Worker(QUEUE_NAMES.INVOICE, processInvoiceQueueJob, { connection, concurrency: 2 }),
 ];
 
 workers.forEach((worker, i) => attachLifecycleLogs(worker, Object.values(QUEUE_NAMES)[i]));

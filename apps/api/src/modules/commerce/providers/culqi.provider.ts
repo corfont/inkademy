@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { ChargeParams, ChargeResult, PaymentProvider } from "./payment-provider.interface";
+import type { ChargeParams, ChargeResult, PaymentProvider, RefundParams, RefundResult } from "./payment-provider.interface";
 
 /**
  * Adapter de Culqi (Perú: tarjetas, Yape, PagoEfectivo) — llama directo al
@@ -46,5 +46,32 @@ export class CulqiProvider implements PaymentProvider {
       return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Pago rechazado" };
     }
     return { success: true, providerRef: body.id, receiptUrl: body?.receipt_url };
+  }
+
+  async refund(params: RefundParams): Promise<RefundResult> {
+    if (!this.secretKey || params.providerRef.startsWith("sim_")) {
+      this.logger.warn("CULQI_SECRET_KEY no configurada (o cargo simulado) — simulando reembolso (modo dev)");
+      return { success: true, providerRefundRef: `sim_refund_${Date.now()}` };
+    }
+
+    const res = await fetch("https://api.culqi.com/v2/refunds", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        charge_id: params.providerRef,
+        amount: params.amountInMinorUnits,
+        reason: "solicitud_comprador",
+      }),
+    });
+
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      this.logger.warn(`Culqi rechazó el reembolso: ${JSON.stringify(body)}`);
+      return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Reembolso rechazado" };
+    }
+    return { success: true, providerRefundRef: body.id };
   }
 }

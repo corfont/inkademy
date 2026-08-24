@@ -179,7 +179,14 @@ export const meApi = {
 // ---------------------------------------------------------------------------
 export const commerceApi = {
   checkout: (input: CheckoutRequest) => apiFetch<CheckoutResult>("/checkout", { method: "POST", body: JSON.stringify(input) }),
-  order: (id: string) => apiFetch<any>(`/orders/${id}`),
+  order: (id: string, accessToken?: string) => apiFetch<any>(`/orders/${id}`, { accessToken }),
+  // Reembolsa el cobro original y emite la nota de crédito SUNAT — solo ADMIN/SUPPORT.
+  cancelOrder: (id: string, reasonDescription: string, accessToken?: string) =>
+    apiFetch<{ orderId: string; status: string; noteId: string }>(`/orders/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reasonDescription }),
+      accessToken,
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -299,6 +306,8 @@ export const adminApi = {
     apiFetch<any>(`/admin/programs/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   createProgram: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>("/admin/programs", { method: "POST", body: JSON.stringify(input), accessToken }),
+  orders: (q: string | undefined, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/orders", { accessToken, query: q ? { q } : undefined }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
   gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }, accessToken?: string | null) =>
     apiFetch<any>(`/admin/attempts/${attemptId}/answers/${answerId}/grade`, {

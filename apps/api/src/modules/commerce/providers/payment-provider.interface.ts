@@ -17,10 +17,24 @@ export interface ChargeResult {
   failureMessage?: string;
 }
 
+export interface RefundParams {
+  /** providerRef del Payment original (el id de cargo devuelto por charge()). */
+  providerRef: string;
+  amountInMinorUnits: number;
+  reason?: string;
+}
+
+export interface RefundResult {
+  success: boolean;
+  providerRefundRef?: string;
+  failureMessage?: string;
+}
+
 /** Contrato común para adapters de cobro (Culqi, Stripe, ...). */
 export interface PaymentProvider {
   readonly type: PaymentProviderType;
   charge(params: ChargeParams): Promise<ChargeResult>;
+  refund(params: RefundParams): Promise<RefundResult>;
 }
 
 export const PAYMENT_PROVIDERS_TOKEN = "PAYMENT_PROVIDERS";

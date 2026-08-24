@@ -389,4 +389,34 @@ export class AdminService {
   listCompanies() {
     return this.prisma.company.findMany({ orderBy: { createdAt: "desc" } });
   }
+
+  // --- Órdenes (para poder ubicar una orden y cancelarla — ver
+  // CommerceService.cancelOrder — sin tener que consultar la BD a mano) ---
+
+  async listOrders(q?: string) {
+    const orders = await this.prisma.order.findMany({
+      where: q
+        ? {
+            OR: [
+              { id: q },
+              { user: { email: { contains: q, mode: "insensitive" } } },
+              { buyerLegalName: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : undefined,
+      include: { user: true, electronicInvoice: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    return orders.map((o) => ({
+      id: o.id,
+      status: o.status,
+      total: decimalToString(o.total),
+      currency: o.currency,
+      userEmail: o.user.email,
+      buyerLegalName: o.buyerLegalName,
+      invoiceStatus: o.electronicInvoice?.status ?? null,
+      createdAt: o.createdAt.toISOString(),
+    }));
+  }
 }

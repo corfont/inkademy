@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Stripe from "stripe";
-import type { ChargeParams, ChargeResult, PaymentProvider } from "./payment-provider.interface";
+import type { ChargeParams, ChargeResult, PaymentProvider, RefundParams, RefundResult } from "./payment-provider.interface";
 
 /** Adapter de Stripe (compradores internacionales) usando el SDK oficial `stripe`. */
 @Injectable()
@@ -46,6 +46,25 @@ export class StripeProvider implements PaymentProvider {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error de Stripe";
       this.logger.warn(`Stripe rechazó el cargo: ${message}`);
+      return { success: false, failureMessage: message };
+    }
+  }
+
+  async refund(params: RefundParams): Promise<RefundResult> {
+    if (!this.stripe || params.providerRef.startsWith("sim_")) {
+      this.logger.warn("STRIPE_SECRET_KEY no configurada (o cargo simulado) — simulando reembolso (modo dev)");
+      return { success: true, providerRefundRef: `sim_refund_${Date.now()}` };
+    }
+    try {
+      const refund = await this.stripe.refunds.create({
+        payment_intent: params.providerRef,
+        amount: params.amountInMinorUnits,
+        reason: "requested_by_customer",
+      });
+      return { success: refund.status === "succeeded" || refund.status === "pending", providerRefundRef: refund.id };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error de Stripe al reembolsar";
+      this.logger.warn(`Stripe rechazó el reembolso: ${message}`);
       return { success: false, failureMessage: message };
     }
   }

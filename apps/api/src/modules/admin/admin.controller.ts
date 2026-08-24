@@ -229,4 +229,11 @@ export class AdminController {
   listCompanies() {
     return this.adminService.listCompanies();
   }
+
+  @Get("orders")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Busca órdenes por id, email del comprador o razón social (para ubicarlas y cancelarlas)" })
+  listOrders(@Query("q") q?: string) {
+    return this.adminService.listOrders(q);
+  }
 }
