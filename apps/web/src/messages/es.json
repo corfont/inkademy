@@ -371,7 +371,8 @@
       "companies": "Empresas",
       "support": "Soporte",
       "certificates": "Certificados",
-      "pendingReview": "Evaluaciones pendientes"
+      "pendingReview": "Evaluaciones pendientes",
+      "appearance": "Apariencia"
     },
     "dashboard": {
       "kpisTitle": "Indicadores",

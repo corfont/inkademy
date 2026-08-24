@@ -123,6 +123,20 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 // Catálogo público
 // ---------------------------------------------------------------------------
+export interface PlatformSettingsDTO {
+  id: string;
+  logoUrl: string | null;
+  logoHeightPx: number;
+  headingFontFamily: string;
+  bodyFontFamily: string;
+  backgroundColor: string | null;
+  backgroundImageUrl: string | null;
+}
+
+export const settingsApi = {
+  get: () => apiFetch<PlatformSettingsDTO>("/settings"),
+};
+
 export const catalogApi = {
   areas: () => apiFetch<AreaSummary[]>("/areas"),
   courses: (filters: CatalogFilters = {}) =>
@@ -287,4 +301,8 @@ export const adminApi = {
     form.append("file", file);
     return apiFetch<{ assetId: string; url: string }>("/admin/uploads", { method: "POST", body: form, accessToken });
   },
+
+  // --- Apariencia de la plataforma ---
+  updateSettings: (input: Partial<Omit<PlatformSettingsDTO, "id">>, accessToken?: string | null) =>
+    apiFetch<PlatformSettingsDTO>("/admin/settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
 };

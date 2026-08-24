@@ -165,3 +165,13 @@ export const createSeatPoolSchema = z.object({
   seatsPurchased: z.number().int().positive(),
   expiresAt: z.coerce.date().optional(),
 });
+
+// --- Apariencia de la plataforma (logo, tipografía, fondo) ---
+export const upsertSettingsSchema = z.object({
+  logoUrl: z.string().optional().nullable(),
+  logoHeightPx: z.number().int().min(12).max(200).optional(),
+  headingFontFamily: z.string().min(1).optional(),
+  bodyFontFamily: z.string().min(1).optional(),
+  backgroundColor: z.string().optional().nullable(),
+  backgroundImageUrl: z.string().optional().nullable(),
+});

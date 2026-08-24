@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { BrandLogo } from "@/components/layout/BrandLogo";
 import { useTranslations } from "next-intl";
 
 export function Footer() {
@@ -10,7 +10,7 @@ export function Footer() {
     <footer className="border-t border-paper-border bg-paper-muted">
       <div className="container grid gap-10 py-14 md:grid-cols-4">
         <div>
-          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="mb-3 h-8 w-auto" />
+          <BrandLogo className="mb-3" />
           <p className="max-w-xs text-sm text-ash-600">{t("tagline")}</p>
         </div>
 

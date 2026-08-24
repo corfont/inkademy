@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, LogOut } from "lucide-react";
+import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, LogOut } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -16,6 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/soporte", label: t("support"), icon: LifeBuoy },
     { href: "/admin/certificados", label: t("certificates"), icon: Award },
     { href: "/admin/evaluaciones-pendientes", label: t("pendingReview"), icon: ClipboardCheck },
+    { href: "/admin/apariencia", label: t("appearance"), icon: Palette },
   ];
 
   return (

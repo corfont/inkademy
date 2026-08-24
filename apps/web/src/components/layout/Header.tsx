@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { BrandLogo } from "@/components/layout/BrandLogo";
 import { useState } from "react";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { LocaleSwitcher } from "./LocaleSwitcher";
+import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
@@ -29,7 +30,7 @@ export function Header() {
       </a>
       <div className="container flex h-16 items-center justify-between gap-4">
         <Link href="/" className="flex items-center" aria-label="Inkademy">
-          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} priority className="h-9 w-auto" />
+          <BrandLogo />
         </Link>
 
         <nav aria-label={t("primaryNav")} className="hidden items-center gap-6 md:flex">
@@ -41,6 +42,7 @@ export function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
           <LocaleSwitcher />
           {user ? (
             <div className="relative">
@@ -130,7 +132,8 @@ export function Header() {
               </Link>
             </>
           )}
-          <div className="px-2 py-2">
+          <div className="flex items-center gap-2 px-2 py-2">
+            <ThemeToggle />
             <LocaleSwitcher />
           </div>
         </nav>

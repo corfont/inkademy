@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { BrandLogo } from "@/components/layout/BrandLogo";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Menu, X } from "lucide-react";
 import { LocaleSwitcher } from "./LocaleSwitcher";
+import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/cn";
 
 export interface SidebarNavItem {
@@ -58,7 +59,7 @@ export function SidebarShell({
       </a>
       <aside className="hidden w-64 flex-none flex-col bg-ink-900 p-5 text-paper lg:flex">
         <Link href={brandHref} className="mb-8 flex items-center" aria-label="Inkademy">
-          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-7 w-auto" />
+          <BrandLogo />
         </Link>
         {nav}
         <div className="mt-auto pt-6">{topRight}</div>
@@ -67,7 +68,7 @@ export function SidebarShell({
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-paper-border bg-paper px-4 lg:hidden">
           <Link href={brandHref} className="flex items-center" aria-label="Inkademy">
-            <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-7 w-auto" />
+            <BrandLogo />
           </Link>
           <button
             type="button"
@@ -86,7 +87,8 @@ export function SidebarShell({
           </div>
         )}
 
-        <div className="hidden justify-end gap-3 border-b border-paper-border bg-paper px-6 py-3 lg:flex">
+        <div className="hidden items-center justify-end gap-3 border-b border-paper-border bg-paper px-6 py-3 lg:flex">
+          <ThemeToggle />
           <LocaleSwitcher />
         </div>
 

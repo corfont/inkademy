@@ -60,8 +60,19 @@
   --danger-bg: 4 65% 95%;
 }
 
+/* ---------------------------------------------------------------------------
+   Modo oscuro — tres formas de llegar acá:
+   1. "Automático" (por defecto): sigue prefers-color-scheme del SO, siempre
+      que el visitante no haya forzado explícitamente "Claro" con el selector
+      (ver ThemeToggle.tsx) — de ahí el :not([data-theme="light"]).
+   2. data-theme="dark" en <html>: el visitante forzó "Oscuro" a mano,
+      independiente de lo que diga el SO.
+   Ambos casos comparten los mismos valores; se repiten porque los
+   selectores de atributo no pueden vivir dentro del @media de forma que
+   cubran también el caso sin @media.
+   ------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: 224 32% 8%;
     --paper-muted: 224 28% 12%;
     --paper-border: 223 22% 20%;
@@ -89,6 +100,35 @@
     --ink-900: 212 70% 95%;
     --ink-950: 212 60% 97%;
   }
+}
+
+:root[data-theme="dark"] {
+  --paper: 224 32% 8%;
+  --paper-muted: 224 28% 12%;
+  --paper-border: 223 22% 20%;
+
+  --ash-50: 220 18% 14%;
+  --ash-100: 220 14% 20%;
+  --ash-200: 220 12% 28%;
+  --ash-300: 24 8% 42%;
+  --ash-400: 25 9% 58%;
+  --ash-500: 27 10% 70%;
+  --ash-600: 28 12% 80%;
+  --ash-700: 30 15% 88%;
+  --ash-800: 30 20% 93%;
+  --ash-900: 30 25% 97%;
+
+  --ink-50: 220 40% 12%;
+  --ink-100: 219 38% 18%;
+  --ink-200: 217 36% 26%;
+  --ink-300: 215 40% 38%;
+  --ink-400: 213 55% 55%;
+  --ink-500: 211 75% 68%;
+  --ink-600: 211 85% 76%;
+  --ink-700: 211 88% 84%;
+  --ink-800: 211 85% 91%;
+  --ink-900: 212 70% 95%;
+  --ink-950: 212 60% 97%;
 }
 
 * {

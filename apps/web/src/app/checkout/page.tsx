@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { BrandLogo } from "@/components/layout/BrandLogo";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Lock } from "lucide-react";
@@ -111,7 +111,7 @@ function CheckoutForm() {
   return (
     <div className="min-h-screen bg-paper-muted">
       <header className="container flex h-16 items-center">
-        <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-8 w-auto" />
+        <BrandLogo />
       </header>
 
       <div className="container grid gap-8 pb-16 lg:grid-cols-[1fr_20rem]">

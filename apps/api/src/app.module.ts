@@ -22,6 +22,7 @@ import { NotificationModule } from "./modules/notification/notification.module";
 import { SupportModule } from "./modules/support/support.module";
 import { CompaniesModule } from "./modules/companies/companies.module";
 import { AdminModule } from "./modules/admin/admin.module";
+import { SettingsModule } from "./modules/settings/settings.module";
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AdminModule } from "./modules/admin/admin.module";
     SupportModule,
     CompaniesModule,
     AdminModule,
+    SettingsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

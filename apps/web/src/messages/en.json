@@ -371,7 +371,8 @@
       "companies": "Companies",
       "support": "Support",
       "certificates": "Certificates",
-      "pendingReview": "Pending review"
+      "pendingReview": "Pending review",
+      "appearance": "Appearance"
     },
     "dashboard": {
       "kpisTitle": "Key indicators",

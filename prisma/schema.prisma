@@ -876,3 +876,18 @@ model CountryConfig {
   phonePrefix  String
   taxIdLabel   String? // "RUC", "NIT", ...
 }
+
+/// Fila única (id fijo "default") con la identidad visual editable desde
+/// /admin/apariencia: logo, tamaño del logo, tipografía y fondo del sitio.
+/// El modo claro/oscuro/automático NO vive aquí — es preferencia de cada
+/// visitante (localStorage), no una configuración global de la plataforma.
+model PlatformSettings {
+  id                  String   @id @default("default")
+  logoUrl             String?
+  logoHeightPx        Int      @default(32)
+  headingFontFamily   String   @default("Outfit")
+  bodyFontFamily      String   @default("Work Sans")
+  backgroundColor     String? // hex, sobreescribe el token --paper
+  backgroundImageUrl  String?
+  updatedAt           DateTime @updatedAt
+}

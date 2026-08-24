@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { BrandLogo } from "@/components/layout/BrandLogo";
 import { LocaleSwitcher } from "@/components/layout/LocaleSwitcher";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -7,7 +7,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="flex min-h-screen flex-col bg-paper-muted">
       <header className="container flex h-16 items-center justify-between">
         <Link href="/" aria-label="Inkademy">
-          <Image src="/brand/logo-horizontal.png" alt="Inkademy" width={643} height={200} className="h-8 w-auto" />
+          <BrandLogo />
         </Link>
         <LocaleSwitcher />
       </header>
