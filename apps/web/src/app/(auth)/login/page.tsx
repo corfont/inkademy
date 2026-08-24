@@ -42,8 +42,14 @@ function LoginForm() {
       const next = searchParams.get("next");
       if (!user.profileCompletedAt) {
         router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
+      } else if (next) {
+        router.push(next);
       } else {
-        router.push(next ?? "/campus");
+        // Sin "next" explícito (login directo, no redirigido desde una
+        // página protegida), cada rol cae en su propio panel — antes ADMIN
+        // y TEACHER también aterrizaban en /campus por defecto.
+        const home = user.globalRole === "ADMIN" || user.globalRole === "SUPPORT" ? "/admin" : user.globalRole === "TEACHER" ? "/docente" : "/campus";
+        router.push(home);
       }
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : "No pudimos iniciar sesión.");

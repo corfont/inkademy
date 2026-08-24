@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -238,10 +238,12 @@ export class AdminService {
     return this.prisma.area.update({ where: { id }, data: input });
   }
 
-  listCourses(params: { page?: number; pageSize?: number }) {
+  /** `teacherUserId`: si viene, acota a los cursos donde ese usuario es CourseStaff (panel de docente). */
+  listCourses(params: { page?: number; pageSize?: number }, teacherUserId?: string) {
     const page = Math.max(1, params.page ?? 1);
     const pageSize = Math.min(100, params.pageSize ?? 20);
     return this.prisma.course.findMany({
+      where: teacherUserId ? { staff: { some: { userId: teacherUserId } } } : undefined,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: { createdAt: "desc" },
@@ -249,15 +251,59 @@ export class AdminService {
     });
   }
 
+  /** Resumen para /docente: cursos asignados, próximas sesiones a dictar, cola de calificación pendiente. */
+  async getTeacherDashboard(teacherUserId: string) {
+    const [courses, upcomingLiveSessions, pendingReviewCount] = await Promise.all([
+      this.prisma.course.findMany({
+        where: { staff: { some: { userId: teacherUserId } } },
+        include: { area: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.liveSession.findMany({
+        where: { course: { staff: { some: { userId: teacherUserId } } }, startsAt: { gt: new Date() }, status: "SCHEDULED" },
+        include: { course: true },
+        orderBy: { startsAt: "asc" },
+        take: 10,
+      }),
+      this.prisma.answer.count({
+        where: {
+          isCorrect: null,
+          question: { type: { in: ["OPEN", "SHORT_ANSWER"] } },
+          attempt: { assessment: { course: { staff: { some: { userId: teacherUserId } } } } },
+        },
+      }),
+    ]);
+    return {
+      courses: courses.map((c) => ({ id: c.id, slug: c.slug, title: c.title, status: c.status, areaName: c.area?.name })),
+      upcomingLiveSessions: upcomingLiveSessions.map((s) => ({
+        id: s.id,
+        courseId: s.courseId,
+        courseTitle: s.course.title,
+        startsAt: s.startsAt.toISOString(),
+        endsAt: s.endsAt.toISOString(),
+        joinUrl: s.joinUrl,
+      })),
+      pendingReviewCount,
+    };
+  }
+
+  /** Verifica que un TEACHER sea CourseStaff del curso antes de dejarlo ver/editar — ADMIN/SUPPORT (teacherUserId undefined) no tiene esta restricción. */
+  private async assertTeacherOwnsCourse(courseId: string, teacherUserId: string) {
+    const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
+    if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+  }
+
   createCourse(input: Record<string, unknown>) {
     return this.prisma.course.create({ data: input as never });
   }
 
-  updateCourse(id: string, input: Record<string, unknown>) {
+  async updateCourse(id: string, input: Record<string, unknown>, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(id, teacherUserId);
     return this.prisma.course.update({ where: { id }, data: input as never });
   }
 
-  async getCourseDetail(id: string) {
+  async getCourseDetail(id: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(id, teacherUserId);
     const course = await this.prisma.course.findUnique({
       where: { id },
       include: {

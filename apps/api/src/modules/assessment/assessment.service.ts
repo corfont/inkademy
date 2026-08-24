@@ -218,9 +218,21 @@ export class AssessmentService {
 
   // --- Usado por AdminModule ---
 
-  async listPendingReview() {
+  /**
+   * `teacherUserId` acota la cola a solo las respuestas de cursos donde ese
+   * usuario es CourseStaff — usado cuando quien llama es TEACHER (ve solo
+   * lo suyo, ver /docente/evaluaciones-pendientes); ADMIN/SUPPORT no manda
+   * este parámetro y ve la cola completa (ver evaluaciones-pendientes admin).
+   */
+  async listPendingReview(teacherUserId?: string) {
     return this.prisma.answer.findMany({
-      where: { isCorrect: null, question: { type: { in: ["OPEN", "SHORT_ANSWER"] } } },
+      where: {
+        isCorrect: null,
+        question: { type: { in: ["OPEN", "SHORT_ANSWER"] } },
+        ...(teacherUserId
+          ? { attempt: { assessment: { course: { staff: { some: { userId: teacherUserId } } } } } }
+          : {}),
+      },
       include: {
         question: true,
         attempt: { include: { user: true, assessment: { include: { course: true } } } },

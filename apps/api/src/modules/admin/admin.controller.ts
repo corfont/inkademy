@@ -71,9 +71,19 @@ export class AdminController {
 
   @Get("courses")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Lista cursos (admin, incluye DRAFT/ARCHIVED)" })
-  listCourses(@Query("page") page?: string, @Query("pageSize") pageSize?: string) {
-    return this.adminService.listCourses({ page: Number(page) || undefined, pageSize: Number(pageSize) || undefined });
+  @ApiOperation({ summary: "Lista cursos (admin, incluye DRAFT/ARCHIVED) — TEACHER solo ve los cursos donde es CourseStaff" })
+  listCourses(@CurrentUser() user: RequestUser, @Query("page") page?: string, @Query("pageSize") pageSize?: string) {
+    return this.adminService.listCourses(
+      { page: Number(page) || undefined, pageSize: Number(pageSize) || undefined },
+      user.globalRole === "TEACHER" ? user.id : undefined,
+    );
+  }
+
+  @Get("my-courses")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Resumen del panel de docente: cursos asignados, próximas sesiones en vivo a dictar, evaluaciones pendientes" })
+  myTeachingSummary(@CurrentUser() user: RequestUser) {
+    return this.adminService.getTeacherDashboard(user.id);
   }
 
   @Post("courses")
@@ -85,16 +95,16 @@ export class AdminController {
 
   @Patch("courses/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Actualiza un curso" })
-  updateCourse(@Param("id") id: string, @Body(new ZodValidationPipe(updateCourseSchema)) dto: any) {
-    return this.adminService.updateCourse(id, dto);
+  @ApiOperation({ summary: "Actualiza un curso — TEACHER solo si es CourseStaff de ese curso" })
+  updateCourse(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateCourseSchema)) dto: any) {
+    return this.adminService.updateCourse(id, dto, user.globalRole === "TEACHER" ? user.id : undefined);
   }
 
   @Get("courses/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Detalle de un curso: metadata + módulos/lecciones/materiales + sesiones en vivo" })
-  getCourse(@Param("id") id: string) {
-    return this.adminService.getCourseDetail(id);
+  @ApiOperation({ summary: "Detalle de un curso: metadata + módulos/lecciones/materiales + sesiones en vivo — TEACHER solo si es CourseStaff de ese curso" })
+  getCourse(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.getCourseDetail(id, user.globalRole === "TEACHER" ? user.id : undefined);
   }
 
   @Post("courses/:courseId/modules")
@@ -185,9 +195,9 @@ export class AdminController {
 
   @Get("attempts/pending-review")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Cola de preguntas abiertas/cortas por calificar" })
-  pendingReview() {
-    return this.assessmentService.listPendingReview();
+  @ApiOperation({ summary: "Cola de preguntas abiertas/cortas por calificar (TEACHER ve solo sus cursos, ADMIN/SUPPORT ve todo)" })
+  pendingReview(@CurrentUser() user: RequestUser) {
+    return this.assessmentService.listPendingReview(user.globalRole === "TEACHER" ? user.id : undefined);
   }
 
   @Post("attempts/:attemptId/answers/:answerId/grade")

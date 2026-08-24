@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 // exige un usuario autenticado (@CurrentUser), y sin este guard un visitante
 // sin cuenta podía llenar los datos de tarjeta y recién enterarse del 401 al
 // final, en vez de que se le pida iniciar sesión antes de escribir nada.
-const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/checkout"];
+const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/docente", "/checkout"];
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -21,15 +21,28 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Gate simple por rol para /admin (STUDENT/TEACHER no deberían entrar).
+  // Gate simple por rol: /admin es solo ADMIN/SUPPORT, /docente es solo
+  // TEACHER (y ADMIN, por si necesita entrar a revisar algo puntual). Antes
+  // /admin redirigía a TEACHER directo a /campus — un docente no tenía
+  // ningún panel propio a donde ir, quedaba varado en la vista de alumno.
   if (pathname.startsWith("/admin")) {
     try {
       const user = JSON.parse(decodeURIComponent(session));
       if (user.globalRole !== "ADMIN" && user.globalRole !== "SUPPORT") {
-        return NextResponse.redirect(new URL("/campus", request.url));
+        return NextResponse.redirect(new URL(user.globalRole === "TEACHER" ? "/docente" : "/campus", request.url));
       }
     } catch {
       // cookie corrupta: dejamos pasar y la propia página resolverá el estado real vía /auth/me
+    }
+  }
+  if (pathname.startsWith("/docente")) {
+    try {
+      const user = JSON.parse(decodeURIComponent(session));
+      if (user.globalRole !== "TEACHER" && user.globalRole !== "ADMIN") {
+        return NextResponse.redirect(new URL("/campus", request.url));
+      }
+    } catch {
+      // cookie corrupta: dejamos pasar
     }
   }
 
@@ -37,5 +50,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/campus/:path*", "/campus", "/empresa/:path*", "/empresa", "/admin/:path*", "/admin", "/checkout"],
+  matcher: ["/campus/:path*", "/campus", "/empresa/:path*", "/empresa", "/admin/:path*", "/admin", "/docente/:path*", "/docente", "/checkout"],
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, BookOpen, CalendarDays, Award, Receipt, LifeBuoy, User, Sparkles, MessageSquarePlus, LogOut } from "lucide-react";
+import { LayoutDashboard, BookOpen, LibraryBig, CalendarDays, Award, Receipt, LifeBuoy, User, Sparkles, MessageSquarePlus, LogOut } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -12,6 +12,10 @@ export default function CampusLayout({ children }: { children: React.ReactNode }
   const navItems = [
     { href: "/campus", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/campus/cursos", label: t("courses"), icon: BookOpen },
+    // Antes no había ningún link desde el campus al catálogo completo — el
+    // alumno solo veía "Mis cursos" (matriculados) y "Recomendaciones", sin
+    // forma de explorar TODA la oferta de Inkademy sin salir a la home pública.
+    { href: "/catalogo", label: "Explorar catálogo", icon: LibraryBig },
     { href: "/campus/agenda", label: t("agenda"), icon: CalendarDays },
     { href: "/campus/certificados", label: t("certificates"), icon: Award },
     { href: "/campus/pagos", label: t("payments"), icon: Receipt },

@@ -332,6 +332,8 @@ export const adminApi = {
   kpis: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpis", { accessToken }),
   exceptions: (accessToken?: string | null) => apiFetch<AdminExceptionDTO[]>("/admin/exceptions", { accessToken }),
   courses: (accessToken?: string | null) => apiFetch<any[]>("/admin/courses", { accessToken }),
+  // Panel de docente: cursos asignados, próximas clases a dictar, cola de calificación — ver AdminService.getTeacherDashboard.
+  teacherDashboard: (accessToken?: string | null) => apiFetch<any>("/admin/my-courses", { accessToken }),
   programs: (accessToken?: string | null) => apiFetch<any[]>("/admin/programs", { accessToken }),
   areas: (accessToken?: string | null) => apiFetch<any[]>("/admin/areas", { accessToken }),
   createArea: (input: { slug: string; name: Record<string, string>; icon?: string; order?: number }, accessToken?: string | null) =>

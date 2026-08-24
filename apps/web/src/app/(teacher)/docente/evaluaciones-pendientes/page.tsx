@@ -1,0 +1,73 @@
+import type { Metadata } from "next";
+import { adminApi } from "@/lib/api-client";
+import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
+import { localize } from "@/lib/format";
+import { GradeAnswerDialog } from "@/components/admin/GradeAnswerDialog";
+import { Callout } from "@/components/ui/Callout";
+
+export const metadata: Metadata = { title: "Evaluaciones pendientes (docente)" };
+
+interface PendingAnswer {
+  attemptId: string;
+  answerId: string;
+  studentName: string;
+  courseTitle: string;
+  questionText: string;
+  studentAnswer: string;
+}
+
+/**
+ * Misma fuente que /admin/evaluaciones-pendientes (GET /admin/attempts/
+ * pending-review) — el backend ya acota la cola a solo los cursos de este
+ * docente cuando el rol es TEACHER (ver AssessmentService.listPendingReview).
+ */
+function normalizePending(raw: any): PendingAnswer {
+  const student = raw.attempt.user;
+  const course = raw.attempt.assessment?.course;
+  return {
+    attemptId: raw.attempt.id,
+    answerId: raw.id,
+    studentName: student.displayName ?? [student.firstName, student.lastName].filter(Boolean).join(" "),
+    courseTitle: localize(course?.title, "es", "—"),
+    questionText: localize(raw.question?.text, "es", ""),
+    studentAnswer: typeof raw.response === "string" ? raw.response : JSON.stringify(raw.response),
+  };
+}
+
+export default async function TeacherPendingReviewPage() {
+  const accessToken = getServerAccessToken();
+  const { data: rawPending, live } = await withFallback(() => adminApi.pendingReview(accessToken), [] as any[]);
+  const pending = rawPending.map(normalizePending);
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-6">
+      <h1 className="font-serif text-2xl font-semibold text-ink-900">Evaluaciones pendientes</h1>
+      {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+
+      {pending.length === 0 ? (
+        <p className="text-ash-500">No tienes respuestas pendientes por calificar.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {pending.map((item) => (
+            <div key={item.answerId} className="flex flex-col gap-3 rounded-lg border border-paper-border bg-paper p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-ink-900">{item.studentName}</p>
+                  <p className="text-sm text-ash-500">{item.courseTitle}</p>
+                </div>
+                <GradeAnswerDialog
+                  attemptId={item.attemptId}
+                  answerId={item.answerId}
+                  questionText={item.questionText}
+                  studentAnswer={item.studentAnswer}
+                />
+              </div>
+              <p className="text-sm text-ash-600">{item.questionText}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
