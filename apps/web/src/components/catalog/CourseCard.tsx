@@ -1,14 +1,18 @@
+"use client";
+
 import Link from "next/link";
 import type { CourseCardDTO } from "@inkademy/shared";
 import { useTranslations, useLocale } from "next-intl";
 import { BadgeCheck, Clock, Radio, User } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { localize, formatPrice, formatDateTime, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export function CourseCard({ course }: { course: CourseCardDTO }) {
   const locale = useLocale();
   const t = useTranslations("common");
+  const { user } = useAuth();
   const isProgram = course.type === "PROGRAM" || course.type === "DIPLOMA";
   const href = isProgram ? `/programas/${course.slug}` : `/cursos/${course.slug}`;
 
@@ -71,10 +75,14 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
         <div className="mt-auto flex items-center justify-between gap-3 pt-2">
           {course.b2bAvailable && isProgram ? (
             <span className="font-serif text-base font-semibold text-ink-900">{t("requestProposal")}</span>
-          ) : (
+          ) : user ? (
             <span className="font-serif text-lg font-semibold text-gold-600">
               {formatPrice(course.priceAmount, course.priceCurrency, locale)}
             </span>
+          ) : (
+            <Link href={`/login?next=${encodeURIComponent(href)}`} className="text-sm font-medium text-ink-600 underline-offset-2 hover:underline">
+              {t("loginToSeePrice")}
+            </Link>
           )}
           <Link href={href}>
             <Button size="sm" variant={isProgram ? "outline" : "primary"}>

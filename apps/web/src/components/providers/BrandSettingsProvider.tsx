@@ -23,7 +23,7 @@ export function useBrandSettings(): PlatformSettingsDTO {
     return {
       id: "default",
       logoUrl: null,
-      logoHeightPx: 32,
+      logoHeightPx: 64,
       headingFontFamily: "Outfit",
       bodyFontFamily: "Work Sans",
       backgroundColor: null,

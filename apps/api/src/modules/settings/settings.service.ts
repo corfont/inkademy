@@ -7,7 +7,7 @@ const SETTINGS_ID = "default";
 const DEFAULTS = {
   id: SETTINGS_ID,
   logoUrl: null as string | null,
-  logoHeightPx: 32,
+  logoHeightPx: 64, // el doble del valor original (32px) — pedido explícito del cliente
   headingFontFamily: "Outfit",
   bodyFontFamily: "Work Sans",
   backgroundColor: null as string | null,

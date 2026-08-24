@@ -5,6 +5,7 @@ import { BadgeCheck } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { catalogApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_PROGRAM } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -21,6 +22,7 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
   const locale = await getLocale();
   const t = await getTranslations("programDetail");
   const tc = await getTranslations("common");
+  const isAuthenticated = Boolean(getServerAccessToken());
 
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
   const { data: program, live } = await withFallback(() => catalogApi.program(params.slug), fallback);
@@ -70,13 +72,23 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg border border-paper-border bg-paper p-6 shadow-card">
-            <p className="text-sm text-ash-500 line-through">{formatPrice(program.separatePriceTotal, program.priceCurrency, locale)}</p>
-            <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">
-              {formatPrice(program.priceAmount, program.priceCurrency, locale)}
-            </p>
-            <p className="mt-2 text-sm font-medium text-success">
-              {t("savings")} {formatPrice(program.savingsAmount, program.priceCurrency, locale)}
-            </p>
+            {isAuthenticated ? (
+              <>
+                <p className="text-sm text-ash-500 line-through">{formatPrice(program.separatePriceTotal, program.priceCurrency, locale)}</p>
+                <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">
+                  {formatPrice(program.priceAmount, program.priceCurrency, locale)}
+                </p>
+                <p className="mt-2 text-sm font-medium text-success">
+                  {t("savings")} {formatPrice(program.savingsAmount, program.priceCurrency, locale)}
+                </p>
+              </>
+            ) : (
+              <p>
+                <Link href={`/login?next=${encodeURIComponent(`/programas/${program.slug}`)}`} className="font-medium text-ink-600 underline-offset-2 hover:underline">
+                  {tc("loginToSeePrice")}
+                </Link>
+              </p>
+            )}
             {program.certificationIncluded && (
               <p className="mt-3 flex items-center gap-2 text-sm text-ash-700">
                 <BadgeCheck className="h-4 w-4 text-success" aria-hidden="true" />

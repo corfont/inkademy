@@ -153,6 +153,18 @@ export class NotificationService {
     );
   }
 
+  sendFreeAccessGranted(to: string, offeringTitle: string, userId: string) {
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: `Te otorgamos acceso gratuito a "${offeringTitle}"`,
+        html: `<p>El equipo de Inkademy te otorgó acceso gratuito a <b>${offeringTitle}</b>. Ya puedes verlo en tu campus.</p>`,
+      },
+      userId,
+    );
+  }
+
   sendSupportTicketUpdate(to: string, subject: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.SUPPORT_TICKET_UPDATE,

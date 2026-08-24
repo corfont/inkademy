@@ -106,7 +106,7 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
               id="logo-height"
               type="range"
               min={16}
-              max={80}
+              max={160}
               value={form.logoHeightPx}
               onChange={(e) => setForm((f) => ({ ...f, logoHeightPx: Number(e.target.value) }))}
               className="w-full"

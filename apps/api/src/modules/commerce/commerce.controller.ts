@@ -9,6 +9,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { grantFreeAccessSchema } from "../../common/validation/local-schemas";
 import { CommerceService } from "./commerce.service";
 
 @ApiTags("commerce")
@@ -36,6 +37,17 @@ export class CommerceController {
   @ApiOperation({ summary: "Historial de compras/comprobantes del usuario" })
   listMine(@CurrentUser() user: RequestUser) {
     return this.commerceService.listMine(user.id);
+  }
+
+  @Post("grants")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary:
+      "Otorga acceso gratuito a un curso/programa con precio (marketing/cortesía) a una persona o a una empresa — nunca genera Order ni comprobante SUNAT",
+  })
+  grantFree(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(grantFreeAccessSchema)) dto: any) {
+    return this.commerceService.grantFree(user.id, dto);
   }
 
   @Post("orders/:id/cancel")

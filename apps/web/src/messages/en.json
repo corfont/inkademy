@@ -54,7 +54,8 @@
     "nextLiveSession": "Next live session",
     "offlineNotice": "We couldn't reach the server right now. Showing reference data.",
     "requiredField": "This field is required",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "loginToSeePrice": "Log in to see the price"
   },
   "home": {
     "heroTitle": "Learn what your career needs",

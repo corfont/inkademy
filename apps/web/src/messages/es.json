@@ -54,7 +54,8 @@
     "nextLiveSession": "Próxima clase en vivo",
     "offlineNotice": "No pudimos conectar con el servidor en este momento. Mostrando información de referencia.",
     "requiredField": "Este campo es obligatorio",
-    "viewAll": "Ver todo"
+    "viewAll": "Ver todo",
+    "loginToSeePrice": "Inicia sesión para ver el precio"
   },
   "home": {
     "heroTitle": "Aprende lo que tu carrera necesita",

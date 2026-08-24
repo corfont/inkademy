@@ -5,6 +5,7 @@ import { BadgeCheck, Clock, Radio, User } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { catalogApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
+import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_COURSE_DETAIL, MOCK_COURSES } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +21,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const locale = await getLocale();
   const t = await getTranslations("courseDetail");
   const tc = await getTranslations("common");
+  const isAuthenticated = Boolean(getServerAccessToken());
 
   const fallback = MOCK_COURSE_DETAIL[params.slug];
   const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback);
@@ -131,9 +133,17 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg border border-paper-border bg-paper p-6 shadow-card">
             <p className="text-sm text-ash-500">{t("priceLabel")}</p>
-            <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">
-              {formatPrice(course.priceAmount, course.priceCurrency, locale)}
-            </p>
+            {isAuthenticated ? (
+              <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">
+                {formatPrice(course.priceAmount, course.priceCurrency, locale)}
+              </p>
+            ) : (
+              <p className="mt-1">
+                <Link href={`/login?next=${encodeURIComponent(`/cursos/${course.slug}`)}`} className="font-medium text-ink-600 underline-offset-2 hover:underline">
+                  {tc("loginToSeePrice")}
+                </Link>
+              </p>
+            )}
             {course.certificationIncluded && (
               <p className="mt-3 flex items-center gap-2 text-sm text-success">
                 <BadgeCheck className="h-4 w-4" aria-hidden="true" />

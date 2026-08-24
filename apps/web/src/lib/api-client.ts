@@ -187,6 +187,19 @@ export const commerceApi = {
       body: JSON.stringify({ reasonDescription }),
       accessToken,
     }),
+  // Otorga acceso gratuito a un curso/programa con precio — nunca genera comprobante SUNAT.
+  grantFree: (
+    input: {
+      offeringKind: "COURSE" | "PROGRAM";
+      courseSlug?: string;
+      programSlug?: string;
+      userEmail?: string;
+      companyId?: string;
+      seatPoolQty?: number;
+      note: string;
+    },
+    accessToken?: string,
+  ) => apiFetch<{ granted: string }>("/grants", { method: "POST", body: JSON.stringify(input), accessToken }),
 };
 
 // ---------------------------------------------------------------------------

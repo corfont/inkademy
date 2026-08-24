@@ -27,6 +27,17 @@ interface ResolvedBuyerInfo {
   buyerCountry: string;
 }
 
+/** Ver grantFreeAccessSchema en apps/api/src/common/validation/local-schemas.ts. */
+interface GrantFreeAccessInput {
+  offeringKind: "COURSE" | "PROGRAM";
+  courseSlug?: string;
+  programSlug?: string;
+  userEmail?: string;
+  companyId?: string;
+  seatPoolQty?: number;
+  note: string;
+}
+
 function computeAccessExpiresAt(policy: AccessDurationPolicy, from: Date): Date | null {
   const date = new Date(from);
   if (policy === "DAYS_30") {
@@ -458,6 +469,104 @@ export class CommerceService {
     );
 
     return { orderId: order.id, status: "REFUNDED" as const, noteId: note.id };
+  }
+
+  /**
+   * Otorga acceso gratuito a un curso/programa que SÍ tiene precio (p.ej.
+   * estrategia de marketing, cortesía a un cliente corporativo) — a
+   * diferencia de un curso realmente gratuito (priceAmount = 0), esto es
+   * una decisión discrecional del admin sobre UNA venta puntual. Por eso
+   * NUNCA pasa por Order/Payment: no hay nada que cobrar, así que
+   * createElectronicInvoiceIfNeeded ni se llama — no se emite boleta ni
+   * factura, tal como pidió el cliente explícitamente.
+   */
+  async grantFree(actorId: string, input: GrantFreeAccessInput) {
+    let offeringTitle: unknown;
+    let accessDurationPolicy: AccessDurationPolicy | undefined;
+    let courseId: string | undefined;
+    let programId: string | undefined;
+
+    if (input.offeringKind === "COURSE") {
+      const course = await this.prisma.course.findUnique({ where: { slug: input.courseSlug } });
+      if (!course || course.status !== "PUBLISHED") throw new NotFoundException("Curso no disponible");
+      offeringTitle = course.title;
+      accessDurationPolicy = course.accessDurationPolicy;
+      courseId = course.id;
+    } else {
+      const program = await this.prisma.program.findUnique({ where: { slug: input.programSlug } });
+      if (!program || program.status !== "PUBLISHED") throw new NotFoundException("Programa no disponible");
+      offeringTitle = program.title;
+      programId = program.id;
+    }
+    const title = ((offeringTitle as Record<string, string>) ?? {}).es ?? "un curso de Inkademy";
+
+    if (input.companyId) {
+      if (!input.seatPoolQty) throw new BadRequestException("seatPoolQty es requerido al otorgar a una empresa");
+      const company = await this.prisma.company.findUnique({ where: { id: input.companyId } });
+      if (!company) throw new NotFoundException("Empresa no encontrada");
+
+      const existingPool = await this.prisma.companySeatPool.findFirst({
+        where: { companyId: input.companyId, offeringKind: input.offeringKind, courseId, programId },
+      });
+      if (existingPool) {
+        await this.prisma.companySeatPool.update({
+          where: { id: existingPool.id },
+          data: { seatsPurchased: existingPool.seatsPurchased + input.seatPoolQty },
+        });
+      } else {
+        await this.prisma.companySeatPool.create({
+          data: { companyId: input.companyId, offeringKind: input.offeringKind, courseId, programId, seatsPurchased: input.seatPoolQty },
+        });
+      }
+
+      await this.prisma.auditLog.create({
+        data: {
+          actorId,
+          companyId: input.companyId,
+          action: "GRANT_FREE_ACCESS",
+          entity: input.offeringKind === "COURSE" ? "Course" : "Program",
+          entityId: courseId ?? programId,
+          after: { companyId: input.companyId, seatPoolQty: input.seatPoolQty, note: input.note },
+        },
+      });
+
+      return { granted: "COMPANY_SEATS" as const, companyId: input.companyId, seatPoolQty: input.seatPoolQty };
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email: input.userEmail } });
+    if (!user) throw new NotFoundException("No existe un usuario con ese correo");
+    const userId = user.id;
+
+    const existingEnrollment = await this.prisma.enrollment.findFirst({
+      where: { userId, offeringKind: input.offeringKind, courseId, programId, status: "ACTIVE" },
+    });
+    if (existingEnrollment) {
+      throw new BadRequestException("Este usuario ya tiene una matrícula activa en esta oferta");
+    }
+
+    const accessExpiresAt = accessDurationPolicy ? computeAccessExpiresAt(accessDurationPolicy, new Date()) : null;
+    const enrollment = await this.prisma.enrollment.create({
+      data: { userId, offeringKind: input.offeringKind, courseId, programId, source: "ADMIN_GRANTED", accessExpiresAt },
+    });
+
+    if (input.offeringKind === "COURSE" && courseId) {
+      const course = await this.prisma.course.findUnique({ where: { id: courseId } });
+      if (course) await this.calendarService.scheduleForEnrollment(userId, course, accessExpiresAt);
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "GRANT_FREE_ACCESS",
+        entity: input.offeringKind === "COURSE" ? "Course" : "Program",
+        entityId: courseId ?? programId,
+        after: { userId, note: input.note },
+      },
+    });
+
+    await this.notifications.sendFreeAccessGranted(user.email, title, userId);
+
+    return { granted: "ENROLLMENT" as const, enrollmentId: enrollment.id };
   }
 
   async getOrderById(userId: string, orderId: string, isAdmin: boolean) {

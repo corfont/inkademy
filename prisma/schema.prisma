@@ -1008,7 +1008,7 @@ model CountryConfig {
 model PlatformSettings {
   id                  String   @id @default("default")
   logoUrl             String?
-  logoHeightPx        Int      @default(32)
+  logoHeightPx        Int      @default(64)
   headingFontFamily   String   @default("Outfit")
   bodyFontFamily      String   @default("Work Sans")
   backgroundColor     String? // hex, sobreescribe el token --paper

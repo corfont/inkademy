@@ -161,6 +161,31 @@ export const createLiveSessionSchema = z.object({
   organizerUpn: z.string().email().optional(),
 });
 
+/**
+ * Otorga acceso gratuito a un curso/programa que SÍ tiene precio —
+ * decisión discrecional del admin (estrategia de marketing, cortesía,
+ * etc.), no un curso gratuito. Por eso NUNCA genera Order/Payment/
+ * ElectronicInvoice — ver CommerceService.grantFree.
+ */
+export const grantFreeAccessSchema = z
+  .object({
+    offeringKind: z.enum(["COURSE", "PROGRAM"]),
+    // Slug/email en vez de uuid crudo: el admin los copia directo del
+    // catálogo o de la ficha del usuario, sin tener que ir a buscar el id.
+    courseSlug: z.string().min(1).optional(),
+    programSlug: z.string().min(1).optional(),
+    userEmail: z.string().email().optional(),
+    companyId: z.string().uuid().optional(),
+    seatPoolQty: z.number().int().positive().optional(),
+    note: z.string().min(3),
+  })
+  .refine((v) => Boolean(v.userEmail) !== Boolean(v.companyId), {
+    message: "Indica userEmail (persona) o companyId (empresa), no ambos ni ninguno",
+  })
+  .refine((v) => Boolean(v.courseSlug) !== Boolean(v.programSlug), {
+    message: "Indica courseSlug o programSlug, no ambos ni ninguno",
+  });
+
 export const rescheduleLiveSessionSchema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
