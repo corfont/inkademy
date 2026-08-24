@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, BookOpen, CalendarDays, Award, Receipt, LifeBuoy, User, Sparkles, LogOut } from "lucide-react";
+import { LayoutDashboard, BookOpen, CalendarDays, Award, Receipt, LifeBuoy, User, Sparkles, MessageSquarePlus, LogOut } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -17,6 +17,7 @@ export default function CampusLayout({ children }: { children: React.ReactNode }
     { href: "/campus/pagos", label: t("payments"), icon: Receipt },
     { href: "/campus/recomendaciones", label: t("recommendations"), icon: Sparkles },
     { href: "/campus/soporte", label: t("support"), icon: LifeBuoy },
+    { href: "/campus/sugerencias", label: "Sugerencias", icon: MessageSquarePlus },
     { href: "/campus/perfil", label: t("profile"), icon: User },
   ];
 

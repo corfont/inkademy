@@ -27,25 +27,32 @@ const MOCK_REPORT: ReportRow[] = [
 /**
  * `GET /companies/:id/reports` devuelve `{ total, rows }` con una fila POR
  * MATRÍCULA (ver `CompaniesService.getReports`), no agregada por equipo+curso
- * como necesita esta tabla — se agrega aquí. La API todavía no calcula
- * asistencia para este reporte (solo progreso/nota), por eso esa columna
- * queda en "N/D" con datos reales; el mock sí la simula para no dejar la
- * pantalla de referencia con una columna vacía.
+ * como necesita esta tabla — se agrega aquí. `attendancePct` es null cuando
+ * el curso no tiene sesiones en vivo (p.ej. cursos 100% grabados) — se
+ * excluye del promedio en vez de contarlo como 0%.
  */
 function aggregateReportRows(payload: { rows: any[] } | ReportRow[], locale: string): ReportRow[] {
   const rawRows: any[] = Array.isArray(payload) ? payload : payload.rows ?? [];
   if (rawRows.length > 0 && "averageProgress" in rawRows[0]) return rawRows as ReportRow[];
 
-  const groups = new Map<string, { team: string; courseTitle: string; participants: number; progressSum: number; scoreSum: number; scoreCount: number }>();
+  const groups = new Map<
+    string,
+    { team: string; courseTitle: string; participants: number; progressSum: number; scoreSum: number; scoreCount: number; attendanceSum: number; attendanceCount: number }
+  >();
   for (const row of rawRows) {
     const courseTitle = localize(row.courseTitle, locale, "Curso");
     const key = `${row.team ?? "Sin equipo"}::${courseTitle}`;
-    const group = groups.get(key) ?? { team: row.team ?? "Sin equipo", courseTitle, participants: 0, progressSum: 0, scoreSum: 0, scoreCount: 0 };
+    const group =
+      groups.get(key) ?? { team: row.team ?? "Sin equipo", courseTitle, participants: 0, progressSum: 0, scoreSum: 0, scoreCount: 0, attendanceSum: 0, attendanceCount: 0 };
     group.participants += 1;
     group.progressSum += row.progressPct ?? 0;
     if (typeof row.bestScore === "number") {
       group.scoreSum += row.bestScore;
       group.scoreCount += 1;
+    }
+    if (typeof row.attendancePct === "number") {
+      group.attendanceSum += row.attendancePct;
+      group.attendanceCount += 1;
     }
     groups.set(key, group);
   }
@@ -54,7 +61,7 @@ function aggregateReportRows(payload: { rows: any[] } | ReportRow[], locale: str
     courseTitle: g.courseTitle,
     participants: g.participants,
     averageProgress: Math.round(g.progressSum / g.participants),
-    averageAttendance: NaN,
+    averageAttendance: g.attendanceCount ? Math.round(g.attendanceSum / g.attendanceCount) : NaN,
     averageScore: g.scoreCount ? Math.round(g.scoreSum / g.scoreCount) : NaN,
   }));
 }

@@ -8,6 +8,7 @@ export function toAuthUser(user: User): AuthUser {
     firstName: user.firstName,
     lastName: user.lastName,
     displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
     globalRole: user.globalRole,
     locale: user.locale,
     timezone: user.timezone,

@@ -27,6 +27,7 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   displayName?: string | null;
+  avatarUrl?: string | null;
   globalRole: GlobalRole;
   locale: string;
   timezone: string;

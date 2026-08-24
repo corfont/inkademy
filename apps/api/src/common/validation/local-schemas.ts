@@ -173,6 +173,14 @@ export const createSeatPoolSchema = z.object({
   expiresAt: z.coerce.date().optional(),
 });
 
+// --- Sugerencias de curso ("me gustaría un curso de...") ---
+export const createSuggestionSchema = z.object({
+  message: z.string().min(5).max(1000),
+});
+export const updateSuggestionSchema = z.object({
+  status: z.enum(["NEW", "REVIEWED", "PLANNED", "DECLINED"]),
+});
+
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---
 export const upsertSettingsSchema = z.object({
   logoUrl: z.string().optional().nullable(),

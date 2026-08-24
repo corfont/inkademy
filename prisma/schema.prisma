@@ -43,6 +43,7 @@ model User {
   firstName             String
   lastName              String
   displayName           String?
+  avatarUrl             String?
   globalRole            GlobalRole @default(STUDENT)
   locale                String   @default("es")
   timezone              String   @default("America/Lima")
@@ -79,6 +80,7 @@ model User {
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
   supportMessages       SupportMessage[]
+  courseSuggestions     CourseSuggestion[]
   recommendations       Recommendation[]
   auditLogs             AuditLog[]
   teachingCourses       CourseStaff[]
@@ -843,6 +845,20 @@ model SupportMessage {
   body       String        @db.Text
   attachmentAssetId String?
   createdAt  DateTime      @default(now())
+}
+
+/// Sugerencias libres de los usuarios (ej. "me gustaría un curso de X") —
+/// deliberadamente separado de SupportTicket: no es un problema a resolver,
+/// es una idea a evaluar para el catálogo futuro.
+model CourseSuggestion {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String   @db.Text
+  status    String   @default("NEW") // NEW | REVIEWED | PLANNED | DECLINED
+  createdAt DateTime @default(now())
+
+  @@index([status])
 }
 
 model Recommendation {

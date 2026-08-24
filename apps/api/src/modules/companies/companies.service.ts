@@ -217,6 +217,30 @@ export class CompaniesService {
     const memberships = await this.prisma.companyMembership.findMany({ where: { companyId } });
     const teamByUserId = new Map(memberships.map((m) => [m.userId, m.team]));
 
+    // Antes esta columna siempre mostraba "N/D" en el frontend porque el
+    // reporte nunca calculaba asistencia — solo progreso y nota. Igual que
+    // en CertificateService.checkAndIssueIfEligible: % de sesiones en vivo
+    // del curso a las que el alumno efectivamente se unió.
+    const courseIds = [...new Set(enrollments.map((e) => e.courseId).filter((id): id is string => Boolean(id)))];
+    const sessionsByCourse = new Map<string, number>();
+    if (courseIds.length > 0) {
+      const sessionCounts = await this.prisma.liveSession.groupBy({
+        by: ["courseId"],
+        where: { courseId: { in: courseIds } },
+        _count: { _all: true },
+      });
+      for (const s of sessionCounts) sessionsByCourse.set(s.courseId, s._count._all);
+    }
+    const attendanceRecords = await this.prisma.attendance.findMany({
+      where: { userId: { in: enrollments.map((e) => e.userId) }, joinedAt: { not: null } },
+      select: { userId: true, liveSession: { select: { courseId: true } } },
+    });
+    const attendedByUserCourse = new Map<string, number>();
+    for (const a of attendanceRecords) {
+      const key = `${a.userId}:${a.liveSession.courseId}`;
+      attendedByUserCourse.set(key, (attendedByUserCourse.get(key) ?? 0) + 1);
+    }
+
     const rows = enrollments
       .filter((e) => !filters.team || teamByUserId.get(e.userId) === filters.team)
       .map((e) => {
@@ -224,6 +248,9 @@ export class CompaniesService {
           if (a.score === null) return best;
           return best === null ? a.score : Math.max(best, a.score);
         }, null);
+        const totalSessions = e.courseId ? sessionsByCourse.get(e.courseId) ?? 0 : 0;
+        const attended = e.courseId ? attendedByUserCourse.get(`${e.userId}:${e.courseId}`) ?? 0 : 0;
+        const attendancePct = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : null;
         return {
           userId: e.userId,
           userName: `${e.user.firstName} ${e.user.lastName}`,
@@ -232,6 +259,7 @@ export class CompaniesService {
           courseTitle: (e.course?.title as Record<string, string>) ?? null,
           progressPct: e.progressPct,
           bestScore,
+          attendancePct,
           status: e.status,
         };
       });

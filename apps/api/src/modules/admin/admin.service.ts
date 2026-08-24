@@ -26,6 +26,8 @@ export class AdminService {
       atRiskEnrollments,
       certificatesIssued,
       ticketsByStatus,
+      enrollmentsByCourse,
+      revenueByCompany,
     ] = await Promise.all([
       this.prisma.order.aggregate({
         where: { status: "PAID", createdAt: { gte: thirtyDaysAgo } },
@@ -41,7 +43,37 @@ export class AdminService {
       }),
       this.prisma.certificate.count({ where: { revoked: false } }),
       this.prisma.supportTicket.groupBy({ by: ["status"], _count: { status: true } }),
+      // Cursos más solicitados — antes no existía ningún KPI de "qué se
+      // vende más", solo ventas/matrículas/alumnos agregados en total.
+      this.prisma.enrollment.groupBy({
+        by: ["courseId"],
+        where: { courseId: { not: null }, offeringKind: "COURSE" },
+        _count: { courseId: true },
+        orderBy: { _count: { courseId: "desc" } },
+        take: 5,
+      }),
+      // Empresas que más compran — idem, no existía ningún ranking por cliente.
+      this.prisma.order.groupBy({
+        by: ["companyId"],
+        where: { status: "PAID", companyId: { not: null } },
+        _sum: { total: true },
+        orderBy: { _sum: { total: "desc" } },
+        take: 5,
+      }),
     ]);
+
+    const [courses, companies] = await Promise.all([
+      this.prisma.course.findMany({
+        where: { id: { in: enrollmentsByCourse.map((c) => c.courseId).filter((id): id is string => Boolean(id)) } },
+        select: { id: true, title: true },
+      }),
+      this.prisma.company.findMany({
+        where: { id: { in: revenueByCompany.map((c) => c.companyId).filter((id): id is string => Boolean(id)) } },
+        select: { id: true, legalName: true },
+      }),
+    ]);
+    const courseTitleById = new Map(courses.map((c) => [c.id, c.title as Record<string, string>]));
+    const companyNameById = new Map(companies.map((c) => [c.id, c.legalName]));
 
     return {
       sales: {
@@ -59,6 +91,16 @@ export class AdminService {
       },
       certificatesIssued,
       tickets: ticketsByStatus.map((r) => ({ status: r.status, count: r._count.status })),
+      topCourses: enrollmentsByCourse.map((c) => ({
+        courseId: c.courseId,
+        title: c.courseId ? courseTitleById.get(c.courseId) ?? null : null,
+        enrollments: c._count.courseId,
+      })),
+      topCompanies: revenueByCompany.map((c) => ({
+        companyId: c.companyId,
+        legalName: c.companyId ? companyNameById.get(c.companyId) ?? "—" : "—",
+        totalPaid: decimalToString(c._sum.total ?? 0),
+      })),
     };
   }
 

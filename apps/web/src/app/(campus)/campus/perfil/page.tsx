@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
+import { UploadCloud } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { authApi } from "@/lib/api-client";
+import { authApi, ApiError } from "@/lib/api-client";
 import { updateSessionUser } from "@/lib/auth";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -18,6 +19,22 @@ export default function ProfilePage() {
   const { user, setUser } = useAuth();
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  async function handleAvatarUpload(file: File) {
+    setUploadingAvatar(true);
+    setAvatarError(null);
+    try {
+      const updated = await authApi.uploadAvatar(file);
+      setUser(updated);
+      updateSessionUser(updated);
+    } catch (err) {
+      setAvatarError(err instanceof ApiError ? err.message : "No pudimos subir tu foto.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   const { register, handleSubmit, formState: { isSubmitting } } = useForm({
     defaultValues: {
@@ -60,6 +77,34 @@ export default function ProfilePage() {
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 flex flex-col gap-8">
         {saved && <Callout variant="success">{t("saved")}</Callout>}
         {saveError && <Callout variant="danger">No pudimos guardar tus cambios. Intenta de nuevo.</Callout>}
+
+        <section>
+          <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Foto de perfil</h2>
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 flex-none items-center justify-center overflow-hidden rounded-full bg-ink-100 text-lg font-semibold text-ink-700">
+              {user?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span>{[user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join("").toUpperCase()}</span>
+              )}
+            </div>
+            <div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink-700 hover:underline">
+                <UploadCloud className="h-4 w-4" aria-hidden="true" />
+                {uploadingAvatar ? "Subiendo…" : "Cambiar foto"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingAvatar}
+                  onChange={(e) => e.target.files?.[0] && handleAvatarUpload(e.target.files[0])}
+                />
+              </label>
+              {avatarError && <p className="mt-1 text-xs text-danger">{avatarError}</p>}
+            </div>
+          </div>
+        </section>
 
         <section>
           <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("personalData")}</h2>

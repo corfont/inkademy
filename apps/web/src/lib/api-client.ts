@@ -118,6 +118,11 @@ export const authApi = {
   forgotPassword: (email: string) => apiFetch<void>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (input: { token: string; password: string }) => apiFetch<void>("/auth/reset-password", { method: "POST", body: JSON.stringify(input) }),
   completeProfile: (input: unknown, accessToken?: string | null) => apiFetch<AuthUser>("/profile", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  uploadAvatar: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<AuthUser>("/profile/avatar", { method: "POST", body: form });
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -263,6 +268,18 @@ export const supportApi = {
   ticket: (id: string, accessToken?: string | null) => apiFetch<any>(`/support/tickets/${id}`, { accessToken }),
   addMessage: (id: string, body: string, accessToken?: string | null) =>
     apiFetch<any>(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body }), accessToken }),
+};
+
+// ---------------------------------------------------------------------------
+// Sugerencias ("me gustaría un curso de...")
+// ---------------------------------------------------------------------------
+export const suggestionsApi = {
+  create: (message: string, accessToken?: string | null) =>
+    apiFetch<any>("/suggestions", { method: "POST", body: JSON.stringify({ message }), accessToken }),
+  mine: (accessToken?: string | null) => apiFetch<any[]>("/suggestions/mine", { accessToken }),
+  all: (accessToken?: string | null) => apiFetch<any[]>("/suggestions", { accessToken }),
+  updateStatus: (id: string, status: string, accessToken?: string | null) =>
+    apiFetch<any>(`/suggestions/${id}`, { method: "PATCH", body: JSON.stringify({ status }), accessToken }),
 };
 
 // ---------------------------------------------------------------------------

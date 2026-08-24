@@ -23,6 +23,7 @@ import { SupportModule } from "./modules/support/support.module";
 import { CompaniesModule } from "./modules/companies/companies.module";
 import { AdminModule } from "./modules/admin/admin.module";
 import { SettingsModule } from "./modules/settings/settings.module";
+import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { SettingsModule } from "./modules/settings/settings.module";
     CompaniesModule,
     AdminModule,
     SettingsModule,
+    SuggestionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
