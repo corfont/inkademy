@@ -58,6 +58,20 @@ const config: Config = {
           600: "hsl(var(--gold-600) / <alpha-value>)",
           700: "hsl(var(--gold-700) / <alpha-value>)",
         },
+        // Segundo azul de marca de Inkapitales (#586BD8) — ver el comentario
+        // en globals.css. Antes no existía en absoluto en Inkademy.
+        indigo: {
+          50: "hsl(var(--indigo-50) / <alpha-value>)",
+          100: "hsl(var(--indigo-100) / <alpha-value>)",
+          200: "hsl(var(--indigo-200) / <alpha-value>)",
+          300: "hsl(var(--indigo-300) / <alpha-value>)",
+          400: "hsl(var(--indigo-400) / <alpha-value>)",
+          500: "hsl(var(--indigo-500) / <alpha-value>)",
+          600: "hsl(var(--indigo-600) / <alpha-value>)",
+          700: "hsl(var(--indigo-700) / <alpha-value>)",
+          800: "hsl(var(--indigo-800) / <alpha-value>)",
+          900: "hsl(var(--indigo-900) / <alpha-value>)",
+        },
         success: {
           DEFAULT: "hsl(var(--success) / <alpha-value>)",
           bg: "hsl(var(--success-bg) / <alpha-value>)",

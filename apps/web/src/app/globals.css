@@ -52,6 +52,26 @@
   --gold-600: 32 60% 30%;
   --gold-700: 29 56% 23%;
 
+  /* "indigo" = segundo azul de marca de Inkapitales (#586BD8, hsl 231 62% 60%
+     — vive en indigo-400), tomado de las variables CSS reales de
+     inkapitales.com (--blue). Ahí es el color de los botones/CTA
+     secundarios y, junto con "gold", arma el degradado diagonal de firma
+     de la marca (ver .brand-gradient-text más abajo) — antes Inkademy solo
+     usaba "ink" (el azul #489BF4 propio de la sub-marca "inkademy") y no
+     tenía este segundo tono en absoluto. indigo-700 verificado en 10.48:1
+     de contraste con blanco (uso como fondo de botón).
+     ------------------------------------------------------------------------- */
+  --indigo-50: 231 90% 97%;
+  --indigo-100: 231 85% 93%;
+  --indigo-200: 231 84% 86%;
+  --indigo-300: 231 78% 76%;
+  --indigo-400: 231 62% 60%;
+  --indigo-500: 232 58% 52%;
+  --indigo-600: 233 55% 44%;
+  --indigo-700: 234 52% 36%;
+  --indigo-800: 235 50% 26%;
+  --indigo-900: 236 48% 16%;
+
   --success: 152 52% 32%;
   --success-bg: 150 45% 94%;
   --warning: 38 85% 40%;
@@ -99,6 +119,17 @@
     --ink-800: 211 85% 91%;
     --ink-900: 212 70% 95%;
     --ink-950: 212 60% 97%;
+
+    --indigo-50: 235 40% 12%;
+    --indigo-100: 234 38% 18%;
+    --indigo-200: 233 36% 26%;
+    --indigo-300: 232 40% 38%;
+    --indigo-400: 231 55% 55%;
+    --indigo-500: 231 75% 68%;
+    --indigo-600: 231 85% 76%;
+    --indigo-700: 231 88% 84%;
+    --indigo-800: 231 85% 91%;
+    --indigo-900: 232 70% 95%;
   }
 }
 
@@ -129,6 +160,17 @@
   --ink-800: 211 85% 91%;
   --ink-900: 212 70% 95%;
   --ink-950: 212 60% 97%;
+
+  --indigo-50: 235 40% 12%;
+  --indigo-100: 234 38% 18%;
+  --indigo-200: 233 36% 26%;
+  --indigo-300: 232 40% 38%;
+  --indigo-400: 231 55% 55%;
+  --indigo-500: 231 75% 68%;
+  --indigo-600: 231 85% 76%;
+  --indigo-700: 231 88% 84%;
+  --indigo-800: 231 85% 91%;
+  --indigo-900: 232 70% 95%;
 }
 
 * {
@@ -171,4 +213,16 @@ body {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Degradado diagonal índigo→dorado: la firma visual de inkapitales.com (su
+   variable CSS --ink-grad, 130deg de #586BD8 a #D8B16C). Se usa con
+   moderación en titulares destacados (home, no en todo el sitio) para que
+   Inkademy se sienta parte de la misma marca sin perder su propia identidad
+   azul de sub-marca. */
+.brand-gradient-text {
+  background-image: linear-gradient(130deg, hsl(var(--indigo-400)) 8%, hsl(var(--gold-400)) 92%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
 }

@@ -9,6 +9,9 @@ export const buttonVariants = cva(
       variant: {
         primary: "bg-ink-700 text-paper hover:bg-ink-800 shadow-sm",
         accent: "bg-gold-500 text-white hover:bg-gold-600 shadow-sm",
+        // Segundo azul de marca de Inkapitales (#586BD8) — CTA secundario,
+        // igual que en inkapitales.com.
+        indigo: "bg-indigo-600 text-paper hover:bg-indigo-700 shadow-sm",
         outline: "border border-paper-border bg-transparent text-ink-700 hover:bg-paper-muted",
         ghost: "bg-transparent text-ink-700 hover:bg-paper-muted",
         subtle: "bg-paper-muted text-ash-800 hover:bg-ash-100",

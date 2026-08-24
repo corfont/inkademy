@@ -23,7 +23,7 @@ export default async function HomePage() {
     <>
       <section className="border-b border-paper-border bg-gradient-to-b from-paper-muted to-paper py-16 sm:py-24">
         <div className="container flex flex-col items-center text-center">
-          <h1 className="max-w-3xl font-serif text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
+          <h1 className="brand-gradient-text max-w-3xl font-serif text-4xl font-semibold leading-tight sm:text-5xl">
             {t("heroTitle")}
           </h1>
           <p className="mt-4 max-w-xl text-lg text-ash-600">{t("heroSubtitle")}</p>
