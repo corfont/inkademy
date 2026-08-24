@@ -1,9 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { BrandLogo } from "@/components/layout/BrandLogo";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { useTranslations } from "next-intl";
 
 export function Footer() {
   const t = useTranslations("footer");
+  const { contactEmail, contactPhone, contactAddress } = useBrandSettings();
   const year = new Date().getFullYear();
 
   return (
@@ -36,9 +40,9 @@ export function Footer() {
         <div>
           <h3 className="mb-3 text-sm font-semibold text-ink-900">{t("contact")}</h3>
           <ul className="flex flex-col gap-2 text-sm text-ash-600">
-            <li>hola@inkademy.com</li>
-            <li>+51 1 234 5678</li>
-            <li>Lima, Perú</li>
+            {contactEmail && <li>{contactEmail}</li>}
+            {contactPhone && <li>{contactPhone}</li>}
+            {contactAddress && <li>{contactAddress}</li>}
           </ul>
         </div>
       </div>

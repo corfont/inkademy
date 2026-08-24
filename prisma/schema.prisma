@@ -1013,5 +1013,19 @@ model PlatformSettings {
   bodyFontFamily      String   @default("Work Sans")
   backgroundColor     String? // hex, sobreescribe el token --paper
   backgroundImageUrl  String?
+
+  // Datos de contacto mostrados en el pie de página y en /ayuda — antes
+  // estaban hardcodeados en Footer.tsx.
+  contactEmail        String?
+  contactPhone        String?
+  contactAddress      String?
+
+  // Qué información se muestra en las tarjetas de curso del catálogo
+  // público, a nivel global (no por curso individual). Claves usadas por
+  // CourseCard.tsx: showTeacher, showDuration, showNextLiveSession,
+  // showCertificationBadge. Si una clave no está presente, se asume true
+  // (comportamiento anterior, sin este control) — ver DEFAULT_COURSE_CARD_FIELDS.
+  courseCardFields    Json?
+
   updatedAt           DateTime @updatedAt
 }

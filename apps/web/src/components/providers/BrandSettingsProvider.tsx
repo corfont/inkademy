@@ -28,6 +28,10 @@ export function useBrandSettings(): PlatformSettingsDTO {
       bodyFontFamily: "Work Sans",
       backgroundColor: null,
       backgroundImageUrl: null,
+      contactEmail: "hola@inkademy.com",
+      contactPhone: "+51 1 234 5678",
+      contactAddress: "Lima, Perú",
+      courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true },
     };
   }
   return ctx;

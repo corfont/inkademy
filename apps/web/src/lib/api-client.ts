@@ -128,6 +128,13 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 // Catálogo público
 // ---------------------------------------------------------------------------
+export interface CourseCardFields {
+  showTeacher: boolean;
+  showDuration: boolean;
+  showNextLiveSession: boolean;
+  showCertificationBadge: boolean;
+}
+
 export interface PlatformSettingsDTO {
   id: string;
   logoUrl: string | null;
@@ -136,10 +143,19 @@ export interface PlatformSettingsDTO {
   bodyFontFamily: string;
   backgroundColor: string | null;
   backgroundImageUrl: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  contactAddress: string | null;
+  courseCardFields: CourseCardFields;
 }
 
 export const settingsApi = {
-  get: () => apiFetch<PlatformSettingsDTO>("/settings"),
+  // "no-store": la propia pantalla de /admin/apariencia promete que los
+  // cambios se ven "al instante" — con el cache por defecto de fetch() en
+  // Server Components (force-cache) quedaba una respuesta vieja pegada
+  // indefinidamente (así se detectó: courseCardFields/contactEmail nunca
+  // aparecían aunque la fila en BD ya los tenía).
+  get: () => apiFetch<PlatformSettingsDTO>("/settings", { cache: "no-store" }),
 };
 
 export const catalogApi = {

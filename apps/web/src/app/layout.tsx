@@ -43,11 +43,15 @@ export const metadata: Metadata = {
 const DEFAULT_SETTINGS: PlatformSettingsDTO = {
   id: "default",
   logoUrl: null,
-  logoHeightPx: 32,
+  logoHeightPx: 64,
   headingFontFamily: "Outfit",
   bodyFontFamily: "Work Sans",
   backgroundColor: null,
   backgroundImageUrl: null,
+  contactEmail: "hola@inkademy.com",
+  contactPhone: "+51 1 234 5678",
+  contactAddress: "Lima, Perú",
+  courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true },
 };
 
 // Script inline (no next/script: debe correr antes del primer paint, sin

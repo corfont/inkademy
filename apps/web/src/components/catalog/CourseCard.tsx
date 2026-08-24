@@ -7,12 +7,14 @@ import { BadgeCheck, Clock, Radio, User } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { localize, formatPrice, formatDateTime, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export function CourseCard({ course }: { course: CourseCardDTO }) {
   const locale = useLocale();
   const t = useTranslations("common");
   const { user } = useAuth();
+  const { courseCardFields: fields } = useBrandSettings();
   const isProgram = course.type === "PROGRAM" || course.type === "DIPLOMA";
   const href = isProgram ? `/programas/${course.slug}` : `/cursos/${course.slug}`;
 
@@ -43,7 +45,7 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
         </Link>
 
         <dl className="flex flex-col gap-1.5 text-sm text-ash-600">
-          {course.teacherName && (
+          {fields.showTeacher && course.teacherName && (
             <div className="flex items-center gap-1.5">
               <User className="h-4 w-4 text-ash-400" aria-hidden="true" />
               <span>
@@ -52,19 +54,21 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
               </span>
             </div>
           )}
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-4 w-4 text-ash-400" aria-hidden="true" />
-            <span>
-              {course.durationHours} {t("hours")}
-            </span>
-          </div>
-          {course.nextLiveSessionAt && (
+          {fields.showDuration && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-ash-400" aria-hidden="true" />
+              <span>
+                {course.durationHours} {t("hours")}
+              </span>
+            </div>
+          )}
+          {fields.showNextLiveSession && course.nextLiveSessionAt && (
             <div className="flex items-center gap-1.5">
               <Radio className="h-4 w-4 text-ash-400" aria-hidden="true" />
               <span>{formatDateTime(course.nextLiveSessionAt, locale)}</span>
             </div>
           )}
-          {course.certificationIncluded && (
+          {fields.showCertificationBadge && course.certificationIncluded && (
             <div className="flex items-center gap-1.5 text-success">
               <BadgeCheck className="h-4 w-4" aria-hidden="true" />
               <span>{t("certified")}</span>

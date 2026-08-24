@@ -222,4 +222,15 @@ export const upsertSettingsSchema = z.object({
   bodyFontFamily: z.string().min(1).optional(),
   backgroundColor: z.string().optional().nullable(),
   backgroundImageUrl: z.string().optional().nullable(),
+  contactEmail: z.string().email().optional().nullable(),
+  contactPhone: z.string().optional().nullable(),
+  contactAddress: z.string().optional().nullable(),
+  courseCardFields: z
+    .object({
+      showTeacher: z.boolean().optional(),
+      showDuration: z.boolean().optional(),
+      showNextLiveSession: z.boolean().optional(),
+      showCertificationBadge: z.boolean().optional(),
+    })
+    .optional(),
 });

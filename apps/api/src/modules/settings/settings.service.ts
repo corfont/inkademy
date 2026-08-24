@@ -4,6 +4,13 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 
 const SETTINGS_ID = "default";
 
+const DEFAULT_COURSE_CARD_FIELDS = {
+  showTeacher: true,
+  showDuration: true,
+  showNextLiveSession: true,
+  showCertificationBadge: true,
+};
+
 const DEFAULTS = {
   id: SETTINGS_ID,
   logoUrl: null as string | null,
@@ -12,16 +19,34 @@ const DEFAULTS = {
   bodyFontFamily: "Work Sans",
   backgroundColor: null as string | null,
   backgroundImageUrl: null as string | null,
+  contactEmail: "hola@inkademy.com" as string | null,
+  contactPhone: "+51 1 234 5678" as string | null,
+  contactAddress: "Lima, Perú" as string | null,
+  courseCardFields: DEFAULT_COURSE_CARD_FIELDS as Record<string, boolean>,
 };
 
 @Injectable()
 export class SettingsService {
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
 
-  /** Fila única; si nunca se guardó nada, devuelve los valores de marca actuales (logo/tipografía real de Inkapitales). */
+  /**
+   * Fila única; si nunca se guardó nada, devuelve los valores de marca
+   * actuales (logo/tipografía real de Inkapitales). Los campos de contacto
+   * y courseCardFields se agregaron después — una fila ya existente los
+   * tiene en `null` (nunca se guardaron), así que se completan campo por
+   * campo con DEFAULTS en vez de solo sustituir la fila entera cuando no
+   * existe ninguna.
+   */
   async get() {
     const row = await this.prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
-    return row ?? DEFAULTS;
+    if (!row) return DEFAULTS;
+    return {
+      ...row,
+      contactEmail: row.contactEmail ?? DEFAULTS.contactEmail,
+      contactPhone: row.contactPhone ?? DEFAULTS.contactPhone,
+      contactAddress: row.contactAddress ?? DEFAULTS.contactAddress,
+      courseCardFields: (row.courseCardFields as Record<string, boolean> | null) ?? DEFAULTS.courseCardFields,
+    };
   }
 
   async update(input: Partial<Omit<typeof DEFAULTS, "id">>) {

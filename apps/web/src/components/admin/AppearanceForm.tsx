@@ -15,9 +15,11 @@ import { Card, CardContent } from "@/components/ui/Card";
  * router.refresh() para que el propio layout raíz (server component) vuelva
  * a leer /settings y aplique el cambio de inmediato en toda la plataforma.
  */
+const DEFAULT_COURSE_CARD_FIELDS = { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true };
+
 export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) {
   const router = useRouter();
-  const [form, setForm] = useState(settings);
+  const [form, setForm] = useState({ ...settings, courseCardFields: settings.courseCardFields ?? DEFAULT_COURSE_CARD_FIELDS });
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +63,10 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
         bodyFontFamily: form.bodyFontFamily,
         backgroundColor: form.backgroundColor,
         backgroundImageUrl: form.backgroundImageUrl,
+        contactEmail: form.contactEmail,
+        contactPhone: form.contactPhone,
+        contactAddress: form.contactAddress,
+        courseCardFields: form.courseCardFields,
       });
       setSaved(true);
       router.refresh();
@@ -199,6 +205,66 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
               Quitar imagen de fondo
             </button>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Datos de contacto</h2>
+          <p className="text-sm text-ash-500">Se muestran en el pie de página del sitio público.</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <Label htmlFor="contact-email">Correo</Label>
+              <Input
+                id="contact-email"
+                type="email"
+                value={form.contactEmail ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="contact-phone">Teléfono</Label>
+              <Input
+                id="contact-phone"
+                value={form.contactPhone ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="contact-address">Ubicación</Label>
+              <Input
+                id="contact-address"
+                value={form.contactAddress ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, contactAddress: e.target.value }))}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Información en las tarjetas de curso</h2>
+          <p className="text-sm text-ash-500">Aplica a todo el catálogo público, no a un curso en particular.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["showTeacher", "Docente"],
+                ["showDuration", "Duración"],
+                ["showNextLiveSession", "Próxima fecha en vivo"],
+                ["showCertificationBadge", "Insignia de certificación"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 text-sm text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={form.courseCardFields[key]}
+                  onChange={(e) => setForm((f) => ({ ...f, courseCardFields: { ...f.courseCardFields, [key]: e.target.checked } }))}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
         </CardContent>
       </Card>
 

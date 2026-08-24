@@ -90,6 +90,7 @@ function MetadataSection({
   const [titleEs, setTitleEs] = useState(course.title?.es ?? "");
   const [priceAmount, setPriceAmount] = useState(String(course.priceAmount ?? "0"));
   const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
+  const [language, setLanguage] = useState(course.language ?? "es");
   const [templates, setTemplates] = useState<any[]>([]);
 
   useEffect(() => {
@@ -113,6 +114,14 @@ function MetadataSection({
             <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
           </div>
         </div>
+        <div className="max-w-xs">
+          <Label htmlFor="edit-language">Idioma del curso</Label>
+          <Select id="edit-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <option value="es">Español</option>
+            <option value="en">English</option>
+            <option value="pt">Português</option>
+          </Select>
+        </div>
         <div>
           <Label htmlFor="edit-cert-template">Plantilla de certificado</Label>
           <Select id="edit-cert-template" value={certificateTemplateId} onChange={(e) => setCertificateTemplateId(e.target.value)}>
@@ -134,6 +143,7 @@ function MetadataSection({
                 title: { ...course.title, es: titleEs },
                 priceAmount: Number(priceAmount),
                 certificateTemplateId: certificateTemplateId || null,
+                language,
               })
             }
           >
