@@ -34,6 +34,18 @@ export class CatalogService {
   toCourseCard(course: CourseWithRelations): CourseCardDTO {
     const teacher = course.staff.find((s) => s.role === "TEACHER")?.user;
     const nextLive = course.liveSessions.find((s) => s.startsAt.getTime() > Date.now());
+
+    // Descuento vigente: % configurado por el admin y (si tiene vencimiento)
+    // todavía no vencido — se trata como "ya no hay oferta" sin necesidad de
+    // un job que lo "apague" solo, simplemente deja de aplicarse acá.
+    const isOnSale = Boolean(
+      course.discountPercent && course.discountPercent > 0 && (!course.discountExpiresAt || course.discountExpiresAt.getTime() > Date.now()),
+    );
+    const originalPriceAmount = Number(course.priceAmount);
+    const effectivePriceAmount = isOnSale
+      ? Math.round(originalPriceAmount * (1 - course.discountPercent! / 100) * 100) / 100
+      : originalPriceAmount;
+
     return {
       id: course.id,
       slug: course.slug,
@@ -50,9 +62,17 @@ export class CatalogService {
       teacherName: teacher ? `${teacher.firstName} ${teacher.lastName}` : null,
       nextLiveSessionAt: nextLive ? nextLive.startsAt.toISOString() : null,
       certificationIncluded: course.certificationIncluded,
-      priceAmount: decimalToString(course.priceAmount),
+      // priceAmount sigue siendo el precio EFECTIVO (lo que se cobra) — así
+      // ningún consumidor existente (checkout, CourseCard, etc.) necesitó
+      // cambiar. originalPriceAmount/isOnSale/etc. son aditivos, solo para
+      // mostrar el tachado + la insignia de oferta.
+      priceAmount: decimalToString(effectivePriceAmount),
       priceCurrency: course.priceCurrency,
       b2bAvailable: course.b2bAvailable,
+      isOnSale,
+      originalPriceAmount: isOnSale ? decimalToString(originalPriceAmount) : null,
+      discountPercent: isOnSale ? course.discountPercent : null,
+      discountExpiresAt: isOnSale && course.discountExpiresAt ? course.discountExpiresAt.toISOString() : null,
     };
   }
 
@@ -100,13 +120,32 @@ export class CatalogService {
       ];
     }
 
+    // "Más vendidos" ordena por cantidad de matrículas (Course.enrollments,
+    // relación directa) — Prisma soporta orderBy por _count de una relación
+    // one-to-many nativamente, sin agregación manual. "Más vistos"/"con más
+    // reseñas" no están disponibles todavía: no existe tracking de vistas ni
+    // un modelo de Review — se documenta como pendiente en IMPLEMENTATION-NOTES.md.
+    // priceAsc/priceDesc ordenan por el precio NOMINAL (columna priceAmount),
+    // no por el precio con descuento aplicado — ordenar por el precio
+    // efectivo exigiría un ORDER BY calculado en SQL crudo o traer todo a
+    // memoria (rompe la paginación); para los descuentos moderados que se
+    // esperan acá, la diferencia de orden es marginal.
+    const orderBy: Record<string, unknown> =
+      filters.sort === "priceAsc"
+        ? { priceAmount: "asc" }
+        : filters.sort === "priceDesc"
+          ? { priceAmount: "desc" }
+          : filters.sort === "bestSelling"
+            ? { enrollments: { _count: "desc" } }
+            : { createdAt: "desc" };
+
     const [rows, total] = await Promise.all([
       this.prisma.course.findMany({
         where,
         include: courseCardInclude,
         skip,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy: orderBy as never,
       }),
       this.prisma.course.count({ where }),
     ]);

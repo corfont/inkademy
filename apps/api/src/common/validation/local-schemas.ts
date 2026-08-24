@@ -33,6 +33,7 @@ export const catalogFiltersSchema = z.object({
   minPrice: z.coerce.number().optional(),
   maxPrice: z.coerce.number().optional(),
   certificationOnly: z.coerce.boolean().optional(),
+  sort: z.enum(["newest", "priceAsc", "priceDesc", "bestSelling"]).optional(),
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().optional(),
 });
@@ -78,6 +79,8 @@ export const upsertCourseSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
   b2bAvailable: z.boolean().optional(),
   b2bPriceAmount: z.number().nonnegative().optional(),
+  discountPercent: z.number().min(0).max(90).nullable().optional(),
+  discountExpiresAt: z.coerce.date().nullable().optional(),
   prerequisiteCourseIds: z.array(z.string()).optional(),
   nextRecommendedCourseIds: z.array(z.string()).optional(),
   certificateTemplateId: z.string().uuid().nullable().optional(),

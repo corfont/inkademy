@@ -132,11 +132,28 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg border border-paper-border bg-paper p-6 shadow-card">
-            <p className="text-sm text-ash-500">{t("priceLabel")}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-ash-500">{t("priceLabel")}</p>
+              {course.isOnSale && (
+                <span className="rounded-full bg-danger px-2 py-0.5 text-xs font-semibold text-white">-{course.discountPercent}%</span>
+              )}
+            </div>
             {isAuthenticated ? (
-              <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">
-                {formatPrice(course.priceAmount, course.priceCurrency, locale)}
-              </p>
+              <>
+                {course.isOnSale && course.originalPriceAmount && (
+                  <p className="mt-1 text-sm text-ash-500 line-through">
+                    {formatPrice(course.originalPriceAmount, course.priceCurrency, locale)}
+                  </p>
+                )}
+                <p className={`font-serif text-3xl font-semibold ${course.isOnSale ? "text-danger" : "text-gold-600"}`}>
+                  {formatPrice(course.priceAmount, course.priceCurrency, locale)}
+                </p>
+                {course.isOnSale && course.discountExpiresAt && (
+                  <p className="text-xs text-ash-500">
+                    Oferta válida hasta el {new Date(course.discountExpiresAt).toLocaleDateString(locale)}
+                  </p>
+                )}
+              </>
             ) : (
               <p className="mt-1">
                 <Link href={`/login?next=${encodeURIComponent(`/cursos/${course.slug}`)}`} className="font-medium text-ink-600 underline-offset-2 hover:underline">

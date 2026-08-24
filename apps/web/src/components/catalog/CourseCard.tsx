@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { CourseCardDTO } from "@inkademy/shared";
 import { useTranslations, useLocale } from "next-intl";
-import { BadgeCheck, Clock, Radio, User } from "lucide-react";
+import { BadgeCheck, Clock, Radio, User, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -20,7 +20,7 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-paper-border bg-paper shadow-card transition-shadow hover:shadow-raised">
-      <Link href={href} className="block focus-visible:outline-2 focus-visible:outline-ink-500">
+      <Link href={href} className="relative block focus-visible:outline-2 focus-visible:outline-ink-500">
         <div
           className="flex h-40 items-center justify-center bg-gradient-to-br from-ink-700 to-ink-900 text-paper"
           role="img"
@@ -30,6 +30,12 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
             {localize(course.title, locale).charAt(0)}
           </span>
         </div>
+        {course.isOnSale && (
+          <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-danger px-3 py-1 text-xs font-semibold text-white shadow-md">
+            <Tag className="h-3.5 w-3.5" aria-hidden="true" />
+            -{course.discountPercent}%
+          </span>
+        )}
       </Link>
       <div className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex flex-wrap gap-1.5">
@@ -80,9 +86,21 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
           {course.b2bAvailable && isProgram ? (
             <span className="font-serif text-base font-semibold text-ink-900">{t("requestProposal")}</span>
           ) : user ? (
-            <span className="font-serif text-lg font-semibold text-gold-600">
-              {formatPrice(course.priceAmount, course.priceCurrency, locale)}
-            </span>
+            <div className="flex flex-col">
+              {course.isOnSale && course.originalPriceAmount && (
+                <span className="text-xs text-ash-500 line-through">
+                  {formatPrice(course.originalPriceAmount, course.priceCurrency, locale)}
+                </span>
+              )}
+              <span className={`font-serif text-lg font-semibold ${course.isOnSale ? "text-danger" : "text-gold-600"}`}>
+                {formatPrice(course.priceAmount, course.priceCurrency, locale)}
+              </span>
+              {course.isOnSale && course.discountExpiresAt && (
+                <span className="text-[0.65rem] text-ash-500">
+                  {locale === "en" ? "Until" : "Hasta el"} {new Date(course.discountExpiresAt).toLocaleDateString(locale)}
+                </span>
+              )}
+            </div>
           ) : (
             <Link href={`/login?next=${encodeURIComponent(href)}`} className="text-sm font-medium text-ink-600 underline-offset-2 hover:underline">
               {t("loginToSeePrice")}

@@ -6,6 +6,7 @@ import { catalogApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { MOCK_AREAS, MOCK_COURSES } from "@/lib/mock-data";
 import { FilterBar } from "@/components/catalog/FilterBar";
+import { SortSelect } from "@/components/catalog/SortSelect";
 import { CourseCard } from "@/components/catalog/CourseCard";
 import { Callout } from "@/components/ui/Callout";
 
@@ -56,6 +57,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     certificationOnly: searchParams.certificationOnly === "true",
     minPrice: searchParams.minPrice ? Number(searchParams.minPrice) : undefined,
     maxPrice: searchParams.maxPrice ? Number(searchParams.maxPrice) : undefined,
+    sort: searchParams.sort as CatalogFilters["sort"],
     page: searchParams.page ? Number(searchParams.page) : 1,
     pageSize: 12,
   };
@@ -91,9 +93,14 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
         </aside>
 
         <div>
-          <p className="mb-4 text-sm text-ash-500" aria-live="polite">
-            {t("resultsCount", { count: items.length })}
-          </p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-ash-500" aria-live="polite">
+              {t("resultsCount", { count: items.length })}
+            </p>
+            <Suspense fallback={null}>
+              <SortSelect />
+            </Suspense>
+          </div>
           {items.length === 0 ? (
             <p className="rounded-md border border-paper-border bg-paper-muted p-8 text-center text-ash-600">{t("noResults")}</p>
           ) : (

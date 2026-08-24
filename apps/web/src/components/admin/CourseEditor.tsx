@@ -97,6 +97,10 @@ function MetadataSection({
   const [coverImageAssetId, setCoverImageAssetId] = useState(course.coverImageAssetId ?? null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(course.coverImageUrl ?? null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
+  const [discountExpiresAt, setDiscountExpiresAt] = useState(
+    course.discountExpiresAt ? new Date(course.discountExpiresAt).toISOString().slice(0, 10) : "",
+  );
 
   useEffect(() => {
     adminApi
@@ -131,6 +135,36 @@ function MetadataSection({
             <Label htmlFor="edit-price">Precio ({course.priceCurrency ?? "PEN"})</Label>
             <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
           </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 rounded-md bg-paper-muted p-3">
+          <div>
+            <Label htmlFor="edit-discount">Descuento (%)</Label>
+            <Input
+              id="edit-discount"
+              type="number"
+              min="0"
+              max="90"
+              placeholder="Sin descuento"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-discount-expires">Vence el (opcional)</Label>
+            <Input
+              id="edit-discount-expires"
+              type="date"
+              value={discountExpiresAt}
+              onChange={(e) => setDiscountExpiresAt(e.target.value)}
+              disabled={!discountPercent}
+            />
+          </div>
+          {discountPercent && Number(discountPercent) > 0 && (
+            <p className="sm:col-span-2 text-sm text-success">
+              Precio con descuento: {(Number(priceAmount) * (1 - Number(discountPercent) / 100)).toFixed(2)} {course.priceCurrency ?? "PEN"}
+              {discountExpiresAt ? ` — hasta el ${discountExpiresAt}` : ""}
+            </p>
+          )}
         </div>
         <div>
           <Label>Imagen de portada</Label>
@@ -187,6 +221,8 @@ function MetadataSection({
                 certificateTemplateId: certificateTemplateId || null,
                 language,
                 coverImageAssetId,
+                discountPercent: discountPercent ? Number(discountPercent) : null,
+                discountExpiresAt: discountPercent && discountExpiresAt ? discountExpiresAt : null,
               })
             }
           >

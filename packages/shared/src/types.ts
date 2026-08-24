@@ -60,9 +60,16 @@ export interface CourseCardDTO {
   teacherName?: string | null;
   nextLiveSessionAt?: string | null;
   certificationIncluded: boolean;
+  // priceAmount es el precio EFECTIVO (con descuento aplicado si isOnSale) —
+  // originalPriceAmount solo viene poblado cuando hay oferta vigente, para
+  // mostrar el tachado.
   priceAmount: string;
   priceCurrency: string;
   b2bAvailable: boolean;
+  isOnSale?: boolean;
+  originalPriceAmount?: string | null;
+  discountPercent?: number | null;
+  discountExpiresAt?: string | null;
 }
 
 export interface CatalogFilters {
@@ -75,6 +82,7 @@ export interface CatalogFilters {
   minPrice?: number;
   maxPrice?: number;
   certificationOnly?: boolean;
+  sort?: "newest" | "priceAsc" | "priceDesc" | "bestSelling";
   page?: number;
   pageSize?: number;
 }

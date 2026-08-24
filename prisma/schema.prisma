@@ -249,6 +249,12 @@ model Course {
   b2bAvailable           Boolean               @default(true)
   b2bPriceAmount          Decimal?             @db.Decimal(10, 2)
 
+  // Descuento/oferta — % sobre priceAmount, con vencimiento opcional. Si
+  // discountExpiresAt ya pasó, se trata como si no hubiera descuento (ver
+  // catalog.service.ts) sin necesidad de un job que lo "apague" solo.
+  discountPercent        Float?
+  discountExpiresAt      DateTime?
+
   // Plantilla de certificado específica para este curso. Si es null, el
   // emisor de certificados cae al comportamiento anterior (la plantilla
   // activa más reciente que coincida con el locale del alumno) — ver
