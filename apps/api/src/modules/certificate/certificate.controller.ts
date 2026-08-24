@@ -1,8 +1,10 @@
-import { Controller, Get, Param, Res } from "@nestjs/common";
+import { Controller, Get, Param, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { Public } from "../../common/decorators/public.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Roles } from "../../common/decorators/roles.decorator";
+import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { CertificateService } from "./certificate.service";
 
@@ -39,5 +41,14 @@ export class CertificateController {
   @ApiOperation({ summary: "Mis certificados" })
   listMine(@CurrentUser() user: RequestUser) {
     return this.certificateService.listMine(user.id);
+  }
+
+  @ApiBearerAuth()
+  @Get("admin/certificates")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Todos los certificados emitidos (búsqueda global, admin)" })
+  listAll() {
+    return this.certificateService.listAll();
   }
 }

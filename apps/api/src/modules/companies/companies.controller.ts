@@ -8,13 +8,17 @@ import { CompanyGuard } from "../../common/guards/company.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { assignSeatSchema, createSeatPoolSchema } from "../../common/validation/local-schemas";
+import { CertificateService } from "../certificate/certificate.service";
 import { CompaniesService } from "./companies.service";
 
 @ApiTags("companies")
 @ApiBearerAuth()
 @Controller("companies")
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(
+    private readonly companiesService: CompaniesService,
+    private readonly certificateService: CertificateService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: "Crea una empresa y su primer COMPANY_ADMIN (el creador)" })
@@ -30,6 +34,13 @@ export class CompaniesController {
   @ApiOperation({ summary: "Resumen ejecutivo B2B: participantes, cupos, progreso, riesgo" })
   dashboard(@Param("companyId") companyId: string) {
     return this.companiesService.getDashboard(companyId);
+  }
+
+  @Get(":companyId/certificates")
+  @UseGuards(CompanyGuard)
+  @ApiOperation({ summary: "Certificados emitidos a colaboradores de la empresa" })
+  certificates(@Param("companyId") companyId: string) {
+    return this.certificateService.listForCompany(companyId);
   }
 
   @Get(":companyId/members")

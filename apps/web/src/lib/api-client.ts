@@ -204,6 +204,10 @@ export const certificateApi = {
       status: "VALID" | "REVOKED";
     }>(`/certificates/verify/${code}`),
   pdfUrl: (id: string) => `${API_URL}/certificates/${id}/pdf`,
+  // Antes no existía ningún endpoint para listar certificados emitidos más
+  // allá de "los míos" — /admin/certificados y /empresa/:id/certificados
+  // mostraban siempre MOCK_CERTIFICATES sin importar los datos reales.
+  listAll: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificates", { accessToken }),
 };
 
 // ---------------------------------------------------------------------------
@@ -234,6 +238,7 @@ export const companyApi = {
   removeMember: (id: string, membershipId: string, accessToken?: string | null) =>
     apiFetch<void>(`/companies/${id}/members/${membershipId}`, { method: "DELETE", accessToken }),
   seatPools: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/seat-pools`, { accessToken }),
+  certificates: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/certificates`, { accessToken }),
   assignSeat: (id: string, poolId: string, userId: string, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/assign`, { method: "POST", body: JSON.stringify({ userId }), accessToken }),
   reports: (id: string, query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
@@ -269,6 +274,14 @@ export const adminApi = {
   courses: (accessToken?: string | null) => apiFetch<any[]>("/admin/courses", { accessToken }),
   programs: (accessToken?: string | null) => apiFetch<any[]>("/admin/programs", { accessToken }),
   areas: (accessToken?: string | null) => apiFetch<any[]>("/admin/areas", { accessToken }),
+  createArea: (input: { slug: string; name: Record<string, string>; icon?: string; order?: number }, accessToken?: string | null) =>
+    apiFetch<any>("/admin/areas", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateArea: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/areas/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  updateProgram: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/programs/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  createProgram: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/programs", { method: "POST", body: JSON.stringify(input), accessToken }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
   gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }, accessToken?: string | null) =>
     apiFetch<any>(`/admin/attempts/${attemptId}/answers/${answerId}/grade`, {

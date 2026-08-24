@@ -164,6 +164,49 @@ export class CertificateService {
     }));
   }
 
+  /**
+   * Antes /admin/certificados y /empresa/:id/certificados mostraban
+   * siempre datos de referencia porque no existía ningún endpoint para
+   * listar certificados emitidos fuera de "los míos" (GET /me/certificates).
+   */
+  async listAll(): Promise<Array<CertificateDTO & { holderName: string; revoked: boolean }>> {
+    const certificates = await this.prisma.certificate.findMany({
+      include: { user: true, course: true, program: true },
+      orderBy: { issuedAt: "desc" },
+      take: 200,
+    });
+    return certificates.map((c) => ({
+      id: c.id,
+      code: c.code,
+      issuedAt: c.issuedAt.toISOString(),
+      title: (c.course?.title ?? c.program?.title ?? {}) as Record<string, string>,
+      finalScore: c.finalScore,
+      pdfUrl: c.pdfAssetId ? this.storage.getPublicUrl(c.pdfAssetId) : null,
+      verificationUrl: this.verificationUrl(c.code),
+      holderName: c.user.displayName ?? `${c.user.firstName} ${c.user.lastName}`,
+      revoked: c.revoked,
+    }));
+  }
+
+  async listForCompany(companyId: string): Promise<Array<CertificateDTO & { holderName: string; revoked: boolean }>> {
+    const certificates = await this.prisma.certificate.findMany({
+      where: { enrollment: { companyId } },
+      include: { user: true, course: true, program: true },
+      orderBy: { issuedAt: "desc" },
+    });
+    return certificates.map((c) => ({
+      id: c.id,
+      code: c.code,
+      issuedAt: c.issuedAt.toISOString(),
+      title: (c.course?.title ?? c.program?.title ?? {}) as Record<string, string>,
+      finalScore: c.finalScore,
+      pdfUrl: c.pdfAssetId ? this.storage.getPublicUrl(c.pdfAssetId) : null,
+      verificationUrl: this.verificationUrl(c.code),
+      holderName: c.user.displayName ?? `${c.user.firstName} ${c.user.lastName}`,
+      revoked: c.revoked,
+    }));
+  }
+
   async verifyByCode(code: string) {
     const certificate = await this.prisma.certificate.findUnique({
       where: { code },
