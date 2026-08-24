@@ -417,7 +417,18 @@
     "processing": "Procesando pago…",
     "success": "¡Pago exitoso! Ya tienes acceso a tu curso.",
     "error": "No pudimos procesar tu pago. Intenta nuevamente.",
-    "asCompany": "Comprar a nombre de una empresa"
+    "asCompany": "Comprar a nombre de una empresa",
+    "invoiceTitle": "Comprobante de pago",
+    "invoiceHint": "Con estos datos emitimos tu boleta o factura electrónica.",
+    "documentType": "Tipo de documento",
+    "documentType_1": "DNI",
+    "documentType_6": "RUC (factura)",
+    "documentType_4": "Carné de extranjería",
+    "documentType_7": "Pasaporte",
+    "documentType_0": "Extranjero sin documento",
+    "documentNumber": "Número de documento",
+    "legalName": "Nombre o razón social",
+    "country": "País"
   },
   "legal": {
     "privacidad": "Política de Privacidad",
@@ -441,11 +452,26 @@
     "subtitle": "Encuentra respuestas rápidas o contáctanos.",
     "contactCta": "Crear ticket de soporte",
     "faqs": [
-      { "q": "¿Cómo accedo a mis cursos?", "a": "Inicia sesión y ve a \"Mi campus\" → \"Mis cursos\" para ver todo tu contenido activo." },
-      { "q": "¿Cómo obtengo mi certificado?", "a": "Al cumplir los requisitos de aprobación del curso, el certificado se emite automáticamente y aparece en \"Certificados\"." },
-      { "q": "¿Puedo pagar en soles o dólares?", "a": "Sí, aceptamos PEN y USD según tu ubicación y el método de pago elegido." },
-      { "q": "¿Qué pasa si mi empresa me asignó un cupo?", "a": "Verás el curso activo en tu campus sin necesidad de pagar; tu empresa gestiona el cupo." },
-      { "q": "¿Cómo verifico un certificado de un tercero?", "a": "Usa la página pública \"Verificar certificado\" con el código impreso en el documento." }
+      {
+        "q": "¿Cómo accedo a mis cursos?",
+        "a": "Inicia sesión y ve a \"Mi campus\" → \"Mis cursos\" para ver todo tu contenido activo."
+      },
+      {
+        "q": "¿Cómo obtengo mi certificado?",
+        "a": "Al cumplir los requisitos de aprobación del curso, el certificado se emite automáticamente y aparece en \"Certificados\"."
+      },
+      {
+        "q": "¿Puedo pagar en soles o dólares?",
+        "a": "Sí, aceptamos PEN y USD según tu ubicación y el método de pago elegido."
+      },
+      {
+        "q": "¿Qué pasa si mi empresa me asignó un cupo?",
+        "a": "Verás el curso activo en tu campus sin necesidad de pagar; tu empresa gestiona el cupo."
+      },
+      {
+        "q": "¿Cómo verifico un certificado de un tercero?",
+        "a": "Usa la página pública \"Verificar certificado\" con el código impreso en el documento."
+      }
     ]
   },
   "notFound": {

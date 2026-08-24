@@ -14,11 +14,11 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@inkademy/db": "workspace:*",
-    "@inkademy/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.632.0",
     "@aws-sdk/s3-request-presigner": "^3.632.0",
     "@azure/msal-node": "^2.13.1",
+    "@inkademy/db": "workspace:*",
+    "@inkademy/shared": "workspace:*",
     "@nestjs/bullmq": "^10.2.1",
     "@nestjs/common": "^10.4.4",
     "@nestjs/config": "^3.2.3",
@@ -70,11 +70,19 @@
     "typescript": "^5.5.4"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

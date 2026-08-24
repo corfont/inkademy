@@ -11,7 +11,7 @@ import { catalogApi, commerceApi, ApiError } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { MOCK_COURSES, MOCK_PROGRAM } from "@/lib/mock-data";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Input, Label } from "@/components/ui/Input";
+import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -59,6 +59,12 @@ function CheckoutForm() {
   const [asCompany, setAsCompany] = useState(Boolean(companyIdParam));
   const [companyId, setCompanyId] = useState(companyIdParam ?? "");
   const [card, setCard] = useState({ number: "", expiry: "", cvc: "", name: "" });
+  const [buyer, setBuyer] = useState({
+    documentType: "1" as "1" | "6" | "4" | "7" | "0",
+    documentNumber: "",
+    legalName: user ? `${user.firstName} ${user.lastName}` : "",
+    country: "PE",
+  });
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -98,6 +104,16 @@ function CheckoutForm() {
         paymentProvider: "CULQI",
         companyId: asCompany && companyId ? companyId : undefined,
         paymentMethodToken: fakeTokenize(card.number || "4111111111111111"),
+        // Si compra a nombre de empresa, el backend usa el RUC de la
+        // empresa para la factura y estos campos se ignoran.
+        ...(asCompany
+          ? {}
+          : {
+              buyerDocumentType: buyer.documentType,
+              buyerDocumentNumber: buyer.documentNumber,
+              buyerLegalName: buyer.legalName,
+              buyerCountry: buyer.country,
+            }),
       });
       setStatus("success");
       setTimeout(() => router.push(`/campus/pagos?orderId=${result.orderId}`), 1200);
@@ -175,6 +191,59 @@ function CheckoutForm() {
                   )}
                 </CardContent>
               </Card>
+
+              {!asCompany && (
+                <Card>
+                  <CardContent className="p-6">
+                    <h2 className="font-serif text-lg font-semibold text-ink-900">{t("invoiceTitle")}</h2>
+                    <p className="mt-1 text-sm text-ash-500">{t("invoiceHint")}</p>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <Label htmlFor="documentType">{t("documentType")}</Label>
+                        <Select
+                          id="documentType"
+                          value={buyer.documentType}
+                          onChange={(e) => setBuyer((b) => ({ ...b, documentType: e.target.value as typeof b.documentType }))}
+                        >
+                          <option value="1">{t("documentType_1")}</option>
+                          <option value="6">{t("documentType_6")}</option>
+                          <option value="4">{t("documentType_4")}</option>
+                          <option value="7">{t("documentType_7")}</option>
+                          <option value="0">{t("documentType_0")}</option>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="documentNumber">{t("documentNumber")}</Label>
+                        <Input
+                          id="documentNumber"
+                          required
+                          value={buyer.documentNumber}
+                          onChange={(e) => setBuyer((b) => ({ ...b, documentNumber: e.target.value }))}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label htmlFor="legalName">{t("legalName")}</Label>
+                        <Input
+                          id="legalName"
+                          required
+                          value={buyer.legalName}
+                          onChange={(e) => setBuyer((b) => ({ ...b, legalName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="buyerCountry">{t("country")}</Label>
+                        <Input
+                          id="buyerCountry"
+                          required
+                          maxLength={2}
+                          value={buyer.country}
+                          onChange={(e) => setBuyer((b) => ({ ...b, country: e.target.value.toUpperCase() }))}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardContent className="p-6">

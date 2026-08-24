@@ -13,6 +13,7 @@ export const QUEUE_NAMES = {
   REMINDER: "reminder",
   ATTENDANCE_SYNC: "attendance-sync",
   RECOMMENDATION: "recommendation",
+  INVOICE: "invoice",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -51,4 +52,9 @@ export const ATTENDANCE_SYNC_JOBS = {
 // --- Jobs de la cola "recommendation" ---
 export const RECOMMENDATION_JOBS = {
   REGENERATE_FOR_USER: "recommendation.regenerate-for-user",
+} as const;
+
+// --- Jobs de la cola "invoice" ---
+export const INVOICE_JOBS = {
+  GENERATE: "invoice.generate",
 } as const;

@@ -114,6 +114,7 @@ registrar processors con estos nombres exactos** (cola → job):
 | `reminder` | `reminder.live-session-upcoming`, `reminder.course-access-expiring`, `reminder.assessment-due` | — | **Definidos pero NO encolados todavía** desde la API (ver sección 3) — quedan reservados para que el worker los dispare vía cron/scheduler propio, o para que un futuro job periódico en la API los encole |
 | `attendance-sync` | `attendance-sync.sync-live-session` | `{liveSessionId}` | `LiveSessionService.syncAttendance` (además de sincronizar síncronamente en el mismo request) |
 | `recommendation` | `recommendation.regenerate-for-user` | `{userId}` | `EnrollmentService.updateLessonProgress` (cada vez que progresa una lección) — el worker debería recalcular y escribir filas en `Recommendation` |
+| `invoice` | `invoice.generate` | `{invoiceId}` | `CommerceService.finalizeOrderPaid` (siempre que una orden pasa a PAID y `order.total > 0` — se omite por completo en cursos gratuitos). El worker arma el XML UBL 2.1, lo firma y lo envía a SUNAT (o lo simula si no hay credenciales), y actualiza `ElectronicInvoice.status/xml/cdrXml/sunatResponseCode` |
 
 Todas las colas se registran globalmente en `QueuesModule`
 (`src/common/queues/queues.module.ts`, `@Global()`), leyendo `REDIS_URL`.

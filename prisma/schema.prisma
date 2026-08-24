@@ -666,8 +666,65 @@ model Order {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
+  // Datos del comprador para la boleta/factura electrónica (SUNAT). Se
+  // capturan en el checkout (ver checkoutSchema) y se guardan en la orden —
+  // no en ElectronicInvoice directamente — porque finalizeOrderPaid() puede
+  // ejecutarse más tarde (webhook async, o a futuro una confirmación manual
+  // de transferencia) y para entonces ya no tenemos el body original del
+  // POST /checkout. Catálogo 06 SUNAT: 1=DNI, 6=RUC, 4=Carné ext., 7=Pasaporte,
+  // 0=extranjero sin documento.
+  buyerDocumentType   String?
+  buyerDocumentNumber String?
+  buyerLegalName      String?
+  buyerCountry        String?
+
   items       OrderItem[]
   payments    Payment[]
+  electronicInvoice ElectronicInvoice?
+}
+
+enum ElectronicDocumentType {
+  BOLETA
+  FACTURA
+}
+
+enum ElectronicDocumentStatus {
+  PENDING // encolada, el worker todavía no la procesa
+  SIMULATED // sin credenciales reales de SUNAT configuradas (dev)
+  ACCEPTED
+  REJECTED
+  ERROR
+}
+
+/// Comprobante de pago electrónico (boleta/factura SUNAT) de una Order.
+/// Se emite automáticamente cuando la Order pasa a PAID — sin importar si
+/// fue un pago con tarjeta (Culqi/Stripe, automático) o una confirmación
+/// manual futura (ej. transferencia bancaria) — y se omite por completo si
+/// el total de la orden es 0 (cursos gratuitos).
+model ElectronicInvoice {
+  id                  String                   @id @default(uuid())
+  orderId             String                   @unique
+  order               Order                    @relation(fields: [orderId], references: [id])
+  documentType        ElectronicDocumentType
+  series              String
+  correlativo         Int
+  // Catálogo 06 de SUNAT: 1=DNI, 6=RUC, 4=Carné extranjería, 7=Pasaporte,
+  // 0=Doc.trib.no.dom.sin.RUC (comprador extranjero sin ninguno de los anteriores).
+  buyerDocumentType   String
+  buyerDocumentNumber String
+  buyerLegalName      String
+  buyerCountry        String                   @default("PE")
+  currency            String
+  totalAmount         Decimal                  @db.Decimal(10, 2)
+  xml                 String?                  @db.Text
+  cdrXml              String?                  @db.Text
+  status              ElectronicDocumentStatus @default(SIMULATED)
+  sunatResponseCode   String?
+  sunatDescription    String?
+  pdfAssetId          String?
+  createdAt           DateTime                 @default(now())
+
+  @@unique([documentType, series, correlativo])
 }
 
 model OrderItem {

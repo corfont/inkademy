@@ -12,19 +12,24 @@
     "test": "echo \"(sin tests automatizados para @inkademy/worker todavia)\" && exit 0"
   },
   "dependencies": {
-    "@inkademy/db": "workspace:*",
-    "@inkademy/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.632.0",
     "@azure/msal-node": "^2.13.1",
+    "@inkademy/db": "workspace:*",
+    "@inkademy/shared": "workspace:*",
     "bullmq": "^5.12.0",
     "dotenv": "^16.4.5",
+    "fast-xml-parser": "^5.11.0",
     "ioredis": "^5.4.1",
+    "jszip": "^3.10.1",
+    "node-forge": "^1.4.0",
     "nodemailer": "^6.9.14",
     "puppeteer": "^22.15.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.15",
+    "@types/node-forge": "^1.3.14",
     "@types/nodemailer": "^6.4.15",
     "@types/qrcode": "^1.5.5",
     "tsx": "^4.16.0",

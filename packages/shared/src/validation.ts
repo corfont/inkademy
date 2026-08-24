@@ -83,6 +83,15 @@ export const checkoutSchema = z.object({
   paymentProvider: z.enum(["CULQI", "STRIPE", "PAYPAL"]),
   companyId: z.string().uuid().optional(),
   paymentMethodToken: z.string().min(1),
+  // Para emitir la boleta/factura electrónica (SUNAT) tras el pago. Si se
+  // omite, se emite una boleta genérica a "Cliente varios" con DNI 00000000
+  // (uso habitual para ventas menores en Perú). buyerDocumentType usa el
+  // catálogo 06 de SUNAT: 1=DNI, 6=RUC, 4=Carné extranjería, 7=Pasaporte,
+  // 0=comprador extranjero sin ninguno de los anteriores.
+  buyerDocumentType: z.enum(["1", "6", "4", "7", "0"]).optional(),
+  buyerDocumentNumber: z.string().optional(),
+  buyerLegalName: z.string().optional(),
+  buyerCountry: z.string().length(2).optional(),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 

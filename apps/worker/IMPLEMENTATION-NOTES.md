@@ -161,6 +161,42 @@ sin problema una vez que `pnpm install` corra desde la raíz.
   en el esquema pero ningún processor reacciona a que se marque `true`
   (p.ej. notificar al alumno) — no estaba en el alcance de este entregable.
 - **Concurrencia de cada `Worker` fijada a mano** (`email:10`,
-  `certificate:2`, `reminder:5`, `attendance-sync:3`, `recommendation:5` en
-  `src/index.ts`) — son valores de partida razonables, no medidos contra
-  carga real; ajustar una vez que haya tráfico.
+  `certificate:2`, `reminder:5`, `attendance-sync:3`, `recommendation:5`,
+  `invoice:2` en `src/index.ts`) — son valores de partida razonables, no
+  medidos contra carga real; ajustar una vez que haya tráfico.
+
+## 5. Facturación electrónica SUNAT (`invoice.generate`, `src/lib/sunat/*`, `src/processors/invoice.processor.ts`)
+
+- **Certificado digital**: sin `SUNAT_CERT_PEM`/`SUNAT_CERT_KEY_PEM`
+  configurados, `sign.ts` genera un certificado autofirmado RSA-2048 (una
+  vez por proceso, cacheado en memoria). SUNAT beta lo acepta; **producción
+  exige un certificado emitido por una entidad certificadora acreditada**
+  — sin eso, `sendBill` será rechazado o el CDR vendrá con observaciones.
+- **Fix no obvio validado contra SUNAT beta real** (ver comentario en
+  `sign.ts`): `addReference` necesita `uri: "", isEmptyUri: true`
+  explícitos — sin esto, xml-crypto inyecta un atributo `Id` inválido en
+  `<Invoice>` y SUNAT rechaza con `cvc-complex-type`. Y el `commonName`/`O`
+  del certificado autofirmado debe ser ASCII plano (sin em-dash ni
+  paréntesis con acentos raros) — un carácter no soportado por la
+  codificación PrintableString de node-forge corrompe el DER completo y
+  SUNAT responde "ASN.1 parse of certificate failed" sin más detalle.
+- **Solo PEN por ahora**: una orden en USD (venta de exportación) se marca
+  `ElectronicDocumentStatus.ERROR` con una descripción clara — el tipo de
+  operación y tratamiento tributario de exportación de servicios no está
+  implementado.
+- **Afectación de IGV configurable pero con default asumido**:
+  `SUNAT_TAX_AFFECTATION=EXONERADO` (default) asume que los cursos son
+  servicios de enseñanza reglada exonerados de IGV (Apéndice II, Ley del
+  IGV). **Cada empresa debe confirmar esto con su contador** — capacitación
+  corporativa no reglada podría estar gravada (`SUNAT_TAX_AFFECTATION=GRAVADO`).
+- **Un documento por orden, no por item**: `ElectronicInvoice` no tiene
+  líneas — si una orden tiene varios items, se factura como una sola línea
+  con la suma total y una descripción que concatena los títulos. Suficiente
+  para el volumen de este proyecto; una factura línea-por-item requeriría
+  extender el modelo.
+- **Correlativo no es 100% seguro bajo alta concurrencia**: `CommerceService`
+  calcula `MAX(correlativo)+1` en una consulta simple, no una secuencia de
+  BD con lock — el `@@unique([documentType, series, correlativo])` evita
+  duplicados pero un choque haría fallar la creación de la fila (no hay
+  reintento automático). Para el volumen de checkouts esperado es
+  aceptable; con alto tráfico concurrente convendría una secuencia dedicada.

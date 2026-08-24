@@ -417,7 +417,18 @@
     "processing": "Processing payment…",
     "success": "Payment successful! You now have access to your course.",
     "error": "We couldn't process your payment. Please try again.",
-    "asCompany": "Buy on behalf of a company"
+    "asCompany": "Buy on behalf of a company",
+    "invoiceTitle": "Billing receipt",
+    "invoiceHint": "We use this to issue your electronic receipt or invoice.",
+    "documentType": "Document type",
+    "documentType_1": "National ID (DNI)",
+    "documentType_6": "Tax ID / RUC (invoice)",
+    "documentType_4": "Foreign resident card",
+    "documentType_7": "Passport",
+    "documentType_0": "Foreigner without ID",
+    "documentNumber": "Document number",
+    "legalName": "Full name / legal name",
+    "country": "Country"
   },
   "legal": {
     "privacidad": "Privacy Policy",
@@ -441,11 +452,26 @@
     "subtitle": "Find quick answers or contact us.",
     "contactCta": "Create support ticket",
     "faqs": [
-      { "q": "How do I access my courses?", "a": "Sign in and go to \"My campus\" → \"My courses\" to see all your active content." },
-      { "q": "How do I get my certificate?", "a": "Once you meet the course's approval requirements, the certificate is issued automatically and appears under \"Certificates\"." },
-      { "q": "Can I pay in soles or dollars?", "a": "Yes, we accept PEN and USD depending on your location and chosen payment method." },
-      { "q": "What if my company assigned me a seat?", "a": "You'll see the course active in your campus with no payment needed; your company manages the seat." },
-      { "q": "How do I verify someone else's certificate?", "a": "Use the public \"Verify certificate\" page with the code printed on the document." }
+      {
+        "q": "How do I access my courses?",
+        "a": "Sign in and go to \"My campus\" → \"My courses\" to see all your active content."
+      },
+      {
+        "q": "How do I get my certificate?",
+        "a": "Once you meet the course's approval requirements, the certificate is issued automatically and appears under \"Certificates\"."
+      },
+      {
+        "q": "Can I pay in soles or dollars?",
+        "a": "Yes, we accept PEN and USD depending on your location and chosen payment method."
+      },
+      {
+        "q": "What if my company assigned me a seat?",
+        "a": "You'll see the course active in your campus with no payment needed; your company manages the seat."
+      },
+      {
+        "q": "How do I verify someone else's certificate?",
+        "a": "Use the public \"Verify certificate\" page with the code printed on the document."
+      }
     ]
   },
   "notFound": {

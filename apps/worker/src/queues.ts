@@ -19,6 +19,7 @@ export const QUEUE_NAMES = {
   REMINDER: "reminder",
   ATTENDANCE_SYNC: "attendance-sync",
   RECOMMENDATION: "recommendation",
+  INVOICE: "invoice",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -153,4 +154,23 @@ export const RECOMMENDATION_JOBS = {
 
 export interface RegenerateRecommendationsJobData {
   userId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cola "invoice" — mirror de INVOICE_JOBS. apps/api (CommerceService.
+// finalizeOrderPaid) ya creó la fila `ElectronicInvoice` en estado PENDING
+// (con documentType/series/correlativo/datos del comprador ya resueltos) —
+// se dispara siempre que una orden pasa a PAID, sin importar si fue por el
+// cargo síncrono de Culqi/Stripe en el propio POST /checkout o por un
+// webhook async; se omite por completo cuando order.total es 0 (cursos
+// gratuitos, ver commerce.service.ts). El worker solo firma el XML UBL 2.1,
+// lo empaqueta y lo envía a SUNAT (o lo simula si no hay credenciales
+// reales configuradas — ver processors/invoice.processor.ts).
+// ---------------------------------------------------------------------------
+export const INVOICE_JOBS = {
+  GENERATE: "invoice.generate",
+} as const;
+
+export interface InvoiceGenerateJobData {
+  invoiceId: string;
 }

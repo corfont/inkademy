@@ -21,6 +21,7 @@ import { processCertificateGenerateJob } from "./processors/certificate.processo
 import { processReminderJob } from "./processors/reminder.processor";
 import { processAttendanceSyncJob } from "./processors/attendance-sync.processor";
 import { processRecommendationJob } from "./processors/recommendation.processor";
+import { processInvoiceGenerateJob } from "./processors/invoice.processor";
 
 const logger = createLogger("worker");
 const connection = createRedisConnection();
@@ -41,6 +42,7 @@ const workers: Worker[] = [
   new Worker(QUEUE_NAMES.REMINDER, processReminderJob, { connection, concurrency: 5 }),
   new Worker(QUEUE_NAMES.ATTENDANCE_SYNC, processAttendanceSyncJob, { connection, concurrency: 3 }),
   new Worker(QUEUE_NAMES.RECOMMENDATION, processRecommendationJob, { connection, concurrency: 5 }),
+  new Worker(QUEUE_NAMES.INVOICE, processInvoiceGenerateJob, { connection, concurrency: 2 }),
 ];
 
 workers.forEach((worker, i) => attachLifecycleLogs(worker, Object.values(QUEUE_NAMES)[i]));

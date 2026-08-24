@@ -6,15 +6,26 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import type { AccessDurationPolicy, PrismaClient } from "@inkademy/db";
+import { InjectQueue } from "@nestjs/bullmq";
+import type { Queue } from "bullmq";
+import type { AccessDurationPolicy, ElectronicDocumentType, Prisma, PrismaClient } from "@inkademy/db";
 import type { CheckoutInput, CheckoutResult } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
+import { INVOICE_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
 import { NotificationService } from "../notification/notification.service";
 import { CalendarService } from "../calendar/calendar.service";
 import { CulqiProvider } from "./providers/culqi.provider";
 import { StripeProvider } from "./providers/stripe.provider";
 import type { PaymentProvider } from "./providers/payment-provider.interface";
+
+/** Datos de comprador ya resueltos para la boleta/factura electrónica. */
+interface ResolvedBuyerInfo {
+  buyerDocumentType: string;
+  buyerDocumentNumber: string;
+  buyerLegalName: string;
+  buyerCountry: string;
+}
 
 function computeAccessExpiresAt(policy: AccessDurationPolicy, from: Date): Date | null {
   const date = new Date(from);
@@ -39,12 +50,49 @@ export class CommerceService {
     private readonly calendarService: CalendarService,
     private readonly culqiProvider: CulqiProvider,
     private readonly stripeProvider: StripeProvider,
+    @InjectQueue(QUEUE_NAMES.INVOICE) private readonly invoiceQueue: Queue,
   ) {}
 
   private resolveProvider(type: CheckoutInput["paymentProvider"]): PaymentProvider {
     if (type === "CULQI") return this.culqiProvider;
     if (type === "STRIPE") return this.stripeProvider;
     throw new BadRequestException("Proveedor de pago no soportado: " + type);
+  }
+
+  /**
+   * Resuelve los datos del comprador para la boleta/factura electrónica.
+   * Prioridad: (1) compra a nombre de empresa → factura con el RUC de la
+   * empresa; (2) datos de comprador enviados explícitamente en el checkout
+   * (persona natural que quiere su boleta con su propio documento); (3)
+   * boleta genérica a "Cliente varios" con DNI 00000000 (uso habitual en
+   * Perú para ventas al público sin identificar al comprador).
+   */
+  private async resolveBuyerInfo(input: CheckoutInput): Promise<ResolvedBuyerInfo> {
+    if (input.companyId) {
+      const company = await this.prisma.company.findUnique({ where: { id: input.companyId } });
+      if (company) {
+        return {
+          buyerDocumentType: "6", // RUC
+          buyerDocumentNumber: company.taxId,
+          buyerLegalName: company.legalName,
+          buyerCountry: company.country,
+        };
+      }
+    }
+    if (input.buyerDocumentType && input.buyerDocumentNumber && input.buyerLegalName) {
+      return {
+        buyerDocumentType: input.buyerDocumentType,
+        buyerDocumentNumber: input.buyerDocumentNumber,
+        buyerLegalName: input.buyerLegalName,
+        buyerCountry: input.buyerCountry ?? "PE",
+      };
+    }
+    return {
+      buyerDocumentType: "1", // DNI
+      buyerDocumentNumber: "00000000",
+      buyerLegalName: "Cliente varios",
+      buyerCountry: "PE",
+    };
   }
 
   async checkout(userId: string, input: CheckoutInput): Promise<CheckoutResult> {
@@ -107,6 +155,7 @@ export class CommerceService {
 
     const subtotal = resolved.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
     const total = subtotal; // sin descuentos/impuestos por ahora (ver IMPLEMENTATION-NOTES.md)
+    const buyerInfo = await this.resolveBuyerInfo(input);
 
     const order = await this.prisma.order.create({
       data: {
@@ -118,6 +167,7 @@ export class CommerceService {
         total,
         currency: input.currency,
         status: "PENDING",
+        ...buyerInfo,
         items: {
           create: resolved.map((i) => ({
             offeringKind: i.offeringKind,
@@ -251,7 +301,75 @@ export class CommerceService {
       order.userId,
     );
 
+    await this.createElectronicInvoiceIfNeeded(order);
+
     return { enrollmentIds, receiptUrl };
+  }
+
+  /**
+   * Emite boleta/factura electrónica (SUNAT) por la orden, sin importar si
+   * quedó PAID por el cargo síncrono de checkout() o por un webhook async —
+   * finalizeOrderPaid() es el único punto de paso, tal como pidió el
+   * cliente ("se debe emitir automáticamente sin importar el medio").
+   * Se omite por completo si el monto es 0 (curso gratuito o 100% cupón):
+   * en Perú no corresponde emitir ningún comprobante por una venta a S/0.
+   * Nunca lanza — un fallo al facturar no debe tumbar la confirmación de
+   * matrícula, que ya ocurrió; queda como log de advertencia y la orden
+   * simplemente no tiene electronicInvoice (se puede reintentar a mano).
+   */
+  private async createElectronicInvoiceIfNeeded(order: {
+    id: string;
+    total: Prisma.Decimal;
+    currency: string;
+    buyerDocumentType: string | null;
+    buyerDocumentNumber: string | null;
+    buyerLegalName: string | null;
+    buyerCountry: string | null;
+  }): Promise<void> {
+    try {
+      if (Number(order.total) <= 0) {
+        this.logger.log(`Orden ${order.id} es S/0 (curso gratuito) — no se emite comprobante`);
+        return;
+      }
+
+      const documentType: ElectronicDocumentType = order.buyerDocumentType === "6" ? "FACTURA" : "BOLETA";
+      const series = documentType === "FACTURA" ? process.env.SUNAT_FACTURA_SERIES ?? "F001" : process.env.SUNAT_BOLETA_SERIES ?? "B001";
+
+      // Correlativo secuencial por (documentType, series). No es 100% a
+      // prueba de condiciones de carrera bajo alta concurrencia (haría
+      // falta una secuencia dedicada a nivel de BD); para el volumen de
+      // este proyecto, con el unique([documentType, series, correlativo])
+      // como respaldo, es suficiente — ver IMPLEMENTATION-NOTES.md.
+      const last = await this.prisma.electronicInvoice.findFirst({
+        where: { documentType, series },
+        orderBy: { correlativo: "desc" },
+      });
+      const correlativo = (last?.correlativo ?? 0) + 1;
+
+      const invoice = await this.prisma.electronicInvoice.create({
+        data: {
+          orderId: order.id,
+          documentType,
+          series,
+          correlativo,
+          buyerDocumentType: order.buyerDocumentType ?? "1",
+          buyerDocumentNumber: order.buyerDocumentNumber ?? "00000000",
+          buyerLegalName: order.buyerLegalName ?? "Cliente varios",
+          buyerCountry: order.buyerCountry ?? "PE",
+          currency: order.currency,
+          totalAmount: order.total,
+          status: "PENDING",
+        },
+      });
+
+      await this.invoiceQueue.add(
+        INVOICE_JOBS.GENERATE,
+        { invoiceId: invoice.id },
+        { attempts: 3, backoff: { type: "exponential", delay: 15000 }, removeOnComplete: true },
+      );
+    } catch (err) {
+      this.logger.warn(`No se pudo iniciar la emisión de comprobante para la orden ${order.id}: ${String(err)}`);
+    }
   }
 
   async getOrderById(userId: string, orderId: string, isAdmin: boolean) {
