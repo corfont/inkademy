@@ -9,6 +9,7 @@ import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
   gradeAnswerSchema,
   updateCourseSchema,
+  updateCertificateTemplateSchema,
   updateLessonSchema,
   updateModuleSchema,
   updateProgramSchema,
@@ -213,6 +214,13 @@ export class AdminController {
   @ApiOperation({ summary: "Crea una nueva versión de plantilla de certificado" })
   createCertificateTemplate(@Body(new ZodValidationPipe(upsertCertificateTemplateSchema)) dto: any) {
     return this.adminService.createCertificateTemplate(dto);
+  }
+
+  @Patch("certificate-templates/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Edita el HTML o activa/desactiva una plantilla de certificado" })
+  updateCertificateTemplate(@Param("id") id: string, @Body(new ZodValidationPipe(updateCertificateTemplateSchema)) dto: any) {
+    return this.adminService.updateCertificateTemplate(id, dto);
   }
 
   @Get("companies")

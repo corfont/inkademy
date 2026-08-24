@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getLocale } from "next-intl/server";
 import { MOCK_CERTIFICATES } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { formatDate } from "@/lib/format";
 
@@ -13,10 +14,16 @@ export default async function AdminCertificatesPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <h1 className="font-serif text-2xl font-semibold text-ink-900">Certificados emitidos</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">Certificados emitidos</h1>
+        <Link href="/admin/certificados/plantillas">
+          <Button variant="outline">Gestionar plantillas</Button>
+        </Link>
+      </div>
       <Callout variant="info">
-        GET /admin/certificate-templates existe en el contrato; la búsqueda global de certificados emitidos usa datos de
-        referencia mientras se define el endpoint de listado en apps/api.
+        El listado de certificados emitidos abajo usa datos de referencia — todavía no existe un endpoint
+        GET /admin/certificates para buscarlos globalmente en apps/api. Las plantillas (diseño del PDF) sí son reales:
+        ver &quot;Gestionar plantillas&quot;.
       </Callout>
 
       <div className="overflow-x-auto rounded-lg border border-paper-border bg-paper">

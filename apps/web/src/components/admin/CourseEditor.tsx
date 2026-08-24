@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UploadCloud, Trash2, Radio } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
@@ -88,6 +88,15 @@ function MetadataSection({
 }) {
   const [titleEs, setTitleEs] = useState(course.title?.es ?? "");
   const [priceAmount, setPriceAmount] = useState(String(course.priceAmount ?? "0"));
+  const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
+  const [templates, setTemplates] = useState<any[]>([]);
+
+  useEffect(() => {
+    adminApi
+      .certificateTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, []);
 
   return (
     <Card>
@@ -104,11 +113,28 @@ function MetadataSection({
           </div>
         </div>
         <div>
+          <Label htmlFor="edit-cert-template">Plantilla de certificado</Label>
+          <Select id="edit-cert-template" value={certificateTemplateId} onChange={(e) => setCertificateTemplateId(e.target.value)}>
+            <option value="">Automática (la más reciente activa en el idioma del alumno)</option>
+            {templates.map((tpl) => (
+              <option key={tpl.id} value={tpl.id} disabled={!tpl.active}>
+                {tpl.name} {!tpl.active ? "(inactiva)" : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
           <Button
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() => onSave({ title: { ...course.title, es: titleEs }, priceAmount: Number(priceAmount) })}
+            onClick={() =>
+              onSave({
+                title: { ...course.title, es: titleEs },
+                priceAmount: Number(priceAmount),
+                certificateTemplateId: certificateTemplateId || null,
+              })
+            }
           >
             Guardar cambios
           </Button>

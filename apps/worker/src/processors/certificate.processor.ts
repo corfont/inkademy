@@ -75,6 +75,10 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     finalScore: certificate.finalScore != null ? certificate.finalScore.toFixed(1) : "Aprobado",
     code: certificate.code,
     qrDataUrl,
+    // Para que una plantilla pueda insertar el logo real como
+    // {{appUrl}}/brand/logo-horizontal.png en vez de depender de un asset
+    // subido aparte.
+    appUrl,
   });
 
   const browser = await puppeteer.launch({

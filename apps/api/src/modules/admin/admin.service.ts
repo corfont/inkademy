@@ -338,6 +338,10 @@ export class AdminService {
     });
   }
 
+  updateCertificateTemplate(id: string, input: Partial<{ name: string; htmlTemplate: string; active: boolean }>) {
+    return this.prisma.certificateTemplate.update({ where: { id }, data: input });
+  }
+
   // --- Empresas ---
 
   listCompanies() {

@@ -270,6 +270,15 @@ export const adminApi = {
       accessToken,
     }),
   certificateTemplates: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificate-templates", { accessToken }),
+  createCertificateTemplate: (
+    input: { name: string; locale?: string; htmlTemplate: string; active?: boolean },
+    accessToken?: string | null,
+  ) => apiFetch<any>("/admin/certificate-templates", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateCertificateTemplate: (
+    id: string,
+    input: Partial<{ name: string; htmlTemplate: string; active: boolean }>,
+    accessToken?: string | null,
+  ) => apiFetch<any>(`/admin/certificate-templates/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
 
   // --- Catálogo: crear/editar cursos ---

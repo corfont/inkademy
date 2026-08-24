@@ -87,12 +87,27 @@ export class CertificateService {
 
     if (!(progressOk && attendanceOk && scoreOk && assignmentOk)) return;
 
-    const template = await this.prisma.certificateTemplate.findFirst({
-      where: { active: true, locale: enrollment.user.locale },
-      orderBy: { version: "desc" },
-    });
-    const fallbackTemplate =
-      template ?? (await this.prisma.certificateTemplate.findFirst({ where: { active: true } }));
+    // El curso puede tener una plantilla asignada explícitamente desde
+    // /admin/catalogo/:id (ver CourseEditor) — se respeta esa elección
+    // siempre que siga activa. Si no hay ninguna asignada (o quedó
+    // desactivada), cae al comportamiento anterior: la plantilla activa más
+    // reciente que coincida con el locale del alumno, y si no hay ninguna
+    // en ese locale, cualquier plantilla activa.
+    let fallbackTemplate = null as Awaited<ReturnType<typeof this.prisma.certificateTemplate.findFirst>>;
+    if (enrollment.course?.certificateTemplateId) {
+      fallbackTemplate = await this.prisma.certificateTemplate.findFirst({
+        where: { id: enrollment.course.certificateTemplateId, active: true },
+      });
+    }
+    if (!fallbackTemplate) {
+      fallbackTemplate = await this.prisma.certificateTemplate.findFirst({
+        where: { active: true, locale: enrollment.user.locale },
+        orderBy: { version: "desc" },
+      });
+    }
+    if (!fallbackTemplate) {
+      fallbackTemplate = await this.prisma.certificateTemplate.findFirst({ where: { active: true } });
+    }
     if (!fallbackTemplate) {
       this.logger.warn("No hay CertificateTemplate activo — no se puede emitir certificado todavía");
       return;

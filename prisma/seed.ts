@@ -590,6 +590,103 @@ async function main() {
     },
   });
 
+  // Segunda plantilla, inspirada en el certificado real de Inkapitales (el
+  // "Escuela Especializada" con marco geométrico y doble firma) que compartió
+  // el usuario — demuestra que Inkademy soporta más de una plantilla a la
+  // vez. Un curso puede asignarse una específica en /admin/catalogo/:id
+  // (Course.certificateTemplateId); si no, se usa la más reciente activa que
+  // coincida con el idioma del alumno (esta, por ser la única en inglés — no,
+  // ambas son "es" — por orden de versión/creación).
+  await prisma.certificateTemplate.create({
+    data: {
+      name: "Plantilla Inkapitales (Escuela Especializada)",
+      locale: "es",
+      version: 1,
+      active: true,
+      htmlTemplate: `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page { margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: 'Work Sans', Arial, sans-serif;
+        width: 100vw;
+        height: 100vh;
+        position: relative;
+        background: #ffffff;
+        color: #1c2038;
+        overflow: hidden;
+      }
+      .frame { position: absolute; inset: 3.2vw; border: 2px solid #0d0f1c; padding: 3px; }
+      .frame-inner { position: relative; height: 100%; border: 1px solid #d8b16c; overflow: hidden; }
+      .corner { position: absolute; width: 16vw; height: 16vw; }
+      .corner-tl { top: -8vw; left: -8vw; background: linear-gradient(135deg, #586bd8 45%, transparent 46%); }
+      .corner-br { bottom: -8vw; right: -8vw; background: linear-gradient(-45deg, #d8b16c 45%, transparent 46%); }
+      .content { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 3.4vh 5vw 2.6vh; text-align: center; }
+      .header { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+      .header img { height: 4.2vh; }
+      .badge-escuela { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.6vh; letter-spacing: 0.05em; color: #586bd8; text-transform: uppercase; border: 1px solid #586bd8; border-radius: 999px; padding: 0.6vh 1.4vh; }
+      h1.title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 5vh; letter-spacing: 0.06em; color: #1c2038; margin: 2.4vh 0 0.6vh; text-transform: uppercase; }
+      .dots { color: #d8b16c; font-size: 1.6vh; letter-spacing: 0.4em; margin-bottom: 2vh; }
+      .student-name { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 3.4vh; color: #0d0f1c; margin: 1vh 0; }
+      .lead { font-size: 1.7vh; color: #4b4f66; margin: 0.4vh 0; }
+      .course-title { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 2.1vh; color: #586bd8; max-width: 80%; margin: 1vh 0; line-height: 1.35; }
+      .meta { font-size: 1.4vh; color: #6b6e8a; margin-top: 0.6vh; max-width: 75%; }
+      .signatures { margin-top: auto; width: 100%; display: flex; justify-content: space-around; padding-top: 3vh; }
+      .signature { width: 30%; }
+      .signature .line { border-top: 1px solid #1c2038; margin-bottom: 0.8vh; }
+      .signature .name { font-weight: 600; font-size: 1.5vh; color: #1c2038; }
+      .signature .role { font-size: 1.2vh; color: #6b6e8a; }
+      .seal { position: absolute; bottom: 8vh; left: 50%; transform: translateX(-50%); width: 8vh; height: 8vh; border-radius: 50%; background: linear-gradient(130deg, #586bd8 8%, #d8b16c 92%); display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1vh; text-align: center; line-height: 1.2; box-shadow: 0 8px 24px rgba(13, 15, 28, 0.25); }
+      .footer { display: flex; align-items: center; justify-content: center; gap: 1.4vh; margin-top: 2vh; }
+      .footer img { width: 6vh; height: 6vh; }
+      .footer .code { font-size: 1.2vh; color: #9497ab; text-align: left; }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <div class="frame-inner">
+        <div class="corner corner-tl"></div>
+        <div class="corner corner-br"></div>
+        <div class="content">
+          <div class="header">
+            <img src="{{appUrl}}/brand/logo-horizontal.png" alt="Inkademy" />
+            <span class="badge-escuela">Escuela Especializada</span>
+          </div>
+          <h1 class="title">Certificado</h1>
+          <div class="dots">&#9670;&nbsp;&nbsp;&#9670;&nbsp;&nbsp;&#9670;</div>
+          <p class="student-name">{{studentName}}</p>
+          <p class="lead">Ha aprobado satisfactoriamente la capacitación en</p>
+          <p class="course-title">{{courseName}}</p>
+          <p class="meta">Emitido el {{issuedDate}} · Calificación final: {{finalScore}}</p>
+          <div class="signatures">
+            <div class="signature">
+              <div class="line"></div>
+              <p class="name">Dirección General</p>
+              <p class="role">Inkademy</p>
+            </div>
+            <div class="signature">
+              <div class="line"></div>
+              <p class="name">Dirección Académica</p>
+              <p class="role">Inkademy</p>
+            </div>
+          </div>
+          <div class="seal">HIGH<br />QUALITY</div>
+          <div class="footer">
+            <img src="{{qrDataUrl}}" alt="Código QR de verificación" />
+            <div class="code">Código de verificación:<br />{{code}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`,
+    },
+  });
+
   // ---------------------------------------------------------------------
   // 6. Usuarios demo
   // ---------------------------------------------------------------------

@@ -242,6 +242,13 @@ model Course {
   b2bAvailable           Boolean               @default(true)
   b2bPriceAmount          Decimal?             @db.Decimal(10, 2)
 
+  // Plantilla de certificado específica para este curso. Si es null, el
+  // emisor de certificados cae al comportamiento anterior (la plantilla
+  // activa más reciente que coincida con el locale del alumno) — ver
+  // CertificateService.checkAndIssueIfEligible.
+  certificateTemplateId  String?
+  certificateTemplate    CertificateTemplate?  @relation(fields: [certificateTemplateId], references: [id])
+
   // Rutas progresivas / recomendación
   prerequisiteCourseIds  String[]              @default([])
   nextRecommendedCourseIds String[]            @default([])
@@ -374,6 +381,8 @@ model Program {
   priceCurrency         String          @default("PEN")
   certificationIncluded Boolean         @default(true)
   status                OfferingStatus  @default(DRAFT)
+  certificateTemplateId String?
+  certificateTemplate   CertificateTemplate? @relation(fields: [certificateTemplateId], references: [id])
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
@@ -599,6 +608,8 @@ model CertificateTemplate {
   createdAt    DateTime @default(now())
 
   certificates Certificate[]
+  courses      Course[]
+  programs     Program[]
 }
 
 model Certificate {

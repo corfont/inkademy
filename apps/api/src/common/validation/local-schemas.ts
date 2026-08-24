@@ -80,6 +80,7 @@ export const upsertCourseSchema = z.object({
   b2bPriceAmount: z.number().nonnegative().optional(),
   prerequisiteCourseIds: z.array(z.string()).optional(),
   nextRecommendedCourseIds: z.array(z.string()).optional(),
+  certificateTemplateId: z.string().uuid().nullable().optional(),
 });
 export const updateCourseSchema = upsertCourseSchema.partial();
 
@@ -117,6 +118,7 @@ export const upsertProgramSchema = z.object({
   certificationIncluded: z.boolean().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
   courseIds: z.array(z.string().uuid()).optional(),
+  certificateTemplateId: z.string().uuid().nullable().optional(),
 });
 export const updateProgramSchema = upsertProgramSchema.partial();
 
@@ -124,6 +126,11 @@ export const upsertCertificateTemplateSchema = z.object({
   name: z.string().min(1),
   locale: z.string().optional(),
   htmlTemplate: z.string().min(1),
+  active: z.boolean().optional(),
+});
+export const updateCertificateTemplateSchema = z.object({
+  name: z.string().min(1).optional(),
+  htmlTemplate: z.string().min(1).optional(),
   active: z.boolean().optional(),
 });
 
