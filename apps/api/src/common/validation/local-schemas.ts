@@ -351,6 +351,9 @@ export const createSuggestionSchema = z.object({
 export const updateSuggestionSchema = z.object({
   status: z.enum(["NEW", "REVIEWED", "PLANNED", "DECLINED"]),
 });
+export const respondSuggestionSchema = z.object({
+  response: z.string().min(1).max(2000),
+});
 
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---
 export const upsertSettingsSchema = z.object({

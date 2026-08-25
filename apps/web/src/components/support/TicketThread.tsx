@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Sparkles, BookMarked, Check } from "lucide-react";
 import { supportApi, ApiError } from "@/lib/api-client";
 import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -43,11 +44,18 @@ function authorName(author: any) {
  * (el alumno que abrió el ticket) como en /admin/soporte/:id (soporte/admin
  * respondiendo) — la única diferencia entre ambos contextos es de permisos,
  * que ya resuelve el backend (SupportService.getTicket/addMessage).
+ *
+ * `isStaffView` habilita, solo para soporte/admin, el borrador de respuesta
+ * con IA y "guardar como fuente para la IA" — ninguno de los dos tiene
+ * sentido para el alumno que abrió el ticket.
  */
-export function TicketThread({ ticket, backHref }: { ticket: any; backHref: string }) {
+export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket: any; backHref: string; isStaffView?: boolean }) {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleReply() {
@@ -65,6 +73,32 @@ export function TicketThread({ ticket, backHref }: { ticket: any; backHref: stri
     }
   }
 
+  async function handleDraft() {
+    setDrafting(true);
+    setError(null);
+    try {
+      const { draft } = await supportApi.suggestReply(ticket.id);
+      setBody(draft);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos generar un borrador.");
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  async function handleSaveAsKnowledge() {
+    setSaving(true);
+    setError(null);
+    try {
+      await supportApi.saveAsKnowledge(ticket.id);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar este ticket como fuente.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div>
@@ -79,6 +113,21 @@ export function TicketThread({ ticket, backHref }: { ticket: any; backHref: stri
           </div>
         </div>
         <p className="text-sm text-ash-500">Categoría: {ticket.category}</p>
+        {isStaffView && (
+          <div className="mt-2">
+            <Button size="sm" variant="outline" disabled={saving || saved} onClick={handleSaveAsKnowledge}>
+              {saved ? (
+                <>
+                  <Check className="h-4 w-4" aria-hidden="true" /> Guardado como fuente de la IA
+                </>
+              ) : (
+                <>
+                  <BookMarked className="h-4 w-4" aria-hidden="true" /> {saving ? "Guardando…" : "Guardar como fuente para la IA"}
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -111,9 +160,16 @@ export function TicketThread({ ticket, backHref }: { ticket: any; backHref: stri
               onChange={(e) => setBody(e.target.value)}
               className="min-h-[6rem]"
             />
-            <Button disabled={sending || !body.trim()} onClick={handleReply} className="self-start">
-              {sending ? "Enviando…" : "Responder"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={sending || !body.trim()} onClick={handleReply} className="self-start">
+                {sending ? "Enviando…" : "Responder"}
+              </Button>
+              {isStaffView && (
+                <Button variant="outline" disabled={drafting} onClick={handleDraft} className="self-start">
+                  <Sparkles className="h-4 w-4" aria-hidden="true" /> {drafting ? "Redactando…" : "Sugerir respuesta con IA"}
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

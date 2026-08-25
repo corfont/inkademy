@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { createSupportTicketSchema } from "@inkademy/shared";
 import type { CreateSupportTicketInput } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Roles } from "../../common/decorators/roles.decorator";
+import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { addSupportMessageSchema } from "../../common/validation/local-schemas";
@@ -47,5 +49,21 @@ export class SupportController {
     @Body(new ZodValidationPipe(addSupportMessageSchema)) dto: { body: string },
   ) {
     return this.supportService.addMessage(user.id, id, dto.body, isGlobalStaff(user));
+  }
+
+  @Post(":id/suggest-reply")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Borrador de respuesta con IA para que soporte lo revise antes de enviarlo" })
+  suggestReply(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.supportService.suggestReply(user.id, id, isGlobalStaff(user));
+  }
+
+  @Post(":id/save-as-knowledge")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Guarda el ticket (pregunta + respuesta correcta) como fuente del asistente de IA" })
+  saveAsKnowledge(@Param("id") id: string) {
+    return this.supportService.saveAsKnowledge(id);
   }
 }

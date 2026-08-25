@@ -53,6 +53,24 @@ export class ChatbotDocumentsService {
     return { id: doc.id, title: doc.title, charCount: extractedText.length };
   }
 
+  /**
+   * Guarda texto directo (sin archivo subido) como fuente del asistente —
+   * usado para "guardar como fuente para la IA" desde un ticket de soporte
+   * ya resuelto o una sugerencia ya respondida (ver SupportController /
+   * SuggestionsController `saveAsKnowledge`). Se sube igual a S3/MinIO como
+   * un .txt para que el documento aparezca y se pueda ver/descargar desde
+   * /admin/asistente-ia como cualquier otro documento subido a mano.
+   */
+  async createFromText(title: string, text: string) {
+    if (!text.trim()) throw new BadRequestException("No hay contenido para guardar como fuente");
+    const key = `chatbot-docs/${Date.now()}-${title.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80)}.txt`;
+    await this.storage.uploadBuffer(key, Buffer.from(text, "utf-8"), "text/plain");
+    const doc = await this.prisma.chatbotDocument.create({
+      data: { title, assetId: key, mimeType: "text/plain", extractedText: text },
+    });
+    return { id: doc.id, title: doc.title, charCount: text.length };
+  }
+
   async update(id: string, input: { active?: boolean }) {
     return this.prisma.chatbotDocument.update({ where: { id }, data: input });
   }

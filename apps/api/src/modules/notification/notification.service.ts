@@ -197,4 +197,22 @@ export class NotificationService {
       userId,
     );
   }
+
+  /**
+   * Respuesta del admin a una sugerencia ("me gustaría un curso de...") —
+   * antes las sugerencias solo se marcaban con un estado interno
+   * (NEW/REVIEWED/PLANNED/DECLINED) y quien la envió nunca se enteraba de
+   * nada.
+   */
+  sendSuggestionResponse(to: string, originalMessage: string, response: string, userId: string) {
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: "Respuesta a tu sugerencia en Inkademy",
+        html: `<p>Gracias por tu sugerencia:</p><blockquote>${originalMessage}</blockquote><p>${response}</p>`,
+      },
+      userId,
+    );
+  }
 }

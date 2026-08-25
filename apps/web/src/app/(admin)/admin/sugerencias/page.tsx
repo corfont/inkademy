@@ -5,6 +5,7 @@ import { getServerAccessToken } from "@/lib/server-auth";
 import { getLocale } from "next-intl/server";
 import { Callout } from "@/components/ui/Callout";
 import { SuggestionStatusControl } from "@/components/admin/SuggestionStatusControl";
+import { SuggestionReplyPanel } from "@/components/admin/SuggestionReplyPanel";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Sugerencias" };
@@ -32,14 +33,25 @@ export default async function AdminSuggestionsPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {suggestions.map((s: any) => (
-            <li key={s.id} className="flex items-start justify-between gap-4 rounded-lg border border-paper-border bg-paper p-4">
-              <div className="flex-1">
-                <p className="text-sm text-ink-900">{s.message}</p>
-                <p className="mt-1 text-xs text-ash-500">
-                  {authorName(s)} · {formatDateTime(s.createdAt, locale)}
-                </p>
+            <li key={s.id} className="flex flex-col gap-3 rounded-lg border border-paper-border bg-paper p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <p className="text-sm text-ink-900">{s.message}</p>
+                  <p className="mt-1 text-xs text-ash-500">
+                    {authorName(s)} · {formatDateTime(s.createdAt, locale)}
+                  </p>
+                  {s.adminResponse && (
+                    <p className="mt-2 rounded-md bg-ink-50 p-2 text-xs text-ink-700">
+                      <span className="font-semibold">Respuesta enviada: </span>
+                      {s.adminResponse}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-none flex-col items-end gap-2">
+                  <SuggestionStatusControl id={s.id} status={s.status} />
+                  <SuggestionReplyPanel id={s.id} adminResponse={s.adminResponse ?? null} respondedAt={s.respondedAt ?? null} locale={locale} />
+                </div>
               </div>
-              <SuggestionStatusControl id={s.id} status={s.status} />
             </li>
           ))}
         </ul>

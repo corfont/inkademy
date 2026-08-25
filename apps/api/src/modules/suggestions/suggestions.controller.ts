@@ -5,7 +5,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { createSuggestionSchema, updateSuggestionSchema } from "../../common/validation/local-schemas";
+import { createSuggestionSchema, updateSuggestionSchema, respondSuggestionSchema } from "../../common/validation/local-schemas";
 import { SuggestionsService } from "./suggestions.service";
 
 /**
@@ -46,5 +46,33 @@ export class SuggestionsController {
   @ApiOperation({ summary: "Cambia el estado de una sugerencia" })
   updateStatus(@Param("id") id: string, @Body(new ZodValidationPipe(updateSuggestionSchema)) dto: { status: string }) {
     return this.suggestionsService.updateStatus(id, dto.status);
+  }
+
+  @Post(":id/respond")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Responde la sugerencia — se le envía por correo a quien la mandó" })
+  respond(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(respondSuggestionSchema)) dto: { response: string },
+  ) {
+    return this.suggestionsService.respond(id, user.id, dto.response);
+  }
+
+  @Post(":id/suggest-reply")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Borrador de respuesta con IA para que el admin lo revise antes de enviarlo" })
+  suggestReply(@Param("id") id: string) {
+    return this.suggestionsService.suggestReply(id);
+  }
+
+  @Post(":id/save-as-knowledge")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Guarda la sugerencia (pregunta + respuesta correcta) como fuente del asistente de IA" })
+  saveAsKnowledge(@Param("id") id: string) {
+    return this.suggestionsService.saveAsKnowledge(id);
   }
 }

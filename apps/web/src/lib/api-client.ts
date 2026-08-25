@@ -399,6 +399,12 @@ export const supportApi = {
   ticket: (id: string, accessToken?: string | null) => apiFetch<any>(`/support/tickets/${id}`, { accessToken }),
   addMessage: (id: string, body: string, accessToken?: string | null) =>
     apiFetch<any>(`/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body }), accessToken }),
+  // Borrador con IA para que soporte/admin lo revise antes de enviarlo, y
+  // guardar el ticket ya resuelto como fuente del asistente.
+  suggestReply: (id: string, accessToken?: string | null) =>
+    apiFetch<{ draft: string }>(`/support/tickets/${id}/suggest-reply`, { method: "POST", accessToken }),
+  saveAsKnowledge: (id: string, accessToken?: string | null) =>
+    apiFetch<{ id: string; title: string; charCount: number }>(`/support/tickets/${id}/save-as-knowledge`, { method: "POST", accessToken }),
 };
 
 // ---------------------------------------------------------------------------
@@ -411,6 +417,12 @@ export const suggestionsApi = {
   all: (accessToken?: string | null) => apiFetch<any[]>("/suggestions", { accessToken }),
   updateStatus: (id: string, status: string, accessToken?: string | null) =>
     apiFetch<any>(`/suggestions/${id}`, { method: "PATCH", body: JSON.stringify({ status }), accessToken }),
+  respond: (id: string, response: string, accessToken?: string | null) =>
+    apiFetch<any>(`/suggestions/${id}/respond`, { method: "POST", body: JSON.stringify({ response }), accessToken }),
+  suggestReply: (id: string, accessToken?: string | null) =>
+    apiFetch<{ draft: string }>(`/suggestions/${id}/suggest-reply`, { method: "POST", accessToken }),
+  saveAsKnowledge: (id: string, accessToken?: string | null) =>
+    apiFetch<{ id: string; title: string; charCount: number }>(`/suggestions/${id}/save-as-knowledge`, { method: "POST", accessToken }),
 };
 
 // ---------------------------------------------------------------------------

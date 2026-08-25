@@ -9,5 +9,9 @@ import { ChatbotDocumentsService } from "./chatbot-documents.service";
   imports: [StorageModule],
   controllers: [ChatbotController, ChatbotDocumentsController],
   providers: [ChatbotService, ChatbotDocumentsService],
+  // Exportados para que SupportModule/SuggestionsModule puedan generar
+  // borradores de respuesta y guardar tickets/sugerencias resueltos como
+  // fuente de conocimiento del asistente (ver "haz todo" del admin).
+  exports: [ChatbotService, ChatbotDocumentsService],
 })
 export class ChatbotModule {}

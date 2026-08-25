@@ -8,5 +8,5 @@ export const metadata: Metadata = { title: "Ticket de soporte (admin)" };
 export default async function AdminTicketDetailPage({ params }: { params: { id: string } }) {
   const accessToken = getServerAccessToken();
   const ticket = await supportApi.ticket(params.id, accessToken);
-  return <TicketThread ticket={ticket} backHref="/admin/soporte" />;
+  return <TicketThread ticket={ticket} backHref="/admin/soporte" isStaffView />;
 }

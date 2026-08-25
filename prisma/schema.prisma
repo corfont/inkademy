@@ -93,6 +93,7 @@ model User {
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
   supportMessages       SupportMessage[]
   courseSuggestions     CourseSuggestion[]
+  suggestionResponses   CourseSuggestion[]   @relation("SuggestionRespondedBy")
   recommendations       Recommendation[]
   auditLogs             AuditLog[]
   teachingCourses       CourseStaff[]
@@ -1041,6 +1042,14 @@ model CourseSuggestion {
   message   String   @db.Text
   status    String   @default("NEW") // NEW | REVIEWED | PLANNED | DECLINED
   createdAt DateTime @default(now())
+
+  // Respuesta del admin — antes una sugerencia solo tenía un estado interno
+  // y quien la envió nunca se enteraba de nada. `adminResponse` se manda
+  // por correo a `user` cuando se guarda (ver SuggestionsService.respond).
+  adminResponse String?   @db.Text
+  respondedAt   DateTime?
+  respondedById String?
+  respondedBy   User?     @relation("SuggestionRespondedBy", fields: [respondedById], references: [id])
 
   @@index([status])
 }
