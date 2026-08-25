@@ -571,6 +571,95 @@ export class AdminService {
     }));
   }
 
+  // ==========================================================================
+  // Finanzas — antes no existía ningún lugar para ver cuánto entra, cuánto
+  // se va en IGV/comisión de pasarela, y cuánto queda de saldo real. Todo
+  // se agrega a partir de datos ya existentes (Order/Payment pagados +
+  // SunatSettings.taxAffectation) más PlatformExpense (gastos que el admin
+  // registra a mano — hosting, marketing, etc., nada de eso lo modela el
+  // sistema todavía).
+  // ==========================================================================
+
+  async getFinancialSummary(params: { from?: string; to?: string } = {}) {
+    const from = params.from ? new Date(params.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const to = params.to ? new Date(params.to) : new Date();
+
+    const [ordersByCurrency, paymentsByCurrencyProvider, expensesByCurrency, sunat, platformSettings] = await Promise.all([
+      this.prisma.order.groupBy({ by: ["currency"], where: { status: "PAID", createdAt: { gte: from, lte: to } }, _sum: { total: true } }),
+      this.prisma.payment.groupBy({
+        by: ["currency", "provider"],
+        where: { status: "SUCCEEDED", createdAt: { gte: from, lte: to } },
+        _sum: { amount: true },
+      }),
+      this.prisma.platformExpense.groupBy({ by: ["currency"], where: { incurredAt: { gte: from, lte: to } }, _sum: { amount: true } }),
+      this.prisma.sunatSettings.findUnique({ where: { id: "default" } }),
+      this.prisma.platformSettings.findUnique({ where: { id: "default" } }),
+    ]);
+
+    const taxAffectation = (sunat?.taxAffectation as "EXONERADO" | "GRAVADO" | undefined) ?? "EXONERADO";
+    const isGravado = taxAffectation === "GRAVADO";
+    const culqiFeePercent = platformSettings?.culqiFeePercent ?? 3.99;
+    const stripeFeePercent = platformSettings?.stripeFeePercent ?? 4.99;
+
+    const feesByCurrency = new Map<string, number>();
+    for (const p of paymentsByCurrencyProvider) {
+      const pct = p.provider === "CULQI" ? culqiFeePercent : p.provider === "STRIPE" ? stripeFeePercent : 0;
+      feesByCurrency.set(p.currency, (feesByCurrency.get(p.currency) ?? 0) + Number(p._sum.amount ?? 0) * (pct / 100));
+    }
+    const incomeByCurrency = new Map(ordersByCurrency.map((o) => [o.currency, Number(o._sum.total ?? 0)]));
+    const expensesMap = new Map(expensesByCurrency.map((e) => [e.currency, Number(e._sum.amount ?? 0)]));
+
+    const currencies = new Set<string>(["PEN", ...ordersByCurrency.map((o) => o.currency), ...expensesByCurrency.map((e) => e.currency)]);
+
+    const rows = Array.from(currencies).map((currency) => {
+      const income = incomeByCurrency.get(currency) ?? 0;
+      // Base imponible + IGV a partir del precio final ya cobrado (mismo
+      // criterio que apps/worker/src/lib/sunat/ubl-invoice.ts al armar el XML).
+      const igv = isGravado ? income - income / 1.18 : 0;
+      const providerFees = feesByCurrency.get(currency) ?? 0;
+      const otherExpenses = expensesMap.get(currency) ?? 0;
+      return { currency, income, igv, providerFees, otherExpenses, balance: income - igv - providerFees - otherExpenses };
+    });
+
+    return { from: from.toISOString(), to: to.toISOString(), taxAffectation, culqiFeePercent, stripeFeePercent, rows };
+  }
+
+  async updateFeeSettings(input: { culqiFeePercent?: number; stripeFeePercent?: number }) {
+    return this.prisma.platformSettings.upsert({ where: { id: "default" }, create: { id: "default", ...input }, update: input });
+  }
+
+  async listExpenses(params: { from?: string; to?: string } = {}) {
+    const expenses = await this.prisma.platformExpense.findMany({
+      where:
+        params.from || params.to
+          ? { incurredAt: { ...(params.from ? { gte: new Date(params.from) } : {}), ...(params.to ? { lte: new Date(params.to) } : {}) } }
+          : undefined,
+      orderBy: { incurredAt: "desc" },
+      take: 200,
+    });
+    // Decimal de Prisma no serializa a JSON como número plano por defecto
+    // (mismo caso que Order/Course en otros lados de este archivo) — sin
+    // esto el frontend mostraba "S/ NaN" en vez del monto real.
+    return expenses.map((e) => ({ ...e, amount: decimalToString(e.amount), incurredAt: e.incurredAt.toISOString() }));
+  }
+
+  createExpense(input: { description: string; amount: number; currency?: string; category?: string; incurredAt?: string }) {
+    return this.prisma.platformExpense.create({
+      data: {
+        description: input.description,
+        amount: input.amount,
+        currency: input.currency ?? "PEN",
+        category: input.category ?? "OTHER",
+        ...(input.incurredAt ? { incurredAt: new Date(input.incurredAt) } : {}),
+      },
+    });
+  }
+
+  async deleteExpense(id: string) {
+    await this.prisma.platformExpense.delete({ where: { id } });
+    return { deleted: true };
+  }
+
   // --- Matrículas (buscar una puntual + ampliar plazo de acceso como caso
   // especial — "el administrador como caso especial podría ampliar el
   // plazo" tras un curso grabado con fecha de término vencida) ---

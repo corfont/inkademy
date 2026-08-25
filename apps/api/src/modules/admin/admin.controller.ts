@@ -9,6 +9,7 @@ import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
   assignCourseStaffSchema,
   adminResetPasswordSchema,
+  createExpenseSchema,
   createUserSchema,
   extendEnrollmentAccessSchema,
   gradeAnswerSchema,
@@ -18,6 +19,7 @@ import {
   updateLessonSchema,
   updateMaterialSchema,
   updateModuleSchema,
+  updateFeeSettingsSchema,
   updateProgramSchema,
   updateQuestionSchema,
   updateUserSchema,
@@ -369,6 +371,46 @@ export class AdminController {
     @Body(new ZodValidationPipe(extendEnrollmentAccessSchema)) dto: { accessExpiresAt: Date | null },
   ) {
     return this.adminService.extendEnrollmentAccess(id, dto.accessExpiresAt);
+  }
+
+  // --- Finanzas ---
+
+  @Get("finance/summary")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Ingresos, IGV, comisión de pasarela, gastos y saldo total" })
+  getFinancialSummary(@Query("from") from?: string, @Query("to") to?: string) {
+    return this.adminService.getFinancialSummary({ from, to });
+  }
+
+  @Patch("finance/fee-settings")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Configura el % de comisión estimado de Culqi/Stripe" })
+  updateFeeSettings(@Body(new ZodValidationPipe(updateFeeSettingsSchema)) dto: { culqiFeePercent?: number; stripeFeePercent?: number }) {
+    return this.adminService.updateFeeSettings(dto);
+  }
+
+  @Get("finance/expenses")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Lista los gastos registrados a mano" })
+  listExpenses(@Query("from") from?: string, @Query("to") to?: string) {
+    return this.adminService.listExpenses({ from, to });
+  }
+
+  @Post("finance/expenses")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Registra un gasto (hosting, marketing, planilla, etc.)" })
+  createExpense(
+    @Body(new ZodValidationPipe(createExpenseSchema))
+    dto: { description: string; amount: number; currency?: string; category?: string; incurredAt?: Date },
+  ) {
+    return this.adminService.createExpense({ ...dto, incurredAt: dto.incurredAt?.toISOString() });
+  }
+
+  @Delete("finance/expenses/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina un gasto registrado" })
+  deleteExpense(@Param("id") id: string) {
+    return this.adminService.deleteExpense(id);
   }
 
   // --- Usuarios y roles ---

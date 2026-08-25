@@ -1130,7 +1130,31 @@ model PlatformSettings {
   institutionSignatureName    String? // p.ej. "Juan Pérez López"
   institutionSignatureTitle   String? // p.ej. "Gerente General"
 
+  // Comisión que cobra cada pasarela por transacción exitosa — el % exacto
+  // depende del contrato comercial de Inkademy con Culqi/Stripe (varía por
+  // volumen), así que se deja configurable acá en vez de un valor fijo en
+  // código. Usado por AdminService.getFinancialSummary para estimar cuánto
+  // de lo cobrado en realidad se va a la pasarela.
+  culqiFeePercent     Float    @default(3.99)
+  stripeFeePercent    Float    @default(4.99)
+
   updatedAt           DateTime @updatedAt
+}
+
+/// Gastos que el admin registra a mano (hosting, marketing, nómina de
+/// docentes, etc.) — antes no existía ningún lugar para llevar cuenta de
+/// "otros gastos" fuera de lo que ya modela el sistema (comisión de
+/// pasarela, IGV). Alimenta el "Saldo total" de /admin/finanzas.
+model PlatformExpense {
+  id          String   @id @default(uuid())
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  currency    String   @default("PEN")
+  category    String   @default("OTHER") // HOSTING | MARKETING | PAYROLL | OTHER
+  incurredAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([incurredAt])
 }
 
 /// Credenciales y datos de facturación electrónica SUNAT (Perú), editables

@@ -361,6 +361,19 @@ export const extendEnrollmentAccessSchema = z.object({
   accessExpiresAt: z.coerce.date().nullable(),
 });
 
+// --- Finanzas: gastos manuales y % de comisión de pasarela ---
+export const createExpenseSchema = z.object({
+  description: z.string().min(1).max(200),
+  amount: z.number().positive(),
+  currency: z.enum(["PEN", "USD"]).optional(),
+  category: z.enum(["HOSTING", "MARKETING", "PAYROLL", "OTHER"]).optional(),
+  incurredAt: z.coerce.date().optional(),
+});
+export const updateFeeSettingsSchema = z.object({
+  culqiFeePercent: z.number().min(0).max(100).optional(),
+  stripeFeePercent: z.number().min(0).max(100).optional(),
+});
+
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---
 export const upsertSettingsSchema = z.object({
   logoUrl: z.string().optional().nullable(),

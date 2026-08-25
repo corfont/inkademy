@@ -42,8 +42,26 @@ export class SettingsService {
    * existe ninguna.
    */
   async get() {
-    const row = await this.prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } });
-    if (!row) return { ...DEFAULTS, institutionSignatureAssetId: null, institutionSignatureUrl: null, institutionSignatureName: null, institutionSignatureTitle: null };
+    const [row, sunat] = await Promise.all([
+      this.prisma.platformSettings.findUnique({ where: { id: SETTINGS_ID } }),
+      this.prisma.sunatSettings.findUnique({ where: { id: SETTINGS_ID } }),
+    ]);
+    // taxAffectation es el único campo de SunatSettings seguro de exponer en
+    // público (nunca un secreto) — el checkout lo necesita para mostrarle al
+    // comprador si el precio incluye IGV o está exonerado, ANTES de pagar
+    // (antes esto era invisible: el desglose de IGV solo existía, tarde, al
+    // generar el XML del comprobante en apps/worker).
+    const taxAffectation = (sunat?.taxAffectation as "EXONERADO" | "GRAVADO" | undefined) ?? "EXONERADO";
+    if (!row) {
+      return {
+        ...DEFAULTS,
+        institutionSignatureAssetId: null,
+        institutionSignatureUrl: null,
+        institutionSignatureName: null,
+        institutionSignatureTitle: null,
+        taxAffectation,
+      };
+    }
     return {
       ...row,
       contactEmail: row.contactEmail ?? DEFAULTS.contactEmail,
@@ -51,6 +69,7 @@ export class SettingsService {
       contactAddress: row.contactAddress ?? DEFAULTS.contactAddress,
       courseCardFields: (row.courseCardFields as Record<string, boolean> | null) ?? DEFAULTS.courseCardFields,
       institutionSignatureUrl: row.institutionSignatureAssetId ? this.storage.getPublicUrl(row.institutionSignatureAssetId) : null,
+      taxAffectation,
     };
   }
 

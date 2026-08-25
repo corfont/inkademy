@@ -192,6 +192,8 @@ export interface PlatformSettingsDTO {
   institutionSignatureUrl?: string | null;
   institutionSignatureName?: string | null;
   institutionSignatureTitle?: string | null;
+  /** Único campo de SunatSettings expuesto en público — el checkout lo usa para mostrar el desglose de IGV antes de pagar. */
+  taxAffectation?: "EXONERADO" | "GRAVADO";
 }
 
 /** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */
@@ -465,6 +467,19 @@ export const adminApi = {
       body: JSON.stringify({ accessExpiresAt }),
       accessToken,
     }),
+  // --- Finanzas ---
+  financialSummary: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
+    apiFetch<any>("/admin/finance/summary", { accessToken, query: params, cache: "no-store" }),
+  updateFeeSettings: (input: { culqiFeePercent?: number; stripeFeePercent?: number }, accessToken?: string | null) =>
+    apiFetch<any>("/admin/finance/fee-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  expenses: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/finance/expenses", { accessToken, query: params, cache: "no-store" }),
+  createExpense: (
+    input: { description: string; amount: number; currency?: string; category?: string; incurredAt?: string },
+    accessToken?: string | null,
+  ) => apiFetch<any>("/admin/finance/expenses", { method: "POST", body: JSON.stringify(input), accessToken }),
+  deleteExpense: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/finance/expenses/${id}`, { method: "DELETE", accessToken }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
   suspiciousAttempts: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/suspicious", { accessToken }),
   gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }, accessToken?: string | null) =>

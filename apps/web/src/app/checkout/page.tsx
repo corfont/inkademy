@@ -7,22 +7,23 @@ import { Suspense, useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import type { CourseCardDTO, ProgramDetailDTO } from "@inkademy/shared";
-import { catalogApi, commerceApi, ApiError } from "@/lib/api-client";
+import { catalogApi, commerceApi, authApi, ApiError } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { MOCK_COURSES, MOCK_PROGRAM } from "@/lib/mock-data";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
+import { isCulqiConfigured, openCulqiCheckout } from "@/lib/culqi";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { localize, formatPrice } from "@/lib/format";
 
-// NOTA: la integración real de pago (Culqi Checkout / Stripe Elements) requiere
-// cargar su script del proveedor y tokenizar la tarjeta en el cliente antes de
-// enviar `paymentMethodToken` a POST /checkout (ver docs/API-CONTRACT.md).
-// Como aquí no hay llaves públicas reales ni red garantizada, este formulario
-// simula esa tokenización localmente (genera un token ficticio) para que el
-// flujo de compra sea end-to-end navegable en desarrollo.
+// Alternativa cuando NO hay llave pública de Culqi configurada (dev sin
+// credenciales reales) — antes esto era la ÚNICA forma de "pagar", sin
+// importar si había credenciales o no. Ahora, con NEXT_PUBLIC_CULQI_PUBLIC_KEY
+// configurada, el checkout abre el widget real de Culqi (tarjeta + Yape) en
+// vez de este formulario simulado — ver apps/web/src/lib/culqi.ts.
 function fakeTokenize(cardNumber: string) {
   return `tok_test_${cardNumber.slice(-4)}_${Date.now()}`;
 }
@@ -42,6 +43,7 @@ function CheckoutForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useAuth();
+  const brand = useBrandSettings();
 
   const courseId = searchParams.get("courseId");
   const programId = searchParams.get("programId");
@@ -67,6 +69,25 @@ function CheckoutForm() {
   });
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [documentNumberAutofilled, setDocumentNumberAutofilled] = useState(false);
+
+  // Si el alumno ya tiene DNI cargado en su perfil, se autocompleta acá en
+  // vez de pedírselo de nuevo — antes documentNumber siempre arrancaba
+  // vacío aunque `GET /profile` ya lo tuviera. Solo autocompleta mientras
+  // el comprador no haya tocado el campo a mano (no pisa una edición suya).
+  useEffect(() => {
+    authApi
+      .getFullProfile()
+      .then((profile) => {
+        if (profile.documentType === "DNI" && profile.documentNumber) {
+          setBuyer((b) => (b.documentNumber ? b : { ...b, documentType: "1", documentNumber: profile.documentNumber! }));
+          setDocumentNumberAutofilled(true);
+        }
+      })
+      .catch(() => {
+        // sin sesión o perfil incompleto — el comprador lo escribe a mano, como antes
+      });
+  }, []);
 
   useEffect(() => {
     if (courseId) {
@@ -86,11 +107,42 @@ function CheckoutForm() {
   const amount = seatPoolQty ? unitAmount * seatPoolQty : unitAmount;
   const title = course ? localize(course.title, locale) : program ? localize(program.title, locale) : "";
 
+  // El widget real de Culqi (tarjeta + Yape) solo aplica a soles (PEN) y
+  // solo si hay llave pública configurada — sin eso, se mantiene el
+  // formulario simulado de antes para que el flujo siga siendo navegable
+  // en desarrollo. Stripe (USD) no cambia en este pedido.
+  const useCulqiWidget = currency === "PEN" && isCulqiConfigured();
+
+  // "El precio que ponemos ya incluye todos los tributos" — desglose
+  // informativo para el comprador, no cambia ningún monto: si la
+  // plataforma está EXONERADA de IGV (default para enseñanza reglada, Ley
+  // del IGV Apéndice II) el precio final ES la base imponible; si está
+  // GRAVADA, se separa base + IGV(18%) del mismo precio final — antes esto
+  // era invisible para el comprador (Order.tax siempre se guardaba en 0).
+  const isGravado = brand.taxAffectation === "GRAVADO";
+  const baseAmount = isGravado ? amount / 1.18 : amount;
+  const igvAmount = isGravado ? amount - baseAmount : 0;
+
+  async function getPaymentToken(): Promise<string> {
+    if (useCulqiWidget) {
+      const result = await openCulqiCheckout({
+        amountInCents: Math.round(amount * 100),
+        currency: "PEN",
+        title: "Inkademy",
+        description: title,
+        email: user?.email,
+      });
+      return result.token;
+    }
+    return fakeTokenize(card.number || "4111111111111111");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("processing");
     setErrorMessage(null);
     try {
+      const paymentMethodToken = await getPaymentToken();
       const result = await commerceApi.checkout({
         items: [
           {
@@ -107,7 +159,7 @@ function CheckoutForm() {
         // eso (ver CommerceService / docs de arquitectura).
         paymentProvider: currency === "USD" ? "STRIPE" : "CULQI",
         companyId: asCompany && companyId ? companyId : undefined,
-        paymentMethodToken: fakeTokenize(card.number || "4111111111111111"),
+        paymentMethodToken,
         // Si compra a nombre de empresa, el backend usa el RUC de la
         // empresa para la factura y estos campos se ignoran.
         ...(asCompany
@@ -123,7 +175,10 @@ function CheckoutForm() {
       setTimeout(() => router.push(`/campus/pagos?orderId=${result.orderId}`), 1200);
     } catch (err) {
       setStatus("error");
-      setErrorMessage(err instanceof ApiError ? err.message : t("error"));
+      // Errores de openCulqiCheckout (widget cerrado, tarjeta rechazada, etc.)
+      // llegan como Error normal, no ApiError — mostrar su mensaje real en
+      // vez de el genérico ayuda al comprador a entender qué pasó.
+      setErrorMessage(err instanceof ApiError ? err.message : err instanceof Error ? err.message : t("error"));
     }
   }
 
@@ -222,8 +277,14 @@ function CheckoutForm() {
                           id="documentNumber"
                           required
                           value={buyer.documentNumber}
-                          onChange={(e) => setBuyer((b) => ({ ...b, documentNumber: e.target.value }))}
+                          onChange={(e) => {
+                            setDocumentNumberAutofilled(false);
+                            setBuyer((b) => ({ ...b, documentNumber: e.target.value }));
+                          }}
                         />
+                        {documentNumberAutofilled && buyer.documentType === "1" && (
+                          <p className="mt-1 text-xs text-ash-500">Autocompletado desde tu perfil.</p>
+                        )}
                       </div>
                       <div className="sm:col-span-2">
                         <Label htmlFor="legalName">{t("legalName")}</Label>
@@ -245,6 +306,12 @@ function CheckoutForm() {
                         />
                       </div>
                     </div>
+                    <p className="mt-3 text-xs text-ash-500">
+                      {isGravado
+                        ? `Precio final ${formatPrice(amount, currency, locale)} — incluye base imponible ${formatPrice(baseAmount, currency, locale)} + IGV (18%) ${formatPrice(igvAmount, currency, locale)}.`
+                        : "Este servicio educativo está exonerado de IGV (Ley del IGV, Apéndice II) — el precio final no lleva impuesto agregado."}{" "}
+                      El precio que ves ya incluye todos los tributos y gastos; no se te cobrará nada adicional.
+                    </p>
                   </CardContent>
                 </Card>
               )}
@@ -255,48 +322,57 @@ function CheckoutForm() {
                     <Lock className="h-4 w-4 text-ash-400" aria-hidden="true" />
                     {t("paymentTitle")}
                   </h2>
-                  <Callout variant="info" className="mt-3">
-                    {t("testCardNotice")}
-                  </Callout>
-                  <div className="mt-4 grid gap-4">
-                    <div>
-                      <Label htmlFor="cardName">{t("cardName")}</Label>
-                      <Input id="cardName" required value={card.name} onChange={(e) => setCard((c) => ({ ...c, name: e.target.value }))} />
-                    </div>
-                    <div>
-                      <Label htmlFor="cardNumber">{t("cardNumber")}</Label>
-                      <Input
-                        id="cardNumber"
-                        inputMode="numeric"
-                        required
-                        placeholder="4111 1111 1111 1111"
-                        value={card.number}
-                        onChange={(e) => setCard((c) => ({ ...c, number: e.target.value }))}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="cardExpiry">{t("cardExpiry")}</Label>
-                        <Input
-                          id="cardExpiry"
-                          required
-                          placeholder="12/29"
-                          value={card.expiry}
-                          onChange={(e) => setCard((c) => ({ ...c, expiry: e.target.value }))}
-                        />
+                  {useCulqiWidget ? (
+                    <p className="mt-3 text-sm text-ash-600">
+                      Al continuar se abrirá la ventana segura de Culqi — ahí puedes pagar con tarjeta, Yape o Plin, según lo que tengas
+                      habilitado. Inkademy no ve ni guarda tu tarjeta.
+                    </p>
+                  ) : (
+                    <>
+                      <Callout variant="info" className="mt-3">
+                        {t("testCardNotice")}
+                      </Callout>
+                      <div className="mt-4 grid gap-4">
+                        <div>
+                          <Label htmlFor="cardName">{t("cardName")}</Label>
+                          <Input id="cardName" required value={card.name} onChange={(e) => setCard((c) => ({ ...c, name: e.target.value }))} />
+                        </div>
+                        <div>
+                          <Label htmlFor="cardNumber">{t("cardNumber")}</Label>
+                          <Input
+                            id="cardNumber"
+                            inputMode="numeric"
+                            required
+                            placeholder="4111 1111 1111 1111"
+                            value={card.number}
+                            onChange={(e) => setCard((c) => ({ ...c, number: e.target.value }))}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="cardExpiry">{t("cardExpiry")}</Label>
+                            <Input
+                              id="cardExpiry"
+                              required
+                              placeholder="12/29"
+                              value={card.expiry}
+                              onChange={(e) => setCard((c) => ({ ...c, expiry: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="cardCvc">{t("cardCvc")}</Label>
+                            <Input
+                              id="cardCvc"
+                              required
+                              inputMode="numeric"
+                              value={card.cvc}
+                              onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value }))}
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <Label htmlFor="cardCvc">{t("cardCvc")}</Label>
-                        <Input
-                          id="cardCvc"
-                          required
-                          inputMode="numeric"
-                          value={card.cvc}
-                          onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -318,10 +394,17 @@ function CheckoutForm() {
                 </p>
               )}
               <div className="mt-4 flex justify-between border-t border-paper-border pt-4 text-sm">
-                <span className="text-ash-600">{t("subtotal")}</span>
-                <span>{formatPrice(amount, currency, locale)}</span>
+                <span className="text-ash-600">{isGravado ? "Base imponible" : t("subtotal")}</span>
+                <span>{formatPrice(baseAmount, currency, locale)}</span>
               </div>
-              <div className="mt-2 flex justify-between text-base font-semibold text-ink-900">
+              {isGravado && (
+                <div className="mt-1 flex justify-between text-sm">
+                  <span className="text-ash-600">IGV (18%)</span>
+                  <span>{formatPrice(igvAmount, currency, locale)}</span>
+                </div>
+              )}
+              {!isGravado && <p className="mt-1 text-xs text-success">Exonerado de IGV</p>}
+              <div className="mt-2 flex justify-between border-t border-paper-border pt-2 text-base font-semibold text-ink-900">
                 <span>{t("total")}</span>
                 <span>{formatPrice(amount, currency, locale)}</span>
               </div>
