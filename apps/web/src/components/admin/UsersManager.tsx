@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud } from "lucide-react";
 import { adminApi, companyApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { ROLE_STYLE, COMPANY_CHIP_STYLE } from "@/lib/role-style";
 
 const ROLE_LABEL: Record<string, string> = { STUDENT: "Alumno", TEACHER: "Docente", SUPPORT: "Soporte", ADMIN: "Administrador" };
+// Orden fijo de las chips de rol — coincide con el pedido explícito
+// "Administrador, Docente, Empresa, Usuario" (empresa se muestra aparte,
+// no es un globalRole).
+const ROLE_ORDER = ["ADMIN", "TEACHER", "SUPPORT", "STUDENT"];
 
 interface UserRow {
   id: string;
@@ -122,32 +127,19 @@ export function UsersManager() {
           ) : users.length === 0 ? (
             <p className="text-sm text-ash-500">No se encontraron usuarios.</p>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-6">
               {groups.map((group) => (
-                <div key={group.domain || "all"} className="overflow-x-auto">
+                <div key={group.domain || "all"}>
                   {group.label && (
-                    <p className="mb-1 rounded bg-paper-muted px-2 py-1 text-xs font-semibold text-ash-600">
+                    <p className="mb-3 inline-block rounded bg-paper-muted px-2 py-1 text-xs font-semibold text-ash-600">
                       {group.label} ({group.rows.length})
                     </p>
                   )}
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b border-paper-border text-ash-500">
-                      <tr>
-                        <th className="p-2 font-medium">Nombre</th>
-                        <th className="p-2 font-medium">Correo</th>
-                        <th className="p-2 font-medium">Rol</th>
-                        <th className="p-2 font-medium">Firma</th>
-                        <th className="p-2 font-medium">Empresa</th>
-                        <th className="p-2 font-medium">Estado</th>
-                        <th className="p-2 font-medium">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.rows.map((u) => (
-                        <UserRowItem key={u.id} user={u} companies={companies} onChange={() => refresh()} />
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {group.rows.map((u) => (
+                      <UserCard key={u.id} user={u} companies={companies} onChange={() => refresh()} />
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -158,7 +150,7 @@ export function UsersManager() {
   );
 }
 
-function UserRowItem({ user, companies, onChange }: { user: UserRow; companies: any[]; onChange: () => void }) {
+function UserCard({ user, companies, onChange }: { user: UserRow; companies: any[]; onChange: () => void }) {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -188,6 +180,7 @@ function UserRowItem({ user, companies, onChange }: { user: UserRow; companies: 
   }
 
   async function handleRoleChange(globalRole: string) {
+    if (globalRole === user.globalRole) return;
     setBusy(true);
     setRowError(null);
     try {
@@ -272,62 +265,86 @@ function UserRowItem({ user, companies, onChange }: { user: UserRow; companies: 
     }
   }
 
+  const hasCompany = Boolean(user.companies && user.companies.length > 0);
+
   return (
-    <tr className="border-b border-paper-border last:border-0">
-      <td className="p-2">
-        <div className="flex items-center gap-2">
-          <Avatar name={`${user.firstName} ${user.lastName}`} size="sm" />
-          <span>
-            {user.firstName} {user.lastName}
+    <Card className="overflow-hidden">
+      <CardContent className="flex flex-col gap-3 p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <Avatar name={`${user.firstName} ${user.lastName}`} />
+            <div>
+              <p className="font-serif font-semibold leading-tight text-ink-900">
+                {user.firstName} {user.lastName}
+              </p>
+              <p className="text-xs text-ash-500">{user.email}</p>
+            </div>
+          </div>
+          <span
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+              user.status === "active" ? "bg-success-bg text-success" : "bg-danger-bg text-danger"
+            }`}
+          >
+            {user.status === "active" ? <CheckCircle2 className="h-3 w-3" /> : <Ban className="h-3 w-3" />}
+            {user.status === "active" ? "Activa" : "Desactivada"}
           </span>
         </div>
-      </td>
-      <td className="p-2 text-ash-600">{user.email}</td>
-      <td className="p-2">
-        <Select value={user.globalRole} disabled={busy} onChange={(e) => handleRoleChange(e.target.value)} className="h-9 text-xs">
-          {Object.entries(ROLE_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
-      </td>
-      <td className="p-2">
-        {user.globalRole !== "TEACHER" ? (
-          <span className="text-xs text-ash-400">Solo docentes</span>
-        ) : user.signatureUrl ? (
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={user.signatureUrl} alt="Firma" className="h-8 w-16 rounded border border-paper-border object-contain bg-paper" />
-            <Button size="sm" variant="ghost" disabled={busy} onClick={handleSignatureRemove}>
-              Quitar
-            </Button>
-          </div>
-        ) : (
-          <label className="cursor-pointer text-xs font-medium text-ink-700 hover:underline">
-            Subir firma
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              className="hidden"
-              disabled={busy}
-              onChange={(e) => e.target.files?.[0] && handleSignatureUpload(e.target.files[0])}
-            />
-          </label>
-        )}
-      </td>
-      <td className="p-2">
-        {user.companies && user.companies.length > 0 ? (
-          <div className="flex flex-col gap-0.5">
-            {user.companies.map((c) => (
-              <span key={c.companyId} className="text-xs text-ash-600">
-                {c.companyName} <span className="text-ash-400">({c.role === "COMPANY_ADMIN" ? "Admin" : "Colaborador"})</span>
+
+        {/* Rol — chips en vez de un <select> gris; "puede ser mas de una"
+            pedido por el admin, pero globalRole es una sola columna que
+            además controlan los guards de permisos de toda la API (un
+            único rol de autenticación) — Empresa se muestra como una chip
+            aparte porque SÍ es una afiliación independiente (varias
+            empresas a la vez), no un rol de acceso. */}
+        <div className="flex flex-wrap gap-1.5">
+          {ROLE_ORDER.map((role) => {
+            const style = ROLE_STYLE[role];
+            const active = user.globalRole === role;
+            return (
+              <button
+                key={role}
+                type="button"
+                disabled={busy}
+                onClick={() => handleRoleChange(role)}
+                title={active ? `Rol actual: ${style.label}` : `Cambiar rol a ${style.label}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                  active ? style.chipActive : style.chip
+                }`}
+              >
+                <style.icon className="h-3 w-3" aria-hidden="true" />
+                {style.label}
+              </button>
+            );
+          })}
+          {hasCompany ? (
+            user.companies!.map((c) => (
+              <span
+                key={c.companyId}
+                title={`${c.role === "COMPANY_ADMIN" ? "Admin de empresa" : "Colaborador"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${COMPANY_CHIP_STYLE.chipActive}`}
+              >
+                <COMPANY_CHIP_STYLE.icon className="h-3 w-3" aria-hidden="true" />
+                {c.companyName}
               </span>
-            ))}
-          </div>
-        ) : assigning ? (
-          <div className="flex flex-col gap-1">
-            <Select className="h-8 w-40 text-xs" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+            ))
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setAssigning((v) => !v);
+                if (suggestedCompany) setCompanyId(suggestedCompany.id);
+              }}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${COMPANY_CHIP_STYLE.chip}`}
+            >
+              <Building2 className="h-3 w-3" aria-hidden="true" />
+              Empresa
+            </button>
+          )}
+        </div>
+
+        {assigning && !hasCompany && (
+          <div className="flex flex-col gap-1.5 rounded-md bg-paper-muted p-2.5">
+            <Select className="h-8 text-xs" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
               <option value="">Elegir empresa…</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -335,11 +352,11 @@ function UserRowItem({ user, companies, onChange }: { user: UserRow; companies: 
                 </option>
               ))}
             </Select>
-            <Select className="h-8 w-40 text-xs" value={companyRole} onChange={(e) => setCompanyRole(e.target.value as "COMPANY_ADMIN" | "PARTICIPANT")}>
+            <Select className="h-8 text-xs" value={companyRole} onChange={(e) => setCompanyRole(e.target.value as "COMPANY_ADMIN" | "PARTICIPANT")}>
               <option value="PARTICIPANT">Colaborador</option>
               <option value="COMPANY_ADMIN">Admin de empresa</option>
             </Select>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <Button size="sm" disabled={busy || !companyId} onClick={handleAssignCompany}>
                 Asignar
               </Button>
@@ -348,37 +365,53 @@ function UserRowItem({ user, companies, onChange }: { user: UserRow; companies: 
               </Button>
             </div>
           </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setAssigning(true);
-              if (suggestedCompany) setCompanyId(suggestedCompany.id);
-            }}
-          >
-            Asignar a empresa
-          </Button>
         )}
-      </td>
-      <td className="p-2">
-        <Badge variant={user.status === "active" ? "success" : "danger"}>{user.status === "active" ? "Activa" : "Desactivada"}</Badge>
-      </td>
-      <td className="p-2">
-        <div className="flex flex-wrap gap-1">
-          <Button size="sm" variant="ghost" disabled={busy} onClick={handleToggleStatus}>
+
+        {user.globalRole === "TEACHER" && (
+          <div className="flex items-center gap-2 rounded-md bg-paper-muted p-2.5">
+            {user.signatureUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={user.signatureUrl} alt="Firma" className="h-8 w-16 rounded border border-paper-border bg-paper object-contain" />
+                <span className="text-xs text-ash-500">Firma para certificados</span>
+                <Button size="sm" variant="ghost" className="ml-auto" disabled={busy} onClick={handleSignatureRemove}>
+                  Quitar
+                </Button>
+              </>
+            ) : (
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-ink-700 hover:underline">
+                <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
+                Subir firma para certificados
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  disabled={busy}
+                  onChange={(e) => e.target.files?.[0] && handleSignatureUpload(e.target.files[0])}
+                />
+              </label>
+            )}
+          </div>
+        )}
+
+        {rowError && <p className="text-xs text-danger">{rowError}</p>}
+
+        <div className="flex flex-wrap gap-1.5 border-t border-paper-border pt-3">
+          <Button size="sm" variant="outline" disabled={busy} onClick={handleToggleStatus} className="gap-1.5">
+            {user.status === "active" ? <Ban className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             {user.status === "active" ? "Desactivar" : "Reactivar"}
           </Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={handleResetPassword}>
-            Restablecer clave
+          <Button size="sm" variant="outline" disabled={busy} onClick={handleResetPassword} className="gap-1.5">
+            <KeyRound className="h-3.5 w-3.5" />
+            Restablecer
           </Button>
-          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+          <Button size="sm" variant="outline" className="gap-1.5 text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+            <Trash2 className="h-3.5 w-3.5" />
             Eliminar
           </Button>
         </div>
-        {rowError && <p className="mt-1 text-xs text-danger">{rowError}</p>}
-      </td>
-    </tr>
+      </CardContent>
+    </Card>
   );
 }
 

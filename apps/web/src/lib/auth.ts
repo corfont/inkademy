@@ -60,3 +60,20 @@ export function readSessionCookie(cookieValue: string | undefined): AuthUser | n
     return null;
   }
 }
+
+/** Prefijos de área protegida por rol — usado por /login y /completar-perfil para decidir si "next" es seguro de seguir. */
+const ROLE_AREA_PREFIXES = ["/campus", "/admin", "/docente"];
+
+/**
+ * true si `next` apunta al área protegida de un rol DISTINTO al `home` del
+ * usuario (p.ej. next="/campus/algo" para un admin, cuyo home es "/admin")
+ * — en ese caso no debe seguirse "next" tal cual, porque llevaría a un
+ * usuario con la cuenta correcta a ver la pantalla equivocada (bug real:
+ * un admin que llegaba a /login con ?next=/campus terminaba viendo el
+ * campus de alumno). Un `next` que NO pertenece a ninguna de las tres
+ * áreas (p.ej. "/checkout", "/cursos/x") siempre se considera seguro de
+ * seguir, para cualquier rol — es el caso legítimo de "volver a donde iba".
+ */
+export function belongsToOtherRoleArea(next: string, home: string): boolean {
+  return ROLE_AREA_PREFIXES.some((prefix) => prefix !== home && (next === prefix || next.startsWith(`${prefix}/`)));
+}

@@ -8,7 +8,7 @@ import { completeProfileSchema, type CompleteProfileInput } from "@inkademy/shar
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { authApi, catalogApi } from "@/lib/api-client";
-import { updateSessionUser } from "@/lib/auth";
+import { updateSessionUser, belongsToOtherRoleArea } from "@/lib/auth";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -45,14 +45,13 @@ function CompleteProfileForm() {
   // globalRole en la base de datos fuera el correcto (ADMIN/TEACHER). Mismo
   // criterio que usa /login para decidir el "home" de cada rol.
   const roleHome = user?.globalRole === "ADMIN" || user?.globalRole === "SUPPORT" ? "/admin" : user?.globalRole === "TEACHER" ? "/docente" : "/campus";
-  // "next" solo se respeta para alumnos (roleHome === "/campus") — es el
-  // único caso donde "volver a donde iba" (p.ej. /checkout?courseId=...)
-  // tiene sentido. Antes un admin/soporte/docente que llegaba con un "next"
-  // en la URL (p. ej. un enlace viejo con ?next=/campus) terminaba viendo
-  // el campus de alumno pese a tener el rol correcto en la base de datos —
-  // el mismo reporte real que ya se había corregido para el caso SIN next.
+  // "next" se respeta salvo que apunte al área protegida de OTRO rol (p.ej.
+  // ?next=/campus para un admin recién creado) — antes un admin/soporte/
+  // docente que llegaba con ese "next" terminaba viendo el campus de
+  // alumno pese a tener el rol correcto en la base de datos. Un `next`
+  // fuera de las tres áreas (p.ej. volver a /checkout) se respeta siempre.
   const requestedNext = searchParams.get("next");
-  const next = roleHome === "/campus" && requestedNext ? requestedNext : roleHome;
+  const next = requestedNext && !belongsToOtherRoleArea(requestedNext, roleHome) ? requestedNext : roleHome;
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),
   });

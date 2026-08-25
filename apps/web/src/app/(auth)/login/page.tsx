@@ -9,6 +9,7 @@ import { loginSchema, type LoginInput } from "@inkademy/shared";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ApiError, API_URL } from "@/lib/api-client";
+import { belongsToOtherRoleArea } from "@/lib/auth";
 import { Input, Label, FieldError } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -45,13 +46,16 @@ function LoginForm() {
       const home = user.globalRole === "ADMIN" || user.globalRole === "SUPPORT" ? "/admin" : user.globalRole === "TEACHER" ? "/docente" : "/campus";
       if (!user.profileCompletedAt) {
         router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
-      } else if (next && home === "/campus") {
-        // "next" (volver a /checkout, a un curso, etc.) solo se respeta
-        // para alumnos — es el único rol donde "volver a donde iba" tiene
-        // sentido. Antes se seguía "next" sin mirar el rol: un admin/soporte
-        // que llegaba a /login con un ?next=/campus (p.ej. un enlace viejo,
-        // o /campus/* redirigiendo a login por falta de sesión) terminaba
-        // viendo el campus de alumno pese a que su cuenta sí era ADMIN.
+      } else if (next && !belongsToOtherRoleArea(next, home)) {
+        // "next" se respeta salvo que apunte al área protegida de OTRO rol
+        // (p.ej. ?next=/campus para un admin — típico de un enlace viejo, o
+        // de /campus/* redirigiendo a login por falta de sesión). Antes se
+        // seguía "next" sin mirar el rol en absoluto: un admin terminaba en
+        // el campus de alumno pese a tener la cuenta correcta. Pero
+        // bloquearlo para CUALQUIER next no-/campus (como se hizo en un
+        // primer intento) rompía el caso legítimo de volver a /admin/algo
+        // tras reloguearse, o a /checkout tras comprar — por eso se compara
+        // contra las áreas de los otros roles, no contra "home === /campus".
         router.push(next);
       } else {
         router.push(home);
