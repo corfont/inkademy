@@ -464,8 +464,21 @@ export const adminApi = {
     apiFetch<any>(`/admin/lessons/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteLesson: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/lessons/${id}`, { method: "DELETE", accessToken }),
-  createMaterial: (lessonId: string, input: { title: string; assetId: string; kind: string }, accessToken?: string | null) =>
-    apiFetch<any>(`/admin/lessons/${lessonId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  createMaterial: (
+    lessonId: string,
+    input: { title: string; assetId: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },
+    accessToken?: string | null,
+  ) => apiFetch<any>(`/admin/lessons/${lessonId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  createModuleMaterial: (
+    moduleId: string,
+    input: { title: string; assetId: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },
+    accessToken?: string | null,
+  ) => apiFetch<any>(`/admin/modules/${moduleId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateMaterial: (
+    id: string,
+    input: Partial<{ title: string; category: "MAIN" | "SUPPLEMENTARY"; visible: boolean }>,
+    accessToken?: string | null,
+  ) => apiFetch<any>(`/admin/materials/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteMaterial: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/materials/${id}`, { method: "DELETE", accessToken }),
   uploadAsset: (file: File, accessToken?: string | null) => {

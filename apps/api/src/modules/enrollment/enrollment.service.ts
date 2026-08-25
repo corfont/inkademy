@@ -137,7 +137,23 @@ export class EnrollmentService {
       include: {
         course: {
           include: {
-            modules: { orderBy: { order: "asc" }, include: { lessons: { orderBy: { order: "asc" } } } },
+            modules: {
+              orderBy: { order: "asc" },
+              include: {
+                // Antes esta consulta no traía ni el video ni los materiales
+                // de la lección (ni las lecturas del módulo) — el aula
+                // virtual (Classroom.tsx) ya esperaba ese shape pero la API
+                // nunca se lo daba, así que un alumno real nunca veía video
+                // ni materiales, solo el fallback simulado. Se filtra
+                // visible:true — un material oculto por el admin no debe
+                // llegarle al alumno.
+                lessons: {
+                  orderBy: { order: "asc" },
+                  include: { materials: { where: { visible: true }, orderBy: { createdAt: "asc" } } },
+                },
+                materials: { where: { visible: true }, orderBy: { createdAt: "asc" } },
+              },
+            },
           },
         },
         program: true,
@@ -150,6 +166,14 @@ export class EnrollmentService {
     }
 
     const progressByLesson = new Map(enrollment.lessonProgress.map((p) => [p.lessonId, p]));
+    const materialDTO = (m: { id: string; title: string; assetId: string; kind: string; category: string }) => ({
+      id: m.id,
+      title: m.title,
+      kind: m.kind,
+      category: m.category,
+      url: this.storage.getPublicUrl(m.assetId),
+    });
+
     return {
       id: enrollment.id,
       offeringKind: enrollment.offeringKind,
@@ -163,10 +187,12 @@ export class EnrollmentService {
             id: enrollment.course.id,
             slug: enrollment.course.slug,
             title: enrollment.course.title,
+            syllabusUrl: enrollment.course.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
             modules: enrollment.course.modules.map((m) => ({
               id: m.id,
               order: m.order,
               title: m.title,
+              materials: m.materials.map(materialDTO),
               lessons: m.lessons.map((l) => ({
                 id: l.id,
                 order: l.order,
@@ -174,6 +200,8 @@ export class EnrollmentService {
                 contentType: l.contentType,
                 durationMinutes: l.durationMinutes,
                 isFreePreview: l.isFreePreview,
+                videoUrl: l.videoAssetId ? this.storage.getPublicUrl(l.videoAssetId) : null,
+                materials: l.materials.map(materialDTO),
                 progress: progressByLesson.get(l.id)
                   ? {
                       completed: progressByLesson.get(l.id)!.completed,

@@ -2,22 +2,44 @@
 
 import { useMemo, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, FileText, PlayCircle } from "lucide-react";
-import { useTranslations } from "next-intl";
-import type { ClassroomDetail } from "@/lib/mock-data";
+import { useLocale, useTranslations } from "next-intl";
+import { CheckCircle2, Circle, FileDown, FileText, PlayCircle } from "lucide-react";
+import type { ClassroomDetail, ClassroomMaterial } from "@/lib/mock-data";
 import { meApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { cn } from "@/lib/cn";
+import { localize } from "@/lib/format";
+
+function MaterialList({ heading, materials }: { heading: string; materials: ClassroomMaterial[] }) {
+  if (materials.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ash-500">{heading}</p>
+      <ul className="flex flex-col gap-2">
+        {materials.map((mat) => (
+          <li key={mat.id}>
+            <a href={mat.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
+              <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
+              {mat.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const t = useTranslations("campus.classroom");
+  const locale = useLocale();
   const allLessons = useMemo(() => detail.modules.flatMap((m) => m.lessons), [detail]);
   const [completedMap, setCompletedMap] = useState<Record<string, boolean>>(
     Object.fromEntries(allLessons.map((l) => [l.id, l.completed])),
   );
   const [currentId, setCurrentId] = useState(allLessons.find((l) => !l.completed)?.id ?? allLessons[0]?.id);
   const current = allLessons.find((l) => l.id === currentId) ?? allLessons[0];
+  const currentModule = detail.modules.find((m) => m.lessons.some((l) => l.id === current?.id));
   const lastSentRef = useRef(0);
 
   async function persistProgress(lessonId: string, patch: { completed?: boolean; lastPositionSeconds?: number }) {
@@ -41,9 +63,26 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     }
   }
 
+  const lessonMaterials = current?.materials ?? [];
+  const lessonMain = lessonMaterials.filter((m) => m.category !== "SUPPLEMENTARY");
+  const lessonSupplementary = lessonMaterials.filter((m) => m.category === "SUPPLEMENTARY");
+  const moduleMaterials = currentModule?.materials ?? [];
+  const moduleMain = moduleMaterials.filter((m) => m.category !== "SUPPLEMENTARY");
+  const moduleSupplementary = moduleMaterials.filter((m) => m.category === "SUPPLEMENTARY");
+  const hasAnyMaterials = lessonMaterials.length > 0 || moduleMaterials.length > 0;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
       <div className="flex flex-col gap-6">
+        {detail.syllabusUrl && (
+          <a href={detail.syllabusUrl} target="_blank" rel="noreferrer">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <FileDown className="h-4 w-4" aria-hidden="true" />
+              Descargar sílabo del curso
+            </Button>
+          </a>
+        )}
+
         <div>
           {current?.contentType === "VIDEO" ? (
             <video
@@ -59,7 +98,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
           ) : (
             <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
               <FileText className="h-10 w-10 text-ink-700" aria-hidden="true" />
-              <p className="font-medium text-ink-900">{current?.title}</p>
+              <p className="font-medium text-ink-900">{localize(current?.title, locale)}</p>
               {detail.assessmentId && (
                 <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${detail.assessmentId}`}>
                   <Button>{t("goToAssessment")}</Button>
@@ -68,7 +107,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             </div>
           )}
           <div className="mt-3 flex items-center justify-between">
-            <h1 className="font-serif text-xl font-semibold text-ink-900">{current?.title}</h1>
+            <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(current?.title, locale)}</h1>
             {!completedMap[current?.id ?? ""] ? (
               <Button size="sm" variant="outline" onClick={() => current && markComplete(current.id)}>
                 {t("markComplete")}
@@ -82,20 +121,12 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
           </div>
         </div>
 
-        {current?.materials && current.materials.length > 0 && (
-          <section>
-            <h2 className="mb-2 font-serif text-lg font-semibold text-ink-900">{t("materials")}</h2>
-            <ul className="flex flex-col gap-2">
-              {current.materials.map((mat) => (
-                <li key={mat.id}>
-                  <a href={mat.url} className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
-                    <FileText className="h-4 w-4" aria-hidden="true" />
-                    {mat.title}
-                    <span className="sr-only">({t("downloadMaterial")})</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+        {hasAnyMaterials && (
+          <section className="flex flex-col gap-4">
+            <h2 className="font-serif text-lg font-semibold text-ink-900">{t("materials")}</h2>
+            <MaterialList heading="De esta lección" materials={lessonMain} />
+            <MaterialList heading="Lecturas principales del módulo" materials={moduleMain} />
+            <MaterialList heading="Lecturas complementarias" materials={[...lessonSupplementary, ...moduleSupplementary]} />
           </section>
         )}
 
@@ -122,7 +153,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         <div className="flex flex-col gap-4">
           {detail.modules.map((mod) => (
             <div key={mod.id}>
-              <p className="mb-2 text-sm font-semibold text-ash-700">{mod.title}</p>
+              <p className="mb-2 text-sm font-semibold text-ash-700">{localize(mod.title, locale)}</p>
               <ul className="flex flex-col gap-1">
                 {mod.lessons.map((lesson) => {
                   const isCurrent = lesson.id === currentId;
@@ -145,7 +176,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                         ) : (
                           <Circle className="h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
                         )}
-                        <span className="flex-1">{lesson.title}</span>
+                        <span className="flex-1">{localize(lesson.title, locale)}</span>
                         {lesson.durationMinutes && <span className="text-xs text-ash-400">{lesson.durationMinutes}′</span>}
                       </button>
                     </li>

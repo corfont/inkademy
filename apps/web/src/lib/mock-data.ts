@@ -8,6 +8,7 @@ import type {
   CompanyDashboardSummaryDTO,
   AdminExceptionDTO,
   SupportTicketSummaryDTO,
+  LocalizedText,
 } from "@inkademy/shared";
 
 // Dataset simulado usado como fallback mientras apps/api no está disponible.
@@ -303,28 +304,39 @@ export const MOCK_ADMIN_EXCEPTIONS: AdminExceptionDTO[] = [
 // "detalle + módulos/lecciones + LessonProgress" sin DTO tipado en
 // @inkademy/shared (ver docs/API-CONTRACT.md), así que este shape es una
 // propuesta razonable; ajustar cuando apps/api publique el DTO real.
+export interface ClassroomMaterial {
+  id: string;
+  title: string;
+  kind: string;
+  category?: "MAIN" | "SUPPLEMENTARY";
+  url: string;
+}
 export interface ClassroomLesson {
   id: string;
   order: number;
-  title: string;
+  title: LocalizedText;
   contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "ASSIGNMENT";
   durationMinutes?: number;
   videoUrl?: string;
-  materials: { id: string; title: string; kind: string; url: string }[];
+  materials: ClassroomMaterial[];
   completed: boolean;
   lastPositionSeconds: number;
 }
 export interface ClassroomModule {
   id: string;
   order: number;
-  title: string;
+  title: LocalizedText;
+  // Lecturas/documentos del módulo entero (no de una lección puntual) —
+  // ver Material.moduleId/category en apps/api.
+  materials: ClassroomMaterial[];
   lessons: ClassroomLesson[];
 }
 export interface ClassroomDetail {
   enrollmentId: string;
   offeringKind: "COURSE" | "PROGRAM";
-  title: string;
+  title: LocalizedText;
   courseId: string;
+  syllabusUrl?: string | null;
   assessmentId?: string;
   modules: ClassroomModule[];
   approvalMissing: string[];
@@ -339,25 +351,30 @@ export function buildMockClassroom(enrollmentId: string, courseSlug: string): Cl
   return {
     enrollmentId,
     offeringKind: "COURSE",
-    title: detail.title.es,
+    title: detail.title,
     courseId: detail.id,
+    syllabusUrl: "#",
     assessmentId: `${detail.id}-assess1`,
     approvalMissing: enrollment?.approvalMissing ?? [],
     certificateAvailable: enrollment?.certificateAvailable ?? false,
     modules: detail.modules.map((mod, mIdx) => ({
       id: mod.id,
       order: mod.order,
-      title: mod.title.es,
+      title: mod.title,
+      materials:
+        mIdx === 0
+          ? [{ id: `${mod.id}-mat-main`, title: "Lectura principal del módulo (PDF)", kind: "pdf", category: "MAIN" as const, url: "#" }]
+          : [],
       lessons: mod.lessons.map((lesson, lIdx) => ({
         id: lesson.id,
         order: lesson.order,
-        title: lesson.title.es,
+        title: lesson.title,
         contentType: lIdx === mod.lessons.length - 1 && mIdx === detail.modules.length - 1 ? "ASSIGNMENT" : "VIDEO",
         durationMinutes: lesson.durationMinutes ?? undefined,
         videoUrl: SAMPLE_VIDEO,
         materials:
           lIdx === 0
-            ? [{ id: `${lesson.id}-mat1`, title: "Guía de la sesión (PDF)", kind: "pdf", url: "#" }]
+            ? [{ id: `${lesson.id}-mat1`, title: "Guía de la sesión (PDF)", kind: "pdf", category: "MAIN" as const, url: "#" }]
             : [],
         completed: mIdx === 0,
         lastPositionSeconds: 0,

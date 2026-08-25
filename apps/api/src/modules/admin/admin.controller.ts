@@ -14,6 +14,7 @@ import {
   updateCourseSchema,
   updateCertificateTemplateSchema,
   updateLessonSchema,
+  updateMaterialSchema,
   updateModuleSchema,
   updateProgramSchema,
   updateQuestionSchema,
@@ -158,9 +159,23 @@ export class AdminController {
 
   @Post("lessons/:lessonId/materials")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Agrega un material (PDF/plantilla/link) a una lección" })
+  @ApiOperation({ summary: "Agrega un material (PDF/Word/Excel/imagen/video/link) a una lección" })
   createMaterial(@Param("lessonId") lessonId: string, @Body(new ZodValidationPipe(upsertMaterialSchema)) dto: any) {
     return this.adminService.createMaterial(lessonId, dto);
+  }
+
+  @Post("modules/:moduleId/materials")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Agrega una lectura/documento (principal o complementario) a nivel de módulo completo" })
+  createModuleMaterial(@Param("moduleId") moduleId: string, @Body(new ZodValidationPipe(upsertMaterialSchema)) dto: any) {
+    return this.adminService.createModuleMaterial(moduleId, dto);
+  }
+
+  @Patch("materials/:id")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Actualiza un material (p.ej. mostrar/ocultar al alumno, cambiar categoría principal/complementario)" })
+  updateMaterial(@Param("id") id: string, @Body(new ZodValidationPipe(updateMaterialSchema)) dto: any) {
+    return this.adminService.updateMaterial(id, dto);
   }
 
   @Delete("materials/:id")

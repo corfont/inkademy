@@ -260,6 +260,7 @@ model Course {
   durationHours          Float
   durationUnit           DurationUnit          @default(HOURS)
   coverImageAssetId      String?
+  syllabusAssetId        String? // sílabo del curso (PDF/Word) — visible para el alumno en el aula
   priceAmount            Decimal               @db.Decimal(10, 2)
   priceCurrency          String                @default("PEN")
   certificationIncluded  Boolean               @default(true)
@@ -319,12 +320,15 @@ model CourseStaff {
 }
 
 model CourseModule {
-  id       String   @id @default(uuid())
-  courseId String
-  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  order    Int
-  title    Json
-  lessons  Lesson[]
+  id        String     @id @default(uuid())
+  courseId  String
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order     Int
+  title     Json
+  lessons   Lesson[]
+  // Lecturas/documentos del módulo (no de una lección puntual) — principales
+  // o complementarias, ver Material.category.
+  materials Material[]
 
   @@index([courseId])
 }
@@ -353,14 +357,29 @@ model Lesson {
   @@index([moduleId])
 }
 
+// MAIN: lectura/documento principal. SUPPLEMENTARY: complementario (opcional para el alumno).
+enum MaterialCategory {
+  MAIN
+  SUPPLEMENTARY
+}
+
 model Material {
-  id        String   @id @default(uuid())
-  lessonId  String
-  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id        String            @id @default(uuid())
+  // Un material cuelga de una lección puntual O de un módulo entero (lectura
+  // general del módulo) — nunca de ambos. Antes solo existía a nivel de
+  // lección.
+  lessonId  String?
+  lesson    Lesson?           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  moduleId  String?
+  module    CourseModule?     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   title     String
   assetId   String
-  kind      String // pdf | slide | template | link
-  createdAt DateTime @default(now())
+  kind      String // pdf | slide | doc | sheet | image | video | template | link
+  category  MaterialCategory  @default(MAIN)
+  // Si es false, el material queda cargado pero oculto para el alumno (el
+  // admin/docente lo sigue viendo) — por defecto todo se ve.
+  visible   Boolean           @default(true)
+  createdAt DateTime          @default(now())
 }
 
 enum LiveSessionStatus {

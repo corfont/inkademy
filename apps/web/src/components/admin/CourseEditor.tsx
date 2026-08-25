@@ -127,6 +127,9 @@ function MetadataSection({
   const [coverImageAssetId, setCoverImageAssetId] = useState(course.coverImageAssetId ?? null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(course.coverImageUrl ?? null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [syllabusAssetId, setSyllabusAssetId] = useState(course.syllabusAssetId ?? null);
+  const [syllabusUrl, setSyllabusUrl] = useState(course.syllabusUrl ?? null);
+  const [uploadingSyllabus, setUploadingSyllabus] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
   const [discountExpiresAt, setDiscountExpiresAt] = useState(
     course.discountExpiresAt ? new Date(course.discountExpiresAt).toISOString().slice(0, 10) : "",
@@ -176,6 +179,19 @@ function MetadataSection({
       alert(err instanceof ApiError ? err.message : "No pudimos subir la imagen de portada.");
     } finally {
       setUploadingCover(false);
+    }
+  }
+
+  async function handleSyllabusUpload(file: File) {
+    setUploadingSyllabus(true);
+    try {
+      const { assetId, url } = await adminApi.uploadAsset(file);
+      setSyllabusAssetId(assetId);
+      setSyllabusUrl(url);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos subir el sílabo.");
+    } finally {
+      setUploadingSyllabus(false);
     }
   }
 
@@ -276,6 +292,30 @@ function MetadataSection({
             </div>
           </div>
         </div>
+        <div>
+          <Label>Sílabo del curso</Label>
+          <p className="mb-1 text-xs text-ash-500">El alumno lo verá disponible para descargar dentro del aula.</p>
+          <div className="flex items-center gap-4">
+            {syllabusUrl ? (
+              <a href={syllabusUrl} target="_blank" rel="noreferrer" className="flex h-16 w-28 flex-none items-center justify-center rounded-md bg-paper-muted text-xs text-ink-700 underline">
+                Ver sílabo
+              </a>
+            ) : (
+              <div className="flex h-16 w-28 flex-none items-center justify-center rounded-md bg-paper-muted text-xs text-ash-500">
+                Sin sílabo
+              </div>
+            )}
+            <div className="flex-1">
+              <FileDropzone
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                busy={uploadingSyllabus}
+                label={syllabusUrl ? "Reemplazar sílabo" : "Subir sílabo"}
+                hint="PDF o Word"
+                onFile={handleSyllabusUpload}
+              />
+            </div>
+          </div>
+        </div>
         <div className="max-w-xs">
           <Label htmlFor="edit-language">Idioma del curso</Label>
           <Select id="edit-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -310,6 +350,7 @@ function MetadataSection({
                 durationHours: Number(durationHours),
                 durationUnit,
                 coverImageAssetId,
+                syllabusAssetId,
                 discountPercent: discountPercent ? Number(discountPercent) : null,
                 discountExpiresAt: discountPercent && discountExpiresAt ? discountExpiresAt : null,
               })
@@ -377,7 +418,9 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
         </button>
       </div>
 
-      <ul className="flex flex-col gap-2">
+      <ModuleMaterialsSection module={mod} busy={busy} run={run} />
+
+      <ul className="mt-4 flex flex-col gap-2">
         {mod.lessons.map((lesson: any) => (
           <LessonRow key={lesson.id} lesson={lesson} busy={busy} run={run} />
         ))}
@@ -421,9 +464,106 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
   );
 }
 
+const CATEGORY_LABEL: Record<string, string> = { MAIN: "Principal", SUPPLEMENTARY: "Complementario" };
+
+/** Fila de material reutilizada tanto para materiales de módulo como de lección — cambia categoría, visibilidad, o elimina. */
+function MaterialItem({ material, busy, run }: { material: any; busy: boolean; run: (a: () => Promise<unknown>) => void }) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-2 rounded bg-paper px-2 py-1 text-xs text-ash-600">
+      <a href={material.assetUrl ?? "#"} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:underline">
+        📎 {material.title}
+      </a>
+      <div className="flex items-center gap-2">
+        <Select
+          className="h-7 w-32 text-xs"
+          value={material.category ?? "MAIN"}
+          onChange={(e) => run(() => adminApi.updateMaterial(material.id, { category: e.target.value as "MAIN" | "SUPPLEMENTARY" }))}
+        >
+          <option value="MAIN">Principal</option>
+          <option value="SUPPLEMENTARY">Complementario</option>
+        </Select>
+        <button
+          type="button"
+          className={material.visible ? "text-success" : "text-ash-400"}
+          title={material.visible ? "Visible para el alumno — click para ocultar" : "Oculto para el alumno — click para mostrar"}
+          disabled={busy}
+          onClick={() => run(() => adminApi.updateMaterial(material.id, { visible: !material.visible }))}
+        >
+          {material.visible ? "Visible" : "Oculto"}
+        </button>
+        <button type="button" className="text-ash-400 hover:text-danger" disabled={busy} onClick={() => run(() => adminApi.deleteMaterial(material.id))}>
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+/** Lecturas/documentos de un módulo entero (principal y complementario) — no atadas a una lección puntual. */
+function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy: boolean; run: (a: () => Promise<unknown>) => void }) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<"MAIN" | "SUPPLEMENTARY">("MAIN");
+  const [uploading, setUploading] = useState(false);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    try {
+      const { assetId } = await adminApi.uploadAsset(file);
+      await run(() => adminApi.createModuleMaterial(mod.id, { title: title || file.name, assetId, kind: kindFromFile(file), category }));
+      setTitle("");
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const materials: any[] = mod.materials ?? [];
+
+  return (
+    <div className="rounded-md bg-paper-muted p-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ash-500">Lecturas y documentos del módulo</p>
+      {materials.length > 0 && (
+        <ul className="mb-2 flex flex-col gap-1">
+          {materials.map((m) => (
+            <MaterialItem key={m.id} material={m} busy={busy} run={run} />
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Título (opcional)"
+          className="h-8 max-w-xs text-xs"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <Select className="h-8 w-32 text-xs" value={category} onChange={(e) => setCategory(e.target.value as "MAIN" | "SUPPLEMENTARY")}>
+          <option value="MAIN">Principal</option>
+          <option value="SUPPLEMENTARY">Complementario</option>
+        </Select>
+        <DropLabel busy={uploading} label="Agregar lectura" small onFile={handleUpload} />
+      </div>
+    </div>
+  );
+}
+
+/** Adivina un "kind" legible a partir del tipo de archivo — PPT/Word/Excel/imagen/video/PDF/otro. */
+function kindFromFile(file: File): string {
+  const type = file.type;
+  const name = file.name.toLowerCase();
+  if (type.includes("presentation") || /\.(pptx?|key)$/.test(name)) return "slide";
+  if (type.includes("word") || /\.docx?$/.test(name)) return "doc";
+  if (type.includes("sheet") || /\.xlsx?$/.test(name)) return "sheet";
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
+  if (type === "application/pdf") return "pdf";
+  return "file";
+}
+
 function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any }) {
   const router = useRouter();
   const [newMaterialTitle, setNewMaterialTitle] = useState("");
+  const [newMaterialCategory, setNewMaterialCategory] = useState<"MAIN" | "SUPPLEMENTARY">("MAIN");
   const [uploading, setUploading] = useState(false);
 
   async function handleVideoUpload(file: File) {
@@ -443,7 +583,14 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
     setUploading(true);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
-      await run(() => adminApi.createMaterial(lesson.id, { title: newMaterialTitle || file.name, assetId, kind: "pdf" }));
+      await run(() =>
+        adminApi.createMaterial(lesson.id, {
+          title: newMaterialTitle || file.name,
+          assetId,
+          kind: kindFromFile(file),
+          category: newMaterialCategory,
+        }),
+      );
       setNewMaterialTitle("");
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
@@ -485,25 +632,25 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
       {lesson.materials?.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1">
           {lesson.materials.map((mat: any) => (
-            <li key={mat.id} className="flex items-center justify-between text-xs text-ash-600">
-              <span>📎 {mat.title}</span>
-              <button type="button" className="text-ash-400 hover:text-danger" onClick={() => run(() => adminApi.deleteMaterial(mat.id))}>
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </li>
+            <MaterialItem key={mat.id} material={mat} busy={busy} run={run} />
           ))}
         </ul>
       )}
 
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <Input
           placeholder="Título del material (opcional)"
           className="h-8 max-w-xs text-xs"
           value={newMaterialTitle}
           onChange={(e) => setNewMaterialTitle(e.target.value)}
         />
+        <Select className="h-8 w-32 text-xs" value={newMaterialCategory} onChange={(e) => setNewMaterialCategory(e.target.value as "MAIN" | "SUPPLEMENTARY")}>
+          <option value="MAIN">Principal</option>
+          <option value="SUPPLEMENTARY">Complementario</option>
+        </Select>
         <DropLabel busy={uploading} label="Agregar material" small onFile={handleMaterialUpload} />
       </div>
+      <p className="mt-1 text-[11px] text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG) y video.</p>
     </li>
   );
 }
@@ -1061,10 +1208,25 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
   const isAdmin = user?.globalRole === "ADMIN";
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [teachers, setTeachers] = useState<any[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("TEACHER");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Antes había que escribir el correo del docente de memoria (sin saber
+  // siquiera si ya tenía cuenta) — ahora se elige de la lista real de
+  // cuentas con rol Docente. El docente puede haberse registrado él mismo
+  // (y el admin luego le cambia el rol en /admin/usuarios) o el admin puede
+  // haberlo creado directamente ahí — cualquiera de los dos caminos termina
+  // apareciendo en esta lista.
+  useEffect(() => {
+    if (!isAdmin) return;
+    adminApi
+      .users({ role: "TEACHER" })
+      .then(setTeachers)
+      .catch(() => setTeachers([]));
+  }, [isAdmin]);
 
   async function refresh() {
     try {
@@ -1143,8 +1305,26 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
         {isAdmin && (
           <form onSubmit={handleAssign} className="flex flex-wrap items-end gap-2 border-t border-paper-border pt-4">
             <div className="flex-1">
-              <Label htmlFor="staff-email">Correo del docente</Label>
-              <Input id="staff-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Label htmlFor="staff-email">Docente</Label>
+              <Select id="staff-email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11">
+                <option value="">Selecciona un docente…</option>
+                {teachers
+                  .filter((t) => !staff.some((s) => s.userEmail === t.email && s.role === role))
+                  .map((t) => (
+                    <option key={t.id} value={t.email}>
+                      {t.firstName} {t.lastName} ({t.email})
+                    </option>
+                  ))}
+              </Select>
+              {teachers.length === 0 && (
+                <p className="mt-1 text-xs text-ash-500">
+                  No hay ninguna cuenta con rol Docente todavía — créala en{" "}
+                  <a href="/admin/usuarios" className="underline">
+                    Usuarios y roles
+                  </a>{" "}
+                  (el docente también puede registrarse él mismo y luego le cambias el rol ahí).
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="staff-role">Rol</Label>

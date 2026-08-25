@@ -309,11 +309,18 @@ export class AdminService {
       where: { id },
       include: {
         area: true,
-        modules: { orderBy: { order: "asc" }, include: { lessons: { orderBy: { order: "asc" }, include: { materials: true } } } },
+        modules: {
+          orderBy: { order: "asc" },
+          include: {
+            lessons: { orderBy: { order: "asc" }, include: { materials: { orderBy: { createdAt: "asc" } } } },
+            materials: { orderBy: { createdAt: "asc" } },
+          },
+        },
         liveSessions: { orderBy: { startsAt: "asc" } },
       },
     });
     if (!course) throw new NotFoundException("Curso no encontrado");
+    const withAssetUrl = <T extends { assetId: string }>(m: T) => ({ ...m, assetUrl: this.storageService.getPublicUrl(m.assetId) });
     // Decimal de Prisma no serializa a JSON como número plano por defecto
     // (llega como {s,e,d} internos) — normalizamos antes de devolverlo.
     return {
@@ -325,6 +332,14 @@ export class AdminService {
       // la portada ya subida. catalog.service.ts ya hace esta misma
       // resolución para el catálogo público.
       coverImageUrl: course.coverImageAssetId ? this.storageService.getPublicUrl(course.coverImageAssetId) : null,
+      syllabusUrl: course.syllabusAssetId ? this.storageService.getPublicUrl(course.syllabusAssetId) : null,
+      // Materiales (de módulo y de lección) tampoco traían URL previsualizable
+      // — el admin solo veía el nombre del archivo, no podía abrirlo.
+      modules: course.modules.map((m) => ({
+        ...m,
+        materials: m.materials.map(withAssetUrl),
+        lessons: m.lessons.map((l) => ({ ...l, materials: l.materials.map(withAssetUrl) })),
+      })),
     };
   }
 
@@ -366,8 +381,23 @@ export class AdminService {
     return { deleted: true };
   }
 
-  createMaterial(lessonId: string, input: { title: string; assetId: string; kind: string }) {
-    return this.prisma.material.create({ data: { lessonId, ...input } });
+  createMaterial(
+    lessonId: string,
+    input: { title: string; assetId: string; kind: string; category?: string; visible?: boolean },
+  ) {
+    return this.prisma.material.create({ data: { lessonId, ...input } as never });
+  }
+
+  /** Lectura/documento a nivel de módulo entero (no de una lección puntual) — ver Material.moduleId. */
+  createModuleMaterial(
+    moduleId: string,
+    input: { title: string; assetId: string; kind: string; category?: string; visible?: boolean },
+  ) {
+    return this.prisma.material.create({ data: { moduleId, ...input } as never });
+  }
+
+  updateMaterial(id: string, input: Record<string, unknown>) {
+    return this.prisma.material.update({ where: { id }, data: input as never });
   }
 
   async deleteMaterial(id: string) {

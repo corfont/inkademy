@@ -73,6 +73,7 @@ export const upsertCourseSchema = z.object({
   durationHours: z.number().positive(),
   durationUnit: z.enum(["HOURS", "WEEKS", "MONTHS"]).optional(),
   coverImageAssetId: z.string().optional(),
+  syllabusAssetId: z.string().optional().nullable(),
   priceAmount: z.number().nonnegative(),
   priceCurrency: z.string().optional(),
   certificationIncluded: z.boolean().optional(),
@@ -109,6 +110,13 @@ export const upsertMaterialSchema = z.object({
   title: z.string().min(1),
   assetId: z.string().min(1),
   kind: z.string().min(1),
+  category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
+  visible: z.boolean().optional(),
+});
+export const updateMaterialSchema = z.object({
+  title: z.string().min(1).optional(),
+  category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
+  visible: z.boolean().optional(),
 });
 
 export const upsertProgramSchema = z.object({
