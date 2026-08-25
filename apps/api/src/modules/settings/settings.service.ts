@@ -20,8 +20,17 @@ const DEFAULTS = {
   bodyFontFamily: "Work Sans",
   backgroundColor: null as string | null,
   backgroundImageUrl: null as string | null,
-  // Manual de marca Inkapitales: #586BD8 primario, #D8B26C acento — ya son
-  // el default real horneado en globals.css; null = "usa ese default real".
+  // Manual de marca Inkapitales: #586BD8 primario (CTA/gradiente — "indigo"
+  // en globals.css), #D8B26C acento ("gold"). Ya son el default real
+  // horneado en globals.css, con una escala completa afinada a mano para
+  // contraste WCAG — por eso el default de estos dos campos sigue siendo
+  // `null` ("no lo pises, usa la escala afinada") en vez del hex real: si
+  // se devolviera el hex acá, layout.tsx SIEMPRE dispararía el override de
+  // --indigo-500/400 (ver hexToHslTriplet) y reemplazaría el 52% de
+  // luminosidad afinado por el 60% que da ese hex sin ajustar, aclarando el
+  // botón/CTA y arriesgando el contraste ya verificado. El valor real para
+  // mostrar en /admin/apariencia se resuelve en el frontend (ver
+  // AppearanceForm), no acá.
   primaryColor: null as string | null,
   accentColor: null as string | null,
   contactEmail: "hola@inkademy.com" as string | null,
@@ -71,8 +80,6 @@ export class SettingsService {
         menuFontFamily: null,
         menuFontSizePx: null,
         menuFontColor: null,
-        primaryColor: null,
-        accentColor: null,
         taxAffectation,
       };
     }

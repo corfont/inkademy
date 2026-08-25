@@ -366,4 +366,33 @@ export class EnrollmentService {
     const cards = await this.catalogService.getCourseCardsByIds(fallbackCourses.map((c) => c.id));
     return cards.map((c) => ({ ...c, reason }));
   }
+
+  // --- Notas del alumno en el reproductor de clase ---
+  // Antes vivían solo en localStorage del navegador (no sincronizaban entre
+  // dispositivos, se perdían al limpiar caché). Todas las consultas van
+  // filtradas por `userId` del JWT — un alumno nunca puede leer ni escribir
+  // la nota de otro, sin necesidad de validar matrícula (la nota en sí no
+  // expone nada del curso que el alumno no pueda ya ver).
+
+  async getLessonNote(userId: string, lessonId: string) {
+    const note = await this.prisma.lessonNote.findUnique({ where: { userId_lessonId: { userId, lessonId } } });
+    return { content: note?.content ?? "", updatedAt: note?.updatedAt ?? null };
+  }
+
+  async upsertLessonNote(userId: string, lessonId: string, content: string) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, select: { id: true } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+
+    if (!content.trim()) {
+      // Nota vaciada por el alumno — se borra la fila en vez de guardar "" (menos filas muertas).
+      await this.prisma.lessonNote.deleteMany({ where: { userId, lessonId } });
+      return { content: "", updatedAt: null };
+    }
+    const note = await this.prisma.lessonNote.upsert({
+      where: { userId_lessonId: { userId, lessonId } },
+      create: { userId, lessonId, content },
+      update: { content },
+    });
+    return { content: note.content, updatedAt: note.updatedAt };
+  }
 }

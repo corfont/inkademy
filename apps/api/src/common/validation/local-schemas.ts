@@ -22,6 +22,12 @@ export const updateLessonProgressSchema = z.object({
   lastPositionSeconds: z.number().int().min(0).optional(),
 });
 
+// "Las notas del alumno se guardaban solo en localStorage" — ahora viven en
+// LessonNote, sincronizadas entre dispositivos.
+export const upsertLessonNoteSchema = z.object({
+  content: z.string().max(20000),
+});
+
 export const catalogFiltersSchema = z.object({
   q: z.string().optional(),
   areaSlug: z.string().optional(),

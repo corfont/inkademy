@@ -95,6 +95,7 @@ model User {
   certificates          Certificate[]
   attendances           Attendance[]
   lessonProgress        LessonProgress[]
+  lessonNotes           LessonNote[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
@@ -383,6 +384,7 @@ model Lesson {
   isCourseStarter Boolean            @default(false)
   materials       Material[]
   progress        LessonProgress[]
+  notes           LessonNote[]
 
   @@index([moduleId])
 }
@@ -565,6 +567,23 @@ model LessonProgress {
   updatedAt    DateTime   @updatedAt
 
   @@unique([enrollmentId, lessonId])
+}
+
+// "Las notas del alumno en el reproductor de video se guardaban solo en
+// localStorage — no sincronizaban entre dispositivos y se perdían si
+// limpiaba el navegador." Una nota por alumno y por lección (no por
+// intento ni por enrollment — si vuelve a matricularse, sigue viendo lo
+// que anotó antes).
+model LessonNote {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  content   String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
 }
 
 model Attendance {

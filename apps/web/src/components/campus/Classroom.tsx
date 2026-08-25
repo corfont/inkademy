@@ -6,10 +6,46 @@ import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, Circle, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial } from "@/lib/mock-data";
 import { meApi } from "@/lib/api-client";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { cn } from "@/lib/cn";
 import { localize, formatDate } from "@/lib/format";
+
+/**
+ * "El sistema no debe permitir descargar la clase principal... alguna
+ * protección contra captura de pantalla" — ningún navegador puede impedir
+ * una grabación de pantalla real (eso requeriría DRM completo, EME/
+ * Widevine, con un pipeline de streaming propio — fuera de alcance). Esto
+ * es la mitigación real que SÍ se puede dar sin esa inversión: un
+ * watermark con el correo del alumno, semitransparente y que cambia de
+ * posición cada pocos segundos (para que no sea trivial recortarlo en
+ * edición) — si el video termina compartido, se sabe de qué cuenta salió.
+ */
+function VideoWatermark({ label }: { label: string }) {
+  const POSITIONS = [
+    { top: "8%", left: "6%" },
+    { top: "8%", left: "70%" },
+    { top: "80%", left: "6%" },
+    { top: "80%", left: "70%" },
+    { top: "44%", left: "38%" },
+  ];
+  const [posIndex, setPosIndex] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setPosIndex((i) => (i + 1) % POSITIONS.length), 7000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute select-none rounded bg-black/20 px-2 py-1 text-xs font-medium text-white/70 backdrop-blur-[1px] transition-all duration-1000"
+      style={POSITIONS[posIndex]}
+    >
+      {label}
+    </div>
+  );
+}
 
 function MaterialList({ heading, materials }: { heading: string; materials: ClassroomMaterial[] }) {
   if (materials.length === 0) return null;
@@ -33,6 +69,8 @@ function MaterialList({ heading, materials }: { heading: string; materials: Clas
 export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const t = useTranslations("campus.classroom");
   const locale = useLocale();
+  const { user } = useAuth();
+  const watermarkLabel = user?.email ?? "";
   const allLessons = useMemo(() => detail.modules.flatMap((m) => m.lessons), [detail]);
   // El bloqueo real ya lo aplicó la API (accessBlocked viene calculado, y
   // `modules` llega vacío) — acá solo se explica por qué no hay contenido
@@ -105,17 +143,30 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const officeMaterial = lessonMain.find((m) => ["slide", "doc", "sheet"].includes(m.kind));
   const officeViewerUrl = officeMaterial ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(officeMaterial.url)}` : null;
 
-  // Notas del alumno — por lección, guardadas solo en este navegador (no
-  // hay un módulo de notas en el backend; ver limitación en el resumen).
-  const notesKey = current ? `inkademy-notes-${current.id}` : null;
+  // Notas del alumno — por lección, sincronizadas con el backend
+  // (LessonNote) para que no se pierdan al limpiar el navegador ni queden
+  // atadas a un solo dispositivo. Se guarda con debounce (1.2s de
+  // inactividad) para no disparar un PATCH por cada tecla.
   const [notes, setNotes] = useState("");
+  const [notesSaved, setNotesSaved] = useState(true);
+  const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!notesKey) return;
-    setNotes(typeof window !== "undefined" ? window.localStorage.getItem(notesKey) ?? "" : "");
-  }, [notesKey]);
+    if (!current) return;
+    setNotesSaved(true);
+    meApi
+      .lessonNote(current.id)
+      .then((r) => setNotes(r.content))
+      .catch(() => setNotes(""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
   function handleNotesChange(value: string) {
     setNotes(value);
-    if (notesKey && typeof window !== "undefined") window.localStorage.setItem(notesKey, value);
+    setNotesSaved(false);
+    if (!current) return;
+    if (notesSaveTimer.current) clearTimeout(notesSaveTimer.current);
+    notesSaveTimer.current = setTimeout(() => {
+      meApi.saveLessonNote(current.id, value).then(() => setNotesSaved(true)).catch(() => {});
+    }, 1200);
   }
 
   return (
@@ -136,23 +187,26 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
           <div>
             {current?.contentType === "VIDEO" ? (
-              <video
-                key={current.id}
-                controls
-                // "El sistema no debe permitir que el usuario pueda descargar
-                // la clase [principal]" — sin botón de descarga del
-                // reproductor nativo y sin menú de clic derecho. Es un
-                // disuasivo razonable, no una protección real contra
-                // captura de pantalla (ningún navegador lo permite sin DRM).
-                controlsList={detail.blockMainVideoDownload !== false ? "nodownload" : undefined}
-                onContextMenu={(e) => detail.blockMainVideoDownload !== false && e.preventDefault()}
-                className="w-full rounded-lg bg-ink-950"
-                src={current.videoUrl}
-                onTimeUpdate={onTimeUpdate}
-                onEnded={() => markComplete(current.id)}
-              >
-                <track kind="captions" />
-              </video>
+              <div className="relative overflow-hidden rounded-lg">
+                <video
+                  key={current.id}
+                  controls
+                  // "El sistema no debe permitir que el usuario pueda descargar
+                  // la clase [principal]" — sin botón de descarga del
+                  // reproductor nativo y sin menú de clic derecho. Es un
+                  // disuasivo razonable, no una protección real contra
+                  // captura de pantalla (ningún navegador lo permite sin DRM).
+                  controlsList={detail.blockMainVideoDownload !== false ? "nodownload" : undefined}
+                  onContextMenu={(e) => detail.blockMainVideoDownload !== false && e.preventDefault()}
+                  className="w-full bg-ink-950"
+                  src={current.videoUrl}
+                  onTimeUpdate={onTimeUpdate}
+                  onEnded={() => markComplete(current.id)}
+                >
+                  <track kind="captions" />
+                </video>
+                {detail.blockMainVideoDownload !== false && watermarkLabel && <VideoWatermark label={watermarkLabel} />}
+              </div>
             ) : officeViewerUrl ? (
               <iframe title={officeMaterial?.title} src={officeViewerUrl} className="h-[32rem] w-full rounded-lg border border-paper-border" />
             ) : (
@@ -186,12 +240,15 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             </div>
           </div>
 
-          {/* "Al costado podrá tomar notas si quisiera" — se guardan solo en
-              este navegador (no hay módulo de notas en el backend todavía). */}
+          {/* "Al costado podrá tomar notas si quisiera" — sincronizadas con
+              el backend (LessonNote), no solo en este navegador. */}
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="lesson-notes" className="text-xs font-semibold uppercase tracking-wide text-ash-500">
-              Mis notas
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor="lesson-notes" className="text-xs font-semibold uppercase tracking-wide text-ash-500">
+                Mis notas
+              </label>
+              <span className="text-xs text-ash-400">{notesSaved ? "Guardado" : "Guardando…"}</span>
+            </div>
             <textarea
               id="lesson-notes"
               value={notes}

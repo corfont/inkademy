@@ -316,6 +316,10 @@ export const meApi = {
   enrollment: (id: string, accessToken?: string | null) => apiFetch<any>(`/me/enrollments/${id}`, { accessToken }),
   updateLessonProgress: (lessonId: string, input: { completed?: boolean; lastPositionSeconds?: number }) =>
     apiFetch<void>(`/me/lessons/${lessonId}/progress`, { method: "PATCH", body: JSON.stringify(input) }),
+  // "Las notas del alumno se guardaban solo en localStorage" — ahora sincronizan entre dispositivos.
+  lessonNote: (lessonId: string) => apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`),
+  saveLessonNote: (lessonId: string, content: string) =>
+    apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`, { method: "PATCH", body: JSON.stringify({ content }) }),
   calendar: (from?: string, to?: string, accessToken?: string | null) =>
     apiFetch<any[]>("/me/calendar", { query: { from, to }, accessToken }),
   certificates: (accessToken?: string | null) => apiFetch<CertificateDTO[]>("/me/certificates", { accessToken }),
