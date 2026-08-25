@@ -4,12 +4,12 @@ import Link from "next/link";
 import type { CourseCardDTO } from "@inkademy/shared";
 import { useTranslations, useLocale } from "next-intl";
 import { BadgeCheck, Clock, Radio, User, Star } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { useCountdown } from "@/lib/useCountdown";
 import { localize, formatPrice, formatDateTime, formatDuration, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
+import { MODALITY_STYLE, TYPE_STYLE, LEVEL_STYLE, offeringStyle } from "@/lib/offering-style";
 
 export function CourseCard({ course }: { course: CourseCardDTO }) {
   const locale = useLocale();
@@ -49,9 +49,16 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
       </Link>
       <div className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex flex-wrap gap-1.5">
-          <Badge variant="ink">{MODALITY_LABEL[course.modality]?.[locale as "es" | "en"] ?? course.modality}</Badge>
-          <Badge variant="outline">{TYPE_LABEL[course.type]?.[locale as "es" | "en"] ?? course.type}</Badge>
-          <Badge variant="outline">{LEVEL_LABEL[course.level]?.[locale as "es" | "en"] ?? course.level}</Badge>
+          {[
+            { style: offeringStyle(MODALITY_STYLE, course.modality), label: MODALITY_LABEL[course.modality]?.[locale as "es" | "en"] ?? course.modality },
+            { style: offeringStyle(TYPE_STYLE, course.type), label: TYPE_LABEL[course.type]?.[locale as "es" | "en"] ?? course.type },
+            { style: offeringStyle(LEVEL_STYLE, course.level), label: LEVEL_LABEL[course.level]?.[locale as "es" | "en"] ?? course.level },
+          ].map(({ style, label }, i) => (
+            <span key={i} className={`inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium ${style.classes}`}>
+              <style.icon className="h-3 w-3" aria-hidden="true" />
+              {label}
+            </span>
+          ))}
         </div>
 
         <Link href={href} className="focus-visible:outline-2 focus-visible:outline-ink-500">

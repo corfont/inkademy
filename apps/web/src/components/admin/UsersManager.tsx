@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Avatar } from "@/components/ui/Avatar";
 
 const ROLE_LABEL: Record<string, string> = { STUDENT: "Alumno", TEACHER: "Docente", SUPPORT: "Soporte", ADMIN: "Administrador" };
 
@@ -274,7 +275,12 @@ function UserRowItem({ user, companies, onChange }: { user: UserRow; companies: 
   return (
     <tr className="border-b border-paper-border last:border-0">
       <td className="p-2">
-        {user.firstName} {user.lastName}
+        <div className="flex items-center gap-2">
+          <Avatar name={`${user.firstName} ${user.lastName}`} size="sm" />
+          <span>
+            {user.firstName} {user.lastName}
+          </span>
+        </div>
       </td>
       <td className="p-2 text-ash-600">{user.email}</td>
       <td className="p-2">
