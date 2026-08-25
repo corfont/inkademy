@@ -1,13 +1,40 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, MessageSquarePlus, Receipt, Gift, FileSpreadsheet, Users, Bot, LogOut, CalendarClock, Wallet } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { supportApi } from "@/lib/api-client";
+
+// Cada cuánto se refresca el contador de tickets pendientes en el menú —
+// no hace falta tiempo real, solo que no quede muy desactualizado mientras
+// el admin navega por otras pantallas.
+const PENDING_COUNT_POLL_MS = 60_000;
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations("admin.nav");
   const { user, logout } = useAuth();
+  // "Al costado de soporte debería de aparecer un indicador que tiene
+  // mensajes pendientes de resolver" — antes no había ninguna forma de
+  // saber, sin entrar, si había tickets sin atender.
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    function refresh() {
+      supportApi
+        .pendingCount()
+        .then((n) => !cancelled && setPendingCount(n))
+        .catch(() => {});
+    }
+    refresh();
+    const interval = setInterval(refresh, PENDING_COUNT_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const navItems = [
     { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
@@ -19,7 +46,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/matriculas", label: "Matrículas", icon: CalendarClock },
     { href: "/admin/cortesias", label: "Cortesías", icon: Gift },
     { href: "/admin/facturacion", label: "Facturación (SUNAT)", icon: FileSpreadsheet },
-    { href: "/admin/soporte", label: t("support"), icon: LifeBuoy },
+    { href: "/admin/soporte", label: t("support"), icon: LifeBuoy, badgeCount: pendingCount },
     { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus },
     { href: "/admin/certificados", label: t("certificates"), icon: Award },
     { href: "/admin/evaluaciones-pendientes", label: t("pendingReview"), icon: ClipboardCheck },

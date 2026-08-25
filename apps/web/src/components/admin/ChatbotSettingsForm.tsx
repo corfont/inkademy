@@ -21,6 +21,8 @@ export function ChatbotSettingsForm({ settings }: { settings: ChatbotSettingsDTO
     model: settings.model,
     apiKey: "",
     systemPrompt: settings.systemPrompt ?? "",
+    suggestionAutoRespond: settings.suggestionAutoRespond,
+    suggestionAutoRespondDelayMinutes: settings.suggestionAutoRespondDelayMinutes,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -102,6 +104,40 @@ export function ChatbotSettingsForm({ settings }: { settings: ChatbotSettingsDTO
               placeholder="Eres el asistente virtual de Inkademy… (si lo dejas vacío, se usa un mensaje por defecto)"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Respuesta a sugerencias</h2>
+          <p className="text-sm text-ash-500">
+            Si se activa, la IA redacta y envía sola la respuesta a una sugerencia nueva — pero recién después del plazo
+            configurado (nunca inmediato, para que no se note que es una IA), y solo si el admin no la respondió antes a
+            mano. Si se deja apagado, toda sugerencia queda esperando la aprobación del admin en /admin/sugerencias
+            (comportamiento actual).
+          </p>
+          <label className="flex items-center gap-2 text-sm font-medium text-ink-900">
+            <input
+              type="checkbox"
+              checked={form.suggestionAutoRespond}
+              onChange={(e) => setForm((f) => ({ ...f, suggestionAutoRespond: e.target.checked }))}
+            />
+            Responder sugerencias automáticamente con IA
+          </label>
+          {form.suggestionAutoRespond && (
+            <div className="max-w-xs">
+              <Label htmlFor="auto-respond-delay">Esperar antes de enviar: {form.suggestionAutoRespondDelayMinutes} minutos</Label>
+              <input
+                id="auto-respond-delay"
+                type="range"
+                min={1}
+                max={180}
+                value={form.suggestionAutoRespondDelayMinutes}
+                onChange={(e) => setForm((f) => ({ ...f, suggestionAutoRespondDelayMinutes: Number(e.target.value) }))}
+                className="w-full"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

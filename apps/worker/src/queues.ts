@@ -20,9 +20,19 @@ export const QUEUE_NAMES = {
   ATTENDANCE_SYNC: "attendance-sync",
   RECOMMENDATION: "recommendation",
   INVOICE: "invoice",
+  SUGGESTION: "suggestion",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
+
+// --- Jobs de la cola "suggestion" ---
+export const SUGGESTION_JOBS = {
+  AUTO_RESPOND: "suggestion.auto-respond",
+} as const;
+
+export interface SuggestionAutoRespondJobData {
+  suggestionId: string;
+}
 
 // ---------------------------------------------------------------------------
 // Cola "email" — mirror de apps/api/src/common/queues/queue.constants.ts

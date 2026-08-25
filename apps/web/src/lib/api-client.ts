@@ -229,6 +229,8 @@ export interface ChatbotSettingsDTO {
   model: string;
   systemPrompt: string | null;
   hasApiKey: boolean;
+  suggestionAutoRespond: boolean;
+  suggestionAutoRespondDelayMinutes: number;
   updatedAt: string | null;
 }
 
@@ -420,6 +422,8 @@ export const supportApi = {
     apiFetch<{ draft: string }>(`/support/tickets/${id}/suggest-reply`, { method: "POST", accessToken }),
   saveAsKnowledge: (id: string, accessToken?: string | null) =>
     apiFetch<{ id: string; title: string; charCount: number }>(`/support/tickets/${id}/save-as-knowledge`, { method: "POST", accessToken }),
+  // Indicador de "pendientes" al costado de Soporte en el menú del admin.
+  pendingCount: (accessToken?: string | null) => apiFetch<number>("/support/tickets/pending-count", { accessToken, cache: "no-store" }),
 };
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, BookMarked, Check } from "lucide-react";
+import { Sparkles, BookMarked, Check, Bot } from "lucide-react";
 import { supportApi, ApiError } from "@/lib/api-client";
 import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: "Cerrado",
 };
 
-function isStaff(author: { globalRole?: string }) {
+function isStaff(author: { globalRole?: string } | null | undefined) {
   return author?.globalRole === "ADMIN" || author?.globalRole === "SUPPORT";
 }
 
@@ -134,11 +134,18 @@ export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket
         {ticket.messages.map((msg: any) => {
           const staff = isStaff(msg.author);
           return (
-            <Card key={msg.id} className={cn(staff && "border-ink-200 bg-ink-50")}>
+            <Card key={msg.id} className={cn((staff || msg.isAiGenerated) && "border-ink-200 bg-ink-50")}>
               <CardContent className="p-4">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <p className="text-sm font-medium text-ink-900">
-                    {authorName(msg.author)} {staff && <Badge variant="ink">Soporte</Badge>}
+                    {msg.isAiGenerated ? "Asistente de IA" : authorName(msg.author)}{" "}
+                    {msg.isAiGenerated ? (
+                      <Badge variant="gold">
+                        <Bot className="h-3 w-3" aria-hidden="true" /> IA
+                      </Badge>
+                    ) : (
+                      staff && <Badge variant="ink">Soporte</Badge>
+                    )}
                   </p>
                   <p className="text-xs text-ash-500">{new Date(msg.createdAt).toLocaleString("es-PE")}</p>
                 </div>

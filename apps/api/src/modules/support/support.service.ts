@@ -10,6 +10,12 @@ function isStaffRole(role?: string) {
   return role === "ADMIN" || role === "SUPPORT";
 }
 
+/** "Soporte" (staff humano), "Asistente IA" (mensaje autogenerado), o "Usuario" — para armar la conversación como texto plano que se le manda al asistente. */
+function speakerLabel(m: { isAiGenerated?: boolean; author?: { globalRole?: string } | null }): string {
+  if (m.isAiGenerated) return "Asistente IA";
+  return isStaffRole(m.author?.globalRole) ? "Soporte" : "Usuario";
+}
+
 @Injectable()
 export class SupportService {
   constructor(
@@ -20,7 +26,7 @@ export class SupportService {
   ) {}
 
   async createTicket(userId: string, input: CreateSupportTicketInput) {
-    return this.prisma.supportTicket.create({
+    const ticket = await this.prisma.supportTicket.create({
       data: {
         createdById: userId,
         category: input.category,
@@ -30,6 +36,25 @@ export class SupportService {
       },
       include: { messages: true },
     });
+
+    // "Si la IA puede resolver el caso lo debe hacer inmediatamente
+    // ayudando al usuario, sino su estado quedará como pendiente" — intento
+    // síncrono (sin cola): el alumno no debería esperar un cron para
+    // recibir ayuda si la IA sí puede resolverlo ahora mismo. Si falla por
+    // cualquier motivo, el ticket simplemente queda OPEN (pendiente),
+    // exactamente el comportamiento de antes de esta función.
+    const attempt = await this.chatbot.attemptAutoResolve({ subject: input.subject, category: input.category, message: input.body });
+    if (attempt.resolved && attempt.reply) {
+      await this.prisma.supportMessage.create({ data: { ticketId: ticket.id, isAiGenerated: true, body: attempt.reply } });
+      await this.prisma.supportTicket.update({ where: { id: ticket.id }, data: { status: "WAITING_USER" } });
+    }
+
+    return ticket;
+  }
+
+  /** Contador para el indicador de "pendientes" al costado de Soporte en el menú del admin. */
+  countPending() {
+    return this.prisma.supportTicket.count({ where: { status: "OPEN" } });
   }
 
   // Solo los campos necesarios para mostrar "quién lo pidió" — evita filtrar
@@ -120,9 +145,7 @@ export class SupportService {
   /** Borrador de respuesta con IA para que soporte/admin lo revise antes de enviarlo. */
   async suggestReply(userId: string, ticketId: string, isGlobalStaff: boolean) {
     const ticket = await this.getTicket(userId, ticketId, isGlobalStaff);
-    const conversation = ticket.messages
-      .map((m) => `${isStaffRole((m.author as { globalRole?: string })?.globalRole) ? "Soporte" : "Usuario"}: ${m.body}`)
-      .join("\n\n");
+    const conversation = ticket.messages.map((m) => `${speakerLabel(m)}: ${m.body}`).join("\n\n");
     return this.chatbot.draftReply({
       instructions: `Estás redactando una respuesta de soporte para el ticket "${ticket.subject}" (categoría: ${ticket.category}). Lee toda la conversación antes de responder al último mensaje del usuario.`,
       conversation,
@@ -143,12 +166,10 @@ export class SupportService {
       include: { messages: { orderBy: { createdAt: "asc" }, include: { author: true } } },
     });
     if (!ticket) throw new NotFoundException("Ticket no encontrado");
-    if (!ticket.messages.some((m) => isStaffRole(m.author.globalRole))) {
+    if (!ticket.messages.some((m) => m.isAiGenerated || isStaffRole(m.author?.globalRole))) {
       throw new ForbiddenException("Este ticket todavía no tiene ninguna respuesta de soporte para guardar");
     }
-    const conversation = ticket.messages
-      .map((m) => `${isStaffRole(m.author.globalRole) ? "Soporte" : "Usuario"}: ${m.body}`)
-      .join("\n\n");
+    const conversation = ticket.messages.map((m) => `${speakerLabel(m)}: ${m.body}`).join("\n\n");
     const text = `Ticket de soporte: ${ticket.subject}\nCategoría: ${ticket.category}\n\n${conversation}`;
     return this.chatbotDocuments.createFromText(`Soporte: ${ticket.subject}`, text);
   }

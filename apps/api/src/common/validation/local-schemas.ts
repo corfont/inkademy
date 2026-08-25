@@ -308,6 +308,8 @@ export const upsertChatbotSettingsSchema = z.object({
   model: z.string().optional(),
   apiKey: z.string().optional(), // vacío = "no cambiar" (ver ChatbotSettingsService.update)
   systemPrompt: z.string().optional().nullable(),
+  suggestionAutoRespond: z.boolean().optional(),
+  suggestionAutoRespondDelayMinutes: z.number().int().min(1).max(1440).optional(),
 });
 
 export const chatbotMessageSchema = z.object({

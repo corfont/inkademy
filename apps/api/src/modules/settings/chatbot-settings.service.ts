@@ -10,6 +10,8 @@ export interface UpsertChatbotSettingsInput {
   model?: string;
   apiKey?: string; // solo se sobreescribe si viene no-vacío — ver update()
   systemPrompt?: string | null;
+  suggestionAutoRespond?: boolean;
+  suggestionAutoRespondDelayMinutes?: number;
 }
 
 /**
@@ -31,6 +33,11 @@ export class ChatbotSettingsService {
       model: row?.model ?? "gemini-2.5-flash",
       systemPrompt: row?.systemPrompt ?? null,
       hasApiKey: Boolean(row?.apiKey) || Boolean(process.env.GEMINI_API_KEY),
+      // "Parametrizarse si se quiere de manera automática o si se quiere un
+      // paso extra donde el administrador dé su aprobación" — y el plazo en
+      // minutos para que la respuesta automática no llegue "inmediata".
+      suggestionAutoRespond: row?.suggestionAutoRespond ?? false,
+      suggestionAutoRespondDelayMinutes: row?.suggestionAutoRespondDelayMinutes ?? 30,
       updatedAt: row?.updatedAt ?? null,
     };
   }

@@ -82,6 +82,40 @@ export class ChatbotService {
     return { draft: reply };
   }
 
+  /**
+   * "Si la IA puede resolver el caso lo debe hacer inmediatamente ayudando
+   * al usuario, sino su estado quedará como pendiente" — a diferencia de
+   * draftReply/sendMessage, esto NUNCA lanza: si el asistente está apagado,
+   * sin API key, o Gemini falla, simplemente se considera "no resuelto" y
+   * el ticket queda pendiente para soporte humano (comportamiento anterior
+   * a esta función).
+   */
+  async attemptAutoResolve(input: { subject: string; category: string; message: string }): Promise<{ resolved: boolean; reply?: string }> {
+    const NO_RESOLVE = "NO_PUEDO_RESOLVER";
+    try {
+      const row = await this.prisma.chatbotSettings.findUnique({ where: { id: SETTINGS_ID } });
+      if (!row?.enabled || !(row.apiKey || process.env.GEMINI_API_KEY)) return { resolved: false };
+
+      const contextText = await this.documents.getActiveContextText();
+      const systemPrompt = [
+        "Eres soporte de Inkademy, una plataforma peruana de cursos y capacitación online.",
+        `Se abrió un ticket de soporte — categoría "${input.category}", asunto "${input.subject}".`,
+        "Si puedes responder la consulta del alumno de forma completa y confiable usando la información de referencia de abajo (o conocimiento general seguro sobre cómo usar la plataforma), redacta una respuesta breve, cordial y concreta — SOLO el texto de la respuesta.",
+        `Si NO tienes información suficiente para resolverlo con confianza, o el caso requiere que un humano intervenga (reembolsos, quejas, algo específico de la cuenta del alumno que no puedes ver), responde ÚNICAMENTE con el texto exacto: ${NO_RESOLVE}`,
+        contextText ? `\nInformación de referencia:\n${contextText}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const reply = await this.callGemini(systemPrompt, [{ role: "user", parts: [{ text: input.message }] }]);
+      if (!reply.trim() || reply.includes(NO_RESOLVE)) return { resolved: false };
+      return { resolved: true, reply: reply.trim() };
+    } catch (err) {
+      this.logger.warn(`No se pudo intentar auto-resolver el ticket: ${(err as Error).message}`);
+      return { resolved: false };
+    }
+  }
+
   private async getSettingsOrThrow() {
     const row = await this.prisma.chatbotSettings.findUnique({ where: { id: SETTINGS_ID } });
     if (!row?.enabled) {

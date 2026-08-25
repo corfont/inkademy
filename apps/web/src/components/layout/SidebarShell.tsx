@@ -14,6 +14,8 @@ export interface SidebarNavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Contador opcional (p.ej. tickets de soporte pendientes) — se muestra como una burbuja roja junto al ítem. */
+  badgeCount?: number;
 }
 
 export function SidebarShell({
@@ -67,7 +69,12 @@ export function SidebarShell({
             )}
           >
             <item.icon className="h-4 w-4 flex-none" />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {Boolean(item.badgeCount) && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">
+                {item.badgeCount}
+              </span>
+            )}
           </Link>
         );
       })}

@@ -1025,8 +1025,12 @@ model SupportMessage {
   id         String        @id @default(uuid())
   ticketId   String
   ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  authorId   String
-  author     User          @relation(fields: [authorId], references: [id])
+  // Nullable: un mensaje puede venir de la IA (isAiGenerated=true) sin
+  // ningún User real detrás — "si la IA puede resolver el caso lo debe
+  // hacer inmediatamente ayudando al usuario".
+  authorId   String?
+  author     User?         @relation(fields: [authorId], references: [id])
+  isAiGenerated Boolean    @default(false)
   body       String        @db.Text
   attachmentAssetId String?
   createdAt  DateTime      @default(now())
@@ -1050,6 +1054,10 @@ model CourseSuggestion {
   respondedAt   DateTime?
   respondedById String?
   respondedBy   User?     @relation("SuggestionRespondedBy", fields: [respondedById], references: [id])
+  // true = la envió sola la IA (tras el plazo configurado, sin que el admin
+  // la haya tocado) — respondedById queda null en ese caso. false/no tocado
+  // = la escribió o aprobó un admin/soporte real.
+  respondedByAi Boolean   @default(false)
 
   @@index([status])
 }
@@ -1208,6 +1216,16 @@ model ChatbotSettings {
   model         String   @default("gemini-2.5-flash")
   apiKey        String? // nunca se devuelve tal cual al frontend
   systemPrompt  String?  @db.Text
+
+  // Respuesta automática a sugerencias — "parametrizarse si se quiere de
+  // manera automática o si se quiere un paso extra donde el administrador
+  // dé su aprobación". Si está activo, se envía sola tras
+  // suggestionAutoRespondDelayMinutes (para que no llegue "inmediato" y se
+  // note que es una IA) — a menos que el admin ya la haya respondido a
+  // mano antes de que se cumpla el plazo.
+  suggestionAutoRespond             Boolean @default(false)
+  suggestionAutoRespondDelayMinutes Int     @default(30)
+
   updatedAt     DateTime @updatedAt
 }
 

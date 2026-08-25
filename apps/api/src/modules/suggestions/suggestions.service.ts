@@ -1,9 +1,14 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import type { Queue } from "bullmq";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { QUEUE_NAMES, SUGGESTION_JOBS } from "../../common/queues/queue.constants";
 import { NotificationService } from "../notification/notification.service";
 import { ChatbotService } from "../chatbot/chatbot.service";
 import { ChatbotDocumentsService } from "../chatbot/chatbot-documents.service";
+
+const CHATBOT_SETTINGS_ID = "default";
 
 @Injectable()
 export class SuggestionsService {
@@ -12,10 +17,28 @@ export class SuggestionsService {
     private readonly notifications: NotificationService,
     private readonly chatbot: ChatbotService,
     private readonly chatbotDocuments: ChatbotDocumentsService,
+    @InjectQueue(QUEUE_NAMES.SUGGESTION) private readonly suggestionQueue: Queue,
   ) {}
 
-  create(userId: string, message: string) {
-    return this.prisma.courseSuggestion.create({ data: { userId, message } });
+  async create(userId: string, message: string) {
+    const suggestion = await this.prisma.courseSuggestion.create({ data: { userId, message } });
+
+    // "Parametrizarse si se quiere de manera automática o si se quiere un
+    // paso extra donde el administrador dé su aprobación" — si está
+    // activo, se programa la auto-respuesta con el plazo configurado (NO
+    // inmediato, a propósito). El worker revisa, al cumplirse el plazo, si
+    // el admin ya respondió a mano — si es así, no hace nada.
+    const chatbotSettings = await this.prisma.chatbotSettings.findUnique({ where: { id: CHATBOT_SETTINGS_ID } });
+    if (chatbotSettings?.suggestionAutoRespond) {
+      const delayMinutes = chatbotSettings.suggestionAutoRespondDelayMinutes ?? 30;
+      await this.suggestionQueue.add(
+        SUGGESTION_JOBS.AUTO_RESPOND,
+        { suggestionId: suggestion.id },
+        { delay: delayMinutes * 60_000, attempts: 2, removeOnComplete: true, removeOnFail: 50 },
+      );
+    }
+
+    return suggestion;
   }
 
   listMine(userId: string) {

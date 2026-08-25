@@ -14,6 +14,7 @@ export const QUEUE_NAMES = {
   ATTENDANCE_SYNC: "attendance-sync",
   RECOMMENDATION: "recommendation",
   INVOICE: "invoice",
+  SUGGESTION: "suggestion",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -60,4 +61,13 @@ export const RECOMMENDATION_JOBS = {
 export const INVOICE_JOBS = {
   GENERATE: "invoice.generate",
   GENERATE_NOTE: "invoice.generate-note",
+} as const;
+
+// --- Jobs de la cola "suggestion" ---
+export const SUGGESTION_JOBS = {
+  // Delayed job (delay = suggestionAutoRespondDelayMinutes) — a propósito
+  // no es inmediato: "si le llega inmediato al usuario, va a darse cuenta
+  // que es una IA". El worker revisa si el admin ya respondió a mano antes
+  // de que se cumpla el plazo; si es así, no hace nada.
+  AUTO_RESPOND: "suggestion.auto-respond",
 } as const;

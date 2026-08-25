@@ -35,6 +35,14 @@ export class SupportController {
     return this.supportService.listMine(user.id, companyId, isGlobalStaff(user));
   }
 
+  @Get("pending-count")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Cantidad de tickets sin ninguna respuesta todavía — para el indicador del menú" })
+  countPending() {
+    return this.supportService.countPending();
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Detalle de un ticket con sus mensajes" })
   get(@CurrentUser() user: RequestUser, @Param("id") id: string) {
