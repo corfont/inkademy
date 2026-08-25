@@ -548,4 +548,20 @@ export const adminApi = {
   chatbotSettings: (accessToken?: string | null) => apiFetch<ChatbotSettingsDTO>("/admin/chatbot-settings", { accessToken, cache: "no-store" }),
   updateChatbotSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<ChatbotSettingsDTO>("/admin/chatbot-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  chatbotDocuments: (accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/chatbot-documents", { accessToken, cache: "no-store" }),
+  uploadChatbotDocument: (file: File, title: string | undefined, accessToken?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<{ id: string; title: string; charCount: number }>("/admin/chatbot-documents", {
+      method: "POST",
+      body: form,
+      accessToken,
+      query: title ? { title } : undefined,
+    });
+  },
+  updateChatbotDocument: (id: string, input: { active?: boolean }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/chatbot-documents/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteChatbotDocument: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/chatbot-documents/${id}`, { method: "DELETE", accessToken }),
 };

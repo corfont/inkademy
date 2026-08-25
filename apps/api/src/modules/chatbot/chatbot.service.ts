@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { ChatbotDocumentsService } from "./chatbot-documents.service";
 
 const SETTINGS_ID = "default";
 
@@ -16,7 +17,10 @@ const SETTINGS_ID = "default";
 export class ChatbotService {
   private readonly logger = new Logger(ChatbotService.name);
 
-  constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly documents: ChatbotDocumentsService,
+  ) {}
 
   async status() {
     const row = await this.prisma.chatbotSettings.findUnique({ where: { id: SETTINGS_ID } });
@@ -34,9 +38,18 @@ export class ChatbotService {
       throw new BadRequestException("Falta configurar la API key del asistente en /admin/asistente-ia.");
     }
     const model = row.model || "gemini-2.5-flash";
-    const systemPrompt =
+    const basePrompt =
       row.systemPrompt ||
       "Eres el asistente virtual de Inkademy, una plataforma peruana de cursos y capacitación online. Responde en español, de forma breve y cordial, y si no sabes algo específico de la cuenta del usuario, sugiere contactar a soporte desde /campus/soporte.";
+
+    // Documentos que el admin subió (p.ej. el manual de ayuda) — si hay
+    // alguno activo, se le agregan como fuente de información al prompt
+    // para que las respuestas dejen de ser genéricas y usen ese contenido
+    // real. Antes el asistente no tenía ninguna fuente propia.
+    const contextText = await this.documents.getActiveContextText();
+    const systemPrompt = contextText
+      ? `${basePrompt}\n\nUsa la siguiente información de referencia para responder cuando sea relevante — si la pregunta no tiene que ver con esto, respóndela igual con tu conocimiento general:\n${contextText}`
+      : basePrompt;
 
     // Últimos 10 turnos alcanzan para dar contexto sin inflar la petición.
     const recentHistory = history.slice(-10);
