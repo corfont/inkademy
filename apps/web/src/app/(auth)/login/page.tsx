@@ -40,15 +40,20 @@ function LoginForm() {
     try {
       const user = await login(values.email, values.password);
       const next = searchParams.get("next");
+      // Cada rol cae en su propio panel — antes ADMIN y TEACHER también
+      // aterrizaban en /campus por defecto.
+      const home = user.globalRole === "ADMIN" || user.globalRole === "SUPPORT" ? "/admin" : user.globalRole === "TEACHER" ? "/docente" : "/campus";
       if (!user.profileCompletedAt) {
         router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
-      } else if (next) {
+      } else if (next && home === "/campus") {
+        // "next" (volver a /checkout, a un curso, etc.) solo se respeta
+        // para alumnos — es el único rol donde "volver a donde iba" tiene
+        // sentido. Antes se seguía "next" sin mirar el rol: un admin/soporte
+        // que llegaba a /login con un ?next=/campus (p.ej. un enlace viejo,
+        // o /campus/* redirigiendo a login por falta de sesión) terminaba
+        // viendo el campus de alumno pese a que su cuenta sí era ADMIN.
         router.push(next);
       } else {
-        // Sin "next" explícito (login directo, no redirigido desde una
-        // página protegida), cada rol cae en su propio panel — antes ADMIN
-        // y TEACHER también aterrizaban en /campus por defecto.
-        const home = user.globalRole === "ADMIN" || user.globalRole === "SUPPORT" ? "/admin" : user.globalRole === "TEACHER" ? "/docente" : "/campus";
         router.push(home);
       }
     } catch (err) {

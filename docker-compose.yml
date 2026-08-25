@@ -60,8 +60,14 @@ services:
       exit 0;
       "
 
+  # mailhog/mailhog no publica imagen linux/arm64 — en Mac Apple Silicon
+  # Docker Desktop la corre emulada (QEMU) y eso produce conexiones SMTP que
+  # abren el socket pero nunca entregan el saludo "220" a nodemailer
+  # ("Greeting never received"), aunque el contenedor esté sano. mailpit es
+  # multi-arch nativo, habla el mismo protocolo SMTP y trae una UI web
+  # equivalente — reemplazo sin cambiar nada del código de la app.
   mailhog:
-    image: mailhog/mailhog:latest
+    image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
       - "1025:1025" # SMTP

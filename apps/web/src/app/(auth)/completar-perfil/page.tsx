@@ -45,7 +45,14 @@ function CompleteProfileForm() {
   // globalRole en la base de datos fuera el correcto (ADMIN/TEACHER). Mismo
   // criterio que usa /login para decidir el "home" de cada rol.
   const roleHome = user?.globalRole === "ADMIN" || user?.globalRole === "SUPPORT" ? "/admin" : user?.globalRole === "TEACHER" ? "/docente" : "/campus";
-  const next = searchParams.get("next") ?? roleHome;
+  // "next" solo se respeta para alumnos (roleHome === "/campus") — es el
+  // único caso donde "volver a donde iba" (p.ej. /checkout?courseId=...)
+  // tiene sentido. Antes un admin/soporte/docente que llegaba con un "next"
+  // en la URL (p. ej. un enlace viejo con ?next=/campus) terminaba viendo
+  // el campus de alumno pese a tener el rol correcto en la base de datos —
+  // el mismo reporte real que ya se había corregido para el caso SIN next.
+  const requestedNext = searchParams.get("next");
+  const next = roleHome === "/campus" && requestedNext ? requestedNext : roleHome;
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),
   });
