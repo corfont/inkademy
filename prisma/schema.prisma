@@ -1138,6 +1138,20 @@ model PlatformSettings {
   culqiFeePercent     Float    @default(3.99)
   stripeFeePercent    Float    @default(4.99)
 
+  // Sello de agua (logo) mostrado sobre las pantallas — "para que figure en
+  // las pantallas" (pedido explícito). Opacidad/tamaño calibrables; sin
+  // watermarkAssetId no se muestra nada (comportamiento anterior).
+  watermarkAssetId     String?
+  watermarkOpacityPct  Int      @default(15) // 0-100
+  watermarkSizePercent Int      @default(30) // 0-100, ancho relativo a la pantalla
+
+  // Menús (barra lateral): color de fondo, tipografía/tamaño/color del texto
+  // — antes fijos en el CSS (bg-ink-900, la tipografía global del sitio).
+  sidebarColor    String?
+  menuFontFamily  String?
+  menuFontSizePx  Int?
+  menuFontColor   String?
+
   updatedAt           DateTime @updatedAt
 }
 

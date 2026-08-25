@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { Menu, X, ArrowLeft, Home } from "lucide-react";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { cn } from "@/lib/cn";
 
 export interface SidebarNavItem {
@@ -29,6 +30,15 @@ export function SidebarShell({
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { sidebarColor, menuFontFamily, menuFontSizePx, menuFontColor } = useBrandSettings();
+  // "Cambiar el tamaño, tipo y color de la letra de los menús, el color de
+  // la barra lateral" — sin nada configurado, se mantiene exactamente el
+  // aspecto anterior (bg-ink-900 vía clase, tipografía/color heredados).
+  const menuTextStyle: React.CSSProperties = {
+    ...(menuFontFamily ? { fontFamily: menuFontFamily } : {}),
+    ...(menuFontSizePx ? { fontSize: `${menuFontSizePx}px` } : {}),
+    ...(menuFontColor ? { color: menuFontColor } : {}),
+  };
   // "el sistema no tiene un botón atrás... tengo que estar a cada rato dando
   // retroceder al navegador" — antes no había ninguna forma de volver salvo
   // el botón nativo del navegador. router.back() no es 100% confiable si el
@@ -50,6 +60,7 @@ export function SidebarShell({
             href={item.href}
             onClick={() => setMobileOpen(false)}
             aria-current={active ? "page" : undefined}
+            style={menuTextStyle}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
               active ? "bg-ink-800 text-paper" : "text-ink-100/80 hover:bg-ink-800/60 hover:text-paper",
@@ -68,7 +79,10 @@ export function SidebarShell({
       <a href="#main-content" className="skip-link sr-only focus:not-sr-only">
         Saltar al contenido principal
       </a>
-      <aside className="hidden w-64 flex-none flex-col bg-ink-900 p-5 text-paper lg:flex">
+      <aside
+        className="hidden w-64 flex-none flex-col bg-ink-900 p-5 text-paper lg:flex"
+        style={sidebarColor ? { backgroundColor: sidebarColor } : undefined}
+      >
         <Link href={brandHref} className="mb-8 flex items-center" aria-label="Inkademy">
           <BrandLogo />
         </Link>
@@ -99,7 +113,7 @@ export function SidebarShell({
           </button>
         </header>
         {mobileOpen && (
-          <div className="border-b border-paper-border bg-ink-900 p-4 text-paper lg:hidden">
+          <div className="border-b border-paper-border bg-ink-900 p-4 text-paper lg:hidden" style={sidebarColor ? { backgroundColor: sidebarColor } : undefined}>
             {nav}
             <div className="mt-4">{topRight}</div>
           </div>

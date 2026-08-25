@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/providers/AuthProvider";
 import { BrandSettingsProvider } from "@/components/providers/BrandSettingsProvider";
 import { HelpButton } from "@/components/layout/HelpButton";
 import { ChatWidget } from "@/components/layout/ChatWidget";
+import { WatermarkOverlay } from "@/components/layout/WatermarkOverlay";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import { settingsApi, type PlatformSettingsDTO } from "@/lib/api-client";
 import { isCuratedFont, googleFontHref, type BrandFont } from "@/lib/brand-fonts";
@@ -111,6 +112,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <NextIntlClientProvider locale={locale} messages={messages}>
           <BrandSettingsProvider settings={settings}>
             <AuthProvider>
+              <WatermarkOverlay />
               {children}
               <HelpButton />
               <ChatWidget />

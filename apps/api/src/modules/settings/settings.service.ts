@@ -59,6 +59,14 @@ export class SettingsService {
         institutionSignatureUrl: null,
         institutionSignatureName: null,
         institutionSignatureTitle: null,
+        watermarkAssetId: null,
+        watermarkUrl: null,
+        watermarkOpacityPct: 15,
+        watermarkSizePercent: 30,
+        sidebarColor: null,
+        menuFontFamily: null,
+        menuFontSizePx: null,
+        menuFontColor: null,
         taxAffectation,
       };
     }
@@ -69,6 +77,10 @@ export class SettingsService {
       contactAddress: row.contactAddress ?? DEFAULTS.contactAddress,
       courseCardFields: (row.courseCardFields as Record<string, boolean> | null) ?? DEFAULTS.courseCardFields,
       institutionSignatureUrl: row.institutionSignatureAssetId ? this.storage.getPublicUrl(row.institutionSignatureAssetId) : null,
+      // "Sello de agua... para que figure en las pantallas" — logo + opacidad
+      // + tamaño calibrables desde /admin/apariencia (WatermarkOverlay.tsx lo
+      // consume vía useBrandSettings()).
+      watermarkUrl: row.watermarkAssetId ? this.storage.getPublicUrl(row.watermarkAssetId) : null,
       taxAffectation,
     };
   }

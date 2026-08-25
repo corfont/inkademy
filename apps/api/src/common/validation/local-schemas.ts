@@ -396,4 +396,11 @@ export const upsertSettingsSchema = z.object({
   institutionSignatureAssetId: z.string().optional().nullable(),
   institutionSignatureName: z.string().optional().nullable(),
   institutionSignatureTitle: z.string().optional().nullable(),
+  watermarkAssetId: z.string().optional().nullable(),
+  watermarkOpacityPct: z.number().int().min(0).max(100).optional(),
+  watermarkSizePercent: z.number().int().min(5).max(100).optional(),
+  sidebarColor: z.string().optional().nullable(),
+  menuFontFamily: z.string().optional().nullable(),
+  menuFontSizePx: z.number().int().min(10).max(24).optional().nullable(),
+  menuFontColor: z.string().optional().nullable(),
 });

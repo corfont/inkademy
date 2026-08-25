@@ -194,6 +194,14 @@ export interface PlatformSettingsDTO {
   institutionSignatureTitle?: string | null;
   /** Único campo de SunatSettings expuesto en público — el checkout lo usa para mostrar el desglose de IGV antes de pagar. */
   taxAffectation?: "EXONERADO" | "GRAVADO";
+  watermarkAssetId?: string | null;
+  watermarkUrl?: string | null;
+  watermarkOpacityPct?: number;
+  watermarkSizePercent?: number;
+  sidebarColor?: string | null;
+  menuFontFamily?: string | null;
+  menuFontSizePx?: number | null;
+  menuFontColor?: string | null;
 }
 
 /** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */
