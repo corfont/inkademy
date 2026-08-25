@@ -106,6 +106,11 @@ model User {
   teachingCourses       CourseStaff[]
   gradedAnswers         Answer[]             @relation("GradedBy")
   taughtLiveSessions    LiveSession[]        @relation("LiveSessionTeacher")
+  emailCampaignsCreated EmailCampaign[]
+  teacherRates          TeacherRate[]        @relation("TeacherRateOwner")
+  activityLogs          TeacherActivityLog[] @relation("TeacherActivityOwner")
+  advances              TeacherAdvance[]     @relation("TeacherAdvanceOwner")
+  liquidations          TeacherLiquidation[] @relation("TeacherLiquidationOwner")
 
   @@index([email])
 }
@@ -278,6 +283,12 @@ model Course {
   b2bAvailable           Boolean               @default(true)
   b2bPriceAmount          Decimal?             @db.Decimal(10, 2)
 
+  // "El sistema no debe permitir que el usuario pueda descargar la clase
+  // principal" — bloquea el atributo/enlace de descarga del video marcado
+  // como Lesson.isMainContent (el material complementario sigue permitido).
+  // Configurable por admin: se puede desactivar si el curso lo requiere.
+  blockMainVideoDownload Boolean               @default(true)
+
   // Descuento/oferta — % sobre priceAmount, con vencimiento opcional. Si
   // discountExpiresAt ya pasó, se trata como si no hubiera descuento (ver
   // catalog.service.ts) sin necesidad de un job que lo "apague" solo.
@@ -307,6 +318,9 @@ model Course {
   certificates           Certificate[]
   seatPools              CompanySeatPool[]
   partnerships           CoursePartnership[]
+  royalties              CourseRoyalty[]
+  teacherRates           TeacherRate[]
+  activityLogs           TeacherActivityLog[]
 
   @@index([areaId])
   @@index([status])
@@ -361,6 +375,12 @@ model Lesson {
   videoAssetId    String?
   durationMinutes Int?
   isFreePreview   Boolean            @default(false)
+  // "El administrador debe indicar si ese video inicia el curso o es
+  // material complementario" — la lección marcada como iniciadora es la
+  // que se reproduce inline apenas el alumno entra al curso (en vez de
+  // asumir siempre "la primera por orden"). Como mucho una por curso —
+  // se valida en AdminService, no a nivel de esquema.
+  isCourseStarter Boolean            @default(false)
   materials       Material[]
   progress        LessonProgress[]
 
@@ -374,22 +394,26 @@ enum MaterialCategory {
 }
 
 model Material {
-  id        String            @id @default(uuid())
+  id          String            @id @default(uuid())
   // Un material cuelga de una lección puntual O de un módulo entero (lectura
   // general del módulo) — nunca de ambos. Antes solo existía a nivel de
   // lección.
-  lessonId  String?
-  lesson    Lesson?           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  moduleId  String?
-  module    CourseModule?     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title     String
-  assetId   String
-  kind      String // pdf | slide | doc | sheet | image | video | template | link
-  category  MaterialCategory  @default(MAIN)
+  lessonId    String?
+  lesson      Lesson?           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      CourseModule?     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title       String
+  // Nullable — un material kind="link" no tiene ningún archivo subido, solo
+  // externalUrl. Todo lo demás (pdf/slide/doc/sheet/image/video/template)
+  // sigue requiriendo un assetId real.
+  assetId     String?
+  externalUrl String?
+  kind        String // pdf | slide | doc | sheet | image | video | template | link
+  category    MaterialCategory  @default(MAIN)
   // Si es false, el material queda cargado pero oculto para el alumno (el
   // admin/docente lo sigue viendo) — por defecto todo se ve.
-  visible   Boolean           @default(true)
-  createdAt DateTime          @default(now())
+  visible     Boolean           @default(true)
+  createdAt   DateTime          @default(now())
 }
 
 enum LiveSessionStatus {
@@ -624,6 +648,13 @@ model Assessment {
   availableFrom     DateTime?
   availableUntil    DateTime?
 
+  // Examen "cualitativo" — en vez de preguntas tipeadas, el docente sube un
+  // archivo (Word/Excel/PPT/imagen/PDF) que el alumno descarga, completa
+  // offline y sube de vuelta; el docente lo califica a mano viendo el
+  // archivo (no hay Question/Answer involucrados en este modo).
+  sourceFileAssetId String?
+  sourceFileMimeType String?
+
   questions         Question[]
   attempts          AssessmentAttempt[]
 
@@ -652,6 +683,11 @@ model AssessmentAttempt {
   durationSeconds Int? // submittedAt - startedAt, calculado al enviar (ver AssessmentService.submitAttempt)
   score         Float?
   status        AttemptStatus @default(IN_PROGRESS)
+  // Solo para exámenes "cualitativos" (Assessment.sourceFileAssetId) — el
+  // archivo que el alumno subió como su respuesta completa, pendiente de
+  // que el docente lo revise y califique a mano.
+  submissionAssetId   String?
+  submissionMimeType  String?
   // Alerta heurística de posible uso de IA/trampa: nota alta + tiempo de
   // resolución muy por debajo del mínimo esperado para leer y pensar el
   // examen. No es una acusación automática — el admin/empresa decide qué
@@ -696,9 +732,10 @@ model ApprovalRule {
 // ---------------------------------------------------------------------------
 
 enum PartnerBillingType {
-  FIXED      // monto fijo (p.ej. mensual/único) independiente de cuántos cursos/certificados
-  PER_COURSE // se cobra feeAmount por cada certificado emitido bajo un curso del convenio
-  PER_PERIOD // se cobra feeAmount una vez por el rango startDate–endDate completo
+  FIXED         // monto fijo (p.ej. mensual/único) independiente de cuántos cursos/certificados
+  PER_COURSE    // se cobra feeAmount por cada certificado emitido bajo un curso del convenio
+  PER_PERIOD    // se cobra feeAmount una vez por el rango startDate–endDate completo
+  PER_ENROLLMENT // se cobra feeAmount por cada alumno matriculado (sin exigir que termine/certifique)
 }
 
 /// Institución socia (instituto/universidad) con la que Inkapitales tiene un
@@ -1231,7 +1268,10 @@ model PlatformSettings {
   // volumen), así que se deja configurable acá en vez de un valor fijo en
   // código. Usado por AdminService.getFinancialSummary para estimar cuánto
   // de lo cobrado en realidad se va a la pasarela.
-  culqiFeePercent     Float    @default(3.99)
+  // 3.44% es la tarifa publicada de Culqi para tarjeta nacional + Yape/Plin
+  // (+ IGV) — antes decía 3.99%, que es la tarifa de tarjeta INTERNACIONAL
+  // (ver stripeFeePercent, que sí corresponde a compradores extranjeros).
+  culqiFeePercent     Float    @default(3.44)
   stripeFeePercent    Float    @default(4.99)
   // Yape/Plin vía Culqi: investigado explícitamente a pedido del admin — no
   // hay evidencia de que BCP/Interbank/la billetera del Estado le cobren
@@ -1273,6 +1313,13 @@ model PlatformSettings {
   menuFontFamily  String?
   menuFontSizePx  Int?
   menuFontColor   String?
+
+  // Colores primario/de acento de marca (manual de marca Inkapitales:
+  // #586BD8 primario, #D8B26C acento dorado) — ya son el default real
+  // horneado en globals.css; estos campos permiten al admin anular esa
+  // tonalidad puntual sin tocar código, si algún día cambia el manual.
+  primaryColor String?
+  accentColor  String?
 
   updatedAt           DateTime @updatedAt
 }
@@ -1371,4 +1418,211 @@ model ChatbotDocument {
   extractedText String   @db.Text
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// SERVIDOR DE CORREO (SMTP) — antes solo configurable vía variables de
+// entorno del worker, sin ninguna pantalla de admin. Mismo patrón "DB
+// primero, env de respaldo" que SunatSettings/ChatbotSettings.
+// ---------------------------------------------------------------------------
+model EmailServerSettings {
+  id        String   @id @default("default")
+  host      String?
+  port      Int?
+  secure    Boolean  @default(true) // true = TLS/SSL (puerto 465), false = STARTTLS (587)
+  username  String?
+  password  String? // nunca se devuelve tal cual al frontend
+  fromEmail String?
+  fromName  String?
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// CAMPAÑAS DE CORREO A CLIENTES — "un módulo donde enviar correos a
+// nuestros clientes... programado automático con IA, o que uno redacte y
+// parametrice para mandar correos masivos."
+// ---------------------------------------------------------------------------
+enum EmailCampaignMode {
+  AUTOMATIC_AI
+  MANUAL
+}
+
+// Solo aplica si mode=AUTOMATIC_AI — qué le pide el admin a la IA que redacte.
+enum EmailCampaignGoal {
+  RELATED_COURSES
+  NEW_COURSES
+  DISCOUNTED_COURSES
+  BY_INTEREST
+}
+
+enum EmailCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+
+enum EmailCampaignRecurrence {
+  ONCE
+  WEEKLY
+  MONTHLY
+}
+
+model EmailCampaign {
+  id             String                  @id @default(uuid())
+  name           String
+  mode           EmailCampaignMode
+  goal           EmailCampaignGoal?
+  status         EmailCampaignStatus     @default(DRAFT)
+  subject        String?
+  bodyHtml       String?                 @db.Text
+  // Filtro de audiencia — {areaIds:[], interests:[], inactiveDays:, companyId:}.
+  // null = todos los usuarios activos con marketingConsentEmail=true.
+  audienceFilter Json?
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  recurrence     EmailCampaignRecurrence @default(ONCE)
+  recipientCount Int                     @default(0)
+  createdById    String?
+  createdBy      User?                   @relation(fields: [createdById], references: [id])
+  createdAt      DateTime                @default(now())
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// LIQUIDACIÓN DE DOCENTES — tarifa por hora dictada / por otras actividades
+// (calificar exámenes manuales), tolerancia de tardanza/salida temprana,
+// adelantos, y la liquidación final por periodo.
+// ---------------------------------------------------------------------------
+enum PaymentFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  END_OF_COURSE
+}
+
+/// Tarifa de un docente — global (courseId=null) o específica de un curso
+/// (para docentes con distinta tarifa según el curso que dicten).
+model TeacherRate {
+  id                        String           @id @default(uuid())
+  teacherId                 String
+  teacher                   User             @relation("TeacherRateOwner", fields: [teacherId], references: [id], onDelete: Cascade)
+  courseId                  String?
+  course                    Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  hourlyRateTeaching        Decimal          @default(0) @db.Decimal(10, 2)
+  hourlyRateOtherActivities Decimal          @default(0) @db.Decimal(10, 2)
+  currency                  String           @default("PEN")
+  // Minutos de tolerancia al inicio/fin de cada clase antes de que se
+  // empiece a descontar por tardanza o salida temprana.
+  toleranceMinutes          Int              @default(10)
+  paymentFrequency          PaymentFrequency @default(MONTHLY)
+  active                    Boolean          @default(true)
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+
+  @@unique([teacherId, courseId])
+}
+
+/// Horas registradas manualmente por actividades sin sesión en vivo
+/// asociada (p.ej. calificar exámenes) — no hay forma de medir esto
+/// automáticamente, así que el admin (o el propio docente) las ingresa.
+model TeacherActivityLog {
+  id           String   @id @default(uuid())
+  teacherId    String
+  teacher      User     @relation("TeacherActivityOwner", fields: [teacherId], references: [id], onDelete: Cascade)
+  courseId     String?
+  course       Course?  @relation(fields: [courseId], references: [id])
+  activityType String   @default("GRADING") // GRADING | OTHER
+  hours        Float
+  note         String?
+  loggedAt     DateTime @default(now())
+}
+
+/// Adelanto de pago a un docente — se descuenta de su próxima liquidación.
+model TeacherAdvance {
+  id            String              @id @default(uuid())
+  teacherId     String
+  teacher       User                @relation("TeacherAdvanceOwner", fields: [teacherId], references: [id], onDelete: Cascade)
+  amount        Decimal             @db.Decimal(10, 2)
+  currency      String              @default("PEN")
+  grantedAt     DateTime            @default(now())
+  note          String?
+  liquidationId String?
+  liquidation   TeacherLiquidation? @relation(fields: [liquidationId], references: [id])
+}
+
+enum LiquidationStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+/// Liquidación de un docente por un periodo — horas dictadas (con
+/// descuento por tardanza/salida temprana más allá de la tolerancia, nunca
+/// se paga de más por quedarse tiempo extra) + horas de otras actividades,
+/// menos adelantos ya otorgados. `detail` guarda el desglose sesión por
+/// sesión para que el admin pueda revisar/perdonar penalidades puntuales.
+model TeacherLiquidation {
+  id                   String            @id @default(uuid())
+  teacherId            String
+  teacher              User              @relation("TeacherLiquidationOwner", fields: [teacherId], references: [id], onDelete: Cascade)
+  periodStart          DateTime
+  periodEnd            DateTime
+  hoursTeaching        Float             @default(0)
+  hoursOtherActivities Float             @default(0)
+  grossAmount          Decimal           @default(0) @db.Decimal(10, 2)
+  deductions           Decimal           @default(0) @db.Decimal(10, 2)
+  deductionsWaived     Boolean           @default(false)
+  waivedReason         String?
+  advancesDeducted     Decimal           @default(0) @db.Decimal(10, 2)
+  netAmount            Decimal           @default(0) @db.Decimal(10, 2)
+  currency             String            @default("PEN")
+  status               LiquidationStatus @default(DRAFT)
+  detail               Json?
+  createdAt            DateTime          @default(now())
+  paidAt               DateTime?
+
+  advances             TeacherAdvance[]
+}
+
+// ---------------------------------------------------------------------------
+// REGALÍAS (ROYALTIES) — un curso puede pagarle un % a quien lo trajo/lo
+// dicta bajo convenio de regalías: por alumno matriculado, por alumno que
+// termina el curso, o por referido. Quien recibe la regalía NO es un
+// usuario de la plataforma (no inicia sesión) — se administra como una
+// entidad externa, igual que PartnerInstitution.
+// ---------------------------------------------------------------------------
+enum RoyaltyBillingType {
+  PER_ENROLLMENT // por cada alumno matriculado
+  PER_COMPLETION // por cada alumno que termina el curso
+  PER_REFERRAL   // % de lo que paga cada alumno que esa persona trajo
+}
+
+model RoyaltyRecipient {
+  id           String             @id @default(uuid())
+  name         String
+  contactEmail String?
+  billingType  RoyaltyBillingType @default(PER_ENROLLMENT)
+  feePercent   Float              @default(0)
+  feeCurrency  String             @default("PEN")
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  courses      CourseRoyalty[]
+}
+
+model CourseRoyalty {
+  id                 String           @id @default(uuid())
+  courseId           String
+  course             Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  royaltyRecipientId String
+  royaltyRecipient   RoyaltyRecipient @relation(fields: [royaltyRecipientId], references: [id], onDelete: Cascade)
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt          DateTime         @default(now())
+
+  @@unique([courseId, royaltyRecipientId])
+  @@index([courseId])
 }

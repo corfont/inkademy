@@ -1,7 +1,7 @@
 "use client";
 
-import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut } from "lucide-react";
-import { SidebarShell } from "@/components/layout/SidebarShell";
+import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut, Banknote, BookOpen, Award, Sparkles, Users, Wallet, Handshake, Percent } from "lucide-react";
+import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 /**
@@ -15,13 +15,36 @@ import { useAuth } from "@/components/providers/AuthProvider";
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
-  const navItems = [
+  const navItems: SidebarNavItem[] = [
     { href: "/docente", label: "Panel", icon: LayoutDashboard },
     { href: "/docente/cursos", label: "Mis cursos", icon: LibraryBig },
     { href: "/docente/evaluaciones-pendientes", label: "Evaluaciones pendientes", icon: ClipboardCheck },
+    { href: "/docente/liquidaciones", label: "Mis liquidaciones", icon: Banknote },
     { href: "/campus/agenda", label: "Agenda", icon: CalendarDays },
     { href: "/campus/perfil", label: "Perfil", icon: User },
   ];
+
+  // "Si un usuario tiene más de un rol, debería ver en el menú todas las
+  // opciones de cada rol" — un docente que también es alumno o admin ve
+  // acá las opciones de esos otros roles, agrupadas con su propio encabezado.
+  const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
+  if (roles.includes("STUDENT") && user?.globalRole !== "STUDENT") {
+    navItems.push(
+      { href: "/campus", label: "Mi campus", icon: LayoutDashboard, section: "Alumno" },
+      { href: "/campus/cursos", label: "Mis cursos (alumno)", icon: BookOpen, section: "Alumno" },
+      { href: "/campus/certificados", label: "Certificados (alumno)", icon: Award, section: "Alumno" },
+      { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles, section: "Alumno" },
+    );
+  }
+  if ((roles.includes("ADMIN") || roles.includes("SUPPORT")) && user?.globalRole !== "ADMIN" && user?.globalRole !== "SUPPORT") {
+    navItems.push(
+      { href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" },
+      { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users, section: "Administración" },
+      { href: "/admin/finanzas", label: "Finanzas", icon: Wallet, section: "Administración" },
+      { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake, section: "Administración" },
+      { href: "/admin/regalias", label: "Regalías", icon: Percent, section: "Administración" },
+    );
+  }
 
   return (
     <SidebarShell

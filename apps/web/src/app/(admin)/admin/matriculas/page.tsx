@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { ExtendAccessControl } from "@/components/admin/ExtendAccessControl";
 import { localize, formatDate } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Matrículas (admin)" };
+export const metadata: Metadata = { title: "Casos extemporáneos (admin)" };
 
 type EnrollmentRow = {
   id: string;
@@ -39,15 +39,16 @@ export default async function AdminEnrollmentsPage({ searchParams }: { searchPar
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <div>
-        <h1 className="font-serif text-2xl font-semibold text-ink-900">Matrículas</h1>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">Casos extemporáneos</h1>
         <p className="mt-1 text-sm text-ash-500">
-          Busca por alumno para ampliar el plazo de acceso de un curso grabado con fecha de término — caso especial, uno por uno.
+          Solo alumnos cuyo plazo de acceso ya venció y no terminaron el curso — no la lista completa de matrículas. Desde acá puedes ampliar el
+          plazo de un caso puntual, como excepción.
         </p>
       </div>
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
 
       <form className="flex gap-2" action="/admin/matriculas">
-        <Input name="q" defaultValue={q ?? ""} placeholder="Buscar por nombre o correo del alumno…" className="max-w-md" />
+        <Input name="q" defaultValue={q ?? ""} placeholder="Filtrar por nombre o correo del alumno…" className="max-w-md" />
         <Button type="submit" variant="outline">
           Buscar
         </Button>
@@ -69,7 +70,7 @@ export default async function AdminEnrollmentsPage({ searchParams }: { searchPar
             {enrollments.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-ash-500">
-                  {q ? "No se encontraron matrículas para esa búsqueda." : "Busca por nombre o correo para ver matrículas."}
+                  {q ? "No se encontraron casos extemporáneos para esa búsqueda." : "No hay casos extemporáneos — todos los alumnos con plazo vencido ya terminaron su curso."}
                 </td>
               </tr>
             )}

@@ -123,6 +123,14 @@ export class CommerceService {
       courseId?: string;
       programId?: string;
       seatPoolQty?: number;
+      // Precio de lista (sin descuento) — solo para calcular Order.discount,
+      // nunca se guarda tal cual en OrderItem.
+      listUnitPrice: number;
+      // Lo que realmente se cobra (ya con el % de descuento vigente aplicado,
+      // si lo hay) — "si el curso tiene descuento figurará en el balance por
+      // lo que efectivamente ha pagado el cliente". Antes esto SIEMPRE
+      // cobraba el precio de lista, ignorando el descuento que el catálogo
+      // ya mostraba — bug real encontrado al implementar esto.
       unitPrice: number;
       quantity: number;
       accessDurationPolicy?: AccessDurationPolicy;
@@ -138,11 +146,21 @@ export class CommerceService {
           throw new NotFoundException(`Curso ${item.courseId} no disponible`);
         }
         const usesB2bPrice = Boolean(input.companyId) && course.b2bAvailable && course.b2bPriceAmount;
+        const listUnitPrice = Number(usesB2bPrice ? course.b2bPriceAmount : course.priceAmount);
+        // El descuento solo aplica a la venta B2C pública — un precio B2B ya
+        // es una tarifa negociada aparte, no se le suma otro descuento encima.
+        const isOnSale =
+          !usesB2bPrice &&
+          Boolean(course.discountPercent) &&
+          course.discountPercent! > 0 &&
+          (!course.discountExpiresAt || course.discountExpiresAt.getTime() > Date.now());
+        const unitPrice = isOnSale ? Math.round(listUnitPrice * (1 - course.discountPercent! / 100) * 100) / 100 : listUnitPrice;
         resolved.push({
           offeringKind: "COURSE",
           courseId: course.id,
           seatPoolQty: item.seatPoolQty,
-          unitPrice: Number(usesB2bPrice ? course.b2bPriceAmount : course.priceAmount),
+          listUnitPrice,
+          unitPrice,
           quantity: item.seatPoolQty ?? 1,
           accessDurationPolicy: course.accessDurationPolicy,
           title: course.title,
@@ -157,6 +175,7 @@ export class CommerceService {
           offeringKind: "PROGRAM",
           programId: program.id,
           seatPoolQty: item.seatPoolQty,
+          listUnitPrice: Number(program.priceAmount),
           unitPrice: Number(program.priceAmount),
           quantity: item.seatPoolQty ?? 1,
           title: program.title,
@@ -164,8 +183,9 @@ export class CommerceService {
       }
     }
 
-    const subtotal = resolved.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-    const total = subtotal; // sin descuentos/impuestos por ahora (ver IMPLEMENTATION-NOTES.md)
+    const subtotal = resolved.reduce((sum, i) => sum + i.listUnitPrice * i.quantity, 0);
+    const total = resolved.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+    const discount = Math.round((subtotal - total) * 100) / 100; // sin impuestos por ahora (ver IMPLEMENTATION-NOTES.md)
     const buyerInfo = await this.resolveBuyerInfo(input);
 
     const order = await this.prisma.order.create({
@@ -173,7 +193,7 @@ export class CommerceService {
         userId,
         companyId: input.companyId,
         subtotal,
-        discount: 0,
+        discount,
         tax: 0,
         total,
         currency: input.currency,

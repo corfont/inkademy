@@ -87,6 +87,7 @@ export const upsertCourseSchema = z.object({
   prerequisiteCourseIds: z.array(z.string()).optional(),
   nextRecommendedCourseIds: z.array(z.string()).optional(),
   certificateTemplateId: z.string().uuid().nullable().optional(),
+  blockMainVideoDownload: z.boolean().optional(),
 });
 export const updateCourseSchema = upsertCourseSchema.partial();
 
@@ -104,16 +105,25 @@ export const upsertLessonSchema = z.object({
   videoAssetId: z.string().optional(),
   durationMinutes: z.number().int().positive().optional(),
   isFreePreview: z.boolean().optional(),
+  isCourseStarter: z.boolean().optional(),
 });
 export const updateLessonSchema = upsertLessonSchema.partial();
 
-export const upsertMaterialSchema = z.object({
-  title: z.string().min(1),
-  assetId: z.string().min(1),
-  kind: z.string().min(1),
-  category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
-  visible: z.boolean().optional(),
-});
+export const upsertMaterialSchema = z
+  .object({
+    title: z.string().min(1),
+    // Un material kind="link" no sube archivo — usa externalUrl en vez de
+    // assetId. Todo lo demás (pdf/slide/doc/sheet/image/video/template)
+    // sigue necesitando el asset ya subido.
+    assetId: z.string().min(1).optional(),
+    externalUrl: z.string().url().optional(),
+    kind: z.string().min(1),
+    category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
+    visible: z.boolean().optional(),
+  })
+  .refine((v) => (v.kind === "link" ? Boolean(v.externalUrl) : Boolean(v.assetId)), {
+    message: "Un material de tipo link necesita externalUrl; cualquier otro tipo necesita assetId",
+  });
 export const updateMaterialSchema = z.object({
   title: z.string().min(1).optional(),
   category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
@@ -196,14 +206,67 @@ export const upsertPartnerInstitutionSchema = z.object({
   signerName: z.string().optional().nullable(),
   signerTitle: z.string().optional().nullable(),
   signatureAssetId: z.string().optional().nullable(),
-  billingType: z.enum(["FIXED", "PER_COURSE", "PER_PERIOD"]).optional(),
+  billingType: z.enum(["FIXED", "PER_COURSE", "PER_PERIOD", "PER_ENROLLMENT"]).optional(),
   feeAmount: z.number().min(0).optional().nullable(),
-  feeCurrency: z.string().optional(),
+  feeCurrency: z.enum(["PEN", "USD"]).optional(),
   invoicesDirectly: z.boolean().optional(),
   active: z.boolean().optional(),
 });
 
 export const addCoursePartnershipSchema = z.object({
+  courseId: z.string().uuid(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+// --- Liquidación de docentes ---
+export const upsertTeacherRateSchema = z.object({
+  teacherId: z.string().uuid(),
+  courseId: z.string().uuid().optional().nullable(),
+  hourlyRateTeaching: z.number().min(0).optional(),
+  hourlyRateOtherActivities: z.number().min(0).optional(),
+  currency: z.enum(["PEN", "USD"]).optional(),
+  toleranceMinutes: z.number().int().min(0).max(120).optional(),
+  paymentFrequency: z.enum(["DAILY", "WEEKLY", "MONTHLY", "END_OF_COURSE"]).optional(),
+  active: z.boolean().optional(),
+});
+
+export const createTeacherActivityLogSchema = z.object({
+  teacherId: z.string().uuid(),
+  courseId: z.string().uuid().optional(),
+  activityType: z.enum(["GRADING", "OTHER"]).optional(),
+  hours: z.number().positive(),
+  note: z.string().optional(),
+  loggedAt: z.string().optional(),
+});
+
+export const createTeacherAdvanceSchema = z.object({
+  teacherId: z.string().uuid(),
+  amount: z.number().positive(),
+  currency: z.enum(["PEN", "USD"]).optional(),
+  note: z.string().optional(),
+});
+
+export const generateTeacherLiquidationSchema = z.object({
+  teacherId: z.string().uuid(),
+  periodStart: z.string(),
+  periodEnd: z.string(),
+});
+
+export const waiveLiquidationSchema = z.object({
+  reason: z.string().min(3),
+});
+
+export const upsertRoyaltyRecipientSchema = z.object({
+  name: z.string().min(1),
+  contactEmail: z.string().email().optional().nullable(),
+  billingType: z.enum(["PER_ENROLLMENT", "PER_COMPLETION", "PER_REFERRAL"]).optional(),
+  feePercent: z.number().min(0).max(100).optional(),
+  feeCurrency: z.enum(["PEN", "USD"]).optional(),
+  active: z.boolean().optional(),
+});
+
+export const addCourseRoyaltySchema = z.object({
   courseId: z.string().uuid(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -293,8 +356,25 @@ export const upsertAssessmentSchema = z.object({
   questionsPerAttempt: z.number().int().positive().optional(),
   availableFrom: z.coerce.date().optional(),
   availableUntil: z.coerce.date().optional(),
+  // Examen "cualitativo": el docente sube un archivo (Word/Excel/PPT/
+  // imagen/PDF) en vez de preguntas tipeadas — el alumno lo descarga,
+  // completa offline, y sube su respuesta como otro archivo para revisión
+  // manual. Ambos vacíos = evaluación normal por preguntas (comportamiento
+  // de siempre).
+  sourceFileAssetId: z.string().optional().nullable(),
+  sourceFileMimeType: z.string().optional().nullable(),
 });
 export const updateAssessmentSchema = upsertAssessmentSchema.partial();
+
+export const submitFileAttemptSchema = z.object({
+  submissionAssetId: z.string().min(1),
+  submissionMimeType: z.string().min(1),
+});
+
+export const gradeFileAttemptSchema = z.object({
+  score: z.number().min(0).max(100),
+  passed: z.boolean(),
+});
 
 export const upsertQuestionSchema = z.object({
   type: z.enum(["SINGLE_CHOICE", "MULTI_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "OPEN"]),
@@ -339,6 +419,21 @@ export const updateUserSchema = z.object({
   status: z.enum(["active", "disabled"]).optional(),
   // Firma manuscrita/imagen del docente, usada en certificados con tag {{teacherSignature}}.
   signatureAssetId: z.string().optional().nullable(),
+  // "El admin debería poder editar a cualquier usuario" — antes solo se
+  // podía cambiar rol/estado/firma desde /admin/usuarios, sin forma de
+  // corregir un nombre mal escrito, un correo, o completar datos de
+  // perfil a nombre del usuario (p.ej. por soporte telefónico).
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().optional().nullable(),
+  documentType: z.string().optional().nullable(),
+  documentNumber: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  jobTitle: z.string().optional().nullable(),
+  companyFreeText: z.string().optional().nullable(),
 });
 
 export const assignCourseStaffSchema = z.object({
@@ -373,6 +468,61 @@ export const upsertChatbotSettingsSchema = z.object({
   systemPrompt: z.string().optional().nullable(),
   suggestionAutoRespond: z.boolean().optional(),
   suggestionAutoRespondDelayMinutes: z.number().int().min(1).max(1440).optional(),
+});
+
+export const upsertEmailServerSettingsSchema = z.object({
+  host: z.string().optional().nullable(),
+  port: z.number().int().min(1).max(65535).optional().nullable(),
+  secure: z.boolean().optional(),
+  username: z.string().optional().nullable(),
+  password: z.string().optional(), // vacío = "no cambiar" (ver EmailServerSettingsService.update)
+  fromEmail: z.string().email().optional().nullable(),
+  fromName: z.string().optional().nullable(),
+});
+
+// "Un módulo donde enviar correos a nuestros clientes... programado
+// automático con IA, o que uno redacte y parametrice para mandar correos
+// masivos" — el filtro de audiencia es deliberadamente simple (no un motor
+// de segmentación completo): por interés, por área (vía cursos en los que
+// el destinatario está matriculado), por empresa, o por inactividad.
+export const emailAudienceFilterSchema = z
+  .object({
+    interests: z.array(z.string()).optional(),
+    areaIds: z.array(z.string()).optional(),
+    companyId: z.string().optional(),
+    inactiveDays: z.number().int().min(1).optional(),
+  })
+  .nullable()
+  .optional();
+
+export const upsertEmailCampaignSchema = z
+  .object({
+    name: z.string().min(1),
+    mode: z.enum(["AUTOMATIC_AI", "MANUAL"]),
+    goal: z.enum(["RELATED_COURSES", "NEW_COURSES", "DISCOUNTED_COURSES", "BY_INTEREST"]).optional().nullable(),
+    subject: z.string().optional().nullable(),
+    bodyHtml: z.string().optional().nullable(),
+    audienceFilter: emailAudienceFilterSchema,
+    scheduledAt: z.string().datetime().optional().nullable(),
+    recurrence: z.enum(["ONCE", "WEEKLY", "MONTHLY"]).default("ONCE"),
+  })
+  .refine((v) => v.mode !== "MANUAL" || (v.subject && v.bodyHtml), {
+    message: "Una campaña manual necesita asunto y contenido.",
+    path: ["bodyHtml"],
+  })
+  .refine((v) => v.mode !== "AUTOMATIC_AI" || Boolean(v.goal), {
+    message: "Una campaña automática con IA necesita un objetivo.",
+    path: ["goal"],
+  });
+
+export const updateEmailCampaignSchema = z.object({
+  name: z.string().min(1).optional(),
+  subject: z.string().optional().nullable(),
+  bodyHtml: z.string().optional().nullable(),
+  audienceFilter: emailAudienceFilterSchema,
+  scheduledAt: z.string().datetime().optional().nullable(),
+  recurrence: z.enum(["ONCE", "WEEKLY", "MONTHLY"]).optional(),
+  status: z.enum(["DRAFT", "SCHEDULED", "CANCELLED"]).optional(),
 });
 
 export const chatbotMessageSchema = z.object({
@@ -453,6 +603,8 @@ export const upsertSettingsSchema = z.object({
   bodyFontFamily: z.string().min(1).optional(),
   backgroundColor: z.string().optional().nullable(),
   backgroundImageUrl: z.string().optional().nullable(),
+  primaryColor: z.string().optional().nullable(),
+  accentColor: z.string().optional().nullable(),
   contactEmail: z.string().email().optional().nullable(),
   contactPhone: z.string().optional().nullable(),
   contactAddress: z.string().optional().nullable(),

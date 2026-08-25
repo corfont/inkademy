@@ -16,6 +16,14 @@ export interface SidebarNavItem {
   icon: React.ComponentType<{ className?: string }>;
   /** Contador opcional (p.ej. tickets de soporte pendientes) — se muestra como una burbuja roja junto al ítem. */
   badgeCount?: number;
+  /**
+   * Encabezado de sección — cuando cambia respecto al ítem anterior, se
+   * imprime una etiqueta antes de este ítem. "Un usuario con más de un rol
+   * debería ver en el menú todas las opciones de cada rol" — cada layout
+   * (admin/docente/campus) le agrega esta marca a los ítems que le presta a
+   * otra área, para dejar claro de qué rol viene cada bloque.
+   */
+  section?: string;
 }
 
 export function SidebarShell({
@@ -54,28 +62,33 @@ export function SidebarShell({
 
   const nav = (
     <nav aria-label="Navegación" className="flex flex-col gap-1">
-      {navItems.map((item) => {
+      {navItems.map((item, index) => {
         const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+        const showSectionLabel = item.section && item.section !== navItems[index - 1]?.section;
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setMobileOpen(false)}
-            aria-current={active ? "page" : undefined}
-            style={menuTextStyle}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-              active ? "bg-ink-800 text-paper" : "text-ink-100/80 hover:bg-ink-800/60 hover:text-paper",
+          <div key={item.href}>
+            {showSectionLabel && (
+              <p className="mb-1 mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-ink-300/70 first:mt-0">{item.section}</p>
             )}
-          >
-            <item.icon className="h-4 w-4 flex-none" />
-            <span className="flex-1">{item.label}</span>
-            {Boolean(item.badgeCount) && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">
-                {item.badgeCount}
-              </span>
-            )}
-          </Link>
+            <Link
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              aria-current={active ? "page" : undefined}
+              style={menuTextStyle}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                active ? "bg-ink-800 text-paper" : "text-ink-100/80 hover:bg-ink-800/60 hover:text-paper",
+              )}
+            >
+              <item.icon className="h-4 w-4 flex-none" />
+              <span className="flex-1">{item.label}</span>
+              {Boolean(item.badgeCount) && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">
+                  {item.badgeCount}
+                </span>
+              )}
+            </Link>
+          </div>
         );
       })}
     </nav>

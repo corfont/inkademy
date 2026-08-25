@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ForbiddenException,
@@ -9,6 +10,7 @@ import type { PrismaClient, Question } from "@inkademy/db";
 import type { AssessmentAttemptSubmission, AssessmentResultDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { CertificateService } from "../certificate/certificate.service";
+import { StorageService } from "../../storage/storage.service";
 
 // Piso conservador de segundos por pregunta — asume que ni siquiera leer el
 // enunciado y las opciones toma menos de esto. Por debajo de este mínimo
@@ -55,6 +57,7 @@ export class AssessmentService {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly certificateService: CertificateService,
+    private readonly storageService: StorageService,
   ) {}
 
   /** Preguntas para presentar al alumno, sin `correctAnswer`, respetando orden/aleatoriedad configurados. */
@@ -64,6 +67,25 @@ export class AssessmentService {
       include: { questions: true },
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+
+    // Examen "cualitativo" — el alumno no ve preguntas, descarga el archivo
+    // que subió el docente y luego sube su propia respuesta como archivo
+    // (ver submitFileAttempt). No hay Question/Answer involucrados.
+    if (assessment.sourceFileAssetId) {
+      return {
+        id: assessment.id,
+        title: assessment.title,
+        type: assessment.type,
+        isFileUpload: true as const,
+        sourceFileUrl: this.storageService.getPublicUrl(assessment.sourceFileAssetId),
+        sourceFileMimeType: assessment.sourceFileMimeType,
+        timeLimitMinutes: assessment.timeLimitMinutes,
+        maxAttempts: assessment.maxAttempts,
+        minScore: assessment.minScore,
+        displayMode: assessment.displayMode,
+        questions: [] as never[],
+      };
+    }
 
     let pool = assessment.questions;
     if (assessment.questionsPerAttempt && assessment.questionsPerAttempt < pool.length) {
@@ -89,6 +111,7 @@ export class AssessmentService {
       id: assessment.id,
       title: assessment.title,
       type: assessment.type,
+      isFileUpload: false as const,
       timeLimitMinutes: assessment.timeLimitMinutes,
       maxAttempts: assessment.maxAttempts,
       minScore: assessment.minScore,
@@ -222,6 +245,176 @@ export class AssessmentService {
     };
   }
 
+  /**
+   * Sube el archivo de respuesta de un examen "cualitativo" — a diferencia
+   * de `/admin/uploads` (solo ADMIN/TEACHER), este endpoint lo usa
+   * cualquier alumno autenticado para subir SU propia respuesta. El
+   * `assetId` devuelto se manda luego a `submitFileAttempt`.
+   */
+  async uploadSubmissionFile(file: { originalname: string; buffer: Buffer; mimetype: string }) {
+    const key = `attempt-submissions/${randomUUID()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    await this.storageService.uploadBuffer(key, file.buffer, file.mimetype);
+    return { assetId: key, mimeType: file.mimetype };
+  }
+
+  /**
+   * Envío de un examen "cualitativo" — el alumno sube un archivo (Word/
+   * Excel/PPT/imagen/PDF) como respuesta completa, en vez de contestar
+   * preguntas. Queda PENDING_REVIEW hasta que el docente lo califique a
+   * mano viendo el archivo (ver gradeFileAttempt / listPendingFileReviews).
+   */
+  async submitFileAttempt(
+    attemptId: string,
+    userId: string,
+    input: { submissionAssetId: string; submissionMimeType: string },
+  ): Promise<AssessmentResultDTO> {
+    const attempt = await this.prisma.assessmentAttempt.findUnique({ where: { id: attemptId }, include: { assessment: true } });
+    if (!attempt) throw new NotFoundException("Intento no encontrado");
+    if (attempt.userId !== userId) throw new ForbiddenException("No puedes enviar el intento de otro usuario");
+    if (attempt.status !== "IN_PROGRESS") throw new BadRequestException("Este intento ya fue enviado");
+    if (!attempt.assessment.sourceFileAssetId) throw new BadRequestException("Esta evaluación no es de tipo archivo");
+
+    const submittedAt = new Date();
+    const durationSeconds = Math.max(0, Math.round((submittedAt.getTime() - attempt.startedAt.getTime()) / 1000));
+    const updated = await this.prisma.assessmentAttempt.update({
+      where: { id: attemptId },
+      data: {
+        submittedAt,
+        durationSeconds,
+        status: "PENDING_REVIEW",
+        submissionAssetId: input.submissionAssetId,
+        submissionMimeType: input.submissionMimeType,
+      },
+    });
+
+    return { attemptId: updated.id, score: null, status: updated.status, pendingReviewCount: 1 };
+  }
+
+  /**
+   * El docente califica el archivo completo de un intento "cualitativo" —
+   * a diferencia de `gradeAnswer` (una respuesta abierta puntual), acá se
+   * califica el intento entero de una sola vez porque no hay preguntas
+   * individuales que sumar.
+   */
+  async gradeFileAttempt(attemptId: string, graderId: string, input: { score: number; passed: boolean }) {
+    const attempt = await this.prisma.assessmentAttempt.findUnique({ where: { id: attemptId }, include: { assessment: true } });
+    if (!attempt) throw new NotFoundException("Intento no encontrado");
+    if (!attempt.assessment.sourceFileAssetId) throw new BadRequestException("Esta evaluación no es de tipo archivo");
+    if (!attempt.submissionAssetId) throw new BadRequestException("El alumno todavía no subió su archivo de respuesta");
+
+    await this.prisma.assessmentAttempt.update({
+      where: { id: attemptId },
+      data: { score: input.score, status: input.passed ? "PASSED" : "FAILED" },
+    });
+
+    if (input.passed) {
+      await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
+    }
+    return { graded: true };
+  }
+
+  /**
+   * Cola de exámenes "cualitativos" (archivo) pendientes de calificar —
+   * espejo de `listPendingReview` (preguntas abiertas) pero para intentos
+   * completos con archivo subido. `daysSincePending` es lo que el admin
+   * usa para monitorear atraso por docente (ver listTeacherGradingWorkload).
+   */
+  async listPendingFileReviews(teacherUserId?: string) {
+    const rows = await this.prisma.assessmentAttempt.findMany({
+      where: {
+        status: "PENDING_REVIEW",
+        assessment: { sourceFileAssetId: { not: null } },
+        ...(teacherUserId ? { assessment: { course: { staff: { some: { userId: teacherUserId } } } } } : {}),
+      },
+      include: { user: true, assessment: { include: { course: true } } },
+      orderBy: { submittedAt: "asc" },
+    });
+    const now = Date.now();
+    return rows.map((r) => ({
+      attemptId: r.id,
+      userId: r.userId,
+      userName: `${r.user.firstName} ${r.user.lastName}`,
+      assessmentId: r.assessmentId,
+      assessmentTitle: r.assessment.title,
+      courseId: r.assessment.courseId,
+      courseTitle: r.assessment.course.title,
+      submittedAt: r.submittedAt,
+      daysSincePending: r.submittedAt ? Math.floor((now - r.submittedAt.getTime()) / 86_400_000) : 0,
+      submissionUrl: r.submissionAssetId ? this.storageService.getPublicUrl(r.submissionAssetId) : null,
+      submissionMimeType: r.submissionMimeType,
+      sourceFileUrl: r.assessment.sourceFileAssetId ? this.storageService.getPublicUrl(r.assessment.sourceFileAssetId) : null,
+    }));
+  }
+
+  /**
+   * "El admin debe poder ver por cada docente: calificaciones pendientes,
+   * días de atraso, y otros datos monitoreables" — agrega ambas colas
+   * (preguntas abiertas + exámenes de archivo) por docente, usando la
+   * fecha de envío del intento como referencia de "desde cuándo espera".
+   * Solo tiene sentido para ADMIN/SUPPORT (vista cruzada de todos los
+   * docentes) — un TEACHER ya ve su propia cola en /docente/evaluaciones-pendientes.
+   */
+  async listTeacherGradingWorkload() {
+    const [pendingAnswers, pendingFileAttempts] = await Promise.all([
+      this.prisma.answer.findMany({
+        where: { isCorrect: null, question: { type: { in: ["OPEN", "SHORT_ANSWER"] } } },
+        include: { attempt: { include: { assessment: { include: { course: { include: { staff: true } } } } } } },
+      }),
+      this.prisma.assessmentAttempt.findMany({
+        where: { status: "PENDING_REVIEW", assessment: { sourceFileAssetId: { not: null } } },
+        include: { assessment: { include: { course: { include: { staff: true } } } } },
+      }),
+    ]);
+
+    const now = Date.now();
+    interface Bucket {
+      pendingOpenAnswers: number;
+      pendingFileReviews: number;
+      totalDelayDays: number;
+      itemsWithDate: number;
+      maxDelayDays: number;
+    }
+    const byTeacher = new Map<string, Bucket>();
+    const addItem = (teacherId: string, submittedAt: Date | null, kind: "answer" | "file") => {
+      const bucket: Bucket = byTeacher.get(teacherId) ?? { pendingOpenAnswers: 0, pendingFileReviews: 0, totalDelayDays: 0, itemsWithDate: 0, maxDelayDays: 0 };
+      if (kind === "answer") bucket.pendingOpenAnswers += 1;
+      else bucket.pendingFileReviews += 1;
+      if (submittedAt) {
+        const days = Math.max(0, (now - submittedAt.getTime()) / 86_400_000);
+        bucket.totalDelayDays += days;
+        bucket.itemsWithDate += 1;
+        bucket.maxDelayDays = Math.max(bucket.maxDelayDays, days);
+      }
+      byTeacher.set(teacherId, bucket);
+    };
+
+    const teachingStaffIds = (staff: { userId: string; role: string }[]) =>
+      staff.filter((s) => s.role === "TEACHER" || s.role === "CO_TEACHER").map((s) => s.userId);
+
+    for (const a of pendingAnswers) {
+      for (const teacherId of teachingStaffIds(a.attempt.assessment.course.staff)) addItem(teacherId, a.attempt.submittedAt, "answer");
+    }
+    for (const att of pendingFileAttempts) {
+      for (const teacherId of teachingStaffIds(att.assessment.course.staff)) addItem(teacherId, att.submittedAt, "file");
+    }
+
+    const teacherIds = Array.from(byTeacher.keys());
+    const teachers = await this.prisma.user.findMany({ where: { id: { in: teacherIds } }, select: { id: true, firstName: true, lastName: true } });
+    const nameById = new Map(teachers.map((t) => [t.id, `${t.firstName} ${t.lastName}`]));
+
+    return Array.from(byTeacher.entries())
+      .map(([teacherId, b]) => ({
+        teacherId,
+        teacherName: nameById.get(teacherId) ?? "—",
+        pendingOpenAnswers: b.pendingOpenAnswers,
+        pendingFileReviews: b.pendingFileReviews,
+        totalPending: b.pendingOpenAnswers + b.pendingFileReviews,
+        avgDelayDays: b.itemsWithDate ? Math.round((b.totalDelayDays / b.itemsWithDate) * 10) / 10 : 0,
+        maxDelayDays: Math.round(b.maxDelayDays * 10) / 10,
+      }))
+      .sort((a, b) => b.totalPending - a.totalPending);
+  }
+
   async getAttempt(attemptId: string, userId: string, isPrivileged: boolean) {
     const attempt = await this.prisma.assessmentAttempt.findUnique({
       where: { id: attemptId },
@@ -241,6 +434,8 @@ export class AssessmentService {
       submittedAt: attempt.submittedAt,
       score: attempt.score,
       status: attempt.status,
+      isFileUpload: Boolean(attempt.assessment.sourceFileAssetId),
+      submissionUrl: attempt.submissionAssetId ? this.storageService.getPublicUrl(attempt.submissionAssetId) : null,
       answers: attempt.answers.map((a) => ({
         questionId: a.questionId,
         response: a.response,

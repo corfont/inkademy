@@ -72,6 +72,92 @@ export interface AssessmentDefinition {
   timeLimitMinutes: number | null;
   displayMode?: "ALL_AT_ONCE" | "ONE_BY_ONE";
   questions: AssessmentQuestion[];
+  // Examen "cualitativo" — sin preguntas: se descarga sourceFileUrl, se
+  // completa offline, y se sube la respuesta como archivo (ver
+  // FileUploadRunner más abajo).
+  isFileUpload?: boolean;
+  sourceFileUrl?: string | null;
+  sourceFileMimeType?: string | null;
+}
+
+/**
+ * Examen "cualitativo" (archivo) — el alumno descarga el archivo que subió
+ * el docente, lo completa offline, y sube su respuesta como otro archivo.
+ * Queda PENDING_REVIEW hasta que el docente lo califique a mano viendo el
+ * archivo (no hay nota inmediata como en las preguntas autocorregidas).
+ */
+function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) {
+  const t = useTranslations("campus.assessment");
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const attemptIdRef = useRef<string>(`mock-attempt-${assessment.id}`);
+
+  useEffect(() => {
+    assessmentApi
+      .createAttempt(assessment.id)
+      .then((attempt) => {
+        if (attempt?.id) attemptIdRef.current = attempt.id;
+      })
+      .catch(() => {});
+  }, [assessment.id]);
+
+  async function handleSubmit() {
+    if (!file) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { assetId, mimeType } = await assessmentApi.uploadSubmission(file);
+      await assessmentApi.submitFile(attemptIdRef.current, { submissionAssetId: assetId, submissionMimeType: mimeType });
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("submitError"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="mx-auto max-w-xl rounded-lg border border-paper-border bg-paper p-8 text-center shadow-card">
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("resultTitle")}</h1>
+        <Callout variant="warning" className="mt-4 text-left">
+          {t("pendingReview")}
+        </Callout>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <h1 className="mb-4 font-serif text-xl font-semibold text-ink-900">{assessment.title}</h1>
+      {error && <Callout variant="danger" className="mb-4">{error}</Callout>}
+      {assessment.sourceFileUrl && (
+        <a
+          href={assessment.sourceFileUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mb-4 block rounded-md bg-paper-muted p-4 text-sm font-medium text-ink-700 hover:underline"
+        >
+          1. Descarga el examen{assessment.sourceFileMimeType && <span className="text-ash-500"> ({assessment.sourceFileMimeType})</span>}
+        </a>
+      )}
+      <div className="rounded-md border border-dashed border-paper-border p-4">
+        <p className="mb-2 text-sm font-medium text-ink-900">2. Sube tu respuesta (Word, Excel, PPT, imagen o PDF)</p>
+        <input
+          type="file"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          className="block w-full text-sm"
+        />
+      </div>
+      <div className="mt-6 flex justify-end">
+        <Button disabled={!file || submitting} onClick={handleSubmit}>
+          {submitting ? "Enviando…" : t("submit")}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function QuestionFieldset({
@@ -147,6 +233,11 @@ function QuestionFieldset({
 }
 
 export function AssessmentRunner({ assessment }: { assessment: AssessmentDefinition }) {
+  if (assessment.isFileUpload) return <FileUploadRunner assessment={assessment} />;
+  return <QuestionBasedRunner assessment={assessment} />;
+}
+
+function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition }) {
   const t = useTranslations("campus.assessment");
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});

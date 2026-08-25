@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 const BILLING_LABEL: Record<string, string> = {
   FIXED: "Monto fijo",
   PER_COURSE: "Por curso dictado (por certificado emitido)",
+  PER_ENROLLMENT: "Por alumno matriculado",
   PER_PERIOD: "Por plazo (rango de fechas)",
 };
 
@@ -32,8 +33,9 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
     contactEmail: "",
     signerName: "",
     signerTitle: "",
-    billingType: "FIXED" as "FIXED" | "PER_COURSE" | "PER_PERIOD",
+    billingType: "FIXED" as "FIXED" | "PER_COURSE" | "PER_PERIOD" | "PER_ENROLLMENT",
     feeAmount: "",
+    feeCurrency: "PEN" as "PEN" | "USD",
     invoicesDirectly: false,
   });
 
@@ -59,10 +61,11 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
         signerTitle: form.signerTitle || undefined,
         billingType: form.billingType,
         feeAmount: form.feeAmount ? Number(form.feeAmount) : undefined,
+        feeCurrency: form.feeCurrency,
         invoicesDirectly: form.invoicesDirectly,
       }),
     );
-    setForm({ name: "", contactEmail: "", signerName: "", signerTitle: "", billingType: "FIXED", feeAmount: "", invoicesDirectly: false });
+    setForm({ name: "", contactEmail: "", signerName: "", signerTitle: "", billingType: "FIXED", feeAmount: "", feeCurrency: "PEN", invoicesDirectly: false });
   }
 
   return (
@@ -86,7 +89,11 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{BILLING_LABEL[inst.billingType]}</Badge>
-                {inst.feeAmount != null && <Badge variant="outline">S/ {Number(inst.feeAmount).toFixed(2)}</Badge>}
+                {inst.feeAmount != null && (
+                  <Badge variant="outline">
+                    {inst.feeCurrency === "USD" ? "US$" : "S/"} {Number(inst.feeAmount).toFixed(2)}
+                  </Badge>
+                )}
                 {inst.invoicesDirectly && <Badge variant="warning">Factura ella misma</Badge>}
                 <Button
                   size="sm"
@@ -142,12 +149,19 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
               <Select id="pi-billing" value={form.billingType} onChange={(e) => setForm((f) => ({ ...f, billingType: e.target.value as never }))}>
                 <option value="FIXED">Monto fijo (mensual)</option>
                 <option value="PER_COURSE">Variable — por curso dictado (por certificado emitido)</option>
+                <option value="PER_ENROLLMENT">Variable — por alumno matriculado</option>
                 <option value="PER_PERIOD">Variable — por un plazo (rango de fechas)</option>
               </Select>
             </div>
             <div>
-              <Label htmlFor="pi-fee">Monto (S/)</Label>
-              <Input id="pi-fee" type="number" min="0" step="0.01" value={form.feeAmount} onChange={(e) => setForm((f) => ({ ...f, feeAmount: e.target.value }))} />
+              <Label htmlFor="pi-fee">Monto</Label>
+              <div className="flex gap-2">
+                <Input id="pi-fee" type="number" min="0" step="0.01" value={form.feeAmount} onChange={(e) => setForm((f) => ({ ...f, feeAmount: e.target.value }))} />
+                <Select className="w-24" value={form.feeCurrency} onChange={(e) => setForm((f) => ({ ...f, feeCurrency: e.target.value as "PEN" | "USD" }))}>
+                  <option value="PEN">Soles</option>
+                  <option value="USD">Dólares</option>
+                </Select>
+              </div>
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm text-ash-600">

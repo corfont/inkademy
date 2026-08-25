@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, FileWarning } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { localize, formatDate } from "@/lib/format";
 import { GradeAnswerDialog } from "@/components/admin/GradeAnswerDialog";
+import { GradeFileAttemptDialog } from "@/components/admin/GradeFileAttemptDialog";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
+import { Card, CardContent } from "@/components/ui/Card";
 
 export const metadata: Metadata = { title: "Evaluaciones pendientes" };
 
@@ -87,12 +89,52 @@ export default async function PendingReviewPage() {
   const { data: rawSuspicious } = await withFallback(() => adminApi.suspiciousAttempts(accessToken), []);
   const suspicious = rawSuspicious.map(normalizeSuspicious);
 
+  const { data: fileReviews } = await withFallback(() => adminApi.pendingFileReviews(accessToken), [] as any[]);
+  const { data: workload } = await withFallback(() => adminApi.teacherGradingWorkload(accessToken), [] as any[]);
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
       <div>
         <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("title")}</h1>
         {!live && <Callout variant="info" className="mt-4">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
       </div>
+
+      {workload.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Carga de calificación por docente</h2>
+            <p className="mb-3 text-sm text-ash-500">Para monitorear qué docentes tienen calificaciones acumuladas y cuánto atraso llevan.</p>
+            <div className="overflow-x-auto rounded-lg border border-paper-border">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-paper-border text-ash-500">
+                  <tr>
+                    <th className="p-3 font-medium">Docente</th>
+                    <th className="p-3 font-medium">Preguntas abiertas</th>
+                    <th className="p-3 font-medium">Exámenes de archivo</th>
+                    <th className="p-3 font-medium">Total pendiente</th>
+                    <th className="p-3 font-medium">Atraso promedio</th>
+                    <th className="p-3 font-medium">Atraso máximo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-paper-border">
+                  {workload.map((w: any) => (
+                    <tr key={w.teacherId}>
+                      <td className="p-3 font-medium text-ink-900">{w.teacherName}</td>
+                      <td className="p-3 text-ash-600">{w.pendingOpenAnswers}</td>
+                      <td className="p-3 text-ash-600">{w.pendingFileReviews}</td>
+                      <td className="p-3">
+                        <Badge variant={w.totalPending > 5 ? "danger" : w.totalPending > 0 ? "warning" : "outline"}>{w.totalPending}</Badge>
+                      </td>
+                      <td className="p-3 text-ash-600">{w.avgDelayDays} día(s)</td>
+                      <td className="p-3 text-ash-600">{w.maxDelayDays} día(s)</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {pending.length === 0 ? (
         <p className="text-ash-500">{t("empty")}</p>
@@ -117,6 +159,39 @@ export default async function PendingReviewPage() {
           ))}
         </div>
       )}
+
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <FileWarning className="h-5 w-5 text-warning" aria-hidden="true" />
+          <h2 className="font-serif text-xl font-semibold text-ink-900">Exámenes de archivo pendientes de calificar</h2>
+        </div>
+        {fileReviews.length === 0 ? (
+          <p className="text-ash-500">Ningún examen de archivo pendiente por ahora.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {fileReviews.map((item: any) => (
+              <div key={item.attemptId} className="flex items-center justify-between gap-3 rounded-lg border border-paper-border bg-paper p-5">
+                <div>
+                  <p className="font-medium text-ink-900">{item.userName}</p>
+                  <p className="text-sm text-ash-500">
+                    {localize(item.courseTitle, "es", "—")} — {localize(item.assessmentTitle, "es", "")}
+                  </p>
+                  <p className="text-xs text-ash-400">
+                    Enviado {item.submittedAt ? formatDate(item.submittedAt, "es") : "—"}
+                    {item.daysSincePending > 0 && ` — ${item.daysSincePending} día(s) de atraso`}
+                  </p>
+                </div>
+                <GradeFileAttemptDialog
+                  attemptId={item.attemptId}
+                  studentName={item.userName}
+                  submissionUrl={item.submissionUrl}
+                  submissionMimeType={item.submissionMimeType}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div>
         <div className="mb-3 flex items-center gap-2">

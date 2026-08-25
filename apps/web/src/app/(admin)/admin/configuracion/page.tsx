@@ -6,6 +6,7 @@ import { Callout } from "@/components/ui/Callout";
 import { FeeSettingsForm } from "@/components/admin/FeeSettingsForm";
 import { TaxSettingsForm } from "@/components/admin/TaxSettingsForm";
 import { SuggestionAutoRespondForm } from "@/components/admin/SuggestionAutoRespondForm";
+import { EmailServerSettingsForm } from "@/components/admin/EmailServerSettingsForm";
 
 export const metadata: Metadata = { title: "Configuración avanzada (admin)" };
 
@@ -19,10 +20,11 @@ export const metadata: Metadata = { title: "Configuración avanzada (admin)" };
  */
 export default async function AdvancedSettingsPage() {
   const accessToken = getServerAccessToken();
-  const [summary, sunat, chatbot] = await Promise.all([
+  const [summary, sunat, chatbot, emailServer] = await Promise.all([
     adminApi.financialSummary({}, accessToken),
     adminApi.sunatSettings(accessToken),
     adminApi.chatbotSettings(accessToken),
+    adminApi.emailServerSettings(accessToken),
   ]);
 
   return (
@@ -62,6 +64,13 @@ export default async function AdvancedSettingsPage() {
             suggestionAutoRespond={chatbot.suggestionAutoRespond}
             suggestionAutoRespondDelayMinutes={chatbot.suggestionAutoRespondDelayMinutes}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Servidor de correo (SMTP)</h2>
+          <EmailServerSettingsForm settings={emailServer} />
         </CardContent>
       </Card>
     </div>

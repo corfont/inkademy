@@ -3,6 +3,7 @@ import { prisma } from "@inkademy/db";
 import {
   REMINDER_JOBS,
   REMINDER_SWEEP_JOB,
+  EMAIL_CAMPAIGN_SWEEP_JOB,
   WORKER_EMAIL_JOBS,
   type LiveSessionUpcomingJobData,
   type CourseAccessExpiringJobData,
@@ -13,6 +14,7 @@ import {
 import { reminderQueue } from "../lib/queue-client";
 import { notifyByEmail } from "../lib/notify";
 import { renderCourseStartReminder, renderLiveClassReminder, renderDeadlineReminder } from "../templates/email-templates";
+import { runEmailCampaignSweep } from "./email-campaign.processor";
 import { createLogger } from "../lib/logger";
 
 const logger = createLogger("reminder.processor");
@@ -244,6 +246,8 @@ export async function processReminderJob(job: Job): Promise<void> {
   switch (job.name) {
     case REMINDER_SWEEP_JOB:
       return runSweep();
+    case EMAIL_CAMPAIGN_SWEEP_JOB:
+      return runEmailCampaignSweep();
     case REMINDER_JOBS.LIVE_SESSION_UPCOMING:
       return sendLiveSessionUpcoming(job.data as LiveSessionUpcomingJobData);
     case REMINDER_JOBS.COURSE_ACCESS_EXPIRING:

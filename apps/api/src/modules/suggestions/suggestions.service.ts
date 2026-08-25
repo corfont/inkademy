@@ -52,6 +52,11 @@ export class SuggestionsService {
     });
   }
 
+  /** "Si hay sugerencias sin responder debería figurar como se ha hecho con el módulo de soporte, un circulito con el número." */
+  countPending() {
+    return this.prisma.courseSuggestion.count({ where: { adminResponse: null } });
+  }
+
   updateStatus(id: string, status: string) {
     return this.prisma.courseSuggestion.update({ where: { id }, data: { status } });
   }

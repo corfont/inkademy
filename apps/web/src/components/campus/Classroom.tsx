@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, Circle, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
@@ -58,7 +58,12 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const [completedMap, setCompletedMap] = useState<Record<string, boolean>>(
     Object.fromEntries(allLessons.map((l) => [l.id, l.completed])),
   );
-  const [currentId, setCurrentId] = useState(allLessons.find((l) => !l.completed)?.id ?? allLessons[0]?.id);
+  // "El administrador debe indicar si ese video inicia el curso" — si hay
+  // una lección marcada como iniciadora, es la primera que ve el alumno al
+  // entrar, sin importar el orden real de los módulos/lecciones.
+  const [currentId, setCurrentId] = useState(
+    allLessons.find((l) => l.isCourseStarter)?.id ?? allLessons.find((l) => !l.completed)?.id ?? allLessons[0]?.id,
+  );
   const current = allLessons.find((l) => l.id === currentId) ?? allLessons[0];
   const currentModule = detail.modules.find((m) => m.lessons.some((l) => l.id === current?.id));
   const lastSentRef = useRef(0);
@@ -92,6 +97,27 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const moduleSupplementary = moduleMaterials.filter((m) => m.category === "SUPPLEMENTARY");
   const hasAnyMaterials = lessonMaterials.length > 0 || moduleMaterials.length > 0;
 
+  // "Si es un PPT/Word/Excel con el que debe iniciar, se debe abrir de
+  // manera automática cuando le dé clic" — para una lección que no es
+  // video, si su material principal es un office doc, se embebe directo
+  // con el visor de Office Online en vez de solo dejarlo como un link a
+  // abrir aparte (funciona con cualquier URL pública, sin instalar nada).
+  const officeMaterial = lessonMain.find((m) => ["slide", "doc", "sheet"].includes(m.kind));
+  const officeViewerUrl = officeMaterial ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(officeMaterial.url)}` : null;
+
+  // Notas del alumno — por lección, guardadas solo en este navegador (no
+  // hay un módulo de notas en el backend; ver limitación en el resumen).
+  const notesKey = current ? `inkademy-notes-${current.id}` : null;
+  const [notes, setNotes] = useState("");
+  useEffect(() => {
+    if (!notesKey) return;
+    setNotes(typeof window !== "undefined" ? window.localStorage.getItem(notesKey) ?? "" : "");
+  }, [notesKey]);
+  function handleNotesChange(value: string) {
+    setNotes(value);
+    if (notesKey && typeof window !== "undefined") window.localStorage.setItem(notesKey, value);
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
       <div className="flex flex-col gap-6">
@@ -107,46 +133,72 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
           </a>
         )}
 
-        <div>
-          {current?.contentType === "VIDEO" ? (
-            <video
-              key={current.id}
-              controls
-              className="w-full rounded-lg bg-ink-950"
-              src={current.videoUrl}
-              onTimeUpdate={onTimeUpdate}
-              onEnded={() => markComplete(current.id)}
-            >
-              <track kind="captions" />
-            </video>
-          ) : (
-            <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
-              <FileText className="h-10 w-10 text-ink-700" aria-hidden="true" />
-              <p className="font-medium text-ink-900">{localize(current?.title, locale)}</p>
-              {detail.assessmentId &&
-                (detail.assessmentUnlocked ? (
-                  <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${detail.assessmentId}`}>
-                    <Button>{t("goToAssessment")}</Button>
-                  </Link>
-                ) : (
-                  <p className="text-sm text-ash-500">
-                    La evaluación se habilita al completar el 100% del curso (llevas {Math.round(detail.progressPct ?? 0)}%).
-                  </p>
-                ))}
-            </div>
-          )}
-          <div className="mt-3 flex items-center justify-between">
-            <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(current?.title, locale)}</h1>
-            {!completedMap[current?.id ?? ""] ? (
-              <Button size="sm" variant="outline" onClick={() => current && markComplete(current.id)}>
-                {t("markComplete")}
-              </Button>
+        <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
+          <div>
+            {current?.contentType === "VIDEO" ? (
+              <video
+                key={current.id}
+                controls
+                // "El sistema no debe permitir que el usuario pueda descargar
+                // la clase [principal]" — sin botón de descarga del
+                // reproductor nativo y sin menú de clic derecho. Es un
+                // disuasivo razonable, no una protección real contra
+                // captura de pantalla (ningún navegador lo permite sin DRM).
+                controlsList={detail.blockMainVideoDownload !== false ? "nodownload" : undefined}
+                onContextMenu={(e) => detail.blockMainVideoDownload !== false && e.preventDefault()}
+                className="w-full rounded-lg bg-ink-950"
+                src={current.videoUrl}
+                onTimeUpdate={onTimeUpdate}
+                onEnded={() => markComplete(current.id)}
+              >
+                <track kind="captions" />
+              </video>
+            ) : officeViewerUrl ? (
+              <iframe title={officeMaterial?.title} src={officeViewerUrl} className="h-[32rem] w-full rounded-lg border border-paper-border" />
             ) : (
-              <span className="flex items-center gap-1.5 text-sm font-medium text-success">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                {t("completed")}
-              </span>
+              <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
+                <FileText className="h-10 w-10 text-ink-700" aria-hidden="true" />
+                <p className="font-medium text-ink-900">{localize(current?.title, locale)}</p>
+                {detail.assessmentId &&
+                  (detail.assessmentUnlocked ? (
+                    <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${detail.assessmentId}`}>
+                      <Button>{t("goToAssessment")}</Button>
+                    </Link>
+                  ) : (
+                    <p className="text-sm text-ash-500">
+                      La evaluación se habilita al completar el 100% del curso (llevas {Math.round(detail.progressPct ?? 0)}%).
+                    </p>
+                  ))}
+              </div>
             )}
+            <div className="mt-3 flex items-center justify-between">
+              <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(current?.title, locale)}</h1>
+              {!completedMap[current?.id ?? ""] ? (
+                <Button size="sm" variant="outline" onClick={() => current && markComplete(current.id)}>
+                  {t("markComplete")}
+                </Button>
+              ) : (
+                <span className="flex items-center gap-1.5 text-sm font-medium text-success">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  {t("completed")}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* "Al costado podrá tomar notas si quisiera" — se guardan solo en
+              este navegador (no hay módulo de notas en el backend todavía). */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="lesson-notes" className="text-xs font-semibold uppercase tracking-wide text-ash-500">
+              Mis notas
+            </label>
+            <textarea
+              id="lesson-notes"
+              value={notes}
+              onChange={(e) => handleNotesChange(e.target.value)}
+              placeholder="Escribe tus notas de esta lección…"
+              className="min-h-[20rem] w-full flex-1 resize-none rounded-lg border border-paper-border bg-paper p-3 text-sm"
+            />
           </div>
         </div>
 

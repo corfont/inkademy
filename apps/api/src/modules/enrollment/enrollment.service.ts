@@ -178,12 +178,15 @@ export class EnrollmentService {
     const accessBlocked = Boolean(enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date());
 
     const progressByLesson = new Map(enrollment.lessonProgress.map((p) => [p.lessonId, p]));
-    const materialDTO = (m: { id: string; title: string; assetId: string; kind: string; category: string }) => ({
+    // "Cuando agrego un link no se muestra... el usuario que tiene ese curso
+    // no lo ve" — un material kind="link" no tiene assetId (nunca se subió
+    // un archivo), así que su url viene de externalUrl tal cual.
+    const materialDTO = (m: { id: string; title: string; assetId: string | null; externalUrl?: string | null; kind: string; category: string }) => ({
       id: m.id,
       title: m.title,
       kind: m.kind,
       category: m.category,
-      url: this.storage.getPublicUrl(m.assetId),
+      url: m.kind === "link" ? m.externalUrl ?? null : m.assetId ? this.storage.getPublicUrl(m.assetId) : null,
     });
 
     const approvalMissing =
@@ -210,6 +213,9 @@ export class EnrollmentService {
       // poder mostrar un mensaje explicando cuándo se desbloquea) pero el
       // frontend solo habilita el acceso real si assessmentUnlocked=true.
       assessmentUnlocked: enrollment.progressPct >= 100,
+      // "El sistema no debe permitir que el usuario pueda descargar la
+      // clase [principal]" — configurable por curso (Course.blockMainVideoDownload).
+      blockMainVideoDownload: enrollment.course?.blockMainVideoDownload ?? true,
       approvalMissing,
       // Con el acceso vencido no se manda ni un solo material/video al
       // frontend (no solo se "esconde" visualmente) — igual que un material
@@ -228,6 +234,7 @@ export class EnrollmentService {
                 title: l.title,
                 contentType: l.contentType,
                 durationMinutes: l.durationMinutes ?? undefined,
+                isCourseStarter: l.isCourseStarter,
                 videoUrl: l.videoAssetId ? this.storage.getPublicUrl(l.videoAssetId) ?? undefined : undefined,
                 materials: l.materials.map(materialDTO),
                 completed: progressByLesson.get(l.id)?.completed ?? false,

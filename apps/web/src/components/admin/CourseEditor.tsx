@@ -142,6 +142,7 @@ function MetadataSection({
   // ritmo, así que necesita una fecha límite o quedar abierto) — pero se
   // deja editable para cualquier modalidad, es el admin quien decide.
   const [accessDurationPolicy, setAccessDurationPolicy] = useState(course.accessDurationPolicy ?? "PERMANENT");
+  const [blockMainVideoDownload, setBlockMainVideoDownload] = useState(course.blockMainVideoDownload ?? true);
 
   function refreshAreas() {
     adminApi
@@ -351,6 +352,17 @@ function MetadataSection({
             <option value="pt">Português</option>
           </Select>
         </div>
+        <div className="rounded-md bg-paper-muted p-3">
+          <label className="flex items-center gap-2 text-sm text-ink-900">
+            <input type="checkbox" checked={blockMainVideoDownload} onChange={(e) => setBlockMainVideoDownload(e.target.checked)} />
+            Bloquear la descarga del video principal
+          </label>
+          <p className="mt-1 text-xs text-ash-500">
+            El alumno puede revisar la lección iniciadora cuantas veces quiera dentro de la plataforma, pero no descargarla. El material
+            complementario siempre se puede descargar. Esto es un disuasivo razonable (sin botón/enlace de descarga, sin menú de clic derecho) —
+            no es una protección anti-captura de pantalla real, que ningún navegador puede garantizar sin un sistema de DRM completo.
+          </p>
+        </div>
         <div>
           <Label htmlFor="edit-cert-template">Plantilla de certificado</Label>
           <Select id="edit-cert-template" value={certificateTemplateId} onChange={(e) => setCertificateTemplateId(e.target.value)}>
@@ -382,6 +394,7 @@ function MetadataSection({
                 syllabusAssetId,
                 discountPercent: discountPercent ? Number(discountPercent) : null,
                 discountExpiresAt: discountPercent && discountExpiresAt ? discountExpiresAt : null,
+                blockMainVideoDownload,
               })
             }
           >
@@ -528,6 +541,65 @@ function MaterialItem({ material, busy, run }: { material: any; busy: boolean; r
   );
 }
 
+/**
+ * Antes solo se podía subir un archivo — no había ninguna forma de agregar
+ * un enlace externo (un video de YouTube, una página, un recurso ajeno) y,
+ * si se intentaba forzarlo, no se guardaba nada visible ni para el alumno.
+ * `onAdd` recibe (title, url) y crea el material con kind="link".
+ */
+function AddLinkControl({ onAdd, busy }: { onAdd: (title: string, url: string) => unknown; busy: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        + Agregar enlace
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input placeholder="Título del enlace" className="h-8 max-w-xs text-xs" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Input
+        placeholder="https://…"
+        type="url"
+        className="h-8 max-w-xs text-xs"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+      />
+      <Button
+        size="sm"
+        disabled={saving || busy || !title.trim() || !url.trim()}
+        onClick={async () => {
+          setSaving(true);
+          setError(null);
+          try {
+            await onAdd(title.trim(), url.trim());
+            setTitle("");
+            setUrl("");
+            setOpen(false);
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : "No pudimos guardar el enlace — revisa que sea una URL válida (https://…).");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        Guardar
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+        Cancelar
+      </Button>
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </div>
+  );
+}
+
 /** Lecturas/documentos de un módulo entero (principal y complementario) — no atadas a una lección puntual. */
 function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy: boolean; run: (a: () => Promise<unknown>) => void }) {
   const [title, setTitle] = useState("");
@@ -571,6 +643,10 @@ function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy:
           <option value="SUPPLEMENTARY">Complementario</option>
         </Select>
         <DropLabel busy={uploading} label="Agregar lectura" small onFile={handleUpload} />
+        <AddLinkControl
+          busy={busy}
+          onAdd={(linkTitle, url) => run(() => adminApi.createModuleMaterial(mod.id, { title: linkTitle, externalUrl: url, kind: "link", category }))}
+        />
       </div>
     </div>
   );
@@ -657,6 +733,17 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
           <DropLabel accept="video/*" busy={uploading} label="Subir video" onFile={handleVideoUpload} />
         </div>
       )}
+      {(lesson.contentType === "VIDEO" || lesson.contentType === "TEXT") && (
+        <label className="mt-2 flex items-center gap-1.5 text-xs text-ash-600" title="Al entrar al curso, el alumno ve esta lección de una vez, inline">
+          <input
+            type="checkbox"
+            checked={Boolean(lesson.isCourseStarter)}
+            disabled={busy}
+            onChange={(e) => run(() => adminApi.updateLesson(lesson.id, { isCourseStarter: e.target.checked }))}
+          />
+          Esta lección inicia el curso (se muestra de una vez al entrar)
+        </label>
+      )}
 
       {lesson.materials?.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1">
@@ -678,8 +765,14 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
           <option value="SUPPLEMENTARY">Complementario</option>
         </Select>
         <DropLabel busy={uploading} label="Agregar material" small onFile={handleMaterialUpload} />
+        <AddLinkControl
+          busy={busy}
+          onAdd={(linkTitle, url) =>
+            run(() => adminApi.createMaterial(lesson.id, { title: linkTitle, externalUrl: url, kind: "link", category: newMaterialCategory }))
+          }
+        />
       </div>
-      <p className="mt-1 text-[11px] text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG) y video.</p>
+      <p className="mt-1 text-[11px] text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>
     </li>
   );
 }
@@ -1036,6 +1129,13 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  // "Módulo para crear evaluaciones O subir un archivo (Word/Excel/PPT/
+  // imagen/PDF) como examen" — antes solo se podía crear evaluaciones por
+  // preguntas; este toggle agrega la segunda modalidad, sin preguntas: el
+  // docente sube el archivo del examen, el alumno lo descarga, lo responde
+  // offline y sube su respuesta como otro archivo (ver AssessmentRunner).
+  const [isFileUpload, setIsFileUpload] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   async function refresh() {
     try {
@@ -1067,6 +1167,25 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
     }
   }
 
+  async function handleCreateFileExam(file: File) {
+    if (!newTitle.trim()) {
+      alert("Ponle un título al examen antes de subir el archivo.");
+      return;
+    }
+    setUploadingFile(true);
+    try {
+      const { assetId } = await adminApi.uploadAsset(file);
+      await adminApi.createAssessment(courseId, { title: { es: newTitle }, sourceFileAssetId: assetId, sourceFileMimeType: file.type });
+      setNewTitle("");
+      setIsFileUpload(false);
+      await refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos crear el examen de archivo.");
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
@@ -1082,11 +1201,27 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
             ))}
           </div>
         )}
-        <div className="flex gap-2 border-t border-paper-border pt-4">
-          <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-          <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
-            + Nueva evaluación
-          </Button>
+        <div className="flex flex-col gap-2 border-t border-paper-border pt-4">
+          <div className="flex gap-2">
+            <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+            {!isFileUpload && (
+              <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
+                + Nueva evaluación
+              </Button>
+            )}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-ash-600">
+            <input type="checkbox" checked={isFileUpload} onChange={(e) => setIsFileUpload(e.target.checked)} />
+            Es un examen de archivo (el docente sube el examen en Word/Excel/PPT/imagen/PDF, en vez de escribir preguntas)
+          </label>
+          {isFileUpload && (
+            <DropLabel
+              busy={uploadingFile}
+              label="Subir archivo del examen y crear"
+              small
+              onFile={handleCreateFileExam}
+            />
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1130,14 +1265,20 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
     }
   }
 
+  const isFileUpload = Boolean(assessment.sourceFileAssetId);
+
   return (
     <div className="rounded-lg border border-paper-border p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="font-medium text-ink-900">{assessment.title?.es}</p>
+          <p className="font-medium text-ink-900">
+            {assessment.title?.es} {isFileUpload && <Badge variant="outline">Examen de archivo</Badge>}
+          </p>
           <p className="text-xs text-ash-500">
-            {assessment.questions?.length ?? 0} pregunta{assessment.questions?.length === 1 ? "" : "s"} ·{" "}
-            {assessment._count?.attempts ?? 0} intento(s) de alumnos
+            {isFileUpload
+              ? `Sin preguntas — se califica el archivo completo que sube el alumno`
+              : `${assessment.questions?.length ?? 0} pregunta${assessment.questions?.length === 1 ? "" : "s"}`}{" "}
+            · {assessment._count?.attempts ?? 0} intento(s) de alumnos
           </p>
         </div>
         <div className="flex gap-2">
@@ -1197,13 +1338,20 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
             Guardar reglas
           </Button>
 
-          <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
-            <h3 className="text-sm font-semibold text-ink-900">Preguntas</h3>
-            {(assessment.questions ?? []).map((q: any) => (
-              <QuestionRow key={q.id} question={q} onChange={onChange} />
-            ))}
-            <NewQuestionForm assessmentId={assessment.id} onChange={onChange} />
-          </div>
+          {isFileUpload ? (
+            <p className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
+              Este examen no tiene preguntas — el alumno descarga el archivo que subiste, lo completa offline, y sube su respuesta como archivo
+              para que lo califiques a mano en /docente/evaluaciones-pendientes.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
+              <h3 className="text-sm font-semibold text-ink-900">Preguntas</h3>
+              {(assessment.questions ?? []).map((q: any) => (
+                <QuestionRow key={q.id} question={q} onChange={onChange} />
+              ))}
+              <NewQuestionForm assessmentId={assessment.id} onChange={onChange} />
+            </div>
+          )}
         </div>
       )}
     </div>

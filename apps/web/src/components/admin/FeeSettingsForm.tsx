@@ -116,9 +116,11 @@ export function FeeSettingsForm({
         </div>
       </div>
       <p className="-mt-2 text-xs text-ash-500">
-        Investigado a pedido: no encontramos evidencia de que BCP/Interbank/la billetera del Estado le cobren a Inkapitales (el comercio) un %
-        adicional específico por aceptar Yape/Plin — Culqi factura una única comisión de "descuento de comercio" que ya cubre tarjeta + Yape/Plin.
-        Se deja en 0% por defecto; súbelo solo si tu contrato con Culqi confirma un cargo adicional real.
+        Investigado a pedido (revisado con BCP/Culqi): Culqi cobra <strong>3.44% + S/0.20 + IGV</strong> parejo en tarjeta nacional y Yape/Plin — no
+        hay un cargo adicional específico por aceptar Yape/Plin encima de esa comisión (por eso el default de Comisión Culqi bajó de 3.99% a
+        3.44%, que era en realidad la tarifa de tarjeta internacional). Sí existe una comisión de <strong>Yape Empresa (BCP) del 2.95%</strong>,
+        pero esa aplica solo si un negocio recibe Yape directo a su propia cuenta/QR — no es el caso de Inkapitales, que cobra siempre a través de
+        Culqi como pasarela. Se deja en 0% por defecto; súbelo solo si tu contrato específico con Culqi confirma un cargo adicional real.
       </p>
 
       <div className="rounded-md bg-paper-muted p-3">

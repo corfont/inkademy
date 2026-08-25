@@ -67,6 +67,7 @@ export const WORKER_EMAIL_JOBS = {
   ASSESSMENT_DUE: "email.assessment-due",
   ABSENCE_NOTICE: "email.absence-notice",
   COURSE_RECOMMENDATION: "email.course-recommendation",
+  EMAIL_CAMPAIGN: "email.campaign",
 } as const;
 
 /**
@@ -120,6 +121,15 @@ export const REMINDER_JOBS = {
 
 /** Job interno del worker, no forma parte del contrato de apps/api. */
 export const REMINDER_SWEEP_JOB = "reminder.sweep";
+
+/**
+ * Job interno del worker (misma cola "reminder", mismo patrón que
+ * `reminder.sweep`) — escanea `EmailCampaign` con status=SCHEDULED y
+ * scheduledAt <= ahora, resuelve la audiencia, redacta con IA si
+ * corresponde, y encola el envío real de cada correo en la cola "email".
+ * Ver processors/email-campaign.processor.ts.
+ */
+export const EMAIL_CAMPAIGN_SWEEP_JOB = "email-campaign.sweep";
 
 export type LiveSessionOffset = "7d" | "24h" | "1h" | "10min";
 export type DeadlineOffset = "3d" | "24h";

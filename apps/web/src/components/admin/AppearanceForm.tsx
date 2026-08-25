@@ -89,6 +89,8 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
         bodyFontFamily: form.bodyFontFamily,
         backgroundColor: form.backgroundColor,
         backgroundImageUrl: form.backgroundImageUrl,
+        primaryColor: form.primaryColor,
+        accentColor: form.accentColor,
         contactEmail: form.contactEmail,
         contactPhone: form.contactPhone,
         contactAddress: form.contactAddress,
@@ -193,6 +195,51 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
           <p className="text-xs text-ash-500">
             &quot;Outfit&quot; y &quot;Work Sans&quot; son la tipografía real del manual de marca Inkapitales.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Colores de marca</h2>
+          <p className="text-xs text-ash-500">
+            Por defecto son los del manual de marca real de Inkapitales (#586BD8 primario, #D8B26C acento) — solo cámbialos si el manual cambia.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="primary-color">Color primario (botones, enlaces)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="primary-color"
+                  type="color"
+                  value={form.primaryColor || "#586BD8"}
+                  onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
+                  className="h-11 w-14 rounded border border-paper-border"
+                />
+                <Input
+                  value={form.primaryColor || ""}
+                  placeholder="#586BD8 (default real)"
+                  onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value || null }))}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="accent-color">Color de acento (detalles dorados)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="accent-color"
+                  type="color"
+                  value={form.accentColor || "#D8B26C"}
+                  onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value }))}
+                  className="h-11 w-14 rounded border border-paper-border"
+                />
+                <Input
+                  value={form.accentColor || ""}
+                  placeholder="#D8B26C (default real)"
+                  onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value || null }))}
+                />
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

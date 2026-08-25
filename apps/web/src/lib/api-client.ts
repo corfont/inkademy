@@ -202,6 +202,8 @@ export interface PlatformSettingsDTO {
   menuFontFamily?: string | null;
   menuFontSizePx?: number | null;
   menuFontColor?: string | null;
+  primaryColor?: string | null;
+  accentColor?: string | null;
 }
 
 /** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */
@@ -233,6 +235,42 @@ export interface ChatbotSettingsDTO {
   suggestionAutoRespond: boolean;
   suggestionAutoRespondDelayMinutes: number;
   updatedAt: string | null;
+}
+
+export interface EmailServerSettingsDTO {
+  host: string | null;
+  port: number | null;
+  secure: boolean;
+  username: string | null;
+  hasPassword: boolean;
+  fromEmail: string | null;
+  fromName: string | null;
+  configuredInDb: boolean;
+  updatedAt: string | null;
+}
+
+export interface EmailAudienceFilter {
+  interests?: string[];
+  areaIds?: string[];
+  companyId?: string;
+  inactiveDays?: number;
+}
+
+export interface EmailCampaignDTO {
+  id: string;
+  name: string;
+  mode: "AUTOMATIC_AI" | "MANUAL";
+  goal: "RELATED_COURSES" | "NEW_COURSES" | "DISCOUNTED_COURSES" | "BY_INTEREST" | null;
+  status: "DRAFT" | "SCHEDULED" | "SENT" | "CANCELLED";
+  subject: string | null;
+  bodyHtml: string | null;
+  audienceFilter: EmailAudienceFilter | null;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  recurrence: "ONCE" | "WEEKLY" | "MONTHLY";
+  recipientCount: number;
+  createdAt: string;
+  createdBy?: { firstName: string; lastName: string } | null;
 }
 
 export const settingsApi = {
@@ -322,6 +360,14 @@ export const assessmentApi = {
   submit: (attemptId: string, input: unknown) =>
     apiFetch<AssessmentResultDTO>(`/attempts/${attemptId}/submit`, { method: "POST", body: JSON.stringify(input) }),
   attempt: (id: string) => apiFetch<any>(`/attempts/${id}`),
+  // --- Examen "cualitativo" (archivo) — el alumno sube su respuesta como archivo ---
+  uploadSubmission: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<{ assetId: string; mimeType: string }>("/attempts/uploads", { method: "POST", body: form });
+  },
+  submitFile: (attemptId: string, input: { submissionAssetId: string; submissionMimeType: string }) =>
+    apiFetch<AssessmentResultDTO>(`/attempts/${attemptId}/submit-file`, { method: "POST", body: JSON.stringify(input) }),
 };
 
 // ---------------------------------------------------------------------------
@@ -452,6 +498,7 @@ export const suggestionsApi = {
     apiFetch<any>("/suggestions", { method: "POST", body: JSON.stringify({ message }), accessToken }),
   mine: (accessToken?: string | null) => apiFetch<any[]>("/suggestions/mine", { accessToken }),
   all: (accessToken?: string | null) => apiFetch<any[]>("/suggestions", { accessToken }),
+  pendingCount: (accessToken?: string | null) => apiFetch<number>("/suggestions/pending-count", { accessToken, cache: "no-store" }),
   updateStatus: (id: string, status: string, accessToken?: string | null) =>
     apiFetch<any>(`/suggestions/${id}`, { method: "PATCH", body: JSON.stringify({ status }), accessToken }),
   respond: (id: string, response: string, accessToken?: string | null) =>
@@ -491,8 +538,8 @@ export const adminApi = {
     apiFetch<any>(`/admin/programs/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   createProgram: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>("/admin/programs", { method: "POST", body: JSON.stringify(input), accessToken }),
-  orders: (q: string | undefined, accessToken?: string | null) =>
-    apiFetch<any[]>("/admin/orders", { accessToken, query: q ? { q } : undefined }),
+  orders: (q: string | undefined, accessToken?: string | null, sortBy?: string) =>
+    apiFetch<any[]>("/admin/orders", { accessToken, query: { ...(q ? { q } : {}), ...(sortBy ? { sortBy } : {}) } }),
   // --- Matrículas: ampliar plazo de acceso como caso especial ---
   enrollments: (q: string | undefined, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/enrollments", { accessToken, query: q ? { q } : undefined, cache: "no-store" }),
@@ -550,6 +597,11 @@ export const adminApi = {
       body: JSON.stringify(input),
       accessToken,
     }),
+  // --- Exámenes "cualitativos" (archivo) pendientes de calificar ---
+  pendingFileReviews: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-file-reviews", { accessToken }),
+  gradeFileAttempt: (attemptId: string, input: { score: number; passed: boolean }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/attempts/${attemptId}/grade-file`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  teacherGradingWorkload: (accessToken?: string | null) => apiFetch<any[]>("/admin/teacher-grading-workload", { accessToken, cache: "no-store" }),
   certificateTemplates: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificate-templates", { accessToken }),
   createCertificateTemplate: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>("/admin/certificate-templates", { method: "POST", body: JSON.stringify(input), accessToken }),
@@ -572,6 +624,52 @@ export const adminApi = {
   ) => apiFetch<any>(`/admin/partner-institutions/${partnerInstitutionId}/courses`, { method: "POST", body: JSON.stringify(input), accessToken }),
   removeCoursePartnership: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/partner-institutions/course-partnerships/${id}`, { method: "DELETE", accessToken }),
+  // --- Reporte de horas dictadas (conexión/desconexión en clases en vivo) ---
+  teacherSessionHours: (
+    params: { teacherId?: string; courseId?: string; from?: string; to?: string } = {},
+    accessToken?: string | null,
+  ) => apiFetch<any>("/admin/teacher-session-hours", { accessToken, query: params, cache: "no-store" }),
+  // --- Liquidación de docentes ---
+  teacherRates: (teacherId?: string, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/teacher-rates", { accessToken, query: teacherId ? { teacherId } : undefined, cache: "no-store" }),
+  upsertTeacherRate: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/teacher-rates", { method: "POST", body: JSON.stringify(input), accessToken }),
+  deleteTeacherRate: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/teacher-rates/${id}`, { method: "DELETE", accessToken }),
+  teacherActivityLogs: (teacherId: string, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/teacher-activity-logs", { accessToken, query: { teacherId }, cache: "no-store" }),
+  createTeacherActivityLog: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/teacher-activity-logs", { method: "POST", body: JSON.stringify(input), accessToken }),
+  deleteTeacherActivityLog: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/teacher-activity-logs/${id}`, { method: "DELETE", accessToken }),
+  teacherAdvances: (teacherId: string, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/teacher-advances", { accessToken, query: { teacherId }, cache: "no-store" }),
+  createTeacherAdvance: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/teacher-advances", { method: "POST", body: JSON.stringify(input), accessToken }),
+  deleteTeacherAdvance: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/teacher-advances/${id}`, { method: "DELETE", accessToken }),
+  teacherLiquidations: (teacherId?: string, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/teacher-liquidations", { accessToken, query: teacherId ? { teacherId } : undefined, cache: "no-store" }),
+  myTeacherLiquidations: (accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/teacher-liquidations/mine", { accessToken, cache: "no-store" }),
+  generateTeacherLiquidation: (input: { teacherId: string; periodStart: string; periodEnd: string }, accessToken?: string | null) =>
+    apiFetch<any>("/admin/teacher-liquidations/generate", { method: "POST", body: JSON.stringify(input), accessToken }),
+  waiveTeacherLiquidation: (id: string, reason: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/teacher-liquidations/${id}/waive`, { method: "PATCH", body: JSON.stringify({ reason }), accessToken }),
+  updateTeacherLiquidationStatus: (id: string, status: "APPROVED" | "PAID", accessToken?: string | null) =>
+    apiFetch<any>(`/admin/teacher-liquidations/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }), accessToken }),
+  // --- Regalías ---
+  royaltyRecipients: (accessToken?: string | null) => apiFetch<any[]>("/admin/royalty-recipients", { accessToken, cache: "no-store" }),
+  createRoyaltyRecipient: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/royalty-recipients", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateRoyaltyRecipient: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/royalty-recipients/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteRoyaltyRecipient: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/royalty-recipients/${id}`, { method: "DELETE", accessToken }),
+  addCourseRoyalty: (royaltyRecipientId: string, input: { courseId: string; startDate?: string; endDate?: string }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/royalty-recipients/${royaltyRecipientId}/courses`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  removeCourseRoyalty: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/royalty-recipients/course-royalties/${id}`, { method: "DELETE", accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
 
   // --- Catálogo: crear/editar cursos ---
@@ -599,12 +697,12 @@ export const adminApi = {
     apiFetch<any>(`/admin/lessons/${id}`, { method: "DELETE", accessToken }),
   createMaterial: (
     lessonId: string,
-    input: { title: string; assetId: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },
+    input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/lessons/${lessonId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
   createModuleMaterial: (
     moduleId: string,
-    input: { title: string; assetId: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },
+    input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/modules/${moduleId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
   updateMaterial: (
@@ -645,7 +743,23 @@ export const adminApi = {
   ) => apiFetch<any>("/admin/users", { method: "POST", body: JSON.stringify(input), accessToken }),
   updateUser: (
     id: string,
-    input: { globalRole?: string; secondaryRoles?: string[]; status?: string; signatureAssetId?: string | null },
+    input: {
+      globalRole?: string;
+      secondaryRoles?: string[];
+      status?: string;
+      signatureAssetId?: string | null;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string | null;
+      documentType?: string | null;
+      documentNumber?: string | null;
+      country?: string | null;
+      city?: string | null;
+      address?: string | null;
+      jobTitle?: string | null;
+      companyFreeText?: string | null;
+    },
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   resetUserPassword: (id: string, password: string | undefined, accessToken?: string | null) =>
@@ -692,4 +806,24 @@ export const adminApi = {
     apiFetch<any>(`/admin/chatbot-documents/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteChatbotDocument: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/chatbot-documents/${id}`, { method: "DELETE", accessToken }),
+
+  // --- Servidor de correo (SMTP) — la contraseña nunca vuelve en texto plano ---
+  emailServerSettings: (accessToken?: string | null) =>
+    apiFetch<EmailServerSettingsDTO>("/admin/email-server-settings", { accessToken, cache: "no-store" }),
+  updateEmailServerSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<EmailServerSettingsDTO>("/admin/email-server-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+
+  // --- Campañas de correo a clientes ---
+  emailCampaigns: (accessToken?: string | null) =>
+    apiFetch<EmailCampaignDTO[]>("/admin/email-campaigns", { accessToken, cache: "no-store" }),
+  createEmailCampaign: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<EmailCampaignDTO>("/admin/email-campaigns", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateEmailCampaign: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<EmailCampaignDTO>(`/admin/email-campaigns/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  sendEmailCampaignNow: (id: string, accessToken?: string | null) =>
+    apiFetch<EmailCampaignDTO>(`/admin/email-campaigns/${id}/send-now`, { method: "POST", accessToken }),
+  deleteEmailCampaign: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/email-campaigns/${id}`, { method: "DELETE", accessToken }),
+  previewEmailAudience: (filter: EmailAudienceFilter, accessToken?: string | null) =>
+    apiFetch<{ count: number }>("/admin/email-campaigns/audience-preview", { method: "POST", body: JSON.stringify(filter), accessToken }),
 };

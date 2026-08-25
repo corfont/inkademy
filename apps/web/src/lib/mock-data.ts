@@ -317,6 +317,9 @@ export interface ClassroomLesson {
   title: LocalizedText;
   contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "ASSIGNMENT";
   durationMinutes?: number;
+  // "El administrador debe indicar si ese video inicia el curso" — la
+  // lección iniciadora se abre de una vez al entrar al curso.
+  isCourseStarter?: boolean;
   videoUrl?: string;
   materials: ClassroomMaterial[];
   completed: boolean;
@@ -341,6 +344,7 @@ export interface ClassroomDetail {
   // "El examen solo lo visualizará el alumno una vez completado el curso".
   assessmentUnlocked?: boolean;
   progressPct?: number;
+  blockMainVideoDownload?: boolean;
   modules: ClassroomModule[];
   approvalMissing: string[];
   certificateAvailable: boolean;

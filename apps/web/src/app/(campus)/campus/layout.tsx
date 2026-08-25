@@ -1,15 +1,15 @@
 "use client";
 
-import { LayoutDashboard, BookOpen, LibraryBig, CalendarDays, Award, Receipt, LifeBuoy, User, Sparkles, MessageSquarePlus, LogOut } from "lucide-react";
+import { LayoutDashboard, BookOpen, LibraryBig, CalendarDays, Award, Receipt, LifeBuoy, User, Sparkles, MessageSquarePlus, LogOut, ClipboardCheck, Banknote, Users, Wallet, Handshake, Percent } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { SidebarShell } from "@/components/layout/SidebarShell";
+import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 export default function CampusLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations("campus.nav");
   const { user, logout } = useAuth();
 
-  const navItems = [
+  const navItems: SidebarNavItem[] = [
     { href: "/campus", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/campus/cursos", label: t("courses"), icon: BookOpen },
     // Antes no había ningún link desde el campus al catálogo completo — el
@@ -24,6 +24,28 @@ export default function CampusLayout({ children }: { children: React.ReactNode }
     { href: "/campus/sugerencias", label: "Sugerencias", icon: MessageSquarePlus },
     { href: "/campus/perfil", label: t("profile"), icon: User },
   ];
+
+  // "Si un usuario tiene más de un rol, debería ver en el menú todas las
+  // opciones de cada rol" — un alumno que también es docente o admin ve
+  // acá las opciones de esos otros roles, agrupadas con su propio encabezado.
+  const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
+  if (roles.includes("TEACHER") && user?.globalRole !== "TEACHER") {
+    navItems.push(
+      { href: "/docente", label: "Panel de docente", icon: LayoutDashboard, section: "Docente" },
+      { href: "/docente/cursos", label: "Mis cursos (docente)", icon: LibraryBig, section: "Docente" },
+      { href: "/docente/evaluaciones-pendientes", label: "Evaluaciones pendientes (docente)", icon: ClipboardCheck, section: "Docente" },
+      { href: "/docente/liquidaciones", label: "Mis liquidaciones", icon: Banknote, section: "Docente" },
+    );
+  }
+  if ((roles.includes("ADMIN") || roles.includes("SUPPORT")) && user?.globalRole !== "ADMIN" && user?.globalRole !== "SUPPORT") {
+    navItems.push(
+      { href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" },
+      { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users, section: "Administración" },
+      { href: "/admin/finanzas", label: "Finanzas", icon: Wallet, section: "Administración" },
+      { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake, section: "Administración" },
+      { href: "/admin/regalias", label: "Regalías", icon: Percent, section: "Administración" },
+    );
+  }
 
   return (
     <SidebarShell

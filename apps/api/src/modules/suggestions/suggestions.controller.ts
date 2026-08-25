@@ -40,6 +40,14 @@ export class SuggestionsController {
     return this.suggestionsService.listAll();
   }
 
+  @Get("pending-count")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Cuántas sugerencias todavía no tienen respuesta del admin — para el circulito del menú" })
+  countPending() {
+    return this.suggestionsService.countPending();
+  }
+
   @Patch(":id")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "SUPPORT")

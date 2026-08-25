@@ -11,6 +11,7 @@ import { WatermarkOverlay } from "@/components/layout/WatermarkOverlay";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import { settingsApi, type PlatformSettingsDTO } from "@/lib/api-client";
 import { isCuratedFont, googleFontHref, type BrandFont } from "@/lib/brand-fonts";
+import { hexToHslTriplet } from "@/lib/color";
 import "./globals.css";
 
 // Tipografía real del manual de marca Inkapitales: Outfit para
@@ -89,6 +90,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       : {}),
   };
 
+  // Manual de marca Inkapitales: #586BD8 primario / #D8B26C acento ya son
+  // el default real horneado en globals.css (--indigo-500/--gold-400) —
+  // esto solo entra en juego si el admin decide anularlos desde
+  // /admin/apariencia. Se sobreescribe únicamente ese tono medio del
+  // ramp de color (no todo el degradado 50-800), así que aplica bien a
+  // botones/acentos principales pero no re-tiñe automáticamente cada tinte
+  // más claro/oscuro derivado del mismo color.
+  const primaryHsl = settings.primaryColor ? hexToHslTriplet(settings.primaryColor) : null;
+  const accentHsl = settings.accentColor ? hexToHslTriplet(settings.accentColor) : null;
+
   return (
     <html
       lang={locale}
@@ -96,6 +107,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       style={{
         ...(customHeadingFont ? ({ "--font-fraunces": `'${customHeadingFont}', ${outfit.style.fontFamily}` } as React.CSSProperties) : {}),
         ...(customBodyFont ? ({ "--font-inter": `'${customBodyFont}', ${workSans.style.fontFamily}` } as React.CSSProperties) : {}),
+        ...(primaryHsl ? ({ "--indigo-500": primaryHsl, "--indigo-400": primaryHsl } as React.CSSProperties) : {}),
+        ...(accentHsl ? ({ "--gold-400": accentHsl } as React.CSSProperties) : {}),
       }}
     >
       <head>

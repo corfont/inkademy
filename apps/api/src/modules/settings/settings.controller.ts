@@ -4,10 +4,16 @@ import { Public } from "../../common/decorators/public.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { upsertChatbotSettingsSchema, upsertSettingsSchema, upsertSunatSettingsSchema } from "../../common/validation/local-schemas";
+import {
+  upsertChatbotSettingsSchema,
+  upsertSettingsSchema,
+  upsertSunatSettingsSchema,
+  upsertEmailServerSettingsSchema,
+} from "../../common/validation/local-schemas";
 import { SettingsService } from "./settings.service";
 import { SunatSettingsService } from "./sunat-settings.service";
 import { ChatbotSettingsService } from "./chatbot-settings.service";
+import { EmailServerSettingsService } from "./email-server-settings.service";
 
 @ApiTags("settings")
 @Controller()
@@ -16,6 +22,7 @@ export class SettingsController {
     private readonly settingsService: SettingsService,
     private readonly sunatSettingsService: SunatSettingsService,
     private readonly chatbotSettingsService: ChatbotSettingsService,
+    private readonly emailServerSettingsService: EmailServerSettingsService,
   ) {}
 
   @Public()
@@ -68,5 +75,23 @@ export class SettingsController {
   @ApiOperation({ summary: "Actualiza la configuración del asistente de IA" })
   updateChatbotSettings(@Body(new ZodValidationPipe(upsertChatbotSettingsSchema)) dto: any) {
     return this.chatbotSettingsService.update(dto);
+  }
+
+  @Get("admin/email-server-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Configuración del servidor SMTP (la contraseña nunca se devuelve en texto plano)" })
+  getEmailServerSettings() {
+    return this.emailServerSettingsService.get();
+  }
+
+  @Patch("admin/email-server-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Actualiza la configuración del servidor SMTP" })
+  updateEmailServerSettings(@Body(new ZodValidationPipe(upsertEmailServerSettingsSchema)) dto: any) {
+    return this.emailServerSettingsService.update(dto);
   }
 }

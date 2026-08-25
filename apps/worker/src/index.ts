@@ -12,7 +12,7 @@ const rootEnv = join(__dirname, "../../../.env");
 dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
 
 import { Worker, type Job } from "bullmq";
-import { INVOICE_JOBS, QUEUE_NAMES, REMINDER_SWEEP_JOB } from "./queues";
+import { INVOICE_JOBS, QUEUE_NAMES, REMINDER_SWEEP_JOB, EMAIL_CAMPAIGN_SWEEP_JOB } from "./queues";
 import { createRedisConnection } from "./lib/redis";
 import { reminderQueue } from "./lib/queue-client";
 import { createLogger } from "./lib/logger";
@@ -39,6 +39,11 @@ const logger = createLogger("worker");
 const connection = createRedisConnection();
 
 const REMINDER_SWEEP_INTERVAL_MS = 15 * 60 * 1000; // 15 min
+// Más corto que el de recordatorios: "enviar ahora" una campaña de correo
+// (ver AdminService.sendEmailCampaignNow) solo pone scheduledAt=ahora — este
+// sweep es lo que realmente la recoge y la manda, así que un intervalo largo
+// se sentiría como que "enviar ahora" no hizo nada por varios minutos.
+const EMAIL_CAMPAIGN_SWEEP_INTERVAL_MS = 2 * 60 * 1000; // 2 min
 
 function attachLifecycleLogs(worker: Worker, queueName: string) {
   worker.on("completed", (job: Job) => logger.info("job completado", { queue: queueName, jobId: job.id, jobName: job.name }));
@@ -77,6 +82,15 @@ async function registerReminderSweep(): Promise<void> {
 registerReminderSweep()
   .then(() => logger.info("sweep de recordatorios programado", { everyMs: REMINDER_SWEEP_INTERVAL_MS }))
   .catch((err) => logger.error("no se pudo programar el sweep de recordatorios", { err: String(err) }));
+
+/** Mismo mecanismo que registerReminderSweep, misma cola "reminder" — ver EMAIL_CAMPAIGN_SWEEP_JOB. */
+async function registerEmailCampaignSweep(): Promise<void> {
+  await reminderQueue().add(EMAIL_CAMPAIGN_SWEEP_JOB, {}, { repeat: { every: EMAIL_CAMPAIGN_SWEEP_INTERVAL_MS }, jobId: EMAIL_CAMPAIGN_SWEEP_JOB });
+}
+
+registerEmailCampaignSweep()
+  .then(() => logger.info("sweep de campañas de correo programado", { everyMs: EMAIL_CAMPAIGN_SWEEP_INTERVAL_MS }))
+  .catch((err) => logger.error("no se pudo programar el sweep de campañas de correo", { err: String(err) }));
 
 logger.info("Inkademy worker iniciado", { queues: Object.values(QUEUE_NAMES), redisUrl: process.env.REDIS_URL });
 

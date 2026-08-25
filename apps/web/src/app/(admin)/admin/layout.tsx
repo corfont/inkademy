@@ -1,15 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, MessageSquarePlus, Receipt, Gift, FileSpreadsheet, Users, Bot, LogOut, CalendarClock, Wallet, Lock, Handshake } from "lucide-react";
+import {
+  LayoutDashboard,
+  LibraryBig,
+  Building2,
+  LifeBuoy,
+  Award,
+  ClipboardCheck,
+  Palette,
+  MessageSquarePlus,
+  Receipt,
+  Gift,
+  FileSpreadsheet,
+  Users,
+  Bot,
+  LogOut,
+  CalendarClock,
+  Wallet,
+  Lock,
+  Handshake,
+  Percent,
+  Banknote,
+  Mail,
+  CalendarDays,
+  BookOpen,
+  Sparkles,
+  User,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
-import { SidebarShell } from "@/components/layout/SidebarShell";
+import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { supportApi } from "@/lib/api-client";
+import { supportApi, suggestionsApi } from "@/lib/api-client";
 
-// Cada cuánto se refresca el contador de tickets pendientes en el menú —
-// no hace falta tiempo real, solo que no quede muy desactualizado mientras
-// el admin navega por otras pantallas.
+// Cada cuánto se refresca el contador de pendientes en el menú — no hace
+// falta tiempo real, solo que no quede muy desactualizado mientras el
+// admin navega por otras pantallas.
 const PENDING_COUNT_POLL_MS = 60_000;
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -17,16 +43,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { user, logout } = useAuth();
   // "Al costado de soporte debería de aparecer un indicador que tiene
   // mensajes pendientes de resolver" — antes no había ninguna forma de
-  // saber, sin entrar, si había tickets sin atender.
-  const [pendingCount, setPendingCount] = useState(0);
+  // saber, sin entrar, si había tickets sin atender. Lo mismo para
+  // sugerencias sin responder.
+  const [pendingSupport, setPendingSupport] = useState(0);
+  const [pendingSuggestions, setPendingSuggestions] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     function refresh() {
-      supportApi
-        .pendingCount()
-        .then((n) => !cancelled && setPendingCount(n))
-        .catch(() => {});
+      supportApi.pendingCount().then((n) => !cancelled && setPendingSupport(n)).catch(() => {});
+      suggestionsApi.pendingCount().then((n) => !cancelled && setPendingSuggestions(n)).catch(() => {});
     }
     refresh();
     const interval = setInterval(refresh, PENDING_COUNT_POLL_MS);
@@ -36,25 +62,52 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
   }, []);
 
-  const navItems = [
+  const navItems: SidebarNavItem[] = [
     { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/catalogo", label: t("catalog"), icon: LibraryBig },
     { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users },
     { href: "/admin/empresas", label: t("companies"), icon: Building2 },
     { href: "/admin/ordenes", label: "Órdenes", icon: Receipt },
     { href: "/admin/finanzas", label: "Finanzas", icon: Wallet },
-    { href: "/admin/matriculas", label: "Matrículas", icon: CalendarClock },
+    { href: "/admin/matriculas", label: "Casos extemporáneos", icon: CalendarClock },
     { href: "/admin/cortesias", label: "Cortesías", icon: Gift },
     { href: "/admin/facturacion", label: "Facturación (SUNAT)", icon: FileSpreadsheet },
-    { href: "/admin/soporte", label: t("support"), icon: LifeBuoy, badgeCount: pendingCount },
-    { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus },
+    { href: "/admin/soporte", label: t("support"), icon: LifeBuoy, badgeCount: pendingSupport },
+    { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus, badgeCount: pendingSuggestions },
     { href: "/admin/certificados", label: t("certificates"), icon: Award },
     { href: "/admin/evaluaciones-pendientes", label: t("pendingReview"), icon: ClipboardCheck },
     { href: "/admin/apariencia", label: t("appearance"), icon: Palette },
     { href: "/admin/asistente-ia", label: "Asistente de IA", icon: Bot },
+    { href: "/admin/marketing", label: "Marketing por correo", icon: Mail },
     { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake },
+    { href: "/admin/regalias", label: "Regalías", icon: Percent },
+    { href: "/admin/horas-docentes", label: "Horas dictadas por docente", icon: CalendarDays },
+    { href: "/admin/liquidaciones", label: "Liquidación de docentes", icon: Banknote },
     ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock }] : []),
   ];
+
+  // "Si un usuario tiene más de un rol, debería ver en el menú todas las
+  // opciones de cada rol" — se le agregan al sidebar de este panel las
+  // opciones de sus OTROS roles, agrupadas con su propio encabezado.
+  const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
+  if (roles.includes("TEACHER") && user?.globalRole !== "TEACHER") {
+    navItems.push(
+      { href: "/docente", label: "Panel de docente", icon: LayoutDashboard, section: "Docente" },
+      { href: "/docente/cursos", label: "Mis cursos (docente)", icon: LibraryBig, section: "Docente" },
+      { href: "/docente/evaluaciones-pendientes", label: "Evaluaciones pendientes (docente)", icon: ClipboardCheck, section: "Docente" },
+      { href: "/docente/liquidaciones", label: "Mis liquidaciones", icon: Banknote, section: "Docente" },
+    );
+  }
+  if (roles.includes("STUDENT") && user?.globalRole !== "STUDENT") {
+    navItems.push(
+      { href: "/campus", label: "Mi campus", icon: LayoutDashboard, section: "Alumno" },
+      { href: "/campus/cursos", label: "Mis cursos (alumno)", icon: BookOpen, section: "Alumno" },
+      { href: "/campus/agenda", label: "Agenda (alumno)", icon: CalendarDays, section: "Alumno" },
+      { href: "/campus/certificados", label: "Certificados (alumno)", icon: Award, section: "Alumno" },
+      { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles, section: "Alumno" },
+      { href: "/campus/perfil", label: "Perfil", icon: User, section: "Alumno" },
+    );
+  }
 
   return (
     <SidebarShell

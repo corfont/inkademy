@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon } from "lucide-react";
+import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon, Pencil } from "lucide-react";
 import { adminApi, companyApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { ROLE_STYLE, COMPANY_CHIP_STYLE } from "@/lib/role-style";
+import { EditUserModal } from "@/components/admin/EditUserModal";
 
 const ROLE_LABEL: Record<string, string> = { STUDENT: "Alumno", TEACHER: "Docente", SUPPORT: "Soporte", ADMIN: "Administrador" };
 // Orden fijo de las chips de rol — coincide con el pedido explícito
@@ -28,6 +29,36 @@ interface UserRow {
   signatureAssetId?: string | null;
   signatureUrl?: string | null;
   companies?: { companyId: string; companyName: string; role: string }[];
+  phone?: string | null;
+  documentType?: string | null;
+  documentNumber?: string | null;
+  country?: string | null;
+  city?: string | null;
+  address?: string | null;
+  jobTitle?: string | null;
+  companyFreeText?: string | null;
+}
+
+// "01. Admins en una sección, 02. Docentes en otra, 03. Soporte en otra,
+// 04. Empresa (con sus trabajadores) en otra, 05. Público independiente en
+// otra" — se secciona por el rol PRINCIPAL de cada cuenta (globalRole), no
+// por los roles secundarios, para que cada usuario aparezca en una sola
+// sección (un multi-rol ya se distingue con sus chips dentro de la fila).
+type SectionKey = "ADMIN" | "TEACHER" | "SUPPORT" | "COMPANY" | "INDEPENDENT";
+const SECTION_ORDER: SectionKey[] = ["ADMIN", "TEACHER", "SUPPORT", "COMPANY", "INDEPENDENT"];
+const SECTION_LABEL: Record<SectionKey, string> = {
+  ADMIN: "01. Administradores",
+  TEACHER: "02. Docentes",
+  SUPPORT: "03. Soporte",
+  COMPANY: "04. Empresas (con sus colaboradores)",
+  INDEPENDENT: "05. Público independiente",
+};
+
+function sectionFor(u: UserRow): SectionKey {
+  if (u.globalRole === "ADMIN") return "ADMIN";
+  if (u.globalRole === "TEACHER") return "TEACHER";
+  if (u.globalRole === "SUPPORT") return "SUPPORT";
+  return u.companies && u.companies.length > 0 ? "COMPANY" : "INDEPENDENT";
 }
 
 function emailDomain(email: string): string {
@@ -94,14 +125,18 @@ export function UsersManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Agrupar por dominio de correo ayuda a ubicar de un vistazo a todos los
-  // que probablemente sean de la misma empresa (p.ej. todos los
-  // @corporacionandina.com) antes de asignarlos — sin esto había que
-  // adivinar mirando la lista completa sin ningún orden por dominio. Si
-  // alguien de ese dominio YA está vinculado a una empresa (creada a
-  // través de "Asignar a empresa"), se muestra su razón social + RUC en
-  // vez del dominio pelado — mucho más útil para reconocer de un vistazo
-  // de qué empresa se trata.
+  // Vista por defecto: seccionada por tipo de cuenta — "01. Admins en una
+  // sección, 02. Docentes en otra, 03. Soporte en otra, 04. Empresa (con
+  // sus trabajadores) en otra, 05. Público independiente en otra". Dentro
+  // de la sección Empresas se sub-agrupa por empresa (ya es "con sus
+  // trabajadores": el admin de la empresa y sus colaboradores juntos).
+  //
+  // Vista alternativa (checkbox): agrupar TODOS por dominio de correo,
+  // ignorando el rol — sirve para ubicar de un vistazo a quienes
+  // probablemente sean de la misma empresa (p.ej. @corporacionandina.com)
+  // ANTES de asignarlos a una empresa real, algo que la vista por rol no
+  // puede mostrar (todavía no tienen `companies`, así que caen en "Público
+  // independiente" mezclados con alumnos sueltos).
   const groups: Array<{ domain: string; label: string; rows: UserRow[] }> = groupByDomain
     ? Object.entries(
         users.reduce<Record<string, UserRow[]>>((acc, u) => {
@@ -117,7 +152,19 @@ export function UsersManager() {
           const label = company ? `${company.legalName} (RUC ${company.taxId}) — @${domain}` : `@${domain}`;
           return { domain, label, rows };
         })
-    : [{ domain: "", label: "", rows: users }];
+    : SECTION_ORDER.flatMap((section) => {
+        const rows = users.filter((u) => sectionFor(u) === section);
+        if (rows.length === 0) return [];
+        if (section !== "COMPANY") return [{ domain: section, label: SECTION_LABEL[section], rows }];
+        const byCompany = new Map<string, UserRow[]>();
+        for (const u of rows) {
+          const name = u.companies?.[0]?.companyName ?? "Empresa";
+          (byCompany.get(name) ?? byCompany.set(name, []).get(name)!).push(u);
+        }
+        return Array.from(byCompany.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([name, companyRows]) => ({ domain: `${section}-${name}`, label: `${SECTION_LABEL[section]} — ${name}`, rows: companyRows }));
+      });
 
   return (
     <div className="flex flex-col gap-6">
@@ -140,9 +187,9 @@ export function UsersManager() {
                 Buscar
               </Button>
             </form>
-            <label className="flex items-center gap-2 text-sm text-ash-600">
+            <label className="flex items-center gap-2 text-sm text-ash-600" title="Por defecto se agrupa por tipo de cuenta (admin/docente/soporte/empresa/independiente) — esta vista alterna agrupa a todos por dominio de correo, útil para ubicar cuentas de una misma empresa antes de asignarlas.">
               <input type="checkbox" checked={groupByDomain} onChange={(e) => setGroupByDomain(e.target.checked)} />
-              Agrupar por dominio de correo
+              Agrupar por dominio de correo (en vez de por tipo)
             </label>
             <div className="flex overflow-hidden rounded-md border border-paper-border">
               <button
@@ -245,6 +292,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [companyId, setCompanyId] = useState("");
   const [companyRole, setCompanyRole] = useState<"COMPANY_ADMIN" | "PARTICIPANT">("PARTICIPANT");
 
@@ -471,6 +519,10 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
         {rowError && <p className="text-xs text-danger">{rowError}</p>}
 
         <div className="flex flex-wrap gap-1.5 border-t border-paper-border pt-3">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(true)} className="gap-1.5">
+            <Pencil className="h-3.5 w-3.5" />
+            Editar
+          </Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={handleToggleStatus} className="gap-1.5">
             {user.status === "active" ? <Ban className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             {user.status === "active" ? "Desactivar" : "Reactivar"}
@@ -485,6 +537,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
           </Button>
         </div>
       </CardContent>
+      {editing && <EditUserModal user={user} open={editing} onClose={() => setEditing(false)} onSaved={onChange} />}
     </Card>
   );
 }
@@ -493,6 +546,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
 function UserListRow({ user, companies: _companies, onChange }: { user: UserRow; companies: any[]; onChange: () => void }) {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   async function handleToggleRole(role: string) {
     const next = toggleRole(user, role);
@@ -574,6 +628,9 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
       </td>
       <td className="p-3">
         <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(true)}>
+            Editar
+          </Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={handleToggleStatus}>
             {user.status === "active" ? "Desactivar" : "Reactivar"}
           </Button>
@@ -584,6 +641,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
             Eliminar
           </Button>
         </div>
+        {editing && <EditUserModal user={user} open={editing} onClose={() => setEditing(false)} onSaved={onChange} />}
       </td>
     </tr>
   );

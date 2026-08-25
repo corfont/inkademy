@@ -365,7 +365,14 @@ export class AdminService {
       },
     });
     if (!course) throw new NotFoundException("Curso no encontrado");
-    const withAssetUrl = <T extends { assetId: string }>(m: T) => ({ ...m, assetUrl: this.storageService.getPublicUrl(m.assetId) });
+    // Un material kind="link" no tiene assetId (no se subió ningún archivo)
+    // — su "URL para abrir" es externalUrl tal cual, no algo resuelto contra
+    // el storage (que trataría esa URL externa como si fuera una key S3 y
+    // armaría un enlace roto). Ver Material.externalUrl.
+    const withAssetUrl = <T extends { assetId: string | null; externalUrl?: string | null; kind?: string }>(m: T) => ({
+      ...m,
+      assetUrl: m.kind === "link" ? m.externalUrl ?? null : m.assetId ? this.storageService.getPublicUrl(m.assetId) : null,
+    });
     // Decimal de Prisma no serializa a JSON como número plano por defecto
     // (llega como {s,e,d} internos) — normalizamos antes de devolverlo.
     return {
@@ -417,7 +424,19 @@ export class AdminService {
     return this.prisma.lesson.create({ data: { moduleId, ...input, order: input.order ?? 0 } as never });
   }
 
-  updateLesson(id: string, input: Record<string, unknown>) {
+  async updateLesson(id: string, input: Record<string, unknown>) {
+    // "El administrador debe indicar si ese video inicia el curso" — a lo
+    // más UNA lección por curso puede ser la iniciadora; marcar una nueva
+    // automáticamente desmarca cualquier otra del mismo curso.
+    if (input.isCourseStarter === true) {
+      const lesson = await this.prisma.lesson.findUnique({ where: { id }, include: { module: true } });
+      if (lesson) {
+        await this.prisma.lesson.updateMany({
+          where: { module: { courseId: lesson.module.courseId }, id: { not: id } },
+          data: { isCourseStarter: false },
+        });
+      }
+    }
     return this.prisma.lesson.update({ where: { id }, data: input as never });
   }
 
@@ -428,7 +447,7 @@ export class AdminService {
 
   createMaterial(
     lessonId: string,
-    input: { title: string; assetId: string; kind: string; category?: string; visible?: boolean },
+    input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: string; visible?: boolean },
   ) {
     return this.prisma.material.create({ data: { lessonId, ...input } as never });
   }
@@ -436,7 +455,7 @@ export class AdminService {
   /** Lectura/documento a nivel de módulo entero (no de una lección puntual) — ver Material.moduleId. */
   createModuleMaterial(
     moduleId: string,
-    input: { title: string; assetId: string; kind: string; category?: string; visible?: boolean },
+    input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: string; visible?: boolean },
   ) {
     return this.prisma.material.create({ data: { moduleId, ...input } as never });
   }
@@ -608,7 +627,7 @@ export class AdminService {
     signerName?: string;
     signerTitle?: string;
     signatureAssetId?: string;
-    billingType?: "FIXED" | "PER_COURSE" | "PER_PERIOD";
+    billingType?: "FIXED" | "PER_COURSE" | "PER_PERIOD" | "PER_ENROLLMENT";
     feeAmount?: number;
     feeCurrency?: string;
     invoicesDirectly?: boolean;
@@ -642,24 +661,27 @@ export class AdminService {
   }
 
   /**
-   * Costo estimado de los convenios institucionales en el periodo — se sume
-   * al estado de pérdidas y ganancias como un gasto más. FIXED se prorratea
-   * igual que un PlatformExpense recurrente (no hay forma de saber "cuántos
-   * meses de convenio cayeron en la ventana" sin más contexto, así que se
-   * trata como carga mensual constante); PER_COURSE se calcula contando
-   * certificados emitidos en el periodo para cursos de ese convenio;
-   * PER_PERIOD se cuenta completo si el rango del convenio se solapa con
-   * la ventana pedida.
+   * Costo estimado de los convenios institucionales en el periodo — se suma
+   * al estado de pérdidas y ganancias como un gasto más, EN LA MONEDA DEL
+   * CONVENIO (feeCurrency puede ser PEN o USD — "la entidad puede cobrar en
+   * soles como en dólares"). FIXED se prorratea igual que un PlatformExpense
+   * recurrente (no hay forma de saber "cuántos meses de convenio cayeron en
+   * la ventana" sin más contexto, así que se trata como carga mensual
+   * constante); PER_COURSE cuenta certificados emitidos en el periodo;
+   * PER_ENROLLMENT cuenta alumnos matriculados en el periodo (sin exigir que
+   * terminen); PER_PERIOD se cuenta completo si el rango del convenio se
+   * solapa con la ventana pedida.
    */
   async getPartnerInstitutionCosts(params: { from: Date; to: Date }) {
     const partnerships = await this.prisma.coursePartnership.findMany({
       include: { partnerInstitution: true },
     });
-    let totalPen = 0;
-    const breakdown: Array<{ partnerName: string; courseId: string; billingType: string; amount: number }> = [];
+    const byCurrency = new Map<string, number>();
+    const breakdown: Array<{ partnerName: string; courseId: string; billingType: string; amount: number; currency: string }> = [];
     for (const p of partnerships) {
-      if (!p.partnerInstitution.active || p.partnerInstitution.feeCurrency !== "PEN" || !p.partnerInstitution.feeAmount) continue;
+      if (!p.partnerInstitution.active || !p.partnerInstitution.feeAmount) continue;
       const fee = Number(p.partnerInstitution.feeAmount);
+      const currency = p.partnerInstitution.feeCurrency;
       let amount = 0;
       if (p.partnerInstitution.billingType === "FIXED") {
         amount = fee; // carga mensual constante, mismo criterio que PlatformExpense MONTHLY
@@ -668,16 +690,558 @@ export class AdminService {
           where: { courseId: p.courseId, issuedAt: { gte: params.from, lte: params.to } },
         });
         amount = fee * count;
+      } else if (p.partnerInstitution.billingType === "PER_ENROLLMENT") {
+        const count = await this.prisma.enrollment.count({
+          where: { courseId: p.courseId, enrolledAt: { gte: params.from, lte: params.to } },
+        });
+        amount = fee * count;
       } else if (p.partnerInstitution.billingType === "PER_PERIOD") {
         const overlaps = (!p.startDate || p.startDate <= params.to) && (!p.endDate || p.endDate >= params.from);
         amount = overlaps ? fee : 0;
       }
       if (amount > 0) {
-        totalPen += amount;
-        breakdown.push({ partnerName: p.partnerInstitution.name, courseId: p.courseId, billingType: p.partnerInstitution.billingType, amount });
+        byCurrency.set(currency, (byCurrency.get(currency) ?? 0) + amount);
+        breakdown.push({ partnerName: p.partnerInstitution.name, courseId: p.courseId, billingType: p.partnerInstitution.billingType, amount, currency });
       }
     }
-    return { totalPen, breakdown };
+    return { byCurrency, breakdown };
+  }
+
+  /**
+   * Costo estimado de regalías en el periodo — mismo criterio que convenios
+   * institucionales, pero para RoyaltyRecipient/CourseRoyalty. PER_REFERRAL
+   * se simplifica como "% del ingreso de ESE curso en el periodo" (no hay
+   * un sistema de código de referido por alumno individual todavía — se
+   * documenta como limitación conocida).
+   */
+  async getRoyaltyCosts(params: { from: Date; to: Date }) {
+    const royalties = await this.prisma.courseRoyalty.findMany({ include: { royaltyRecipient: true } });
+    const byCurrency = new Map<string, number>();
+    const breakdown: Array<{ recipientName: string; courseId: string; billingType: string; amount: number; currency: string }> = [];
+    for (const r of royalties) {
+      if (!r.royaltyRecipient.active || !r.royaltyRecipient.feePercent) continue;
+      const overlaps = (!r.startDate || r.startDate <= params.to) && (!r.endDate || r.endDate >= params.from);
+      if (!overlaps) continue;
+      const currency = r.royaltyRecipient.feeCurrency;
+      let amount = 0;
+      if (r.royaltyRecipient.billingType === "PER_ENROLLMENT") {
+        const count = await this.prisma.enrollment.count({ where: { courseId: r.courseId, enrolledAt: { gte: params.from, lte: params.to } } });
+        amount = count; // % se aplica sobre un monto fijo por matrícula — ver feePercent como "soles por matrícula" en este caso simplificado
+      } else if (r.royaltyRecipient.billingType === "PER_COMPLETION") {
+        const count = await this.prisma.certificate.count({ where: { courseId: r.courseId, issuedAt: { gte: params.from, lte: params.to } } });
+        amount = count;
+      } else if (r.royaltyRecipient.billingType === "PER_REFERRAL") {
+        const orders = await this.prisma.order.findMany({
+          where: { status: "PAID", createdAt: { gte: params.from, lte: params.to }, currency, items: { some: { courseId: r.courseId } } },
+        });
+        const courseIncome = orders.reduce((sum, o) => sum + Number(o.total), 0);
+        amount = courseIncome * (r.royaltyRecipient.feePercent / 100);
+      }
+      if (amount > 0) {
+        byCurrency.set(currency, (byCurrency.get(currency) ?? 0) + amount);
+        breakdown.push({ recipientName: r.royaltyRecipient.name, courseId: r.courseId, billingType: r.royaltyRecipient.billingType, amount, currency });
+      }
+    }
+    return { byCurrency, breakdown };
+  }
+
+  /**
+   * Minutos efectivamente pagables de una sesión en vivo ya dictada, según
+   * asistencia real vs. horario programado, con tolerancia — "siempre hay
+   * una tolerancia al inicio y final de cada clase... si se excede es su
+   * problema, no nuestro". Nunca se paga más que la duración programada
+   * (quedarse más tiempo no genera pago extra); tardanza/salida temprana
+   * MÁS ALLÁ de la tolerancia se descuenta.
+   */
+  private computeSessionPayableMinutes(
+    session: { startsAt: Date; endsAt: Date },
+    attendance: { joinedAt: Date | null; leftAt: Date | null } | null,
+    toleranceMinutes: number,
+  ): { scheduledMinutes: number; payableMinutes: number; latenessMinutes: number; earlinessMinutes: number } {
+    const scheduledMinutes = (session.endsAt.getTime() - session.startsAt.getTime()) / 60_000;
+    if (!attendance?.joinedAt || !attendance?.leftAt) {
+      // Sin dato real de asistencia (sesión futura o Graph no sincronizado
+      // todavía) — se estima con la duración completa programada.
+      return { scheduledMinutes, payableMinutes: scheduledMinutes, latenessMinutes: 0, earlinessMinutes: 0 };
+    }
+    const latenessMinutes = Math.max(0, (attendance.joinedAt.getTime() - session.startsAt.getTime()) / 60_000 - toleranceMinutes);
+    const earlinessMinutes = Math.max(0, (session.endsAt.getTime() - attendance.leftAt.getTime()) / 60_000 - toleranceMinutes);
+    const payableMinutes = Math.max(0, scheduledMinutes - latenessMinutes - earlinessMinutes);
+    return { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes };
+  }
+
+  /**
+   * Costo estimado de horas de docencia en el periodo — "si el curso es
+   * grabado no tendrá pago por docencia" (no hay sesiones en vivo que
+   * pagar). Solo cuenta sesiones de cursos LIVE/HYBRID con un TeacherRate
+   * activo configurado para ese docente (global o específico del curso).
+   */
+  async getTeachingHoursCost(params: { from: Date; to: Date }) {
+    const sessions = await this.prisma.liveSession.findMany({
+      where: { startsAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" }, course: { modality: { not: "RECORDED" } } },
+      include: { course: true },
+    });
+    const byCurrency = new Map<string, number>();
+    let totalMinutes = 0;
+    for (const session of sessions) {
+      if (!session.teacherId) continue;
+      const rate =
+        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: session.courseId } } })) ??
+        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: null as never } } }));
+      if (!rate || !rate.active || Number(rate.hourlyRateTeaching) <= 0) continue;
+      const attendance = await this.prisma.attendance.findUnique({
+        where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
+      });
+      const { payableMinutes } = this.computeSessionPayableMinutes(session, attendance, rate.toleranceMinutes);
+      const amount = (payableMinutes / 60) * Number(rate.hourlyRateTeaching);
+      byCurrency.set(rate.currency, (byCurrency.get(rate.currency) ?? 0) + amount);
+      totalMinutes += payableMinutes;
+    }
+    return { byCurrency, totalHours: Math.round((totalMinutes / 60) * 100) / 100 };
+  }
+
+  /**
+   * "El admin debe poder ver a qué hora se conectó y desconectó el docente
+   * en las clases en vivo, y el balance de horas dictadas por clase y por
+   * curso" — detalle sesión por sesión (para auditar una clase puntual) más
+   * un resumen agregado por docente y por curso. `attendance` viene de
+   * Attendance (sincronizada desde Microsoft Graph tras la clase, o
+   * ingresada a mano si Graph no llegó a sincronizar).
+   */
+  async listTeacherSessionHours(params: { teacherId?: string; courseId?: string; from?: Date; to?: Date }) {
+    const sessions = await this.prisma.liveSession.findMany({
+      where: {
+        status: { not: "CANCELLED" },
+        ...(params.teacherId ? { teacherId: params.teacherId } : {}),
+        ...(params.courseId ? { courseId: params.courseId } : {}),
+        ...(params.from || params.to
+          ? { startsAt: { ...(params.from ? { gte: params.from } : {}), ...(params.to ? { lte: params.to } : {}) } }
+          : {}),
+      },
+      include: { course: { select: { id: true, slug: true, title: true } }, teacher: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { startsAt: "desc" },
+      take: 500,
+    });
+
+    const rows = [];
+    for (const session of sessions) {
+      if (!session.teacherId || !session.teacher) continue;
+      const attendance = await this.prisma.attendance.findUnique({
+        where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
+      });
+      const rate =
+        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: session.courseId } } })) ??
+        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: null as never } } }));
+      const toleranceMinutes = rate?.toleranceMinutes ?? 10;
+      const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(session, attendance, toleranceMinutes);
+      rows.push({
+        sessionId: session.id,
+        courseId: session.courseId,
+        courseTitle: session.course.title,
+        teacherId: session.teacherId,
+        teacherName: `${session.teacher.firstName} ${session.teacher.lastName}`,
+        startsAt: session.startsAt,
+        endsAt: session.endsAt,
+        joinedAt: attendance?.joinedAt ?? null,
+        leftAt: attendance?.leftAt ?? null,
+        hasAttendanceData: Boolean(attendance?.joinedAt && attendance?.leftAt),
+        scheduledMinutes: Math.round(scheduledMinutes),
+        payableMinutes: Math.round(payableMinutes),
+        latenessMinutes: Math.round(latenessMinutes),
+        earlinessMinutes: Math.round(earlinessMinutes),
+      });
+    }
+
+    // Resumen — horas programadas vs. efectivamente pagables, por docente y por curso.
+    const byTeacher = new Map<string, { teacherName: string; scheduledMinutes: number; payableMinutes: number; sessions: number }>();
+    const byCourse = new Map<string, { courseTitle: unknown; scheduledMinutes: number; payableMinutes: number; sessions: number }>();
+    for (const r of rows) {
+      const t = byTeacher.get(r.teacherId) ?? { teacherName: r.teacherName, scheduledMinutes: 0, payableMinutes: 0, sessions: 0 };
+      t.scheduledMinutes += r.scheduledMinutes;
+      t.payableMinutes += r.payableMinutes;
+      t.sessions += 1;
+      byTeacher.set(r.teacherId, t);
+
+      const c = byCourse.get(r.courseId) ?? { courseTitle: r.courseTitle, scheduledMinutes: 0, payableMinutes: 0, sessions: 0 };
+      c.scheduledMinutes += r.scheduledMinutes;
+      c.payableMinutes += r.payableMinutes;
+      c.sessions += 1;
+      byCourse.set(r.courseId, c);
+    }
+
+    return {
+      sessions: rows,
+      byTeacher: Array.from(byTeacher.entries()).map(([teacherId, v]) => ({ teacherId, ...v })),
+      byCourse: Array.from(byCourse.entries()).map(([courseId, v]) => ({ courseId, ...v })),
+    };
+  }
+
+  // --- Regalías: quien recibe la regalía no es un usuario de la plataforma
+  // (no inicia sesión) — se administra como entidad externa, igual que
+  // PartnerInstitution. "Por cada alumno matriculado / que termina / por
+  // referido, tú me pagas un %." ---
+
+  async listRoyaltyRecipients() {
+    const rows = await this.prisma.royaltyRecipient.findMany({
+      include: { courses: { include: { course: { select: { id: true, slug: true, title: true } } } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows;
+  }
+
+  createRoyaltyRecipient(input: {
+    name: string;
+    contactEmail?: string;
+    billingType?: "PER_ENROLLMENT" | "PER_COMPLETION" | "PER_REFERRAL";
+    feePercent?: number;
+    feeCurrency?: string;
+  }) {
+    return this.prisma.royaltyRecipient.create({ data: input as never });
+  }
+
+  updateRoyaltyRecipient(id: string, input: Record<string, unknown>) {
+    return this.prisma.royaltyRecipient.update({ where: { id }, data: input as never });
+  }
+
+  async deleteRoyaltyRecipient(id: string) {
+    await this.prisma.royaltyRecipient.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  addCourseRoyalty(input: { courseId: string; royaltyRecipientId: string; startDate?: string; endDate?: string }) {
+    return this.prisma.courseRoyalty.create({
+      data: {
+        courseId: input.courseId,
+        royaltyRecipientId: input.royaltyRecipientId,
+        startDate: input.startDate ? new Date(input.startDate) : undefined,
+        endDate: input.endDate ? new Date(input.endDate) : undefined,
+      },
+    });
+  }
+
+  async removeCourseRoyalty(id: string) {
+    await this.prisma.courseRoyalty.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  // --- Campañas de correo a clientes ---
+  // "Un módulo donde enviar correos a nuestros clientes... programado
+  // automático con IA, o que uno redacte y parametrice para mandar correos
+  // masivos." apps/api solo administra el CRUD y calcula la audiencia; el
+  // envío real (y el borrador con IA) corre en apps/worker, disparado por
+  // un sweep periódico (mismo patrón que reminder.sweep) — "enviar ahora"
+  // simplemente pone scheduledAt=ahora y deja que el sweep la recoja en
+  // minutos, en vez de duplicar la lógica de armado+envío en dos procesos.
+
+  /**
+   * Resuelve cuántos/cuáles usuarios calzan con un filtro de audiencia —
+   * usado tanto para la vista previa de "a cuántos les llega" en el admin
+   * como (una versión espejo, ver email-campaign.processor.ts) por el
+   * worker al momento de enviar de verdad.
+   */
+  async resolveEmailAudience(filter: {
+    interests?: string[];
+    areaIds?: string[];
+    companyId?: string;
+    inactiveDays?: number;
+  } | null | undefined) {
+    let enrolledUserIds: string[] | undefined;
+    if (filter?.areaIds?.length) {
+      const rows = await this.prisma.enrollment.findMany({
+        where: { course: { areaId: { in: filter.areaIds } } },
+        select: { userId: true },
+        distinct: ["userId"],
+      });
+      enrolledUserIds = rows.map((r) => r.userId);
+    }
+
+    let inactiveBeforeUserIds: string[] | undefined;
+    if (filter?.inactiveDays) {
+      const cutoff = new Date(Date.now() - filter.inactiveDays * 24 * 60 * 60 * 1000);
+      const recentlyActive = await this.prisma.lessonProgress.findMany({
+        where: { updatedAt: { gte: cutoff } },
+        select: { userId: true },
+        distinct: ["userId"],
+      });
+      const activeIds = new Set(recentlyActive.map((r) => r.userId));
+      const all = await this.prisma.user.findMany({ where: { status: "active" }, select: { id: true } });
+      inactiveBeforeUserIds = all.map((u) => u.id).filter((id) => !activeIds.has(id));
+    }
+
+    return this.prisma.user.findMany({
+      where: {
+        status: "active",
+        marketingConsentEmail: true,
+        ...(enrolledUserIds ? { id: { in: enrolledUserIds } } : {}),
+        ...(inactiveBeforeUserIds ? { id: { in: inactiveBeforeUserIds } } : {}),
+        ...(filter?.interests?.length ? { interests: { hasSome: filter.interests } } : {}),
+        ...(filter?.companyId ? { companyMemberships: { some: { companyId: filter.companyId } } } : {}),
+      },
+      select: { id: true, email: true, firstName: true, interests: true },
+    });
+  }
+
+  /** Solo el conteo — para la vista previa "le llegará a N personas" sin traer toda la lista. */
+  async previewEmailAudienceCount(filter: Parameters<AdminService["resolveEmailAudience"]>[0]) {
+    const rows = await this.resolveEmailAudience(filter);
+    return { count: rows.length };
+  }
+
+  async listEmailCampaigns() {
+    return this.prisma.emailCampaign.findMany({ orderBy: { createdAt: "desc" }, include: { createdBy: { select: { firstName: true, lastName: true } } } });
+  }
+
+  async createEmailCampaign(
+    input: {
+      name: string;
+      mode: string;
+      goal?: string | null;
+      subject?: string | null;
+      bodyHtml?: string | null;
+      audienceFilter?: unknown;
+      scheduledAt?: string | null;
+      recurrence: string;
+    },
+    createdById: string,
+  ) {
+    return this.prisma.emailCampaign.create({
+      data: {
+        name: input.name,
+        mode: input.mode as never,
+        goal: (input.goal ?? null) as never,
+        subject: input.subject ?? null,
+        bodyHtml: input.bodyHtml ?? null,
+        audienceFilter: (input.audienceFilter ?? null) as never,
+        scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+        recurrence: input.recurrence as never,
+        status: input.scheduledAt ? "SCHEDULED" : "DRAFT",
+        createdById,
+      },
+    });
+  }
+
+  async updateEmailCampaign(
+    id: string,
+    input: {
+      name?: string;
+      subject?: string | null;
+      bodyHtml?: string | null;
+      audienceFilter?: unknown;
+      scheduledAt?: string | null;
+      recurrence?: string;
+      status?: string;
+    },
+  ) {
+    const campaign = await this.prisma.emailCampaign.findUnique({ where: { id } });
+    if (!campaign) throw new NotFoundException("Campaña no encontrada");
+    if (campaign.status === "SENT") throw new BadRequestException("Ya se envió — no se puede editar, solo consultar.");
+
+    const data: Record<string, unknown> = { ...input };
+    if (input.scheduledAt !== undefined) data.scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
+    // Si no la cancelan explícitamente y ahora tiene fecha, pasa a SCHEDULED.
+    if (input.status === undefined && input.scheduledAt) data.status = "SCHEDULED";
+    return this.prisma.emailCampaign.update({ where: { id }, data: data as never });
+  }
+
+  /** "Enviar ahora" — el envío real lo hace el sweep del worker en los próximos minutos, ver email-campaign.processor.ts. */
+  async sendEmailCampaignNow(id: string) {
+    const campaign = await this.prisma.emailCampaign.findUnique({ where: { id } });
+    if (!campaign) throw new NotFoundException("Campaña no encontrada");
+    if (campaign.status === "SENT") throw new BadRequestException("Ya se envió.");
+    return this.prisma.emailCampaign.update({ where: { id }, data: { status: "SCHEDULED", scheduledAt: new Date() } });
+  }
+
+  async deleteEmailCampaign(id: string) {
+    const campaign = await this.prisma.emailCampaign.findUnique({ where: { id } });
+    if (!campaign) throw new NotFoundException("Campaña no encontrada");
+    if (campaign.status === "SENT") throw new BadRequestException("Ya se envió — se conserva como historial.");
+    await this.prisma.emailCampaign.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  // --- Liquidación de docentes ---
+  // Tarifas por hora (dictado / otras actividades), tolerancia, adelantos,
+  // y la liquidación final por periodo — "a los docentes se les debe pagar,
+  // debería haber una sección de liquidación del docente, solo si cobran".
+
+  async listTeacherRates(teacherId?: string) {
+    return this.prisma.teacherRate.findMany({
+      where: teacherId ? { teacherId } : undefined,
+      include: { course: { select: { id: true, slug: true, title: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  upsertTeacherRate(input: {
+    teacherId: string;
+    courseId?: string | null;
+    hourlyRateTeaching?: number;
+    hourlyRateOtherActivities?: number;
+    currency?: string;
+    toleranceMinutes?: number;
+    paymentFrequency?: "DAILY" | "WEEKLY" | "MONTHLY" | "END_OF_COURSE";
+    active?: boolean;
+  }) {
+    const courseId = input.courseId ?? null;
+    return this.prisma.teacherRate.upsert({
+      where: { teacherId_courseId: { teacherId: input.teacherId, courseId } as never },
+      create: { ...input, courseId } as never,
+      update: input as never,
+    });
+  }
+
+  async deleteTeacherRate(id: string) {
+    await this.prisma.teacherRate.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  listTeacherActivityLogs(teacherId: string) {
+    return this.prisma.teacherActivityLog.findMany({
+      where: { teacherId },
+      include: { course: { select: { id: true, slug: true, title: true } } },
+      orderBy: { loggedAt: "desc" },
+    });
+  }
+
+  createTeacherActivityLog(input: { teacherId: string; courseId?: string; activityType?: string; hours: number; note?: string; loggedAt?: string }) {
+    return this.prisma.teacherActivityLog.create({
+      data: { ...input, loggedAt: input.loggedAt ? new Date(input.loggedAt) : undefined } as never,
+    });
+  }
+
+  async deleteTeacherActivityLog(id: string) {
+    await this.prisma.teacherActivityLog.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  listTeacherAdvances(teacherId: string) {
+    return this.prisma.teacherAdvance.findMany({ where: { teacherId }, orderBy: { grantedAt: "desc" } });
+  }
+
+  createTeacherAdvance(input: { teacherId: string; amount: number; currency?: string; note?: string }) {
+    return this.prisma.teacherAdvance.create({ data: input as never });
+  }
+
+  async deleteTeacherAdvance(id: string) {
+    const advance = await this.prisma.teacherAdvance.findUnique({ where: { id } });
+    if (advance?.liquidationId) throw new BadRequestException("Este adelanto ya está aplicado a una liquidación — no se puede eliminar.");
+    await this.prisma.teacherAdvance.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  listTeacherLiquidations(teacherId?: string) {
+    return this.prisma.teacherLiquidation.findMany({
+      where: teacherId ? { teacherId } : undefined,
+      include: { teacher: { select: { firstName: true, lastName: true, email: true } }, advances: true },
+      orderBy: { periodStart: "desc" },
+    });
+  }
+
+  /**
+   * Genera la liquidación de un docente para un periodo: suma horas
+   * dictadas (ya descontando tardanza/salida temprana más allá de la
+   * tolerancia — nunca de más por quedarse tiempo extra) + horas de otras
+   * actividades registradas a mano, menos adelantos todavía no aplicados.
+   * Queda en DRAFT — el admin la aprueba/paga después de revisarla.
+   */
+  async generateTeacherLiquidation(input: { teacherId: string; periodStart: string; periodEnd: string }) {
+    const periodStart = new Date(input.periodStart);
+    const periodEnd = new Date(input.periodEnd);
+    const rates = await this.prisma.teacherRate.findMany({ where: { teacherId: input.teacherId, active: true } });
+    if (rates.length === 0) {
+      throw new BadRequestException("Este docente no tiene ninguna tarifa configurada — no se puede liquidar.");
+    }
+    const globalRate = rates.find((r) => r.courseId === null);
+    const rateByCourse = new Map(rates.filter((r) => r.courseId).map((r) => [r.courseId as string, r]));
+
+    const sessions = await this.prisma.liveSession.findMany({
+      where: { teacherId: input.teacherId, startsAt: { gte: periodStart, lte: periodEnd }, status: { not: "CANCELLED" } },
+    });
+
+    let hoursTeaching = 0;
+    let grossFromTeaching = 0;
+    let deductionAmount = 0;
+    let currency = globalRate?.currency ?? rates[0].currency;
+    const detail: Array<{ sessionId: string; scheduledMinutes: number; payableMinutes: number; latenessMinutes: number; earlinessMinutes: number }> = [];
+
+    for (const session of sessions) {
+      const rate = rateByCourse.get(session.courseId) ?? globalRate;
+      if (!rate) continue;
+      currency = rate.currency;
+      const attendance = await this.prisma.attendance.findUnique({
+        where: { liveSessionId_userId: { liveSessionId: session.id, userId: input.teacherId } },
+      });
+      const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(
+        session,
+        attendance,
+        rate.toleranceMinutes,
+      );
+      hoursTeaching += payableMinutes / 60;
+      grossFromTeaching += (payableMinutes / 60) * Number(rate.hourlyRateTeaching);
+      deductionAmount += ((scheduledMinutes - payableMinutes) / 60) * Number(rate.hourlyRateTeaching);
+      detail.push({ sessionId: session.id, scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes });
+    }
+
+    const activityLogs = await this.prisma.teacherActivityLog.findMany({
+      where: { teacherId: input.teacherId, loggedAt: { gte: periodStart, lte: periodEnd } },
+    });
+    const hoursOtherActivities = activityLogs.reduce((sum, a) => sum + a.hours, 0);
+    const otherActivitiesRate = Number(globalRate?.hourlyRateOtherActivities ?? rates[0].hourlyRateOtherActivities);
+    const grossFromActivities = hoursOtherActivities * otherActivitiesRate;
+
+    const unclaimedAdvances = await this.prisma.teacherAdvance.findMany({
+      where: { teacherId: input.teacherId, liquidationId: null, grantedAt: { lte: periodEnd } },
+    });
+    const advancesDeducted = unclaimedAdvances.reduce((sum, a) => sum + Number(a.amount), 0);
+
+    const grossAmount = grossFromTeaching + grossFromActivities;
+    const netAmount = grossAmount - advancesDeducted;
+
+    const liquidation = await this.prisma.teacherLiquidation.create({
+      data: {
+        teacherId: input.teacherId,
+        periodStart,
+        periodEnd,
+        hoursTeaching: Math.round(hoursTeaching * 100) / 100,
+        hoursOtherActivities,
+        grossAmount,
+        deductions: deductionAmount,
+        advancesDeducted,
+        netAmount,
+        currency,
+        detail: detail as never,
+      },
+    });
+    // Los adelantos usados quedan marcados como aplicados a ESTA liquidación
+    // — no se vuelven a descontar en la próxima.
+    await this.prisma.teacherAdvance.updateMany({
+      where: { id: { in: unclaimedAdvances.map((a) => a.id) } },
+      data: { liquidationId: liquidation.id },
+    });
+    return liquidation;
+  }
+
+  /** El admin puede perdonar la penalidad (p.ej. por confianza con el docente) y pagarle completo. */
+  async waiveTeacherLiquidationDeduction(id: string, reason: string) {
+    const liquidation = await this.prisma.teacherLiquidation.findUnique({ where: { id } });
+    if (!liquidation) throw new NotFoundException("Liquidación no encontrada");
+    const restoredGross = Number(liquidation.grossAmount) + Number(liquidation.deductions);
+    return this.prisma.teacherLiquidation.update({
+      where: { id },
+      data: {
+        deductionsWaived: true,
+        waivedReason: reason,
+        grossAmount: restoredGross,
+        netAmount: restoredGross - Number(liquidation.advancesDeducted),
+      },
+    });
+  }
+
+  updateTeacherLiquidationStatus(id: string, status: "APPROVED" | "PAID") {
+    return this.prisma.teacherLiquidation.update({
+      where: { id },
+      data: { status, ...(status === "PAID" ? { paidAt: new Date() } : {}) },
+    });
   }
 
   // --- Empresas ---
@@ -701,7 +1265,14 @@ export class AdminService {
   // --- Órdenes (para poder ubicar una orden y cancelarla — ver
   // CommerceService.cancelOrder — sin tener que consultar la BD a mano) ---
 
-  async listOrders(q?: string) {
+  /**
+   * `sortBy`: date (default) | company | course | status | category.
+   * OrderItem.courseId no tiene relación declarada a Course (ver
+   * schema.prisma) — se resuelve a mano en una segunda consulta en vez de
+   * un `include` encadenado, para poder ordenar/mostrar por curso y por
+   * área (categoría) del curso.
+   */
+  async listOrders(q?: string, sortBy?: string) {
     const orders = await this.prisma.order.findMany({
       where: q
         ? {
@@ -712,20 +1283,52 @@ export class AdminService {
             ],
           }
         : undefined,
-      include: { user: true, electronicInvoice: true },
+      include: { user: true, electronicInvoice: true, company: true, items: true },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 200,
     });
-    return orders.map((o) => ({
-      id: o.id,
-      status: o.status,
-      total: decimalToString(o.total),
-      currency: o.currency,
-      userEmail: o.user.email,
-      buyerLegalName: o.buyerLegalName,
-      invoiceStatus: o.electronicInvoice?.status ?? null,
-      createdAt: o.createdAt.toISOString(),
-    }));
+
+    const courseIds = Array.from(new Set(orders.flatMap((o) => o.items.map((i) => i.courseId).filter((id): id is string => Boolean(id)))));
+    const courses = courseIds.length
+      ? await this.prisma.course.findMany({ where: { id: { in: courseIds } }, include: { area: true } })
+      : [];
+    const courseById = new Map(courses.map((c) => [c.id, c]));
+
+    let rows = orders.map((o) => {
+      const firstCourse = o.items.map((i) => (i.courseId ? courseById.get(i.courseId) : null)).find(Boolean);
+      return {
+        id: o.id,
+        status: o.status,
+        total: decimalToString(o.total),
+        currency: o.currency,
+        userEmail: o.user.email,
+        buyerLegalName: o.buyerLegalName,
+        companyName: o.company?.legalName ?? null,
+        courseTitle: (firstCourse?.title as Record<string, string>) ?? null,
+        categoryName: (firstCourse?.area?.name as Record<string, string>) ?? null,
+        invoiceStatus: o.electronicInvoice?.status ?? null,
+        createdAt: o.createdAt.toISOString(),
+      };
+    });
+
+    switch (sortBy) {
+      case "company":
+        rows = rows.sort((a, b) => (a.companyName ?? "￿").localeCompare(b.companyName ?? "￿"));
+        break;
+      case "course":
+        rows = rows.sort((a, b) => (a.courseTitle?.es ?? "￿").localeCompare(b.courseTitle?.es ?? "￿"));
+        break;
+      case "status":
+        rows = rows.sort((a, b) => a.status.localeCompare(b.status));
+        break;
+      case "category":
+        rows = rows.sort((a, b) => (a.categoryName?.es ?? "￿").localeCompare(b.categoryName?.es ?? "￿"));
+        break;
+      default:
+        // ya vienen ordenadas por fecha desc desde la consulta
+        break;
+    }
+    return rows.slice(0, 50);
   }
 
   // ==========================================================================
@@ -844,11 +1447,25 @@ export class AdminService {
       }
     }
 
-    const currencies = new Set<string>(["PEN", ...incomeByCurrency.keys(), ...expensesByCurrency.map((e) => e.currency)]);
-    // "Esto tal vez tenga que figurar en el estado de pérdidas y ganancias
-    // o finanzas" — el costo de los convenios institucionales (fijo, por
-    // curso dictado o por plazo) se suma como un gasto más, solo en PEN.
-    const partnerCosts = await this.getPartnerInstitutionCosts({ from, to });
+    // "El costo de convenios/regalías/horas de docencia debería figurar
+    // automáticamente en otros gastos, dentro del balance, siempre
+    // respetando la moneda en la que se encuentre" — cada uno ya viene
+    // separado por currency (feeCurrency del convenio/regalía, currency de
+    // la tarifa del docente), así que se suman al mapa de "otros gastos"
+    // de SU PROPIA moneda, no siempre a PEN.
+    const [partnerCosts, royaltyCosts, teachingCosts] = await Promise.all([
+      this.getPartnerInstitutionCosts({ from, to }),
+      this.getRoyaltyCosts({ from, to }),
+      this.getTeachingHoursCost({ from, to }),
+    ]);
+    const currencies = new Set<string>([
+      "PEN",
+      ...incomeByCurrency.keys(),
+      ...expensesByCurrency.map((e) => e.currency),
+      ...partnerCosts.byCurrency.keys(),
+      ...royaltyCosts.byCurrency.keys(),
+      ...teachingCosts.byCurrency.keys(),
+    ]);
 
     const rows = Array.from(currencies).map((currency) => {
       const income = incomeByCurrency.get(currency) ?? 0;
@@ -862,7 +1479,11 @@ export class AdminService {
       const igv = currency === "PEN" && isGravado ? income - income / (1 + igvPercent / 100) : 0;
       const detraction = detractionByCurrency.get(currency) ?? 0;
       const providerFees = feesByCurrency.get(currency) ?? 0;
-      const otherExpenses = (expensesMap.get(currency) ?? 0) + (currency === "PEN" ? partnerCosts.totalPen : 0);
+      const otherExpenses =
+        (expensesMap.get(currency) ?? 0) +
+        (partnerCosts.byCurrency.get(currency) ?? 0) +
+        (royaltyCosts.byCurrency.get(currency) ?? 0) +
+        (teachingCosts.byCurrency.get(currency) ?? 0);
       return {
         currency,
         income,
@@ -885,6 +1506,8 @@ export class AdminService {
       ...detractionSettings,
       availableYears: availableYears.map((r) => r.year),
       partnerCosts: partnerCosts.breakdown,
+      royaltyCosts: royaltyCosts.breakdown,
+      teachingHoursCost: { hours: teachingCosts.totalHours, byCurrency: Object.fromEntries(teachingCosts.byCurrency) },
       rows,
     };
   }
@@ -1073,24 +1696,31 @@ export class AdminService {
     };
   }
 
-  // --- Matrículas (buscar una puntual + ampliar plazo de acceso como caso
-  // especial — "el administrador como caso especial podría ampliar el
-  // plazo" tras un curso grabado con fecha de término vencida) ---
+  // --- "Casos extemporáneos" (antes "Matrículas") — el módulo NO debe listar
+  // toda matrícula, solo los alumnos que no terminaron el curso dentro del
+  // plazo establecido: accessExpiresAt ya vencido y todavía no COMPLETED.
+  // Ampliar el plazo de acceso sigue siendo la acción especial del admin
+  // sobre esa fila puntual (ver extendEnrollmentAccess).
 
   async listEnrollments(q?: string) {
+    const now = new Date();
     const enrollments = await this.prisma.enrollment.findMany({
-      where: q
-        ? {
-            OR: [
-              { user: { email: { contains: q, mode: "insensitive" } } },
-              { user: { firstName: { contains: q, mode: "insensitive" } } },
-              { user: { lastName: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : undefined,
+      where: {
+        accessExpiresAt: { lt: now },
+        status: { not: "COMPLETED" },
+        ...(q
+          ? {
+              OR: [
+                { user: { email: { contains: q, mode: "insensitive" } } },
+                { user: { firstName: { contains: q, mode: "insensitive" } } },
+                { user: { lastName: { contains: q, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      },
       include: { user: true, course: true, program: true },
-      orderBy: { enrolledAt: "desc" },
-      take: 50,
+      orderBy: { accessExpiresAt: "desc" },
+      take: 100,
     });
     return enrollments.map((e) => ({
       id: e.id,
@@ -1165,6 +1795,17 @@ export class AdminService {
       signatureAssetId: u.signatureAssetId,
       signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
       companies: u.companyMemberships.map((m) => ({ companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
+      // "El admin debería poder editar a cualquier usuario" — se exponen acá
+      // los campos de perfil editables (ver updateUserSchema) para poder
+      // precargar el formulario de edición.
+      phone: u.phone,
+      documentType: u.documentType,
+      documentNumber: u.documentNumber,
+      country: u.country,
+      city: u.city,
+      address: u.address,
+      jobTitle: u.jobTitle,
+      companyFreeText: u.companyFreeText,
     }));
   }
 
@@ -1218,7 +1859,23 @@ export class AdminService {
   async updateUser(
     id: string,
     actorId: string,
-    input: { globalRole?: string; secondaryRoles?: string[]; status?: string; signatureAssetId?: string | null },
+    input: {
+      globalRole?: string;
+      secondaryRoles?: string[];
+      status?: string;
+      signatureAssetId?: string | null;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string | null;
+      documentType?: string | null;
+      documentNumber?: string | null;
+      country?: string | null;
+      city?: string | null;
+      address?: string | null;
+      jobTitle?: string | null;
+      companyFreeText?: string | null;
+    },
   ) {
     if (id === actorId) {
       const existing = await this.prisma.user.findUnique({ where: { id } });
@@ -1240,7 +1897,16 @@ export class AdminService {
       const globalRole = input.globalRole ?? (await this.prisma.user.findUnique({ where: { id }, select: { globalRole: true } }))?.globalRole;
       data.secondaryRoles = input.secondaryRoles.filter((r) => r !== globalRole);
     }
-    return this.prisma.user.update({ where: { id }, data: data as never });
+    try {
+      return await this.prisma.user.update({ where: { id }, data: data as never });
+    } catch (err) {
+      // P2002 = violación de índice único — el único campo editable acá que
+      // choca con otro usuario es el correo.
+      if ((err as { code?: string })?.code === "P2002") {
+        throw new BadRequestException("Ya existe otro usuario con ese correo.");
+      }
+      throw err;
+    }
   }
 
   /**

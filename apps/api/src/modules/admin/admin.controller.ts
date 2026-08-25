@@ -9,11 +9,22 @@ import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
   addCoursePartnershipSchema,
+  addCourseRoyaltySchema,
   assignCourseStaffSchema,
   adminResetPasswordSchema,
   createExpenseSchema,
+  createTeacherActivityLogSchema,
+  createTeacherAdvanceSchema,
   createUserSchema,
+  generateTeacherLiquidationSchema,
+  gradeFileAttemptSchema,
+  emailAudienceFilterSchema,
+  upsertEmailCampaignSchema,
+  updateEmailCampaignSchema,
   upsertPartnerInstitutionSchema,
+  upsertRoyaltyRecipientSchema,
+  upsertTeacherRateSchema,
+  waiveLiquidationSchema,
   extendEnrollmentAccessSchema,
   gradeAnswerSchema,
   updateAssessmentSchema,
@@ -337,6 +348,31 @@ export class AdminController {
     return this.assessmentService.gradeAnswer(attemptId, answerId, user.id, dto);
   }
 
+  @Get("attempts/pending-file-reviews")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Cola de exámenes 'cualitativos' (archivo) pendientes de calificar (TEACHER ve solo sus cursos)" })
+  pendingFileReviews(@CurrentUser() user: RequestUser) {
+    return this.assessmentService.listPendingFileReviews(user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Post("attempts/:attemptId/grade-file")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Califica el archivo de respuesta completo de un examen 'cualitativo'" })
+  gradeFileAttempt(
+    @CurrentUser() user: RequestUser,
+    @Param("attemptId") attemptId: string,
+    @Body(new ZodValidationPipe(gradeFileAttemptSchema)) dto: { score: number; passed: boolean },
+  ) {
+    return this.assessmentService.gradeFileAttempt(attemptId, user.id, dto);
+  }
+
+  @Get("teacher-grading-workload")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Por cada docente: calificaciones pendientes y días de atraso — para monitorear a los docentes desde el admin" })
+  teacherGradingWorkload() {
+    return this.assessmentService.listTeacherGradingWorkload();
+  }
+
   @Get("certificate-templates")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Lista plantillas de certificado" })
@@ -412,6 +448,212 @@ export class AdminController {
     return this.adminService.removeCoursePartnership(id);
   }
 
+  // --- Reporte de horas dictadas (conexión/desconexión en clases en vivo) ---
+
+  @Get("teacher-session-hours")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Detalle y balance de horas dictadas por clase en vivo — hora de conexión/desconexión del docente, por docente y por curso" })
+  listTeacherSessionHours(@Query("teacherId") teacherId?: string, @Query("courseId") courseId?: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.adminService.listTeacherSessionHours({
+      teacherId,
+      courseId,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+    });
+  }
+
+  // --- Liquidación de docentes ---
+
+  @Get("teacher-rates")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Tarifas de docentes (global o por curso)" })
+  listTeacherRates(@Query("teacherId") teacherId?: string) {
+    return this.adminService.listTeacherRates(teacherId);
+  }
+
+  @Post("teacher-rates")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Crea o actualiza la tarifa de un docente (global o por curso)" })
+  upsertTeacherRate(@Body(new ZodValidationPipe(upsertTeacherRateSchema)) dto: any) {
+    return this.adminService.upsertTeacherRate(dto);
+  }
+
+  @Delete("teacher-rates/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina una tarifa de docente" })
+  deleteTeacherRate(@Param("id") id: string) {
+    return this.adminService.deleteTeacherRate(id);
+  }
+
+  @Get("teacher-activity-logs")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Horas registradas de un docente por otras actividades (p.ej. calificar exámenes)" })
+  listTeacherActivityLogs(@Query("teacherId") teacherId: string) {
+    return this.adminService.listTeacherActivityLogs(teacherId);
+  }
+
+  @Post("teacher-activity-logs")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Registra horas de un docente en otras actividades" })
+  createTeacherActivityLog(@Body(new ZodValidationPipe(createTeacherActivityLogSchema)) dto: any) {
+    return this.adminService.createTeacherActivityLog(dto);
+  }
+
+  @Delete("teacher-activity-logs/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina un registro de horas" })
+  deleteTeacherActivityLog(@Param("id") id: string) {
+    return this.adminService.deleteTeacherActivityLog(id);
+  }
+
+  @Get("teacher-advances")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Adelantos otorgados a un docente" })
+  listTeacherAdvances(@Query("teacherId") teacherId: string) {
+    return this.adminService.listTeacherAdvances(teacherId);
+  }
+
+  @Post("teacher-advances")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Otorga un adelanto a un docente — se descuenta de su próxima liquidación" })
+  createTeacherAdvance(@Body(new ZodValidationPipe(createTeacherAdvanceSchema)) dto: any) {
+    return this.adminService.createTeacherAdvance(dto);
+  }
+
+  @Delete("teacher-advances/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina un adelanto (solo si no está aplicado a una liquidación)" })
+  deleteTeacherAdvance(@Param("id") id: string) {
+    return this.adminService.deleteTeacherAdvance(id);
+  }
+
+  @Get("teacher-liquidations/mine")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Mis liquidaciones (docente) — solo lectura" })
+  myTeacherLiquidations(@CurrentUser() user: RequestUser) {
+    return this.adminService.listTeacherLiquidations(user.id);
+  }
+
+  @Get("teacher-liquidations")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Liquidaciones de docentes (todas, o filtradas por docente)" })
+  listTeacherLiquidations(@Query("teacherId") teacherId?: string) {
+    return this.adminService.listTeacherLiquidations(teacherId);
+  }
+
+  @Post("teacher-liquidations/generate")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Genera la liquidación de un docente para un periodo (horas dictadas + otras actividades - adelantos)" })
+  generateTeacherLiquidation(@Body(new ZodValidationPipe(generateTeacherLiquidationSchema)) dto: any) {
+    return this.adminService.generateTeacherLiquidation(dto);
+  }
+
+  @Patch("teacher-liquidations/:id/waive")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Perdona la penalidad por tardanza/salida temprana de una liquidación y paga completo" })
+  waiveTeacherLiquidation(@Param("id") id: string, @Body(new ZodValidationPipe(waiveLiquidationSchema)) dto: { reason: string }) {
+    return this.adminService.waiveTeacherLiquidationDeduction(id, dto.reason);
+  }
+
+  @Patch("teacher-liquidations/:id/status")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Aprueba o marca como pagada una liquidación" })
+  updateTeacherLiquidationStatus(@Param("id") id: string, @Body() dto: { status: "APPROVED" | "PAID" }) {
+    return this.adminService.updateTeacherLiquidationStatus(id, dto.status);
+  }
+
+  // --- Regalías ---
+
+  @Get("royalty-recipients")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Lista quienes reciben regalías y sus cursos asociados" })
+  listRoyaltyRecipients() {
+    return this.adminService.listRoyaltyRecipients();
+  }
+
+  @Post("royalty-recipients")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Crea a quien recibe regalías (no es un usuario de la plataforma)" })
+  createRoyaltyRecipient(@Body(new ZodValidationPipe(upsertRoyaltyRecipientSchema)) dto: any) {
+    return this.adminService.createRoyaltyRecipient(dto);
+  }
+
+  @Patch("royalty-recipients/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Edita a quien recibe regalías" })
+  updateRoyaltyRecipient(@Param("id") id: string, @Body(new ZodValidationPipe(upsertRoyaltyRecipientSchema.partial())) dto: any) {
+    return this.adminService.updateRoyaltyRecipient(id, dto);
+  }
+
+  @Delete("royalty-recipients/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina a quien recibe regalías" })
+  deleteRoyaltyRecipient(@Param("id") id: string) {
+    return this.adminService.deleteRoyaltyRecipient(id);
+  }
+
+  @Post("royalty-recipients/:id/courses")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Asocia un curso a quien recibe regalías" })
+  addCourseRoyalty(
+    @Param("id") royaltyRecipientId: string,
+    @Body(new ZodValidationPipe(addCourseRoyaltySchema)) dto: { courseId: string; startDate?: string; endDate?: string },
+  ) {
+    return this.adminService.addCourseRoyalty({ ...dto, royaltyRecipientId });
+  }
+
+  @Delete("royalty-recipients/course-royalties/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Desasocia un curso de quien recibe regalías" })
+  removeCourseRoyalty(@Param("id") id: string) {
+    return this.adminService.removeCourseRoyalty(id);
+  }
+
+  // --- Campañas de correo a clientes ---
+
+  @Post("email-campaigns/audience-preview")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Cuenta a cuántos les llegaría una campaña con este filtro de audiencia, sin crearla" })
+  previewEmailAudience(@Body(new ZodValidationPipe(emailAudienceFilterSchema)) filter: any) {
+    return this.adminService.previewEmailAudienceCount(filter);
+  }
+
+  @Get("email-campaigns")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Lista las campañas de correo (borrador, programadas, enviadas)" })
+  listEmailCampaigns() {
+    return this.adminService.listEmailCampaigns();
+  }
+
+  @Post("email-campaigns")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Crea una campaña de correo, manual o redactada automáticamente con IA" })
+  createEmailCampaign(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertEmailCampaignSchema)) dto: any) {
+    return this.adminService.createEmailCampaign(dto, user.id);
+  }
+
+  @Patch("email-campaigns/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Edita una campaña que todavía no se envió" })
+  updateEmailCampaign(@Param("id") id: string, @Body(new ZodValidationPipe(updateEmailCampaignSchema)) dto: any) {
+    return this.adminService.updateEmailCampaign(id, dto);
+  }
+
+  @Post("email-campaigns/:id/send-now")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Envía la campaña ahora (la recoge el worker en los próximos minutos)" })
+  sendEmailCampaignNow(@Param("id") id: string) {
+    return this.adminService.sendEmailCampaignNow(id);
+  }
+
+  @Delete("email-campaigns/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina una campaña que todavía no se envió" })
+  deleteEmailCampaign(@Param("id") id: string) {
+    return this.adminService.deleteEmailCampaign(id);
+  }
+
   @Get("companies")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Lista todas las empresas" })
@@ -421,9 +663,9 @@ export class AdminController {
 
   @Get("orders")
   @Roles("ADMIN", "SUPPORT")
-  @ApiOperation({ summary: "Busca órdenes por id, email del comprador o razón social (para ubicarlas y cancelarlas)" })
-  listOrders(@Query("q") q?: string) {
-    return this.adminService.listOrders(q);
+  @ApiOperation({ summary: "Busca órdenes por id, email del comprador o razón social — ordenable por empresa/fecha/curso/estado/categoría" })
+  listOrders(@Query("q") q?: string, @Query("sortBy") sortBy?: string) {
+    return this.adminService.listOrders(q, sortBy);
   }
 
   // --- Matrículas (ampliar plazo de acceso como caso especial) ---

@@ -20,6 +20,10 @@ const DEFAULTS = {
   bodyFontFamily: "Work Sans",
   backgroundColor: null as string | null,
   backgroundImageUrl: null as string | null,
+  // Manual de marca Inkapitales: #586BD8 primario, #D8B26C acento — ya son
+  // el default real horneado en globals.css; null = "usa ese default real".
+  primaryColor: null as string | null,
+  accentColor: null as string | null,
   contactEmail: "hola@inkademy.com" as string | null,
   contactPhone: "+51 1 234 5678" as string | null,
   contactAddress: "Lima, Perú" as string | null,
@@ -67,6 +71,8 @@ export class SettingsService {
         menuFontFamily: null,
         menuFontSizePx: null,
         menuFontColor: null,
+        primaryColor: null,
+        accentColor: null,
         taxAffectation,
       };
     }
