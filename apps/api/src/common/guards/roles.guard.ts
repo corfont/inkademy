@@ -19,7 +19,10 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user: RequestUser | undefined = request.user;
     if (!user) throw new ForbiddenException("No autenticado");
-    if (!required.includes(user.globalRole)) {
+    // Valida contra TODOS los roles efectivos (globalRole + secondaryRoles)
+    // — "un docente podría ser también administrador al mismo tiempo".
+    const effectiveRoles = user.roles ?? [user.globalRole];
+    if (!required.some((r) => effectiveRoles.includes(r))) {
       throw new ForbiddenException(
         `Requiere uno de los roles: ${required.join(", ")}`,
       );

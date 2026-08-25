@@ -24,6 +24,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     if (payload.typ !== "access") throw new UnauthorizedException("Token inválido");
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || user.status !== "active") throw new UnauthorizedException("Usuario inválido");
-    return { id: user.id, email: user.email, globalRole: user.globalRole };
+    // Se recalcula en cada request (no se guarda en el JWT) para que un
+    // cambio de rol hecho por un admin tenga efecto inmediato, sin esperar
+    // a que el usuario vuelva a iniciar sesión.
+    const roles = Array.from(new Set([user.globalRole, ...user.secondaryRoles]));
+    return { id: user.id, email: user.email, globalRole: user.globalRole, roles };
   }
 }

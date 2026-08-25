@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import { ConfigService } from "@nestjs/config";
 import type { Queue } from "bullmq";
@@ -24,6 +24,58 @@ export class LiveSessionService {
     @InjectQueue(QUEUE_NAMES.ATTENDANCE_SYNC) private readonly attendanceSyncQueue: Queue,
   ) {}
 
+  /**
+   * Horas ya programadas (sesiones no canceladas) vs. duración total del
+   * curso — "debe mostrarle al docente cuántas horas faltan por programar
+   * y si se excede debe indicar que no puede exceder el tiempo de la
+   * duración del curso".
+   */
+  async getScheduleSummary(courseId: string) {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId } });
+    if (!course) throw new NotFoundException("Curso no encontrado");
+    const sessions = await this.prisma.liveSession.findMany({
+      where: { courseId, status: { not: "CANCELLED" } },
+      select: { startsAt: true, endsAt: true },
+    });
+    const scheduledHours = sessions.reduce((sum, s) => sum + (s.endsAt.getTime() - s.startsAt.getTime()) / 3_600_000, 0);
+    return {
+      totalHours: course.durationHours,
+      scheduledHours: Math.round(scheduledHours * 100) / 100,
+      remainingHours: Math.max(0, Math.round((course.durationHours - scheduledHours) * 100) / 100),
+    };
+  }
+
+  /** Choque de horario: mismo docente, otra sesión no cancelada que se solapa. */
+  private async assertNoTeacherConflict(teacherId: string | undefined, startsAt: Date, endsAt: Date, excludeId?: string) {
+    if (!teacherId) return;
+    const conflict = await this.prisma.liveSession.findFirst({
+      where: {
+        teacherId,
+        status: { not: "CANCELLED" },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+      },
+      include: { course: true },
+    });
+    if (conflict) {
+      const courseTitle = ((conflict.course.title as Record<string, string>) ?? {}).es ?? conflict.course.slug;
+      throw new ConflictException(
+        `El docente ya tiene una sesión programada en ese horario (${conflict.startsAt.toLocaleString("es-PE")} — "${courseTitle}"). Elige otro horario.`,
+      );
+    }
+  }
+
+  /** No se puede programar más horas de las que dura el curso. */
+  private assertWithinCourseDuration(existingHours: number, addedHours: number, totalHours: number) {
+    if (existingHours + addedHours > totalHours + 0.01) {
+      const remaining = Math.max(0, Math.round((totalHours - existingHours) * 100) / 100);
+      throw new BadRequestException(
+        `No puedes exceder la duración total del curso (${totalHours}h). Quedan ${remaining}h por programar.`,
+      );
+    }
+  }
+
   async create(input: {
     courseId: string;
     title?: unknown;
@@ -32,9 +84,15 @@ export class LiveSessionService {
     timezone?: string;
     capacity?: number;
     organizerUpn?: string;
+    teacherId?: string;
   }) {
     const course = await this.prisma.course.findUnique({ where: { id: input.courseId } });
     if (!course) throw new NotFoundException("Curso no encontrado");
+    if (input.endsAt <= input.startsAt) throw new BadRequestException("La hora de término debe ser posterior a la de inicio");
+
+    await this.assertNoTeacherConflict(input.teacherId, input.startsAt, input.endsAt);
+    const { scheduledHours } = await this.getScheduleSummary(input.courseId);
+    this.assertWithinCourseDuration(scheduledHours, (input.endsAt.getTime() - input.startsAt.getTime()) / 3_600_000, course.durationHours);
 
     const organizerUpn =
       input.organizerUpn ?? this.config.get<string>("MS_TEAMS_ORGANIZER_UPN") ?? "docente@inkademy.com";
@@ -56,10 +114,101 @@ export class LiveSessionService {
         timezone: input.timezone ?? "America/Lima",
         capacity: input.capacity,
         organizerUpn,
+        teacherId: input.teacherId,
         providerMeetingId: meeting.providerMeetingId,
         joinUrl: meeting.joinUrl,
       },
     });
+  }
+
+  /**
+   * "Puede ser una sola vez o repetitivo en la semana hasta que se cumpla
+   * la duración del curso" — genera sesiones semanales (mismo día/hora) a
+   * partir de firstStartsAt hasta agotar la duración del curso. Valida
+   * TODAS las ocurrencias contra choques de horario del docente ANTES de
+   * crear ninguna (si una sola choca, se aborta la serie completa — "no
+   * permitir que haya una duplicidad", no solo avisar a medias).
+   */
+  async createWeeklySeries(input: {
+    courseId: string;
+    title?: unknown;
+    firstStartsAt: Date;
+    sessionDurationMinutes: number;
+    timezone?: string;
+    capacity?: number;
+    organizerUpn?: string;
+    teacherId?: string;
+  }) {
+    const course = await this.prisma.course.findUnique({ where: { id: input.courseId } });
+    if (!course) throw new NotFoundException("Curso no encontrado");
+
+    const { scheduledHours } = await this.getScheduleSummary(input.courseId);
+    const remainingHours = Math.max(0, course.durationHours - scheduledHours);
+    const sessionHours = input.sessionDurationMinutes / 60;
+    if (sessionHours <= 0 || remainingHours <= 0) {
+      throw new BadRequestException("Este curso ya tiene programada toda su duración — no quedan horas por programar.");
+    }
+
+    const occurrences: { startsAt: Date; endsAt: Date }[] = [];
+    let hoursSoFar = 0;
+    let cursor = new Date(input.firstStartsAt);
+    // Tope de seguridad (2 años de semanas) para nunca generar un loop infinito.
+    for (let i = 0; i < 104 && hoursSoFar < remainingHours - 0.01; i++) {
+      const startsAt = new Date(cursor);
+      // La última sesión se recorta para calzar exacto con lo que falta,
+      // en vez de pasarse de la duración total del curso.
+      const hoursLeftForThisOne = Math.min(sessionHours, remainingHours - hoursSoFar);
+      const endsAt = new Date(startsAt.getTime() + hoursLeftForThisOne * 3_600_000);
+      occurrences.push({ startsAt, endsAt });
+      hoursSoFar += hoursLeftForThisOne;
+      cursor = new Date(cursor.getTime() + 7 * 24 * 3_600_000);
+    }
+
+    // Valida TODAS antes de crear ninguna.
+    for (const occ of occurrences) {
+      await this.assertNoTeacherConflict(input.teacherId, occ.startsAt, occ.endsAt);
+    }
+
+    const organizerUpn = input.organizerUpn ?? this.config.get<string>("MS_TEAMS_ORGANIZER_UPN") ?? "docente@inkademy.com";
+    const subject = ((input.title as Record<string, string>)?.es ?? (course.title as Record<string, string>).es) ?? course.slug;
+    const seriesId = `series-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+
+    const created = [];
+    for (const occ of occurrences) {
+      const meeting = await this.teamsProvider.createMeeting({ subject, startsAt: occ.startsAt, endsAt: occ.endsAt, organizerUpn });
+      created.push(
+        await this.prisma.liveSession.create({
+          data: {
+            courseId: input.courseId,
+            title: input.title as object,
+            startsAt: occ.startsAt,
+            endsAt: occ.endsAt,
+            timezone: input.timezone ?? "America/Lima",
+            capacity: input.capacity,
+            organizerUpn,
+            teacherId: input.teacherId,
+            seriesId,
+            providerMeetingId: meeting.providerMeetingId,
+            joinUrl: meeting.joinUrl,
+          },
+        }),
+      );
+    }
+    return created;
+  }
+
+  /** El docente/admin puede cancelar en cualquier momento — libera esas horas del presupuesto del curso. */
+  async cancel(liveSessionId: string, actorId: string, reason: string) {
+    const session = await this.prisma.liveSession.findUnique({ where: { id: liveSessionId } });
+    if (!session) throw new NotFoundException("Sesión en vivo no encontrada");
+    if (session.status === "COMPLETED" || session.status === "CANCELLED") {
+      throw new BadRequestException("Esta sesión ya finalizó o ya está cancelada");
+    }
+    const updated = await this.prisma.liveSession.update({ where: { id: liveSessionId }, data: { status: "CANCELLED" } });
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "LIVE_SESSION_CANCEL", entity: "LiveSession", entityId: liveSessionId, after: { reason } },
+    });
+    return updated;
   }
 
   async join(liveSessionId: string, userId: string) {
@@ -115,6 +264,7 @@ export class LiveSessionService {
     if (input.endsAt <= input.startsAt) {
       throw new BadRequestException("La hora de término debe ser posterior a la de inicio");
     }
+    await this.assertNoTeacherConflict(session.teacherId ?? undefined, input.startsAt, input.endsAt, liveSessionId);
 
     const previousStartsAt = session.startsAt;
     const previousEndsAt = session.endsAt;

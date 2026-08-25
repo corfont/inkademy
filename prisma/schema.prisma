@@ -45,6 +45,13 @@ model User {
   displayName           String?
   avatarUrl             String?
   globalRole            GlobalRole @default(STUDENT)
+  // Roles adicionales — "un docente podría ser también alumno, administrador
+  // y soporte al mismo tiempo". globalRole sigue siendo el rol PRINCIPAL
+  // (decide a qué panel entra por defecto al iniciar sesión y qué muestra
+  // el sidebar); secondaryRoles solo AMPLÍA qué otras áreas puede visitar
+  // (los guards de la API validan globalRole+secondaryRoles juntos, ver
+  // RequestUser.roles en jwt.strategy.ts).
+  secondaryRoles        GlobalRole[] @default([])
   locale                String   @default("es")
   timezone              String   @default("America/Lima")
   emailVerifiedAt       DateTime?
@@ -98,6 +105,7 @@ model User {
   auditLogs             AuditLog[]
   teachingCourses       CourseStaff[]
   gradedAnswers         Answer[]             @relation("GradedBy")
+  taughtLiveSessions    LiveSession[]        @relation("LiveSessionTeacher")
 
   @@index([email])
 }
@@ -298,6 +306,7 @@ model Course {
   programCourses         ProgramCourse[]
   certificates           Certificate[]
   seatPools              CompanySeatPool[]
+  partnerships           CoursePartnership[]
 
   @@index([areaId])
   @@index([status])
@@ -405,6 +414,16 @@ model LiveSession {
   capacity         Int?
   status           LiveSessionStatus            @default(SCHEDULED)
 
+  // Docente que dicta esta sesión puntual — antes solo se sabía el curso,
+  // no quién específicamente. Necesario para detectar choques de horario
+  // (un mismo docente no puede tener dos sesiones que se solapen).
+  teacherId        String?
+  teacher          User?                        @relation("LiveSessionTeacher", fields: [teacherId], references: [id])
+  // Agrupa las sesiones generadas de una sola vez como "repetir cada semana
+  // hasta completar la duración del curso" — permite reprogramar/cancelar
+  // la serie completa desde una sola referencia si hace falta.
+  seriesId         String?
+
   // Integración de aula virtual (Microsoft Teams vía Graph API)
   provider         VirtualClassroomProviderType @default(TEAMS)
   providerMeetingId String?
@@ -420,6 +439,8 @@ model LiveSession {
 
   @@index([courseId])
   @@index([startsAt])
+  @@index([teacherId])
+  @@index([seriesId])
 }
 
 model Program {
@@ -546,6 +567,10 @@ enum QuestionType {
   TRUE_FALSE
   SHORT_ANSWER
   OPEN
+  // Preguntas de "ordenar" — el alumno reordena una lista de opciones; se
+  // califica automáticamente comparando el orden enviado contra
+  // `correctAnswer` (array de ids en el orden correcto), ver assessment.service.ts.
+  ORDERING
 }
 
 model QuestionBank {
@@ -662,6 +687,69 @@ model ApprovalRule {
   minAttendancePct   Float?  // solo aplica si el curso tiene sesiones en vivo
   minScore           Float   @default(70)
   requiresAssignment Boolean @default(false)
+}
+
+// ---------------------------------------------------------------------------
+// CONVENIOS INSTITUCIONALES (certificado con 3ra firma + facturación por
+// convenio) — "a veces se tiene un convenio con un instituto o universidad
+// de prestigio, donde debería estar la firma de esa institución también".
+// ---------------------------------------------------------------------------
+
+enum PartnerBillingType {
+  FIXED      // monto fijo (p.ej. mensual/único) independiente de cuántos cursos/certificados
+  PER_COURSE // se cobra feeAmount por cada certificado emitido bajo un curso del convenio
+  PER_PERIOD // se cobra feeAmount una vez por el rango startDate–endDate completo
+}
+
+/// Institución socia (instituto/universidad) con la que Inkapitales tiene un
+/// convenio para ciertos cursos: exige su firma en el certificado y/o cobra
+/// por el convenio (fijo, por curso dictado, o por un plazo). Alimenta tanto
+/// el certificado (3ra firma) como el estado de pérdidas y ganancias (ver
+/// AdminService.getProfitAndLoss — el costo del convenio se trata como un
+/// gasto más).
+model PartnerInstitution {
+  id               String              @id @default(uuid())
+  name             String
+  contactEmail     String?
+  // Quién firma por la institución socia en el certificado — mismo patrón
+  // que institutionSignatureName/Image de PlatformSettings pero para esta
+  // institución en particular.
+  signerName       String?
+  signerTitle      String?
+  signatureAssetId String?
+  billingType      PartnerBillingType  @default(FIXED)
+  feeAmount        Decimal?            @db.Decimal(10, 2)
+  feeCurrency      String              @default("PEN")
+  // Si es true, la institución socia emite ELLA MISMA el comprobante SUNAT
+  // al cliente final (con su propia serie/RUC) y transfiere el neto a
+  // Inkapitales después — "podría pasar que la institución nos diga que
+  // los que van a facturar son ellos y nos transfieren después". Cuando es
+  // true, Inkapitales NO emite boleta/factura para las órdenes de los
+  // cursos de este convenio (ver checkout/order finalize).
+  invoicesDirectly Boolean             @default(false)
+  active           Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  courses          CoursePartnership[]
+}
+
+/// Asocia un curso concreto a un convenio, opcionalmente acotado a un rango
+/// de fechas ("por un plazo dentro de los seleccionados"). Si startDate/
+/// endDate son null, el convenio aplica a ese curso indefinidamente.
+model CoursePartnership {
+  id                   String             @id @default(uuid())
+  courseId             String
+  course               Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  partnerInstitutionId String
+  partnerInstitution   PartnerInstitution @relation(fields: [partnerInstitutionId], references: [id], onDelete: Cascade)
+  startDate            DateTime?
+  endDate              DateTime?
+  createdAt            DateTime           @default(now())
+
+  @@unique([courseId, partnerInstitutionId])
+  @@index([courseId])
+  @@index([partnerInstitutionId])
 }
 
 // HTML: la plantilla es un documento HTML con tags {{tag}} (ver
@@ -1145,14 +1233,32 @@ model PlatformSettings {
   // de lo cobrado en realidad se va a la pasarela.
   culqiFeePercent     Float    @default(3.99)
   stripeFeePercent    Float    @default(4.99)
+  // Yape/Plin vía Culqi: investigado explícitamente a pedido del admin — no
+  // hay evidencia de que BCP/Interbank/la billetera del Estado le cobren
+  // al COMERCIO (Inkapitales) un % adicional específico de Yape/Plin por
+  // encima de la comisión que ya cobra la pasarela (Culqi/Izipay cobran una
+  // única comisión de "descuento de comercio" que ya incluye tarjeta+Yape);
+  // el % adicional que el usuario final paga a su banco por USAR Yape/Plin
+  // (si acaso) no lo paga Inkapitales. Se deja en 0 por defecto y
+  // parametrizable por si el admin confirma con Culqi que sí aplica algo
+  // adicional en su contrato específico.
+  yapePlinFeePercent  Float    @default(0)
 
-  // Detracción SUNAT (Sistema de Pago de Obligaciones Tributarias) — solo
-  // aplica a ciertos servicios/montos según el detalle de cada operación,
-  // no es automático para toda venta. Apagado por default a propósito:
-  // el admin lo activa (con el % que le confirme su contador) solo si le
-  // corresponde — nunca se asume ni se calcula solo.
-  detractionEnabled Boolean @default(false)
-  detractionPercent Float   @default(0)
+  // Detracción SUNAT (Sistema de Pago de Obligaciones Tributarias) — la
+  // tabla de reglas depende de qué tipo de comprobante recibe el
+  // comprador, no es un % único. Ver AdminService.computeDetraction:
+  // - Persona natural (boleta, DNI): nunca aplica.
+  // - Persona natural con negocio (factura, RUC que empieza con "10"):
+  //   aplica detractionRucNaturalPercent solo si el monto supera
+  //   detractionRucNaturalThreshold.
+  // - Empresa/persona jurídica (factura, RUC que empieza con "20"): aplica
+  //   detractionRucEmpresaPercent siempre.
+  // detractionEnabled es el interruptor maestro — si la SUNAT alguna vez
+  // suspende la detracción por completo, se apaga acá sin tocar los %.
+  detractionEnabled              Boolean @default(true)
+  detractionRucNaturalPercent    Float   @default(12)
+  detractionRucNaturalThreshold  Float   @default(700)
+  detractionRucEmpresaPercent    Float   @default(12)
 
   // Sello de agua (logo) mostrado sobre las pantallas — "para que figure en
   // las pantallas" (pedido explícito). Opacidad/tamaño calibrables; sin
@@ -1214,7 +1320,11 @@ model SunatSettings {
   facturaCreditSeries String?
   certPem             String?  @db.Text // nunca se devuelve tal cual al frontend
   certKeyPem          String?  @db.Text // nunca se devuelve tal cual al frontend
-  taxAffectation      String   @default("EXONERADO") // EXONERADO | GRAVADO
+  // "Esta plataforma no está exonerada del IGV, no soy una institución
+  // educativa. Cuando lo sea no aplicará" — por defecto GRAVADO (se cobra
+  // IGV); el admin lo cambia a EXONERADO explícitamente solo si Inkapitales
+  // llega a calificar como institución educativa reconocida.
+  taxAffectation      String   @default("GRAVADO") // EXONERADO | GRAVADO
   // % de IGV vigente — 18% en Perú desde 2011, pero es una tasa que fija el
   // Estado y puede cambiar; se deja parametrizable en vez de hardcodeado.
   // Usado tanto en el XML real de boleta/factura (apps/worker/src/lib/sunat)

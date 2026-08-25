@@ -145,6 +145,17 @@ const tagPositionSchema = z.object({
   fontFamily: z.enum(["helvetica", "helvetica-bold", "times", "times-bold", "courier"]).optional(),
   widthPercent: z.number().positive().max(100).optional(),
   heightPercent: z.number().positive().max(100).optional(),
+  // Tags creados a mano por el admin (texto libre o imagen propia) — ver
+  // packages/shared/certificate-tags.ts isCustomTag(). customText es el
+  // contenido literal (no un placeholder de datos reales); customImageAssetId
+  // es el PNG/JPG subido para un tag de imagen a medida.
+  customText: z.string().optional(),
+  customImageAssetId: z.string().optional(),
+  marginTopPt: z.number().optional(),
+  marginBottomPt: z.number().optional(),
+  marginLeftPt: z.number().optional(),
+  marginRightPt: z.number().optional(),
+  lineHeightMultiplier: z.number().positive().optional(),
 });
 
 export const upsertCertificateTemplateSchema = z.object({
@@ -172,6 +183,32 @@ export const updateCertificateTemplateSchema = z.object({
   tagPositions: z.array(tagPositionSchema).optional(),
 });
 
+export const updateApprovalRuleSchema = z.object({
+  minProgressPct: z.number().min(0).max(100).optional(),
+  minAttendancePct: z.number().min(0).max(100).optional().nullable(),
+  minScore: z.number().min(0).max(100).optional(),
+  requiresAssignment: z.boolean().optional(),
+});
+
+export const upsertPartnerInstitutionSchema = z.object({
+  name: z.string().min(1),
+  contactEmail: z.string().email().optional().nullable(),
+  signerName: z.string().optional().nullable(),
+  signerTitle: z.string().optional().nullable(),
+  signatureAssetId: z.string().optional().nullable(),
+  billingType: z.enum(["FIXED", "PER_COURSE", "PER_PERIOD"]).optional(),
+  feeAmount: z.number().min(0).optional().nullable(),
+  feeCurrency: z.string().optional(),
+  invoicesDirectly: z.boolean().optional(),
+  active: z.boolean().optional(),
+});
+
+export const addCoursePartnershipSchema = z.object({
+  courseId: z.string().uuid(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
 export const createCalendarEventSchema = z.object({
   type: z.enum([
     "LIVE_CLASS",
@@ -197,6 +234,25 @@ export const createLiveSessionSchema = z.object({
   timezone: z.string().optional(),
   capacity: z.number().int().positive().optional(),
   organizerUpn: z.string().email().optional(),
+  teacherId: z.string().uuid().optional(),
+});
+
+// "Repetir cada semana hasta que se cumpla la duración del curso" — genera
+// N sesiones semanales (misma hora, mismo día de la semana) a partir de la
+// primera, deteniéndose al alcanzar la duración total del curso.
+export const createLiveSessionSeriesSchema = z.object({
+  courseId: z.string().uuid(),
+  title: localizedTextSchema.optional(),
+  firstStartsAt: z.coerce.date(),
+  sessionDurationMinutes: z.number().int().positive(),
+  timezone: z.string().optional(),
+  capacity: z.number().int().positive().optional(),
+  organizerUpn: z.string().email().optional(),
+  teacherId: z.string().uuid().optional(),
+});
+
+export const cancelLiveSessionSchema = z.object({
+  reason: z.string().min(3),
 });
 
 /**
@@ -275,6 +331,11 @@ export const adminResetPasswordSchema = z.object({
 
 export const updateUserSchema = z.object({
   globalRole: z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"]).optional(),
+  // Roles adicionales — un docente puede además ser alumno/soporte/admin al
+  // mismo tiempo. globalRole sigue siendo el "rol principal" (decide a qué
+  // panel entra por defecto al iniciar sesión); secondaryRoles solo amplía
+  // qué otras áreas puede además visitar.
+  secondaryRoles: z.array(z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"])).optional(),
   status: z.enum(["active", "disabled"]).optional(),
   // Firma manuscrita/imagen del docente, usada en certificados con tag {{teacherSignature}}.
   signatureAssetId: z.string().optional().nullable(),
@@ -377,8 +438,11 @@ export const createExpenseSchema = z.object({
 export const updateFeeSettingsSchema = z.object({
   culqiFeePercent: z.number().min(0).max(100).optional(),
   stripeFeePercent: z.number().min(0).max(100).optional(),
+  yapePlinFeePercent: z.number().min(0).max(100).optional(),
   detractionEnabled: z.boolean().optional(),
-  detractionPercent: z.number().min(0).max(100).optional(),
+  detractionRucNaturalPercent: z.number().min(0).max(100).optional(),
+  detractionRucNaturalThreshold: z.number().min(0).optional(),
+  detractionRucEmpresaPercent: z.number().min(0).max(100).optional(),
 });
 
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---

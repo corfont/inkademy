@@ -29,6 +29,9 @@ export interface AuthUser {
   displayName?: string | null;
   avatarUrl?: string | null;
   globalRole: GlobalRole;
+  // Roles adicionales — un docente puede además ser alumno/admin/soporte al
+  // mismo tiempo (globalRole sigue siendo el rol principal/panel por defecto).
+  secondaryRoles: GlobalRole[];
   locale: string;
   timezone: string;
   profileCompletedAt?: string | null;

@@ -8,6 +8,11 @@ export interface RequestUser {
   id: string;
   email: string;
   globalRole: GlobalRole;
+  // Todos los roles efectivos del usuario (globalRole + secondaryRoles,
+  // sin duplicados) — "un docente podría ser también alumno, administrador
+  // y soporte al mismo tiempo". RolesGuard/CompanyGuard validan contra este
+  // arreglo, no solo contra globalRole.
+  roles: GlobalRole[];
 }
 
 /**

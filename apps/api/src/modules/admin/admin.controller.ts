@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
@@ -7,10 +8,12 @@ import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
+  addCoursePartnershipSchema,
   assignCourseStaffSchema,
   adminResetPasswordSchema,
   createExpenseSchema,
   createUserSchema,
+  upsertPartnerInstitutionSchema,
   extendEnrollmentAccessSchema,
   gradeAnswerSchema,
   updateAssessmentSchema,
@@ -19,6 +22,7 @@ import {
   updateLessonSchema,
   updateMaterialSchema,
   updateModuleSchema,
+  updateApprovalRuleSchema,
   updateFeeSettingsSchema,
   updateProgramSchema,
   updateQuestionSchema,
@@ -124,6 +128,20 @@ export class AdminController {
   @ApiOperation({ summary: "Detalle de un curso: metadata + módulos/lecciones/materiales + sesiones en vivo — TEACHER solo si es CourseStaff de ese curso" })
   getCourse(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.adminService.getCourseDetail(id, user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
+  @Get("courses/:id/approval-rule")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Regla de habilitación de certificado del curso (nota mínima, % de avance, asistencia, tarea)" })
+  getApprovalRule(@Param("id") id: string) {
+    return this.adminService.getApprovalRule(id);
+  }
+
+  @Patch("courses/:id/approval-rule")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Configura la regla de habilitación de certificado del curso" })
+  updateApprovalRule(@Param("id") id: string, @Body(new ZodValidationPipe(updateApprovalRuleSchema)) dto: any) {
+    return this.adminService.updateApprovalRule(id, dto);
   }
 
   @Post("courses/:courseId/modules")
@@ -335,9 +353,63 @@ export class AdminController {
 
   @Patch("certificate-templates/:id")
   @Roles("ADMIN")
-  @ApiOperation({ summary: "Edita el HTML o activa/desactiva una plantilla de certificado" })
+  @ApiOperation({ summary: "Edita el HTML, tags o activa/desactiva una plantilla de certificado" })
   updateCertificateTemplate(@Param("id") id: string, @Body(new ZodValidationPipe(updateCertificateTemplateSchema)) dto: any) {
     return this.adminService.updateCertificateTemplate(id, dto);
+  }
+
+  @Delete("certificate-templates/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina una plantilla de certificado (solo si no se usó nunca ni está asignada a un curso/programa)" })
+  deleteCertificateTemplate(@Param("id") id: string) {
+    return this.adminService.deleteCertificateTemplate(id);
+  }
+
+  // --- Convenios institucionales ---
+
+  @Get("partner-institutions")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Lista instituciones socias (convenios) y sus cursos asociados" })
+  listPartnerInstitutions() {
+    return this.adminService.listPartnerInstitutions();
+  }
+
+  @Post("partner-institutions")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Crea una institución socia (convenio)" })
+  createPartnerInstitution(@Body(new ZodValidationPipe(upsertPartnerInstitutionSchema)) dto: any) {
+    return this.adminService.createPartnerInstitution(dto);
+  }
+
+  @Patch("partner-institutions/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Edita una institución socia" })
+  updatePartnerInstitution(@Param("id") id: string, @Body(new ZodValidationPipe(upsertPartnerInstitutionSchema.partial())) dto: any) {
+    return this.adminService.updatePartnerInstitution(id, dto);
+  }
+
+  @Delete("partner-institutions/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina una institución socia (y sus asociaciones a cursos)" })
+  deletePartnerInstitution(@Param("id") id: string) {
+    return this.adminService.deletePartnerInstitution(id);
+  }
+
+  @Post("partner-institutions/:id/courses")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Asocia un curso a un convenio (3ra firma en el certificado + costo en finanzas)" })
+  addCoursePartnership(
+    @Param("id") partnerInstitutionId: string,
+    @Body(new ZodValidationPipe(addCoursePartnershipSchema)) dto: { courseId: string; startDate?: string; endDate?: string },
+  ) {
+    return this.adminService.addCoursePartnership({ ...dto, partnerInstitutionId });
+  }
+
+  @Delete("partner-institutions/course-partnerships/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Desasocia un curso de un convenio" })
+  removeCoursePartnership(@Param("id") id: string) {
+    return this.adminService.removeCoursePartnership(id);
   }
 
   @Get("companies")
@@ -377,16 +449,61 @@ export class AdminController {
 
   @Get("finance/summary")
   @Roles("ADMIN", "SUPPORT")
-  @ApiOperation({ summary: "Ingresos, IGV, comisión de pasarela, gastos y saldo total" })
-  getFinancialSummary(@Query("from") from?: string, @Query("to") to?: string) {
-    return this.adminService.getFinancialSummary({ from, to });
+  @ApiOperation({ summary: "Ingresos, IGV, detracción, comisión de pasarela, gastos y saldo total, con selector de periodo" })
+  getFinancialSummary(
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("period") period?: string,
+    @Query("year") year?: string,
+  ) {
+    return this.adminService.getFinancialSummary({ from, to, period, year: year ? Number(year) : undefined });
   }
 
   @Patch("finance/fee-settings")
   @Roles("ADMIN")
-  @ApiOperation({ summary: "Configura el % de comisión estimado de Culqi/Stripe" })
-  updateFeeSettings(@Body(new ZodValidationPipe(updateFeeSettingsSchema)) dto: { culqiFeePercent?: number; stripeFeePercent?: number }) {
-    return this.adminService.updateFeeSettings(dto);
+  @ApiOperation({ summary: "Configura comisiones de pasarela y las reglas de detracción por tipo de comprador" })
+  updateFeeSettings(@Body(new ZodValidationPipe(updateFeeSettingsSchema)) dto: Record<string, unknown>) {
+    return this.adminService.updateFeeSettings(dto as never);
+  }
+
+  @Get("finance/report.pdf")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga el estado financiero del periodo como PDF" })
+  async downloadFinancialReport(
+    @Res() res: Response,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("period") period?: string,
+    @Query("year") year?: string,
+    @Query("months") months?: string,
+  ) {
+    const { pdf, periodLabel } = await this.adminService.getFinancialReportPdf({
+      from,
+      to,
+      period,
+      year: year ? Number(year) : undefined,
+      months: months ? Number(months) : undefined,
+    });
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="inkademy-finanzas-${periodLabel.replace(/\s+/g, "-")}.pdf"`,
+    });
+    res.send(pdf);
+  }
+
+  @Post("finance/report/email")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Envía el estado financiero del periodo por correo, en PDF adjunto" })
+  emailFinancialReport(
+    @Body() body: { recipientEmail: string; from?: string; to?: string; period?: string; year?: number; months?: number },
+  ) {
+    return this.adminService.emailFinancialReport(body.recipientEmail, {
+      from: body.from,
+      to: body.to,
+      period: body.period,
+      year: body.year,
+      months: body.months,
+    });
   }
 
   @Get("finance/expenses")

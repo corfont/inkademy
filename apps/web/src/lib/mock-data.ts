@@ -338,6 +338,9 @@ export interface ClassroomDetail {
   courseId: string;
   syllabusUrl?: string | null;
   assessmentId?: string;
+  // "El examen solo lo visualizará el alumno una vez completado el curso".
+  assessmentUnlocked?: boolean;
+  progressPct?: number;
   modules: ClassroomModule[];
   approvalMissing: string[];
   certificateAvailable: boolean;
@@ -360,6 +363,8 @@ export function buildMockClassroom(enrollmentId: string, courseSlug: string): Cl
     courseId: detail.id,
     syllabusUrl: "#",
     assessmentId: `${detail.id}-assess1`,
+    assessmentUnlocked: (enrollment?.progressPct ?? 0) >= 100,
+    progressPct: enrollment?.progressPct ?? 0,
     approvalMissing: enrollment?.approvalMissing ?? [],
     certificateAvailable: enrollment?.certificateAvailable ?? false,
     modules: detail.modules.map((mod, mIdx) => ({

@@ -10,6 +10,7 @@ export function toAuthUser(user: User): AuthUser {
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
     globalRole: user.globalRole,
+    secondaryRoles: user.secondaryRoles,
     locale: user.locale,
     timezone: user.timezone,
     profileCompletedAt: user.profileCompletedAt?.toISOString() ?? null,

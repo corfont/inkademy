@@ -5,7 +5,12 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { createLiveSessionSchema, rescheduleLiveSessionSchema } from "../../common/validation/local-schemas";
+import {
+  cancelLiveSessionSchema,
+  createLiveSessionSchema,
+  createLiveSessionSeriesSchema,
+  rescheduleLiveSessionSchema,
+} from "../../common/validation/local-schemas";
 import { LiveSessionService } from "./live-session.service";
 
 @ApiTags("live-sessions")
@@ -22,6 +27,28 @@ export class LiveSessionController {
   @ApiOperation({ summary: "Programa una sesión en vivo y crea la reunión de Teams" })
   create(@Body(new ZodValidationPipe(createLiveSessionSchema)) dto: any) {
     return this.liveSessionService.create(dto);
+  }
+
+  @Post("series")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Programa una serie semanal recurrente hasta completar la duración del curso" })
+  createSeries(@Body(new ZodValidationPipe(createLiveSessionSeriesSchema)) dto: any) {
+    return this.liveSessionService.createWeeklySeries(dto);
+  }
+
+  @Get("schedule-summary/:courseId")
+  @ApiOperation({ summary: "Horas ya programadas vs. duración total del curso" })
+  scheduleSummary(@Param("courseId") courseId: string) {
+    return this.liveSessionService.getScheduleSummary(courseId);
+  }
+
+  @Patch(":id/cancel")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Cancela una sesión en vivo (libera esas horas del presupuesto del curso)" })
+  cancel(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(cancelLiveSessionSchema)) dto: { reason: string }) {
+    return this.liveSessionService.cancel(id, user.id, dto.reason);
   }
 
   @Patch(":id/reschedule")

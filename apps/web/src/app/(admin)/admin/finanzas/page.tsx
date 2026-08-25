@@ -7,7 +7,7 @@ import { getServerAccessToken } from "@/lib/server-auth";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Callout } from "@/components/ui/Callout";
 import { ExpenseManager } from "@/components/admin/ExpenseManager";
-import { FeeSettingsForm } from "@/components/admin/FeeSettingsForm";
+import { FinanceExportControls } from "@/components/admin/FinanceExportControls";
 import { ProfitAndLossCharts } from "@/components/admin/ProfitAndLossCharts";
 import { formatPrice } from "@/lib/format";
 
@@ -16,12 +16,16 @@ export const metadata: Metadata = { title: "Finanzas (admin)" };
 const MOCK_SUMMARY = {
   from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
   to: new Date().toISOString(),
-  taxAffectation: "EXONERADO" as const,
+  taxAffectation: "GRAVADO" as const,
   igvPercent: 18,
   culqiFeePercent: 3.99,
   stripeFeePercent: 4.99,
-  detractionEnabled: false,
-  detractionPercent: 0,
+  yapePlinFeePercent: 0,
+  detractionEnabled: true,
+  detractionRucNaturalPercent: 12,
+  detractionRucNaturalThreshold: 700,
+  detractionRucEmpresaPercent: 12,
+  availableYears: [new Date().getFullYear()],
   rows: [{ currency: "PEN", income: 0, igv: 0, detraction: 0, providerFees: 0, otherExpenses: 0, balance: 0 }],
 };
 
@@ -35,11 +39,21 @@ const MOCK_PNL = {
   status: "EQUILIBRIO" as const,
 };
 
-export default async function AdminFinancePage() {
+const PERIOD_LABEL: Record<string, string> = {
+  last30d: "Últimos 30 días",
+  lastYear: "Último año",
+  allTime: "Todo el periodo",
+  year: "Balance anual",
+};
+
+export default async function AdminFinancePage({ searchParams }: { searchParams: { period?: string; year?: string } }) {
   const locale = await getLocale();
   const accessToken = getServerAccessToken();
+  const period = searchParams.period ?? "last30d";
+  const year = searchParams.year ? Number(searchParams.year) : undefined;
+
   const [{ data: summary, live: liveSummary }, { data: expenses, live: liveExpenses }, { data: pnl, live: livePnl }] = await Promise.all([
-    withFallback(() => adminApi.financialSummary({}, accessToken), MOCK_SUMMARY),
+    withFallback(() => adminApi.financialSummary({ period: period as any, year }, accessToken), MOCK_SUMMARY),
     withFallback(() => adminApi.expenses({}, accessToken), [] as any[]),
     withFallback(() => adminApi.profitAndLoss(6, accessToken), MOCK_PNL),
   ]);
@@ -49,13 +63,15 @@ export default async function AdminFinancePage() {
       <div>
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Finanzas</h1>
         <p className="mt-1 text-sm text-ash-500">
-          Últimos 30 días · {summary.taxAffectation === "GRAVADO" ? `Plataforma afecta a IGV (${summary.igvPercent}%)` : "Plataforma exonerada de IGV"}
+          {PERIOD_LABEL[period] ?? "Últimos 30 días"} · {summary.taxAffectation === "GRAVADO" ? `Plataforma afecta a IGV (${summary.igvPercent}%)` : "Plataforma exonerada de IGV"}
         </p>
       </div>
       {(!liveSummary || !liveExpenses || !livePnl) && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
 
+      <FinanceExportControls availableYears={summary.availableYears ?? []} />
+
       <section>
-        <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Estado de resultados (últimos 6 meses)</h2>
+        <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Estado de resultados ejecutivo (últimos 6 meses)</h2>
         <ProfitAndLossCharts data={pnl} locale={locale} />
       </section>
 
@@ -121,15 +137,10 @@ export default async function AdminFinancePage() {
         </section>
       ))}
 
-      <section>
-        <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Comisiones de pasarela y detracción</h2>
-        <FeeSettingsForm
-          culqiFeePercent={summary.culqiFeePercent}
-          stripeFeePercent={summary.stripeFeePercent}
-          detractionEnabled={summary.detractionEnabled}
-          detractionPercent={summary.detractionPercent}
-        />
-      </section>
+      <Callout variant="info">
+        Comisiones de pasarela, IGV y detracción se configuran en <strong>/admin/configuracion</strong> — un módulo separado para que no se cambien
+        por equivocación desde esta pantalla.
+      </Callout>
 
       <section>
         <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Otros gastos</h2>

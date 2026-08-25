@@ -10,9 +10,60 @@ import { Dialog } from "@/components/ui/Dialog";
 
 export interface AssessmentQuestion {
   id: string;
-  type: "SINGLE_CHOICE" | "MULTI_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "OPEN";
+  type: "SINGLE_CHOICE" | "MULTI_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "OPEN" | "ORDERING";
   text: string;
   options?: { id: string; text: string }[];
+}
+
+/** Pregunta de "ordenar" — el alumno reordena las opciones (ya vienen barajadas del servidor) con flechas arriba/abajo. */
+function OrderingField({
+  question,
+  answers,
+  setAnswers,
+}: {
+  question: AssessmentQuestion;
+  answers: Record<string, unknown>;
+  setAnswers: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
+}) {
+  const order = (answers[question.id] as string[] | undefined) ?? question.options?.map((o) => o.id) ?? [];
+
+  useEffect(() => {
+    if (answers[question.id] === undefined && question.options) {
+      setAnswers((a) => ({ ...a, [question.id]: question.options!.map((o) => o.id) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.id]);
+
+  function move(index: number, direction: -1 | 1) {
+    const next = [...order];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setAnswers((a) => ({ ...a, [question.id]: next }));
+  }
+
+  const byId = new Map((question.options ?? []).map((o) => [o.id, o.text]));
+
+  return (
+    <ol className="flex flex-col gap-2">
+      {order.map((id, i) => (
+        <li key={id} className="flex items-center justify-between gap-2 rounded-md border border-paper-border bg-paper p-3 text-sm">
+          <span>
+            <span className="mr-2 font-semibold text-ash-400">{i + 1}.</span>
+            {byId.get(id)}
+          </span>
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Subir">
+              ↑
+            </Button>
+            <Button size="sm" variant="ghost" disabled={i === order.length - 1} onClick={() => move(i, 1)} aria-label="Bajar">
+              ↓
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 export interface AssessmentDefinition {
@@ -80,6 +131,9 @@ function QuestionFieldset({
               {opt.text}
             </label>
           ))}
+        {question.type === "ORDERING" && question.options && (
+          <OrderingField question={question} answers={answers} setAnswers={setAnswers} />
+        )}
         {(question.type === "SHORT_ANSWER" || question.type === "OPEN") && (
           <textarea
             className="min-h-[6rem] w-full rounded-md border border-paper-border p-3 text-sm"

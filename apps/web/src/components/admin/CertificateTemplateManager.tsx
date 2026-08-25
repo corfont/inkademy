@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CERTIFICATE_TAGS, HTML_ONLY_TAGS, type CertificateTagPosition } from "@inkademy/shared";
+import { CERTIFICATE_TAGS, HTML_ONLY_TAGS, CUSTOM_TAG_PREFIX, type CertificateTagPosition } from "@inkademy/shared";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +31,7 @@ function sampleValueFor(tag: string): string {
   if (tag === "qrDataUrl") return `<img src="${SAMPLE_QR}" alt="QR" />`;
   if (tag === "teacherSignature") return `<img src="${SAMPLE_SIGNATURE("Firma docente")}" style="max-height:50px" />`;
   if (tag === "institutionSignatureImage") return `<img src="${SAMPLE_SIGNATURE("Firma GG")}" style="max-height:50px" />`;
+  if (tag === "partnerSignatureImage") return `<img src="${SAMPLE_SIGNATURE("Firma convenio")}" style="max-height:50px" />`;
   if (tag === "logo") return `<img src="/brand/logo-horizontal.png" alt="Inkademy" style="height:40px" />`;
   const found = CERTIFICATE_TAGS.find((t) => t.tag === tag) ?? HTML_ONLY_TAGS.find((t) => t.tag === tag);
   return found?.sample ?? "";
@@ -58,6 +59,10 @@ interface TagRow extends CertificateTagPosition {
   enabled: boolean;
 }
 
+function isCustomTag(tag: string): boolean {
+  return tag.startsWith(CUSTOM_TAG_PREFIX);
+}
+
 function defaultTagRows(): Record<string, TagRow> {
   const rows: Record<string, TagRow> = {};
   for (const t of CERTIFICATE_TAGS) {
@@ -79,23 +84,26 @@ function defaultTagRows(): Record<string, TagRow> {
   return rows;
 }
 
+const EMPTY_FORM = {
+  name: "",
+  locale: "es",
+  htmlTemplate: "",
+  active: true,
+  sourceType: "HTML" as "HTML" | "BACKGROUND",
+  backgroundAssetId: null as string | null,
+  backgroundMimeType: null as string | null,
+  backgroundPreviewUrl: null as string | null,
+  pageWidthPt: 841.89,
+  pageHeightPt: 595.28,
+};
+
 export function CertificateTemplateManager({ templates }: { templates: any[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    locale: "es",
-    htmlTemplate: "",
-    active: true,
-    sourceType: "HTML" as "HTML" | "BACKGROUND",
-    backgroundAssetId: null as string | null,
-    backgroundMimeType: null as string | null,
-    backgroundPreviewUrl: null as string | null,
-    pageWidthPt: 841.89,
-    pageHeightPt: 595.28,
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [tagRows, setTagRows] = useState<Record<string, TagRow>>(defaultTagRows);
   const [placingTag, setPlacingTag] = useState<string | null>(null);
 
@@ -118,19 +126,65 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
   }
 
   function resetForm() {
-    setForm({
-      name: "",
-      locale: "es",
-      htmlTemplate: "",
-      active: true,
-      sourceType: "HTML",
-      backgroundAssetId: null,
-      backgroundMimeType: null,
-      backgroundPreviewUrl: null,
-      pageWidthPt: 841.89,
-      pageHeightPt: 595.28,
-    });
+    setEditingId(null);
+    setForm(EMPTY_FORM);
     setTagRows(defaultTagRows());
+  }
+
+  function loadForEdit(tpl: any) {
+    setEditingId(tpl.id);
+    setForm({
+      name: tpl.name,
+      locale: tpl.locale,
+      htmlTemplate: tpl.htmlTemplate ?? "",
+      active: tpl.active,
+      sourceType: tpl.sourceType,
+      backgroundAssetId: tpl.backgroundAssetId ?? null,
+      backgroundMimeType: tpl.backgroundMimeType ?? null,
+      backgroundPreviewUrl: tpl.backgroundPreviewUrl ?? null,
+      pageWidthPt: tpl.pageWidthPt ?? 841.89,
+      pageHeightPt: tpl.pageHeightPt ?? 595.28,
+    });
+    const rows = defaultTagRows();
+    for (const pos of (tpl.tagPositions as CertificateTagPosition[] | null) ?? []) {
+      rows[pos.tag] = { ...pos, enabled: true };
+    }
+    setTagRows(rows);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  }
+
+  async function handleDelete(tpl: any) {
+    if (!confirm(`¿Eliminar la plantilla "${tpl.name}"? Esto no se puede deshacer.`)) return;
+    await run(() => adminApi.deleteCertificateTemplate(tpl.id));
+    if (editingId === tpl.id) resetForm();
+  }
+
+  function updateTag(tag: string, patch: Partial<TagRow>) {
+    setTagRows((rows) => ({ ...rows, [tag]: { ...rows[tag], ...patch } }));
+  }
+
+  function removeCustomTag(tag: string) {
+    setTagRows((rows) => {
+      const next = { ...rows };
+      delete next[tag];
+      return next;
+    });
+  }
+
+  function addCustomTag(kind: "text" | "image") {
+    const id = `${CUSTOM_TAG_PREFIX}${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    setTagRows((rows) => ({
+      ...rows,
+      [id]: {
+        tag: id,
+        enabled: true,
+        xPercent: 50,
+        yPercent: 50,
+        ...(kind === "text"
+          ? { customText: "Texto nuevo", fontSizePt: 14, color: "#1c2038", align: "center", lineHeightMultiplier: 1.2 }
+          : { widthPercent: 14, heightPercent: 8 }),
+      },
+    }));
   }
 
   async function handleBackgroundUpload(file: File) {
@@ -146,11 +200,17 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
     }
   }
 
-  function updateTag(tag: string, patch: Partial<TagRow>) {
-    setTagRows((rows) => ({ ...rows, [tag]: { ...rows[tag], ...patch } }));
+  async function handleCustomImageUpload(tag: string, file: File) {
+    setError(null);
+    try {
+      const { assetId } = await adminApi.uploadAsset(file);
+      updateTag(tag, { customImageAssetId: assetId });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos subir la imagen del tag.");
+    }
   }
 
-  async function handleCreate() {
+  async function handleSubmit() {
     const payload: Record<string, unknown> = {
       name: form.name,
       locale: form.locale,
@@ -168,7 +228,7 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
         .filter((r) => r.enabled)
         .map(({ enabled: _enabled, ...rest }) => rest);
     }
-    await run(() => adminApi.createCertificateTemplate(payload));
+    await run(() => (editingId ? adminApi.updateCertificateTemplate(editingId, payload) : adminApi.createCertificateTemplate(payload)));
     resetForm();
   }
 
@@ -200,7 +260,7 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
                 </thead>
                 <tbody className="divide-y divide-paper-border">
                   {templates.map((tpl) => (
-                    <tr key={tpl.id}>
+                    <tr key={tpl.id} className={editingId === tpl.id ? "bg-paper-muted" : undefined}>
                       <td className="p-3 font-medium text-ink-900">{tpl.name}</td>
                       <td className="p-3">
                         <Badge variant="outline">{tpl.sourceType === "BACKGROUND" ? "Fondo (PDF/imagen)" : "HTML"}</Badge>
@@ -211,14 +271,22 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
                         <Badge variant={tpl.active ? "success" : "outline"}>{tpl.active ? "Activa" : "Inactiva"}</Badge>
                       </td>
                       <td className="p-3">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => run(() => adminApi.updateCertificateTemplate(tpl.id, { active: !tpl.active }))}
-                        >
-                          {tpl.active ? "Desactivar" : "Activar"}
-                        </Button>
+                        <div className="flex flex-wrap gap-1">
+                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => loadForEdit(tpl)}>
+                            Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => run(() => adminApi.updateCertificateTemplate(tpl.id, { active: !tpl.active }))}
+                          >
+                            {tpl.active ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleDelete(tpl)}>
+                            Eliminar
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -232,19 +300,26 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
       <Card>
         <CardContent className="flex flex-col gap-4 p-6">
           <div className="flex items-center justify-between">
-            <h2 className="font-serif text-lg font-semibold text-ink-900">Nueva plantilla</h2>
-            {form.sourceType === "HTML" && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setForm((f) => ({ ...f, name: f.name || EXAMPLE_TEMPLATE_NAME, htmlTemplate: EXAMPLE_CERTIFICATE_HTML }))
-                }
-              >
-                Cargar plantilla de ejemplo (estilo Inkapitales)
-              </Button>
-            )}
+            <h2 className="font-serif text-lg font-semibold text-ink-900">{editingId ? "Editar plantilla" : "Nueva plantilla"}</h2>
+            <div className="flex gap-2">
+              {editingId && (
+                <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
+                  Cancelar edición
+                </Button>
+              )}
+              {form.sourceType === "HTML" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setForm((f) => ({ ...f, name: f.name || EXAMPLE_TEMPLATE_NAME, htmlTemplate: EXAMPLE_CERTIFICATE_HTML }))
+                  }
+                >
+                  Cargar plantilla de ejemplo (estilo Inkapitales)
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -282,8 +357,8 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
                     {`{{${t.tag}}}`}
                   </code>
                 ))}
-                — <code>{"{{teacherSignature}}"}</code> e <code>{"{{institutionSignatureImage}}"}</code> se insertan vacíos si el
-                docente o Inkapitales todavía no tienen una firma cargada (ver /admin/usuarios y /admin/apariencia).
+                — <code>{"{{teacherSignature}}"}</code>, <code>{"{{institutionSignatureImage}}"}</code> y <code>{"{{partnerSignatureImage}}"}</code>{" "}
+                se insertan vacíos si no hay firma cargada (ver /admin/usuarios, /admin/apariencia y /admin/convenios).
               </p>
               <Textarea
                 id="tpl-html"
@@ -305,6 +380,9 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
               onUpload={handleBackgroundUpload}
               tagRows={tagRows}
               updateTag={updateTag}
+              removeCustomTag={removeCustomTag}
+              addCustomTag={addCustomTag}
+              onCustomImageUpload={handleCustomImageUpload}
               placingTag={placingTag}
               setPlacingTag={setPlacingTag}
             />
@@ -316,8 +394,8 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
           </label>
 
           <div>
-            <Button disabled={busy || !canSubmit} onClick={handleCreate}>
-              {busy ? "Guardando…" : "Crear plantilla"}
+            <Button disabled={busy || !canSubmit} onClick={handleSubmit}>
+              {busy ? "Guardando…" : editingId ? "Guardar cambios" : "Crear plantilla"}
             </Button>
           </div>
         </CardContent>
@@ -332,6 +410,9 @@ function BackgroundTemplateEditor({
   onUpload,
   tagRows,
   updateTag,
+  removeCustomTag,
+  addCustomTag,
+  onCustomImageUpload,
   placingTag,
   setPlacingTag,
 }: {
@@ -340,11 +421,16 @@ function BackgroundTemplateEditor({
   onUpload: (file: File) => void;
   tagRows: Record<string, TagRow>;
   updateTag: (tag: string, patch: Partial<TagRow>) => void;
+  removeCustomTag: (tag: string) => void;
+  addCustomTag: (kind: "text" | "image") => void;
+  onCustomImageUpload: (tag: string, file: File) => void;
   placingTag: string | null;
   setPlacingTag: (tag: string | null) => void;
 }) {
   const isPdf = form.backgroundMimeType === "application/pdf";
   const aspect = form.pageWidthPt / form.pageHeightPt;
+  const previewRef = useRef<HTMLDivElement>(null);
+  const customRows = Object.values(tagRows).filter((r) => isCustomTag(r.tag));
 
   function handlePreviewClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!placingTag) return;
@@ -355,6 +441,18 @@ function BackgroundTemplateEditor({
     setPlacingTag(null);
   }
 
+  // Drag-and-drop real de los tags ya colocados sobre la vista previa —
+  // "podría ser algo como drag and drop de tags". Se arrastra la etiqueta
+  // misma (no solo click-click); al soltar se recalcula xPercent/yPercent
+  // relativo al contenedor de la vista previa.
+  function handleTagDragEnd(tag: string, e: React.DragEvent<HTMLDivElement>) {
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect || (e.clientX === 0 && e.clientY === 0)) return; // drop fuera de un target válido
+    const xPercent = Math.round(Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100)) * 10) / 10;
+    const yPercent = Math.round(Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100)) * 10) / 10;
+    updateTag(tag, { xPercent, yPercent });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -363,7 +461,7 @@ function BackgroundTemplateEditor({
           accept="application/pdf,image/png,image/jpeg"
           busy={uploadingBackground}
           label={form.backgroundAssetId ? "Reemplazar archivo" : "Subir archivo de fondo"}
-          hint="El diseño ya terminado (bordes, logos, texto fijo) — los tags se colocan encima"
+          hint="El diseño ya terminado (bordes, logos, texto fijo) — los tags se colocan encima. Word/Excel no aplica aquí: para adjuntar materiales del curso en esos formatos, usa el editor de contenido del curso (acepta PDF/Word/Excel/PPT)."
           onFile={onUpload}
         />
         {form.backgroundAssetId && <p className="mt-1 text-xs text-success">Archivo cargado ({form.backgroundMimeType}).</p>}
@@ -384,9 +482,11 @@ function BackgroundTemplateEditor({
 
       <div>
         <p className="mb-2 text-sm font-medium text-ash-700">
-          Vista previa {placingTag ? <span className="text-ink-600">— haz click en la imagen para colocar el tag seleccionado</span> : null}
+          Vista previa — arrastra un tag ya colocado para moverlo
+          {placingTag ? <span className="text-ink-600"> · o haz click aquí para colocar el tag seleccionado</span> : null}
         </p>
         <div
+          ref={previewRef}
           onClick={handlePreviewClick}
           className={`relative w-full max-w-2xl overflow-hidden rounded-lg border border-paper-border bg-paper-muted ${placingTag ? "cursor-crosshair" : ""}`}
           style={{ aspectRatio: `${aspect}` }}
@@ -394,10 +494,11 @@ function BackgroundTemplateEditor({
           {form.backgroundAssetId && !isPdf && form.backgroundPreviewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={form.backgroundPreviewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          ) : form.backgroundAssetId && isPdf ? (
-            <div className="absolute inset-0 flex items-center justify-center text-center text-xs text-ash-500">
-              Fondo PDF cargado — la vista previa exacta no se puede mostrar aquí, pero se aplicará igual al generar el certificado.
-            </div>
+          ) : form.backgroundAssetId && isPdf && form.backgroundPreviewUrl ? (
+            // Antes se mostraba solo un texto ("no se puede mostrar aquí") —
+            // un <iframe> SÍ renderiza el visor de PDF nativo del navegador,
+            // a diferencia de un <img> (que nunca puede decodificar un PDF).
+            <iframe title="Vista previa del fondo PDF" src={form.backgroundPreviewUrl} className="absolute inset-0 h-full w-full border-0" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-ash-400">Sube un archivo de fondo primero</div>
           )}
@@ -405,12 +506,16 @@ function BackgroundTemplateEditor({
           {Object.values(tagRows)
             .filter((r) => r.enabled)
             .map((r) => {
-              const def = CERTIFICATE_TAGS.find((t) => t.tag === r.tag)!;
-              if (def.kind === "image") {
+              const custom = isCustomTag(r.tag);
+              const def = custom ? null : CERTIFICATE_TAGS.find((t) => t.tag === r.tag)!;
+              const isImage = custom ? r.customText === undefined : def!.kind === "image";
+              if (isImage) {
                 return (
                   <div
                     key={r.tag}
-                    className="absolute flex items-center justify-center border border-dashed border-ink-500 bg-ink-500/10 text-[10px] text-ink-700"
+                    draggable
+                    onDragEnd={(e) => handleTagDragEnd(r.tag, e)}
+                    className="absolute flex cursor-move items-center justify-center border border-dashed border-ink-500 bg-ink-500/10 text-[10px] text-ink-700"
                     style={{
                       left: `${r.xPercent}%`,
                       top: `${r.yPercent}%`,
@@ -418,14 +523,16 @@ function BackgroundTemplateEditor({
                       height: `${r.heightPercent}%`,
                     }}
                   >
-                    {def.label}
+                    {custom ? "Imagen personalizada" : def!.label}
                   </div>
                 );
               }
               return (
                 <div
                   key={r.tag}
-                  className="absolute whitespace-nowrap"
+                  draggable
+                  onDragEnd={(e) => handleTagDragEnd(r.tag, e)}
+                  className="absolute cursor-move whitespace-pre-line"
                   style={{
                     left: `${r.xPercent}%`,
                     top: `${r.yPercent}%`,
@@ -433,10 +540,12 @@ function BackgroundTemplateEditor({
                     color: r.color,
                     fontFamily: CSS_FONT_PREVIEW[r.fontFamily ?? "helvetica"],
                     fontWeight: r.fontFamily?.endsWith("-bold") ? 700 : 400,
+                    lineHeight: r.lineHeightMultiplier ?? 1.2,
+                    maxWidth: r.widthPercent ? `${r.widthPercent}%` : undefined,
                     transform: r.align === "center" ? "translateX(-50%)" : r.align === "right" ? "translateX(-100%)" : undefined,
                   }}
                 >
-                  {def.sample}
+                  {custom ? r.customText : def!.sample}
                 </div>
               );
             })}
@@ -543,6 +652,157 @@ function BackgroundTemplateEditor({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Tags personalizados — "podría haber campos que yo pueda crear como
+          un texto que le quiera poner al certificado" y "si quisiera
+          agregar una imagen podría crear un tag nuevo". */}
+      <div className="rounded-lg border border-paper-border p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-serif text-sm font-semibold text-ink-900">Tags personalizados</h3>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => addCustomTag("text")}>
+              + Texto libre
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => addCustomTag("image")}>
+              + Imagen (PNG/JPG)
+            </Button>
+          </div>
+        </div>
+        {customRows.length === 0 ? (
+          <p className="text-xs text-ash-500">Ningún tag personalizado todavía.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {customRows.map((r) => {
+              const isImage = r.customText === undefined;
+              return (
+                <div key={r.tag} className="rounded-md bg-paper-muted p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-medium text-ash-600">{isImage ? "Imagen personalizada" : "Texto personalizado"}</span>
+                    <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" onClick={() => removeCustomTag(r.tag)}>
+                      Quitar
+                    </Button>
+                  </div>
+                  {isImage ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="cursor-pointer text-xs font-medium text-ink-700 hover:underline">
+                        {r.customImageAssetId ? "Reemplazar imagen" : "Subir imagen"}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg"
+                          className="hidden"
+                          onChange={(e) => e.target.files?.[0] && onCustomImageUpload(r.tag, e.target.files[0])}
+                        />
+                      </label>
+                      {r.customImageAssetId && <span className="text-xs text-success">Imagen cargada</span>}
+                      <div className="flex items-center gap-1">
+                        <Label className="text-xs">Ancho %</Label>
+                        <Input
+                          type="number"
+                          className="h-7 w-16 text-xs"
+                          value={r.widthPercent ?? 14}
+                          onChange={(e) => updateTag(r.tag, { widthPercent: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Label className="text-xs">Alto %</Label>
+                        <Input
+                          type="number"
+                          className="h-7 w-16 text-xs"
+                          value={r.heightPercent ?? 8}
+                          onChange={(e) => updateTag(r.tag, { heightPercent: Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <Textarea
+                        className="min-h-[3rem] text-xs"
+                        value={r.customText}
+                        onChange={(e) => updateTag(r.tag, { customText: e.target.value })}
+                        placeholder="Escribe el texto que quieres que aparezca en el certificado…"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Label className="text-xs">Tamaño</Label>
+                          <Input
+                            type="number"
+                            className="h-7 w-14 text-xs"
+                            value={r.fontSizePt ?? 14}
+                            onChange={(e) => updateTag(r.tag, { fontSizePt: Number(e.target.value) })}
+                          />
+                        </div>
+                        <input type="color" value={r.color ?? "#1c2038"} onChange={(e) => updateTag(r.tag, { color: e.target.value })} />
+                        <Select
+                          className="h-7 w-20 text-xs"
+                          value={r.align ?? "center"}
+                          onChange={(e) => updateTag(r.tag, { align: e.target.value as "left" | "center" | "right" })}
+                        >
+                          <option value="left">Izq.</option>
+                          <option value="center">Centro</option>
+                          <option value="right">Der.</option>
+                        </Select>
+                        <Select
+                          className="h-7 w-24 text-xs"
+                          value={r.fontFamily ?? "helvetica"}
+                          onChange={(e) => updateTag(r.tag, { fontFamily: e.target.value as CertificateTagPosition["fontFamily"] })}
+                        >
+                          <option value="helvetica">Helvetica</option>
+                          <option value="helvetica-bold">Helvetica (negrita)</option>
+                          <option value="times">Times</option>
+                          <option value="times-bold">Times (negrita)</option>
+                          <option value="courier">Courier</option>
+                        </Select>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-xs">Ancho caja %</Label>
+                          <Input
+                            type="number"
+                            className="h-7 w-16 text-xs"
+                            value={r.widthPercent ?? ""}
+                            placeholder="auto"
+                            onChange={(e) => updateTag(r.tag, { widthPercent: e.target.value ? Number(e.target.value) : undefined })}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-xs">Interlineado</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            className="h-7 w-14 text-xs"
+                            value={r.lineHeightMultiplier ?? 1.2}
+                            onChange={(e) => updateTag(r.tag, { lineHeightMultiplier: Number(e.target.value) })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(["marginTopPt", "marginBottomPt", "marginLeftPt", "marginRightPt"] as const).map((key) => (
+                          <div key={key} className="flex items-center gap-1">
+                            <Label className="text-xs">{{ marginTopPt: "Margen sup.", marginBottomPt: "Margen inf.", marginLeftPt: "Margen izq.", marginRightPt: "Margen der." }[key]}</Label>
+                            <Input
+                              type="number"
+                              className="h-7 w-14 text-xs"
+                              value={r[key] ?? 0}
+                              onChange={(e) => updateTag(r.tag, { [key]: Number(e.target.value) } as Partial<TagRow>)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <Label className="text-xs">X%</Label>
+                    <Input type="number" className="h-7 w-16 text-xs" value={r.xPercent} onChange={(e) => updateTag(r.tag, { xPercent: Number(e.target.value) })} />
+                    <Label className="text-xs">Y%</Label>
+                    <Input type="number" className="h-7 w-16 text-xs" value={r.yPercent} onChange={(e) => updateTag(r.tag, { yPercent: Number(e.target.value) })} />
+                    <Button size="sm" variant={placingTag === r.tag ? "primary" : "ghost"} onClick={() => setPlacingTag(r.tag)}>
+                      Colocar
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -204,6 +204,12 @@ export class EnrollmentService {
       title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
       syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
       assessmentId: enrollment.course?.assessments?.[0]?.id,
+      // "El examen solo lo visualizará el alumno una vez completado el
+      // curso" — antes se mostraba el botón apenas existía una Assessment,
+      // sin importar el avance. Se sigue devolviendo assessmentId (para
+      // poder mostrar un mensaje explicando cuándo se desbloquea) pero el
+      // frontend solo habilita el acceso real si assessmentUnlocked=true.
+      assessmentUnlocked: enrollment.progressPct >= 100,
       approvalMissing,
       // Con el acceso vencido no se manda ni un solo material/video al
       // frontend (no solo se "esconde" visualmente) — igual que un material

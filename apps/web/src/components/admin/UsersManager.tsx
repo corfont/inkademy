@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud } from "lucide-react";
+import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon } from "lucide-react";
 import { adminApi, companyApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +22,7 @@ interface UserRow {
   firstName: string;
   lastName: string;
   globalRole: string;
+  secondaryRoles: string[];
   status: string;
   createdAt: string;
   signatureAssetId?: string | null;
@@ -33,11 +34,34 @@ function emailDomain(email: string): string {
   return email.split("@")[1]?.toLowerCase() ?? "";
 }
 
+/**
+ * Calcula el próximo {globalRole, secondaryRoles} al hacer click en una
+ * chip de rol — toggle real de multi-rol: "un docente podría ser también
+ * alumno, administrador y soporte al mismo tiempo". Si se quita el rol
+ * PRINCIPAL (globalRole) y quedan otros roles activos, se promueve el
+ * primero de ellos a principal; no se permite quedarse sin ningún rol.
+ */
+function toggleRole(user: UserRow, role: string): { globalRole: string; secondaryRoles: string[] } | null {
+  const active = [user.globalRole, ...user.secondaryRoles];
+  const isActive = active.includes(role);
+  if (isActive) {
+    const remaining = active.filter((r) => r !== role);
+    if (remaining.length === 0) return null; // debe quedar al menos un rol
+    if (role === user.globalRole) {
+      const [newPrimary, ...rest] = remaining;
+      return { globalRole: newPrimary, secondaryRoles: rest };
+    }
+    return { globalRole: user.globalRole, secondaryRoles: remaining.filter((r) => r !== user.globalRole) };
+  }
+  return { globalRole: user.globalRole, secondaryRoles: [...user.secondaryRoles, role] };
+}
+
 export function UsersManager() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [groupByDomain, setGroupByDomain] = useState(false);
+  const [view, setView] = useState<"grid" | "list">("grid");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // React StrictMode (dev) monta los efectos dos veces, y una búsqueda
@@ -120,6 +144,24 @@ export function UsersManager() {
               <input type="checkbox" checked={groupByDomain} onChange={(e) => setGroupByDomain(e.target.checked)} />
               Agrupar por dominio de correo
             </label>
+            <div className="flex overflow-hidden rounded-md border border-paper-border">
+              <button
+                type="button"
+                onClick={() => setView("grid")}
+                title="Ver como galería"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium ${view === "grid" ? "bg-ink-900 text-paper" : "bg-paper text-ash-600 hover:bg-paper-muted"}`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" /> Galería
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                title="Ver como lista"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium ${view === "list" ? "bg-ink-900 text-paper" : "bg-paper text-ash-600 hover:bg-paper-muted"}`}
+              >
+                <ListIcon className="h-3.5 w-3.5" /> Lista
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -135,11 +177,32 @@ export function UsersManager() {
                       {group.label} ({group.rows.length})
                     </p>
                   )}
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {group.rows.map((u) => (
-                      <UserCard key={u.id} user={u} companies={companies} onChange={() => refresh()} />
-                    ))}
-                  </div>
+                  {view === "grid" ? (
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {group.rows.map((u) => (
+                        <UserCard key={u.id} user={u} companies={companies} onChange={() => refresh()} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-paper-border">
+                      <table className="w-full text-left text-sm">
+                        <thead className="border-b border-paper-border text-ash-500">
+                          <tr>
+                            <th className="p-3 font-medium">Nombre</th>
+                            <th className="p-3 font-medium">Roles</th>
+                            <th className="p-3 font-medium">Empresa</th>
+                            <th className="p-3 font-medium">Estado</th>
+                            <th className="p-3 font-medium">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-paper-border">
+                          {group.rows.map((u) => (
+                            <UserListRow key={u.id} user={u} companies={companies} onChange={() => refresh()} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -147,6 +210,34 @@ export function UsersManager() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function RoleChips({ user, busy, onToggle }: { user: UserRow; busy: boolean; onToggle: (role: string) => void }) {
+  const active = [user.globalRole, ...user.secondaryRoles];
+  return (
+    <>
+      {ROLE_ORDER.map((role) => {
+        const style = ROLE_STYLE[role];
+        const isActive = active.includes(role);
+        const isPrimary = role === user.globalRole;
+        return (
+          <button
+            key={role}
+            type="button"
+            disabled={busy}
+            onClick={() => onToggle(role)}
+            title={isPrimary ? `Rol principal: ${style.label}` : isActive ? `Quitar rol ${style.label}` : `Agregar rol ${style.label}`}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+              isActive ? style.chipActive : style.chip
+            } ${isPrimary ? "ring-2 ring-offset-1 ring-ink-400" : ""}`}
+          >
+            <style.icon className="h-3 w-3" aria-hidden="true" />
+            {style.label}
+          </button>
+        );
+      })}
+    </>
   );
 }
 
@@ -179,12 +270,13 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
     }
   }
 
-  async function handleRoleChange(globalRole: string) {
-    if (globalRole === user.globalRole) return;
+  async function handleToggleRole(role: string) {
+    const next = toggleRole(user, role);
+    if (!next) return; // debe quedar al menos un rol
     setBusy(true);
     setRowError(null);
     try {
-      await adminApi.updateUser(user.id, { globalRole });
+      await adminApi.updateUser(user.id, next);
       onChange();
     } catch (err) {
       setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el rol.");
@@ -266,6 +358,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
   }
 
   const hasCompany = Boolean(user.companies && user.companies.length > 0);
+  const isTeacher = user.globalRole === "TEACHER" || user.secondaryRoles.includes("TEACHER");
 
   return (
     <Card className="overflow-hidden">
@@ -290,32 +383,13 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
           </span>
         </div>
 
-        {/* Rol — chips en vez de un <select> gris; "puede ser mas de una"
-            pedido por el admin, pero globalRole es una sola columna que
-            además controlan los guards de permisos de toda la API (un
-            único rol de autenticación) — Empresa se muestra como una chip
-            aparte porque SÍ es una afiliación independiente (varias
-            empresas a la vez), no un rol de acceso. */}
+        {/* Rol — chips multi-select: "un docente podría ser también alumno,
+            administrador y soporte al mismo tiempo". El rol con el anillo
+            resaltado es el "principal" (decide a qué panel entra por
+            defecto); los demás son adicionales. Empresa se muestra como
+            chip aparte porque es una afiliación independiente. */}
         <div className="flex flex-wrap gap-1.5">
-          {ROLE_ORDER.map((role) => {
-            const style = ROLE_STYLE[role];
-            const active = user.globalRole === role;
-            return (
-              <button
-                key={role}
-                type="button"
-                disabled={busy}
-                onClick={() => handleRoleChange(role)}
-                title={active ? `Rol actual: ${style.label}` : `Cambiar rol a ${style.label}`}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
-                  active ? style.chipActive : style.chip
-                }`}
-              >
-                <style.icon className="h-3 w-3" aria-hidden="true" />
-                {style.label}
-              </button>
-            );
-          })}
+          <RoleChips user={user} busy={busy} onToggle={handleToggleRole} />
           {hasCompany ? (
             user.companies!.map((c) => (
               <span
@@ -367,7 +441,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
           </div>
         )}
 
-        {user.globalRole === "TEACHER" && (
+        {isTeacher && (
           <div className="flex items-center gap-2 rounded-md bg-paper-muted p-2.5">
             {user.signatureUrl ? (
               <>
@@ -412,6 +486,106 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Misma lógica que UserCard, en fila de tabla compacta — "debe darme la opción también de verlo como lista". */
+function UserListRow({ user, companies: _companies, onChange }: { user: UserRow; companies: any[]; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  async function handleToggleRole(role: string) {
+    const next = toggleRole(user, role);
+    if (!next) return;
+    setBusy(true);
+    setRowError(null);
+    try {
+      await adminApi.updateUser(user.id, next);
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el rol.");
+      setBusy(false);
+    }
+  }
+
+  async function handleToggleStatus() {
+    const next = user.status === "active" ? "disabled" : "active";
+    if (next === "disabled" && !confirm(`¿Desactivar la cuenta de ${user.email}?`)) return;
+    setBusy(true);
+    try {
+      await adminApi.updateUser(user.id, { status: next });
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el estado.");
+      setBusy(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    const custom = prompt("Deja vacío para generar una contraseña temporal.");
+    if (custom === null) return;
+    setBusy(true);
+    try {
+      const result = await adminApi.resetUserPassword(user.id, custom.trim() || undefined);
+      alert(result.tempPassword ? `Contraseña temporal: ${result.tempPassword}` : "Contraseña actualizada.");
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos restablecer la contraseña.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`¿Eliminar la cuenta de ${user.email}?`)) return;
+    setBusy(true);
+    try {
+      await adminApi.deleteUser(user.id);
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos eliminar la cuenta.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td className="p-3">
+        <div className="flex items-center gap-2">
+          <Avatar name={`${user.firstName} ${user.lastName}`} size="sm" />
+          <div>
+            <p className="font-medium text-ink-900">
+              {user.firstName} {user.lastName}
+            </p>
+            <p className="text-xs text-ash-500">{user.email}</p>
+          </div>
+        </div>
+        {rowError && <p className="mt-1 text-xs text-danger">{rowError}</p>}
+      </td>
+      <td className="p-3">
+        <div className="flex flex-wrap gap-1">
+          <RoleChips user={user} busy={busy} onToggle={handleToggleRole} />
+        </div>
+      </td>
+      <td className="p-3 text-xs text-ash-600">{user.companies?.map((c) => c.companyName).join(", ") || "—"}</td>
+      <td className="p-3">
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.status === "active" ? "bg-success-bg text-success" : "bg-danger-bg text-danger"}`}>
+          {user.status === "active" ? "Activa" : "Desactivada"}
+        </span>
+      </td>
+      <td className="p-3">
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="ghost" disabled={busy} onClick={handleToggleStatus}>
+            {user.status === "active" ? "Desactivar" : "Reactivar"}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={handleResetPassword}>
+            Restablecer
+          </Button>
+          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+            Eliminar
+          </Button>
+        </div>
+      </td>
+    </tr>
   );
 }
 

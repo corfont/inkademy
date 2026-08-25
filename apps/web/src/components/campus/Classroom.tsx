@@ -123,11 +123,16 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
               <FileText className="h-10 w-10 text-ink-700" aria-hidden="true" />
               <p className="font-medium text-ink-900">{localize(current?.title, locale)}</p>
-              {detail.assessmentId && (
-                <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${detail.assessmentId}`}>
-                  <Button>{t("goToAssessment")}</Button>
-                </Link>
-              )}
+              {detail.assessmentId &&
+                (detail.assessmentUnlocked ? (
+                  <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${detail.assessmentId}`}>
+                    <Button>{t("goToAssessment")}</Button>
+                  </Link>
+                ) : (
+                  <p className="text-sm text-ash-500">
+                    La evaluación se habilita al completar el 100% del curso (llevas {Math.round(detail.progressPct ?? 0)}%).
+                  </p>
+                ))}
             </div>
           )}
           <div className="mt-3 flex items-center justify-between">

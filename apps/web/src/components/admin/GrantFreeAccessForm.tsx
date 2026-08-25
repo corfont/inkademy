@@ -11,7 +11,8 @@ export function GrantFreeAccessForm() {
   const [offeringKind, setOfferingKind] = useState<"COURSE" | "PROGRAM">("COURSE");
   const [slug, setSlug] = useState("");
   const [recipientKind, setRecipientKind] = useState<"PERSON" | "COMPANY">("PERSON");
-  const [userEmail, setUserEmail] = useState("");
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [userQuery, setUserQuery] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [seatPoolQty, setSeatPoolQty] = useState("1");
   const [note, setNote] = useState("");
@@ -26,6 +27,14 @@ export function GrantFreeAccessForm() {
   const [courses, setCourses] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
+
+  // Antes había que escribir el correo del usuario de memoria (fácil de
+  // equivocarse, sin forma de saber si esa cuenta existe/está activa).
+  // Ahora se busca por nombre/correo entre los usuarios activos y se elige
+  // de una lista, igual que se hace con empresas.
+  const [userResults, setUserResults] = useState<any[]>([]);
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const [userSearching, setUserSearching] = useState(false);
 
   useEffect(() => {
     adminApi
@@ -42,6 +51,24 @@ export function GrantFreeAccessForm() {
       .catch(() => setCompanies([]));
   }, []);
 
+  useEffect(() => {
+    if (recipientKind !== "PERSON" || selectedUser) return;
+    const query = userQuery.trim();
+    if (query.length < 2) {
+      setUserResults([]);
+      return;
+    }
+    setUserSearching(true);
+    const handle = setTimeout(() => {
+      adminApi
+        .users({ q: query })
+        .then((rows) => setUserResults(rows.filter((u: any) => u.status === "active")))
+        .catch(() => setUserResults([]))
+        .finally(() => setUserSearching(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [userQuery, recipientKind, selectedUser]);
+
   const offerings = offeringKind === "COURSE" ? courses : programs;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -54,7 +81,7 @@ export function GrantFreeAccessForm() {
         offeringKind,
         courseSlug: offeringKind === "COURSE" ? slug : undefined,
         programSlug: offeringKind === "PROGRAM" ? slug : undefined,
-        userEmail: recipientKind === "PERSON" ? userEmail : undefined,
+        userEmail: recipientKind === "PERSON" ? selectedUser?.email : undefined,
         companyId: recipientKind === "COMPANY" ? companyId : undefined,
         seatPoolQty: recipientKind === "COMPANY" ? Number(seatPoolQty) : undefined,
         note,
@@ -65,7 +92,8 @@ export function GrantFreeAccessForm() {
           : "Listo: se otorgó la matrícula gratuita y se avisó por correo.",
       );
       setSlug("");
-      setUserEmail("");
+      setSelectedUser(null);
+      setUserQuery("");
       setCompanyId("");
       setNote("");
     } catch (err) {
@@ -124,9 +152,72 @@ export function GrantFreeAccessForm() {
           </div>
 
           {recipientKind === "PERSON" ? (
-            <div>
-              <Label htmlFor="userEmail">Correo del usuario</Label>
-              <Input id="userEmail" type="email" required value={userEmail} onChange={(e) => setUserEmail(e.target.value)} />
+            <div className="relative">
+              <Label htmlFor="userSearch">Usuario</Label>
+              {selectedUser ? (
+                <div className="flex items-center justify-between rounded-md border border-paper-border bg-paper-muted p-2 text-sm">
+                  <div>
+                    <p className="font-medium text-ink-900">
+                      {selectedUser.displayName || `${selectedUser.firstName} ${selectedUser.lastName}`}
+                    </p>
+                    <p className="text-xs text-ash-500">{selectedUser.email}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSelectedUser(null);
+                      setUserQuery("");
+                    }}
+                  >
+                    Cambiar
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    id="userSearch"
+                    placeholder="Busca por nombre o correo…"
+                    value={userQuery}
+                    onChange={(e) => {
+                      setUserQuery(e.target.value);
+                      setUserSearchOpen(true);
+                    }}
+                    onFocus={() => setUserSearchOpen(true)}
+                    onBlur={() => setTimeout(() => setUserSearchOpen(false), 150)}
+                    autoComplete="off"
+                  />
+                  {userSearchOpen && userQuery.trim().length >= 2 && (
+                    <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-paper-border bg-paper shadow-lg">
+                      {userSearching ? (
+                        <p className="p-3 text-sm text-ash-500">Buscando…</p>
+                      ) : userResults.length === 0 ? (
+                        <p className="p-3 text-sm text-ash-500">No hay usuarios activos que coincidan.</p>
+                      ) : (
+                        userResults.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            className="flex w-full flex-col items-start gap-0.5 p-2 text-left text-sm hover:bg-paper-muted"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setSelectedUser(u);
+                              setUserSearchOpen(false);
+                            }}
+                          >
+                            <span className="font-medium text-ink-900">{u.displayName || `${u.firstName} ${u.lastName}`}</span>
+                            <span className="text-xs text-ash-500">
+                              {u.email} · {u.globalRole}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-ash-500">Escribe al menos 2 letras para buscar entre los usuarios activos.</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -161,7 +252,7 @@ export function GrantFreeAccessForm() {
             />
           </div>
 
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || (recipientKind === "PERSON" && !selectedUser)}>
             {busy ? "Otorgando…" : "Otorgar acceso"}
           </Button>
         </form>

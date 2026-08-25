@@ -61,6 +61,8 @@ export function CourseEditor({ course }: { course: any }) {
 
       <LiveSessionsSection course={course} busy={busy} run={run} />
 
+      <ApprovalRuleSection courseId={course.id} />
+
       <AssessmentsSection courseId={course.id} />
     </div>
   );
@@ -732,12 +734,46 @@ function DropLabel({
 }
 
 function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean; run: any }) {
-  const [form, setForm] = useState({ startsAt: "", endsAt: "", capacity: "" });
+  const [form, setForm] = useState({ startsAt: "", endsAt: "", capacity: "", teacherId: "", recurrence: "ONCE" as "ONCE" | "WEEKLY" });
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [summary, setSummary] = useState<{ totalHours: number; scheduledHours: number; remainingHours: number } | null>(null);
+
+  async function refreshSummary() {
+    try {
+      setSummary(await liveSessionApi.scheduleSummary(course.id));
+    } catch {
+      setSummary(null);
+    }
+  }
+
+  useEffect(() => {
+    adminApi
+      .courseStaff(course.id)
+      .then((rows) => setTeachers(rows.filter((r: any) => r.role === "TEACHER" || r.role === "CO_TEACHER")))
+      .catch(() => setTeachers([]));
+    refreshSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course.id, course.liveSessions.length]);
+
+  const durationMinutes = form.startsAt && form.endsAt ? (new Date(form.endsAt).getTime() - new Date(form.startsAt).getTime()) / 60000 : 0;
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Sesiones en vivo</h2>
+
+        {summary && (
+          <div className="rounded-md bg-paper-muted p-3 text-sm">
+            <p className="text-ink-900">
+              <strong>{summary.scheduledHours}h</strong> programadas de <strong>{summary.totalHours}h</strong> del curso —{" "}
+              {summary.remainingHours > 0 ? (
+                <span className="text-ink-700">quedan {summary.remainingHours}h por programar</span>
+              ) : (
+                <span className="text-success">duración completa ya programada</span>
+              )}
+            </p>
+          </div>
+        )}
 
         {course.liveSessions.length === 0 && <p className="text-sm text-ash-500">Todavía no hay sesiones programadas.</p>}
 
@@ -753,19 +789,60 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
                   <p className="text-xs text-ash-500">
                     {session.status} · Teams: {session.joinUrl ? "listo" : "sin generar"}
                     {session.providerMeetingId?.startsWith("simulated-") && " (simulado, sin credenciales reales de Graph)"}
+                    {session.teacherId && teachers.find((t) => t.userId === session.teacherId) && (
+                      <> · {teachers.find((t) => t.userId === session.teacherId)?.userName}</>
+                    )}
                   </p>
                 </div>
               </div>
               {session.status !== "COMPLETED" && session.status !== "CANCELLED" && (
-                <RescheduleSessionControl sessionId={session.id} currentStartsAt={session.startsAt} currentEndsAt={session.endsAt} />
+                <div className="flex items-center gap-1.5">
+                  <RescheduleSessionControl sessionId={session.id} currentStartsAt={session.startsAt} currentEndsAt={session.endsAt} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-danger hover:bg-danger-bg"
+                    disabled={busy}
+                    onClick={() => {
+                      const reason = prompt("Motivo de la cancelación:");
+                      if (reason) run(() => liveSessionApi.cancel(session.id, reason)).then(refreshSummary);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
               )}
             </li>
           ))}
         </ul>
 
-        <div className="grid gap-3 border-t border-paper-border pt-4 sm:grid-cols-3">
+        <div className="grid gap-3 border-t border-paper-border pt-4 sm:grid-cols-2">
           <div>
-            <Label htmlFor="session-start">Inicio</Label>
+            <Label htmlFor="session-teacher">Docente</Label>
+            <Select id="session-teacher" value={form.teacherId} onChange={(e) => setForm((f) => ({ ...f, teacherId: e.target.value }))}>
+              <option value="">Sin asignar</option>
+              {teachers.map((t) => (
+                <option key={t.userId} value={t.userId}>
+                  {t.userName}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="session-recurrence">Repetición</Label>
+            <Select
+              id="session-recurrence"
+              value={form.recurrence}
+              onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as "ONCE" | "WEEKLY" }))}
+            >
+              <option value="ONCE">Una sola vez (u horario especial negociado)</option>
+              <option value="WEEKLY">Repetir cada semana hasta completar la duración del curso</option>
+            </Select>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="session-start">{form.recurrence === "WEEKLY" ? "Primera sesión — inicio" : "Inicio"}</Label>
             <Input
               id="session-start"
               type="datetime-local"
@@ -774,7 +851,7 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
             />
           </div>
           <div>
-            <Label htmlFor="session-end">Fin</Label>
+            <Label htmlFor="session-end">{form.recurrence === "WEEKLY" ? "Primera sesión — fin" : "Fin"}</Label>
             <Input
               id="session-end"
               type="datetime-local"
@@ -793,22 +870,144 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
             />
           </div>
         </div>
+        {form.recurrence === "WEEKLY" && durationMinutes > 0 && (
+          <p className="text-xs text-ash-500">
+            Se generarán sesiones semanales de {Math.round(durationMinutes)} minutos, mismo día/hora, hasta completar la duración del curso (la
+            última se recorta si no calza exacto).
+          </p>
+        )}
         <div>
           <Button
             disabled={busy || !form.startsAt || !form.endsAt}
-            onClick={() => {
-              run(() =>
-                liveSessionApi.create({
-                  courseId: course.id,
-                  startsAt: new Date(form.startsAt).toISOString(),
-                  endsAt: new Date(form.endsAt).toISOString(),
-                  capacity: form.capacity ? Number(form.capacity) : undefined,
-                }),
+            onClick={async () => {
+              const payload = {
+                courseId: course.id,
+                capacity: form.capacity ? Number(form.capacity) : undefined,
+                teacherId: form.teacherId || undefined,
+              };
+              await run(() =>
+                form.recurrence === "WEEKLY"
+                  ? liveSessionApi.createSeries({
+                      ...payload,
+                      firstStartsAt: new Date(form.startsAt).toISOString(),
+                      sessionDurationMinutes: Math.round(durationMinutes),
+                    })
+                  : liveSessionApi.create({
+                      ...payload,
+                      startsAt: new Date(form.startsAt).toISOString(),
+                      endsAt: new Date(form.endsAt).toISOString(),
+                    }),
               );
-              setForm({ startsAt: "", endsAt: "", capacity: "" });
+              setForm({ startsAt: "", endsAt: "", capacity: "", teacherId: form.teacherId, recurrence: form.recurrence });
+              refreshSummary();
             }}
           >
-            Programar sesión (crea la reunión de Teams)
+            {form.recurrence === "WEEKLY" ? "Programar serie semanal (crea las reuniones de Teams)" : "Programar sesión (crea la reunión de Teams)"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Regla de habilitación de certificado (ApprovalRule) — antes solo se podía
+ * crear editando prisma/seed.ts a mano, sin ninguna pantalla de admin. Un
+ * curso sin evaluación puede dejar la nota mínima en 0 (o simplemente no
+ * tener ninguna Assessment — el certificado no exige nota si el curso no
+ * tiene evaluaciones, ver CertificateService.checkAndIssueIfEligible).
+ */
+function ApprovalRuleSection({ courseId }: { courseId: string }) {
+  const [rule, setRule] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminApi
+      .approvalRule(courseId)
+      .then(setRule)
+      .catch(() => setRule({ minProgressPct: 100, minAttendancePct: null, minScore: 70, requiresAssignment: false }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+
+  if (!rule) return null;
+
+  async function handleSave() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await adminApi.updateApprovalRule(courseId, {
+        minProgressPct: Number(rule.minProgressPct),
+        minAttendancePct: rule.minAttendancePct === "" || rule.minAttendancePct === null ? null : Number(rule.minAttendancePct),
+        minScore: Number(rule.minScore),
+        requiresAssignment: rule.requiresAssignment,
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la regla.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Regla de habilitación de certificado</h2>
+        <p className="text-sm text-ash-500">
+          Qué debe cumplir el alumno para que el certificado se emita automáticamente. Si el curso no tiene ninguna evaluación, la nota mínima se
+          ignora — solo se exige el % de avance (y asistencia, si aplica).
+        </p>
+        {error && <Callout variant="danger">{error}</Callout>}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <Label htmlFor={`ar-progress-${courseId}`}>% de avance mínimo</Label>
+            <Input
+              id={`ar-progress-${courseId}`}
+              type="number"
+              min="0"
+              max="100"
+              value={rule.minProgressPct}
+              onChange={(e) => setRule((r: any) => ({ ...r, minProgressPct: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`ar-score-${courseId}`}>Nota mínima (solo si hay evaluación)</Label>
+            <Input
+              id={`ar-score-${courseId}`}
+              type="number"
+              min="0"
+              max="100"
+              value={rule.minScore}
+              onChange={(e) => setRule((r: any) => ({ ...r, minScore: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`ar-attendance-${courseId}`}>% de asistencia mínima (opcional, solo cursos en vivo)</Label>
+            <Input
+              id={`ar-attendance-${courseId}`}
+              type="number"
+              min="0"
+              max="100"
+              value={rule.minAttendancePct ?? ""}
+              placeholder="Sin exigir"
+              onChange={(e) => setRule((r: any) => ({ ...r, minAttendancePct: e.target.value }))}
+            />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ash-600">
+          <input
+            type="checkbox"
+            checked={rule.requiresAssignment}
+            onChange={(e) => setRule((r: any) => ({ ...r, requiresAssignment: e.target.checked }))}
+          />
+          Exige al menos una tarea/pregunta abierta calificada como correcta
+        </label>
+        <div>
+          <Button size="sm" variant="outline" disabled={busy} onClick={handleSave}>
+            {busy ? "…" : saved ? "Guardado ✓" : "Guardar regla"}
           </Button>
         </div>
       </CardContent>
@@ -827,6 +1026,7 @@ const QUESTION_TYPE_LABEL: Record<string, string> = {
   SINGLE_CHOICE: "Opción única",
   MULTI_CHOICE: "Opción múltiple",
   TRUE_FALSE: "Verdadero/Falso",
+  ORDERING: "Ordenar",
   SHORT_ANSWER: "Respuesta corta",
   OPEN: "Respuesta abierta (calificación manual)",
 };
@@ -1052,7 +1252,7 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const needsOptions = type === "SINGLE_CHOICE" || type === "MULTI_CHOICE";
+  const needsOptions = type === "SINGLE_CHOICE" || type === "MULTI_CHOICE" || type === "ORDERING";
   const optionLines = optionsText
     .split("\n")
     .map((l) => l.trim())
@@ -1071,6 +1271,11 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
           { id: "false", text: "Falso" },
         ];
         correctAnswer = correctIndex === 0 ? "true" : "false";
+      } else if (type === "ORDERING") {
+        // El orden en que el admin escribe las líneas ES el orden correcto —
+        // al alumno se le presentan barajadas (ver AssessmentService.getForStudent).
+        options = optionLines.map((line, i) => ({ id: `opt-${i}`, text: line }));
+        correctAnswer = optionLines.map((_, i) => `opt-${i}`);
       } else if (needsOptions) {
         options = optionLines.map((line, i) => ({ id: `opt-${i}`, text: line }));
         correctAnswer = type === "SINGLE_CHOICE" ? `opt-${correctIndex}` : correctIndexes.map((i) => `opt-${i}`);
@@ -1124,6 +1329,7 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
           <option value="SINGLE_CHOICE">Opción única</option>
           <option value="MULTI_CHOICE">Opción múltiple</option>
           <option value="TRUE_FALSE">Verdadero/Falso</option>
+          <option value="ORDERING">Ordenar</option>
           <option value="SHORT_ANSWER">Respuesta corta</option>
           <option value="OPEN">Respuesta abierta (calificación manual)</option>
         </Select>
@@ -1132,6 +1338,20 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
         <Label htmlFor="q-text">Pregunta</Label>
         <Input id="q-text" value={text} onChange={(e) => setText(e.target.value)} />
       </div>
+
+      {type === "ORDERING" && (
+        <div>
+          <Label htmlFor="q-ordering-options">Opciones, en el ORDEN CORRECTO (una por línea)</Label>
+          <textarea
+            id="q-ordering-options"
+            className="min-h-[5rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+            value={optionsText}
+            onChange={(e) => setOptionsText(e.target.value)}
+            placeholder={"Primer paso\nSegundo paso\nTercer paso"}
+          />
+          <p className="mt-1 text-xs text-ash-500">Al alumno se le muestran barajadas — tiene que reordenarlas hasta calzar con este orden.</p>
+        </div>
+      )}
 
       {type === "TRUE_FALSE" && (
         <div>
@@ -1147,7 +1367,7 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
         </div>
       )}
 
-      {needsOptions && (
+      {needsOptions && type !== "ORDERING" && (
         <div>
           <Label htmlFor="q-options">Opciones (una por línea)</Label>
           <textarea

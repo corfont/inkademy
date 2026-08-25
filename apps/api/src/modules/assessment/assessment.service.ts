@@ -27,7 +27,7 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 function isObjective(type: Question["type"]) {
-  return type === "SINGLE_CHOICE" || type === "MULTI_CHOICE" || type === "TRUE_FALSE";
+  return type === "SINGLE_CHOICE" || type === "MULTI_CHOICE" || type === "TRUE_FALSE" || type === "ORDERING";
 }
 
 function gradeObjective(question: Question, response: unknown): { isCorrect: boolean; score: number } {
@@ -37,6 +37,13 @@ function gradeObjective(question: Question, response: unknown): { isCorrect: boo
     const a = new Set(Array.isArray(response) ? response : []);
     const b = new Set(Array.isArray(correct) ? (correct as string[]) : []);
     isCorrect = a.size === b.size && [...a].every((v) => b.has(v as string));
+  } else if (question.type === "ORDERING") {
+    // A diferencia de MULTI_CHOICE (conjunto, sin importar el orden), acá
+    // el ORDEN importa — el alumno debe reordenar las opciones exactamente
+    // igual que `correctAnswer` (secuencia de ids).
+    const a = Array.isArray(response) ? response : [];
+    const b = Array.isArray(correct) ? correct : [];
+    isCorrect = a.length === b.length && a.every((v, i) => v === b[i]);
   } else {
     isCorrect = JSON.stringify(response) === JSON.stringify(correct);
   }
@@ -66,7 +73,9 @@ export class AssessmentService {
 
     const questions = pool.map((q) => {
       let options = q.options as { id: string; text: unknown }[] | null;
-      if (options && assessment.randomizeOptions) options = shuffle(options);
+      // ORDERING siempre se baraja para mostrar al alumno — si no, vería las
+      // opciones ya en el orden correcto y la pregunta no tendría sentido.
+      if (options && (assessment.randomizeOptions || q.type === "ORDERING")) options = shuffle(options);
       return {
         id: q.id,
         type: q.type,
@@ -105,6 +114,12 @@ export class AssessmentService {
       orderBy: { enrolledAt: "desc" },
     });
     if (!enrollment) throw new ForbiddenException("No estás matriculado en el curso de esta evaluación");
+    // "El examen solo lo visualizará el alumno una vez completado el curso"
+    // — defensa en profundidad: el frontend ya oculta el acceso, pero esto
+    // evita que alguien dispare el POST directo sin haber completado.
+    if (enrollment.progressPct < 100) {
+      throw new ForbiddenException("Completa el curso para poder presentar esta evaluación");
+    }
 
     const attemptsCount = await this.prisma.assessmentAttempt.count({ where: { assessmentId, userId } });
     if (attemptsCount >= assessment.maxAttempts) {

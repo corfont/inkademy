@@ -59,8 +59,18 @@ export class CertificateService {
     // lo que revierte esto para el siguiente intento.
     if (enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date()) return;
 
-    const rule = await this.prisma.approvalRule.findUnique({ where: { courseId: enrollment.courseId } });
-    if (!rule) return;
+    // Antes, un curso SIN ApprovalRule (nunca configurada a mano — no había
+    // ninguna pantalla de admin para crearla, solo prisma/seed.ts) nunca
+    // emitía certificado, sin ningún aviso. Ahora se cae a un default
+    // razonable (100% de avance, nota mínima 70) en vez de bloquear en
+    // silencio — "también pueden haber cursos sin evaluación", eso no
+    // debería impedir jamás el certificado.
+    const rule = (await this.prisma.approvalRule.findUnique({ where: { courseId: enrollment.courseId } })) ?? {
+      minProgressPct: 100,
+      minAttendancePct: null as number | null,
+      minScore: 70,
+      requiresAssignment: false,
+    };
 
     const progressOk = enrollment.progressPct >= rule.minProgressPct;
     let attendanceOk = true;
@@ -77,11 +87,19 @@ export class CertificateService {
         attendanceOk = (attended / totalSessions) * 100 >= rule.minAttendancePct;
       }
     }
-    const bestAttempt = await this.prisma.assessmentAttempt.findFirst({
-      where: { enrollmentId, score: { not: null } },
-      orderBy: { score: "desc" },
-    });
-    const scoreOk = (bestAttempt?.score ?? 0) >= rule.minScore;
+    // "También pueden haber cursos sin evaluación" — un curso con cero
+    // Assessment nunca debería exigir nota mínima (antes esto bloqueaba el
+    // certificado para siempre, ya que bestAttempt siempre era null).
+    const assessmentCount = await this.prisma.assessment.count({ where: { courseId: enrollment.courseId } });
+    let scoreOk = true;
+    let bestAttempt: { score: number | null } | null = null;
+    if (assessmentCount > 0) {
+      bestAttempt = await this.prisma.assessmentAttempt.findFirst({
+        where: { enrollmentId, score: { not: null } },
+        orderBy: { score: "desc" },
+      });
+      scoreOk = (bestAttempt?.score ?? 0) >= rule.minScore;
+    }
 
     let assignmentOk = true;
     if (rule.requiresAssignment) {

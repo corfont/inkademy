@@ -36,6 +36,7 @@
     "express": "^4.19.2",
     "ics": "^3.7.6",
     "ioredis": "^5.4.1",
+    "pdf-lib": "^1.17.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",

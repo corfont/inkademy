@@ -215,4 +215,14 @@ export class NotificationService {
       userId,
     );
   }
+
+  /** "Esto me debería permitir descargarlo o pasarlo a PDF o mandarlo por correo" — envía el reporte financiero como adjunto. */
+  sendFinancialReport(to: string, pdfUrl: string, periodLabel: string) {
+    return this.enqueueEmail(EMAIL_JOBS.GENERIC, {
+      to,
+      subject: `Reporte financiero Inkademy — ${periodLabel}`,
+      html: `<p>Adjuntamos el estado financiero de Inkademy correspondiente a <b>${periodLabel}</b>.</p>`,
+      attachments: [{ filename: `inkademy-finanzas-${periodLabel.replace(/\s+/g, "-")}.pdf`, path: pdfUrl }],
+    });
+  }
 }

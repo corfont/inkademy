@@ -312,9 +312,33 @@ export class CommerceService {
       order.userId,
     );
 
-    await this.createElectronicInvoiceIfNeeded(order);
+    // "Podría pasar que la institución nos diga que los que van a facturar
+    // son ellos y ellos nos transfieren después" — si algún curso de la
+    // orden tiene un convenio activo con invoicesDirectly=true vigente en
+    // esta fecha, Inkapitales no emite su propio comprobante SUNAT para
+    // esta orden (la institución socia factura al cliente final por su cuenta).
+    if (await this.hasDirectInvoicingPartnership(order.items)) {
+      this.logger.log(`Orden ${order.id}: la institución del convenio factura directamente — Inkapitales no emite comprobante.`);
+    } else {
+      await this.createElectronicInvoiceIfNeeded(order);
+    }
 
     return { enrollmentIds, receiptUrl };
+  }
+
+  private async hasDirectInvoicingPartnership(items: { courseId: string | null }[]): Promise<boolean> {
+    const courseIds = items.map((i) => i.courseId).filter((id): id is string => Boolean(id));
+    if (courseIds.length === 0) return false;
+    const now = new Date();
+    const partnership = await this.prisma.coursePartnership.findFirst({
+      where: {
+        courseId: { in: courseIds },
+        partnerInstitution: { active: true, invoicesDirectly: true },
+        OR: [{ startDate: null }, { startDate: { lte: now } }],
+        AND: [{ OR: [{ endDate: null }, { endDate: { gte: now } }] }],
+      },
+    });
+    return Boolean(partnership);
   }
 
   /**

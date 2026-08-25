@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, MessageSquarePlus, Receipt, Gift, FileSpreadsheet, Users, Bot, LogOut, CalendarClock, Wallet } from "lucide-react";
+import { LayoutDashboard, LibraryBig, Building2, LifeBuoy, Award, ClipboardCheck, Palette, MessageSquarePlus, Receipt, Gift, FileSpreadsheet, Users, Bot, LogOut, CalendarClock, Wallet, Lock, Handshake } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -52,6 +52,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/evaluaciones-pendientes", label: t("pendingReview"), icon: ClipboardCheck },
     { href: "/admin/apariencia", label: t("appearance"), icon: Palette },
     { href: "/admin/asistente-ia", label: "Asistente de IA", icon: Bot },
+    { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake },
+    ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock }] : []),
   ];
 
   return (

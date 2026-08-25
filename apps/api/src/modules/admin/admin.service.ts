@@ -6,12 +6,15 @@ import type { AdminExceptionDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { StorageService } from "../../storage/storage.service";
+import { NotificationService } from "../notification/notification.service";
+import { buildFinancialReportPdf } from "./finance-report.pdf";
 
 @Injectable()
 export class AdminService {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly storageService: StorageService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async getKpis() {
@@ -482,10 +485,47 @@ export class AdminService {
     return this.prisma.program.update({ where: { id }, data: rest as never });
   }
 
+  // --- Regla de aprobación (ApprovalRule) — antes solo se podía crear
+  // editando prisma/seed.ts a mano; no había ninguna pantalla de admin. ---
+
+  async getApprovalRule(courseId: string) {
+    return (
+      (await this.prisma.approvalRule.findUnique({ where: { courseId } })) ?? {
+        courseId,
+        minProgressPct: 100,
+        minAttendancePct: null,
+        minScore: 70,
+        requiresAssignment: false,
+      }
+    );
+  }
+
+  updateApprovalRule(
+    courseId: string,
+    input: { minProgressPct?: number; minAttendancePct?: number | null; minScore?: number; requiresAssignment?: boolean },
+  ) {
+    return this.prisma.approvalRule.upsert({
+      where: { courseId },
+      create: { courseId, ...input },
+      update: input,
+    });
+  }
+
   // --- Plantillas de certificado ---
 
-  listCertificateTemplates() {
-    return this.prisma.certificateTemplate.findMany({ orderBy: { createdAt: "desc" } });
+  async listCertificateTemplates() {
+    const templates = await this.prisma.certificateTemplate.findMany({ orderBy: { createdAt: "desc" } });
+    // Para poder reabrir una plantilla BACKGROUND en modo edición hace falta
+    // la URL del archivo ya subido (no solo el key) — mismo patrón que
+    // signatureUrl en listUsers.
+    return Promise.all(
+      templates.map(async (t) => ({
+        ...t,
+        backgroundPreviewUrl: t.backgroundAssetId
+          ? this.storageService.getPublicUrl(t.backgroundAssetId) ?? (await this.storageService.getSignedUrl(t.backgroundAssetId))
+          : null,
+      })),
+    );
   }
 
   async createCertificateTemplate(input: {
@@ -529,6 +569,115 @@ export class AdminService {
 
   updateCertificateTemplate(id: string, input: Record<string, unknown>) {
     return this.prisma.certificateTemplate.update({ where: { id }, data: input as never });
+  }
+
+  /** No se puede eliminar una plantilla ya usada para emitir certificados reales, ni una asignada a un curso/programa — se pide desasignarla primero. */
+  async deleteCertificateTemplate(id: string) {
+    const [certificatesCount, coursesUsing, programsUsing] = await Promise.all([
+      this.prisma.certificate.count({ where: { templateId: id } }),
+      this.prisma.course.count({ where: { certificateTemplateId: id } }),
+      this.prisma.program.count({ where: { certificateTemplateId: id } }),
+    ]);
+    if (certificatesCount > 0) {
+      throw new BadRequestException(`No se puede eliminar: ya se emitieron ${certificatesCount} certificado(s) con esta plantilla.`);
+    }
+    if (coursesUsing > 0 || programsUsing > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar: está asignada a ${coursesUsing} curso(s) y ${programsUsing} programa(s) — desasígnala primero.`,
+      );
+    }
+    await this.prisma.certificateTemplate.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  // --- Convenios institucionales (certificado con 3ra firma + facturación por convenio) ---
+
+  async listPartnerInstitutions() {
+    const rows = await this.prisma.partnerInstitution.findMany({
+      include: { courses: { include: { course: { select: { id: true, slug: true, title: true } } } } },
+      orderBy: { createdAt: "desc" },
+    });
+    // Prisma.Decimal no serializa a JSON como número plano por defecto —
+    // sin esto el frontend mostraba "S/ NaN" (mismo caso que Order/Course).
+    return rows.map((r) => ({ ...r, feeAmount: r.feeAmount ? decimalToString(r.feeAmount) : null }));
+  }
+
+  createPartnerInstitution(input: {
+    name: string;
+    contactEmail?: string;
+    signerName?: string;
+    signerTitle?: string;
+    signatureAssetId?: string;
+    billingType?: "FIXED" | "PER_COURSE" | "PER_PERIOD";
+    feeAmount?: number;
+    feeCurrency?: string;
+    invoicesDirectly?: boolean;
+  }) {
+    return this.prisma.partnerInstitution.create({ data: input as never });
+  }
+
+  updatePartnerInstitution(id: string, input: Record<string, unknown>) {
+    return this.prisma.partnerInstitution.update({ where: { id }, data: input as never });
+  }
+
+  async deletePartnerInstitution(id: string) {
+    await this.prisma.partnerInstitution.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  addCoursePartnership(input: { courseId: string; partnerInstitutionId: string; startDate?: string; endDate?: string }) {
+    return this.prisma.coursePartnership.create({
+      data: {
+        courseId: input.courseId,
+        partnerInstitutionId: input.partnerInstitutionId,
+        startDate: input.startDate ? new Date(input.startDate) : undefined,
+        endDate: input.endDate ? new Date(input.endDate) : undefined,
+      },
+    });
+  }
+
+  async removeCoursePartnership(id: string) {
+    await this.prisma.coursePartnership.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  /**
+   * Costo estimado de los convenios institucionales en el periodo — se sume
+   * al estado de pérdidas y ganancias como un gasto más. FIXED se prorratea
+   * igual que un PlatformExpense recurrente (no hay forma de saber "cuántos
+   * meses de convenio cayeron en la ventana" sin más contexto, así que se
+   * trata como carga mensual constante); PER_COURSE se calcula contando
+   * certificados emitidos en el periodo para cursos de ese convenio;
+   * PER_PERIOD se cuenta completo si el rango del convenio se solapa con
+   * la ventana pedida.
+   */
+  async getPartnerInstitutionCosts(params: { from: Date; to: Date }) {
+    const partnerships = await this.prisma.coursePartnership.findMany({
+      include: { partnerInstitution: true },
+    });
+    let totalPen = 0;
+    const breakdown: Array<{ partnerName: string; courseId: string; billingType: string; amount: number }> = [];
+    for (const p of partnerships) {
+      if (!p.partnerInstitution.active || p.partnerInstitution.feeCurrency !== "PEN" || !p.partnerInstitution.feeAmount) continue;
+      const fee = Number(p.partnerInstitution.feeAmount);
+      let amount = 0;
+      if (p.partnerInstitution.billingType === "FIXED") {
+        amount = fee; // carga mensual constante, mismo criterio que PlatformExpense MONTHLY
+      } else if (p.partnerInstitution.billingType === "PER_COURSE") {
+        const count = await this.prisma.certificate.count({
+          where: { courseId: p.courseId, issuedAt: { gte: params.from, lte: params.to } },
+        });
+        amount = fee * count;
+      } else if (p.partnerInstitution.billingType === "PER_PERIOD") {
+        const overlaps = (!p.startDate || p.startDate <= params.to) && (!p.endDate || p.endDate >= params.from);
+        amount = overlaps ? fee : 0;
+      }
+      if (amount > 0) {
+        totalPen += amount;
+        breakdown.push({ partnerName: p.partnerInstitution.name, courseId: p.courseId, billingType: p.partnerInstitution.billingType, amount });
+      }
+    }
+    return { totalPen, breakdown };
   }
 
   // --- Empresas ---
@@ -588,12 +737,68 @@ export class AdminService {
   // sistema todavía).
   // ==========================================================================
 
-  async getFinancialSummary(params: { from?: string; to?: string } = {}) {
-    const from = params.from ? new Date(params.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const to = params.to ? new Date(params.to) : new Date();
+  /**
+   * Detracción SUNAT por orden, según el tipo de comprobante/documento del
+   * comprador (tabla explícita pedida por el admin — no es un % único):
+   * - Boleta (DNI/CE/pasaporte, buyerDocumentType="1"/"4"/"7"/"0"): nunca aplica.
+   * - Factura con RUC que empieza con "10" (persona natural con negocio):
+   *   aplica solo si el total de la orden supera detractionRucNaturalThreshold.
+   * - Factura con RUC que empieza con "20" (empresa/persona jurídica): aplica siempre.
+   * `detractionEnabled=false` es el interruptor maestro (por si la SUNAT
+   * suspende la detracción por completo) — en ese caso nunca aplica nada.
+   */
+  private computeDetraction(
+    order: { total: unknown; buyerDocumentType?: string | null; buyerDocumentNumber?: string | null },
+    settings: {
+      detractionEnabled: boolean;
+      detractionRucNaturalPercent: number;
+      detractionRucNaturalThreshold: number;
+      detractionRucEmpresaPercent: number;
+    },
+  ): number {
+    if (!settings.detractionEnabled) return 0;
+    const isRuc = order.buyerDocumentType === "6" && !!order.buyerDocumentNumber;
+    if (!isRuc) return 0; // boleta (persona natural, consumidor final) — nunca aplica
+    const total = Number(order.total);
+    if (order.buyerDocumentNumber!.startsWith("20")) {
+      return total * (settings.detractionRucEmpresaPercent / 100);
+    }
+    if (order.buyerDocumentNumber!.startsWith("10")) {
+      return total > settings.detractionRucNaturalThreshold ? total * (settings.detractionRucNaturalPercent / 100) : 0;
+    }
+    return 0; // RUC que no empieza con 10/20 (caso raro) — no se asume nada
+  }
 
-    const [ordersByCurrency, paymentsByCurrencyProvider, expensesByCurrency, sunat, platformSettings] = await Promise.all([
-      this.prisma.order.groupBy({ by: ["currency"], where: { status: "PAID", createdAt: { gte: from, lte: to } }, _sum: { total: true } }),
+  /**
+   * Balance financiero por moneda, con selector de periodo — "últimos 30
+   * días, el último año, o todo, o hacer balances por año". `period` es un
+   * atajo (last30d|lastYear|allTime|year); `year` se usa junto con
+   * period="year" para un año calendario específico. from/to explícitos
+   * siempre tienen prioridad si vienen (compatibilidad con el uso anterior).
+   */
+  async getFinancialSummary(params: { from?: string; to?: string; period?: string; year?: number } = {}) {
+    const now = new Date();
+    let from: Date;
+    let to: Date = now;
+    if (params.from || params.to) {
+      from = params.from ? new Date(params.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      to = params.to ? new Date(params.to) : now;
+    } else if (params.period === "lastYear") {
+      from = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    } else if (params.period === "allTime") {
+      from = new Date(2000, 0, 1);
+    } else if (params.period === "year" && params.year) {
+      from = new Date(params.year, 0, 1);
+      to = new Date(params.year, 11, 31, 23, 59, 59);
+    } else {
+      from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // default: últimos 30 días
+    }
+
+    const [orders, paymentsByCurrencyProvider, expensesByCurrency, sunat, platformSettings, availableYears] = await Promise.all([
+      this.prisma.order.findMany({
+        where: { status: "PAID", createdAt: { gte: from, lte: to } },
+        select: { total: true, currency: true, buyerDocumentType: true, buyerDocumentNumber: true },
+      }),
       this.prisma.payment.groupBy({
         by: ["currency", "provider"],
         where: { status: "SUCCEEDED", createdAt: { gte: from, lte: to } },
@@ -602,9 +807,10 @@ export class AdminService {
       this.prisma.platformExpense.groupBy({ by: ["currency"], where: { incurredAt: { gte: from, lte: to } }, _sum: { amount: true } }),
       this.prisma.sunatSettings.findUnique({ where: { id: "default" } }),
       this.prisma.platformSettings.findUnique({ where: { id: "default" } }),
+      this.prisma.$queryRaw<Array<{ year: number }>>`SELECT DISTINCT EXTRACT(YEAR FROM "createdAt")::int as year FROM "Order" WHERE status = 'PAID' ORDER BY year DESC`,
     ]);
 
-    const taxAffectation = (sunat?.taxAffectation as "EXONERADO" | "GRAVADO" | undefined) ?? "EXONERADO";
+    const taxAffectation = (sunat?.taxAffectation as "EXONERADO" | "GRAVADO" | undefined) ?? "GRAVADO";
     const isGravado = taxAffectation === "GRAVADO";
     // 18% es la tasa vigente en Perú desde 2011, pero el Estado puede
     // cambiarla — parametrizable en vez de hardcodeada (mismo valor que usa
@@ -612,18 +818,37 @@ export class AdminService {
     const igvPercent = sunat?.igvPercent ?? 18;
     const culqiFeePercent = platformSettings?.culqiFeePercent ?? 3.99;
     const stripeFeePercent = platformSettings?.stripeFeePercent ?? 4.99;
-    const detractionEnabled = platformSettings?.detractionEnabled ?? false;
-    const detractionPercent = platformSettings?.detractionPercent ?? 0;
+    const yapePlinFeePercent = platformSettings?.yapePlinFeePercent ?? 0;
+    const detractionSettings = {
+      detractionEnabled: platformSettings?.detractionEnabled ?? true,
+      detractionRucNaturalPercent: platformSettings?.detractionRucNaturalPercent ?? 12,
+      detractionRucNaturalThreshold: platformSettings?.detractionRucNaturalThreshold ?? 700,
+      detractionRucEmpresaPercent: platformSettings?.detractionRucEmpresaPercent ?? 12,
+    };
 
     const feesByCurrency = new Map<string, number>();
     for (const p of paymentsByCurrencyProvider) {
       const pct = p.provider === "CULQI" ? culqiFeePercent : p.provider === "STRIPE" ? stripeFeePercent : 0;
       feesByCurrency.set(p.currency, (feesByCurrency.get(p.currency) ?? 0) + Number(p._sum.amount ?? 0) * (pct / 100));
     }
-    const incomeByCurrency = new Map(ordersByCurrency.map((o) => [o.currency, Number(o._sum.total ?? 0)]));
     const expensesMap = new Map(expensesByCurrency.map((e) => [e.currency, Number(e._sum.amount ?? 0)]));
 
-    const currencies = new Set<string>(["PEN", ...ordersByCurrency.map((o) => o.currency), ...expensesByCurrency.map((e) => e.currency)]);
+    const incomeByCurrency = new Map<string, number>();
+    const detractionByCurrency = new Map<string, number>();
+    for (const o of orders) {
+      incomeByCurrency.set(o.currency, (incomeByCurrency.get(o.currency) ?? 0) + Number(o.total));
+      // La detracción solo aplica a operaciones nacionales (rieles PEN) — una
+      // venta internacional en USD se trata como exportación de servicios.
+      if (o.currency === "PEN") {
+        detractionByCurrency.set(o.currency, (detractionByCurrency.get(o.currency) ?? 0) + this.computeDetraction(o, detractionSettings));
+      }
+    }
+
+    const currencies = new Set<string>(["PEN", ...incomeByCurrency.keys(), ...expensesByCurrency.map((e) => e.currency)]);
+    // "Esto tal vez tenga que figurar en el estado de pérdidas y ganancias
+    // o finanzas" — el costo de los convenios institucionales (fijo, por
+    // curso dictado o por plazo) se suma como un gasto más, solo en PEN.
+    const partnerCosts = await this.getPartnerInstitutionCosts({ from, to });
 
     const rows = Array.from(currencies).map((currency) => {
       const income = incomeByCurrency.get(currency) ?? 0;
@@ -635,12 +860,9 @@ export class AdminService {
       // que DEBE confirmarse con un contador según el caso — nunca se le
       // aplica el mismo IGV que a una venta nacional.
       const igv = currency === "PEN" && isGravado ? income - income / (1 + igvPercent / 100) : 0;
-      // Detracción SUNAT — apagada por defecto (ver comentario del schema);
-      // solo se resta si el admin la activó explícitamente. Tampoco aplica
-      // a ventas internacionales.
-      const detraction = currency === "PEN" && detractionEnabled ? income * (detractionPercent / 100) : 0;
+      const detraction = detractionByCurrency.get(currency) ?? 0;
       const providerFees = feesByCurrency.get(currency) ?? 0;
-      const otherExpenses = expensesMap.get(currency) ?? 0;
+      const otherExpenses = (expensesMap.get(currency) ?? 0) + (currency === "PEN" ? partnerCosts.totalPen : 0);
       return {
         currency,
         income,
@@ -659,8 +881,10 @@ export class AdminService {
       igvPercent,
       culqiFeePercent,
       stripeFeePercent,
-      detractionEnabled,
-      detractionPercent,
+      yapePlinFeePercent,
+      ...detractionSettings,
+      availableYears: availableYears.map((r) => r.year),
+      partnerCosts: partnerCosts.breakdown,
       rows,
     };
   }
@@ -668,10 +892,44 @@ export class AdminService {
   async updateFeeSettings(input: {
     culqiFeePercent?: number;
     stripeFeePercent?: number;
+    yapePlinFeePercent?: number;
     detractionEnabled?: boolean;
-    detractionPercent?: number;
+    detractionRucNaturalPercent?: number;
+    detractionRucNaturalThreshold?: number;
+    detractionRucEmpresaPercent?: number;
   }) {
     return this.prisma.platformSettings.upsert({ where: { id: "default" }, create: { id: "default", ...input }, update: input });
+  }
+
+  /** Arma el PDF del estado financiero para el periodo pedido — reutilizado por descarga directa y por envío a correo. */
+  private async buildFinancialReport(params: { from?: string; to?: string; period?: string; year?: number; months?: number }) {
+    const [summary, pnl] = await Promise.all([
+      this.getFinancialSummary(params),
+      this.getProfitAndLoss({ months: params.months }),
+    ]);
+    const periodLabel =
+      params.period === "allTime"
+        ? "todo el periodo"
+        : params.period === "lastYear"
+          ? "el último año"
+          : params.period === "year" && params.year
+            ? `año ${params.year}`
+            : "últimos 30 días";
+    const pdf = await buildFinancialReportPdf(summary, pnl);
+    return { pdf, periodLabel };
+  }
+
+  async getFinancialReportPdf(params: { from?: string; to?: string; period?: string; year?: number; months?: number }) {
+    return this.buildFinancialReport(params);
+  }
+
+  async emailFinancialReport(to: string, params: { from?: string; to?: string; period?: string; year?: number; months?: number }) {
+    const { pdf, periodLabel } = await this.buildFinancialReport(params);
+    const key = `admin-reports/finanzas-${randomUUID()}.pdf`;
+    await this.storageService.uploadBuffer(key, pdf, "application/pdf");
+    const url = this.storageService.getPublicUrl(key) ?? (await this.storageService.getSignedUrl(key, 60 * 60 * 24 * 7));
+    await this.notificationService.sendFinancialReport(to, url, periodLabel);
+    return { sent: true, to };
   }
 
   async listExpenses(params: { from?: string; to?: string } = {}) {
@@ -899,6 +1157,7 @@ export class AdminService {
       lastName: u.lastName,
       displayName: u.displayName,
       globalRole: u.globalRole,
+      secondaryRoles: u.secondaryRoles,
       status: u.status,
       createdAt: u.createdAt.toISOString(),
       // Firma para certificados (solo tiene sentido para TEACHER, pero se
@@ -956,11 +1215,32 @@ export class AdminService {
    * soportara. No se permite que un admin se desactive o se quite el rol
    * ADMIN a sí mismo (evita quedar sin ningún admin con acceso).
    */
-  async updateUser(id: string, actorId: string, input: { globalRole?: string; status?: string; signatureAssetId?: string | null }) {
-    if (id === actorId && (input.status === "disabled" || (input.globalRole && input.globalRole !== "ADMIN"))) {
-      throw new BadRequestException("No puedes desactivar tu propia cuenta ni quitarte el rol de administrador");
+  async updateUser(
+    id: string,
+    actorId: string,
+    input: { globalRole?: string; secondaryRoles?: string[]; status?: string; signatureAssetId?: string | null },
+  ) {
+    if (id === actorId) {
+      const existing = await this.prisma.user.findUnique({ where: { id } });
+      const nextGlobalRole = input.globalRole ?? existing?.globalRole;
+      const nextSecondaryRoles = input.secondaryRoles ?? existing?.secondaryRoles ?? [];
+      // "Un docente podría ser también administrador" relaja la regla vieja
+      // (que bloqueaba CUALQUIER cambio de globalRole fuera de ADMIN) — ahora
+      // solo importa que, al terminar, ADMIN siga presente en ALGÚN rol
+      // (principal o secundario) de su propia cuenta, para no quedarse sin
+      // acceso a este mismo panel.
+      const staysAdmin = nextGlobalRole === "ADMIN" || nextSecondaryRoles.includes("ADMIN" as never);
+      if (input.status === "disabled" || !staysAdmin) {
+        throw new BadRequestException("No puedes desactivar tu propia cuenta ni quitarte el rol de administrador");
+      }
     }
-    return this.prisma.user.update({ where: { id }, data: input as never });
+    // Un rol no puede estar a la vez como principal y como secundario.
+    const data: Record<string, unknown> = { ...input };
+    if (input.secondaryRoles) {
+      const globalRole = input.globalRole ?? (await this.prisma.user.findUnique({ where: { id }, select: { globalRole: true } }))?.globalRole;
+      data.secondaryRoles = input.secondaryRoles.filter((r) => r !== globalRole);
+    }
+    return this.prisma.user.update({ where: { id }, data: data as never });
   }
 
   /**

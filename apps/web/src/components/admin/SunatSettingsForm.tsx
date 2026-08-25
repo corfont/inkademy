@@ -32,8 +32,6 @@ export function SunatSettingsForm({ settings }: { settings: SunatSettingsDTO }) 
     facturaCreditSeries: settings.facturaCreditSeries ?? "",
     certPem: "",
     certKeyPem: "",
-    taxAffectation: settings.taxAffectation,
-    igvPercent: String(settings.igvPercent),
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -44,7 +42,7 @@ export function SunatSettingsForm({ settings }: { settings: SunatSettingsDTO }) 
     setSaved(false);
     setError(null);
     try {
-      await adminApi.updateSunatSettings({ ...form, igvPercent: Number(form.igvPercent) });
+      await adminApi.updateSunatSettings(form);
       setSaved(true);
       setForm((f) => ({ ...f, solPassword: "", certPem: "", certKeyPem: "" }));
       router.refresh();
@@ -112,32 +110,9 @@ export function SunatSettingsForm({ settings }: { settings: SunatSettingsDTO }) 
               <Input id="sunat-ubigeo" value={form.ubigeo} onChange={(e) => setForm((f) => ({ ...f, ubigeo: e.target.value }))} placeholder="150101" />
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="sunat-tax">Afectación de IGV</Label>
-              <Select id="sunat-tax" value={form.taxAffectation} onChange={(e) => setForm((f) => ({ ...f, taxAffectation: e.target.value as "EXONERADO" | "GRAVADO" }))}>
-                <option value="EXONERADO">Exonerado (servicios de enseñanza reglada)</option>
-                <option value="GRAVADO">Gravado ({form.igvPercent}% IGV)</option>
-              </Select>
-              <p className="mt-1 text-xs text-ash-500">Confirma con tu contador cuál corresponde a tu caso específico.</p>
-            </div>
-            <div>
-              <Label htmlFor="sunat-igv-percent">% de IGV vigente</Label>
-              <Input
-                id="sunat-igv-percent"
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={form.igvPercent}
-                onChange={(e) => setForm((f) => ({ ...f, igvPercent: e.target.value }))}
-              />
-              <p className="mt-1 text-xs text-ash-500">
-                18% es la tasa vigente en Perú desde 2011 — la ley puede cambiarla; esto afecta tanto el comprobante real como el estimado de
-                /admin/finanzas.
-              </p>
-            </div>
-          </div>
+          <Callout variant="info">
+            La afectación de IGV y el % vigente se configuran en <strong>/admin/configuracion</strong> — junto con comisiones y detracción.
+          </Callout>
         </CardContent>
       </Card>
 

@@ -21,6 +21,18 @@ interface TagPosition {
   fontFamily?: "helvetica" | "helvetica-bold" | "times" | "times-bold" | "courier";
   widthPercent?: number;
   heightPercent?: number;
+  customText?: string;
+  customImageAssetId?: string;
+  marginTopPt?: number;
+  marginBottomPt?: number;
+  marginLeftPt?: number;
+  marginRightPt?: number;
+  lineHeightMultiplier?: number;
+}
+
+const CUSTOM_TAG_PREFIX = "custom:";
+function isCustomTag(tag: string): boolean {
+  return tag.startsWith(CUSTOM_TAG_PREFIX);
 }
 
 // "Tipo de letra" — pedido explícito ("el tipo de letra, tamaño,
@@ -49,6 +61,30 @@ function hexToRgb01(hex?: string) {
   const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
   const value = parseInt(full || "1c2038", 16);
   return rgb(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
+}
+
+/** Envuelve texto libre (tags a medida) en líneas que no excedan maxWidthPt, respetando saltos de línea explícitos del admin. */
+function wrapText(text: string, font: import("pdf-lib").PDFFont, fontSize: number, maxWidthPt: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let current = "";
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, fontSize) > maxWidthPt && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines;
 }
 
 /** Descarga un asset como Buffer, ya sea una key de S3 (docente/institución) o una URL pública completa (logo). */
@@ -81,7 +117,7 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
 
   const certificate = await prisma.certificate.findUnique({
     where: { id: certificateId },
-    include: { user: true, course: true, program: true, template: true },
+    include: { user: true, course: true, program: true, template: true, enrollment: { include: { company: true } } },
   });
 
   if (!certificate) {
@@ -151,9 +187,49 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
   const institutionSignatureTitle = platformSettings?.institutionSignatureTitle ?? "";
   const logoUrl = platformSettings?.logoUrl || `${appUrl}/brand/logo-horizontal.png`;
 
+  const dateFmt = (d: Date) => d.toLocaleDateString(locale === "en" ? "en-US" : "es-PE", { year: "numeric", month: "long", day: "numeric" });
+  // "Fecha de inicio/fin de curso" — Course es un catálogo (sin fechas de
+  // cohorte propias); lo que sí tiene fecha real es la matrícula del alumno
+  // (Enrollment.enrolledAt/completedAt), que es lo que de verdad varía
+  // persona por persona y es lo que un certificado debería reflejar.
+  const courseStartDate = certificate.enrollment?.enrolledAt ? dateFmt(certificate.enrollment.enrolledAt) : "";
+  const courseEndDate = certificate.enrollment?.completedAt ? dateFmt(certificate.enrollment.completedAt) : issuedDate;
+  const companyName = certificate.enrollment?.company?.legalName ?? "";
+
+  // Convenio institucional (3ra firma) — "a veces se tiene un convenio con
+  // un instituto o universidad de prestigio, donde debería estar la firma
+  // de esa institución también". Solo aplica si el curso tiene un
+  // CoursePartnership activo cuyo rango de fechas (si tiene) cubre la
+  // emisión del certificado.
+  let partnerInstitutionName = "";
+  let partnerSignatureName = "";
+  let partnerSignatureTitle = "";
+  let partnerSignatureAssetId: string | null = null;
+  if (certificate.courseId) {
+    const partnership = await prisma.coursePartnership.findFirst({
+      where: {
+        courseId: certificate.courseId,
+        partnerInstitution: { active: true },
+        OR: [{ startDate: null }, { startDate: { lte: certificate.issuedAt } }],
+        AND: [{ OR: [{ endDate: null }, { endDate: { gte: certificate.issuedAt } }] }],
+      },
+      include: { partnerInstitution: true },
+      orderBy: { createdAt: "desc" },
+    });
+    if (partnership) {
+      partnerInstitutionName = partnership.partnerInstitution.name;
+      partnerSignatureName = partnership.partnerInstitution.signerName ?? "";
+      partnerSignatureTitle = partnership.partnerInstitution.signerTitle ?? "";
+      partnerSignatureAssetId = partnership.partnerInstitution.signatureAssetId;
+    }
+  }
+
   const textVars: Record<string, string> = {
     studentName,
+    companyName,
     courseName: offeringName,
+    courseStartDate,
+    courseEndDate,
     courseDuration,
     issuedDate,
     finalScore: certificate.finalScore != null ? certificate.finalScore.toFixed(1) : "Aprobado",
@@ -161,6 +237,9 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     teacherName,
     institutionSignatureName,
     institutionSignatureTitle,
+    partnerInstitutionName,
+    partnerSignatureName,
+    partnerSignatureTitle,
   };
 
   let pdfBuffer: Buffer;
@@ -173,7 +252,13 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
       pageHeightPt: certificate.template.pageHeightPt ?? 595.28,
       tagPositions: (certificate.template.tagPositions as unknown as TagPosition[] | null) ?? [],
       textVars,
-      images: { qrDataUrl: qrBuffer, teacherSignature: teacherSignatureAssetId, institutionSignatureImage: institutionSignatureAssetId, logo: logoUrl },
+      images: {
+        qrDataUrl: qrBuffer,
+        teacherSignature: teacherSignatureAssetId,
+        institutionSignatureImage: institutionSignatureAssetId,
+        partnerSignatureImage: partnerSignatureAssetId,
+        logo: logoUrl,
+      },
     });
   } else {
     // Modo HTML (Puppeteer): las imágenes se insertan ya como <img> — si no
@@ -181,6 +266,7 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     // se renderiza, en vez de mostrar un ícono roto).
     const teacherSignatureUrl = teacherSignatureAssetId ? getPublicUrl(teacherSignatureAssetId) : null;
     const institutionSignatureUrl = institutionSignatureAssetId ? getPublicUrl(institutionSignatureAssetId) : null;
+    const partnerSignatureUrl = partnerSignatureAssetId ? getPublicUrl(partnerSignatureAssetId) : null;
     const html = renderPlaceholders(certificate.template.htmlTemplate, {
       ...textVars,
       qrDataUrl,
@@ -188,6 +274,7 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
       logo: `<img src="${logoUrl}" alt="Inkademy" />`,
       teacherSignature: teacherSignatureUrl ? `<img src="${teacherSignatureUrl}" alt="Firma del docente" />` : "",
       institutionSignatureImage: institutionSignatureUrl ? `<img src="${institutionSignatureUrl}" alt="Firma institucional" />` : "",
+      partnerSignatureImage: partnerSignatureUrl ? `<img src="${partnerSignatureUrl}" alt="Firma de la institución del convenio" />` : "",
     });
 
     const browser = await puppeteer.launch({
@@ -268,14 +355,15 @@ async function renderBackgroundTemplate(opts: {
   }
 
   for (const pos of tagPositions) {
-    const isImageTag = pos.tag in images;
+    const custom = isCustomTag(pos.tag);
+    const isImageTag = pos.tag in images || (custom && !!pos.customImageAssetId);
     const xPt = (pos.xPercent / 100) * pageWidth;
     // yPercent es "desde arriba" (igual que en la vista previa CSS); pdf-lib
     // dibuja desde abajo-izquierda, por eso se invierte acá.
     const yFromTop = (pos.yPercent / 100) * pageHeight;
 
     if (isImageTag) {
-      const source = images[pos.tag];
+      const source = custom ? pos.customImageAssetId ?? null : images[pos.tag];
       if (!source) continue; // no configurado (p.ej. no hay firma de docente) — se omite, no rompe el resto
       const widthPt = ((pos.widthPercent ?? 15) / 100) * pageWidth;
       const heightPt = ((pos.heightPercent ?? 8) / 100) * pageHeight;
@@ -293,11 +381,34 @@ async function renderBackgroundTemplate(opts: {
       continue;
     }
 
-    const value = textVars[pos.tag];
+    const value = custom ? pos.customText ?? "" : textVars[pos.tag];
     if (!value) continue;
     const fontSize = pos.fontSizePt ?? 14;
     const color = hexToRgb01(pos.color);
     const font = await fontFor(pos.fontFamily);
+    const lineHeight = fontSize * (pos.lineHeightMultiplier ?? 1.2);
+
+    if (custom) {
+      // Texto libre a medida — puede ser largo/multilínea, a diferencia de
+      // los tags "de datos" (nombre, fecha, etc.) que son casi siempre una
+      // sola línea corta. Se envuelve dentro de un recuadro definido por
+      // widthPercent (o el ancho de página menos márgenes) y se aplican
+      // márgenes + separación entre líneas.
+      const marginLeft = pos.marginLeftPt ?? 0;
+      const marginRight = pos.marginRightPt ?? 0;
+      const marginTop = pos.marginTopPt ?? 0;
+      const boxWidth = pos.widthPercent ? (pos.widthPercent / 100) * pageWidth : pageWidth - xPt - marginRight;
+      const lines = wrapText(value, font, fontSize, Math.max(10, boxWidth - marginLeft - marginRight));
+      let cursorY = pageHeight - yFromTop - marginTop - fontSize;
+      for (const line of lines) {
+        const lineWidth = font.widthOfTextAtSize(line, fontSize);
+        const alignOffset = pos.align === "center" ? lineWidth / 2 : pos.align === "right" ? lineWidth : 0;
+        page.drawText(line, { x: xPt + marginLeft - alignOffset, y: cursorY, size: fontSize, font, color });
+        cursorY -= lineHeight;
+      }
+      continue;
+    }
+
     const textWidth = font.widthOfTextAtSize(value, fontSize);
     const alignOffset = pos.align === "center" ? textWidth / 2 : pos.align === "right" ? textWidth : 0;
     page.drawText(value, { x: xPt - alignOffset, y: pageHeight - yFromTop - fontSize, size: fontSize, font, color });

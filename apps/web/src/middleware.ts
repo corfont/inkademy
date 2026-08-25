@@ -25,11 +25,14 @@ export function middleware(request: NextRequest) {
   // TEACHER (y ADMIN, por si necesita entrar a revisar algo puntual). Antes
   // /admin redirigía a TEACHER directo a /campus — un docente no tenía
   // ningún panel propio a donde ir, quedaba varado en la vista de alumno.
+  // Un usuario con roles secundarios (p.ej. docente que TAMBIÉN es admin)
+  // puede entrar a cualquier área que le corresponda a alguno de sus roles.
   if (pathname.startsWith("/admin")) {
     try {
       const user = JSON.parse(decodeURIComponent(session));
-      if (user.globalRole !== "ADMIN" && user.globalRole !== "SUPPORT") {
-        return NextResponse.redirect(new URL(user.globalRole === "TEACHER" ? "/docente" : "/campus", request.url));
+      const roles: string[] = [user.globalRole, ...(user.secondaryRoles ?? [])];
+      if (!roles.includes("ADMIN") && !roles.includes("SUPPORT")) {
+        return NextResponse.redirect(new URL(roles.includes("TEACHER") ? "/docente" : "/campus", request.url));
       }
     } catch {
       // cookie corrupta: dejamos pasar y la propia página resolverá el estado real vía /auth/me
@@ -38,7 +41,8 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith("/docente")) {
     try {
       const user = JSON.parse(decodeURIComponent(session));
-      if (user.globalRole !== "TEACHER" && user.globalRole !== "ADMIN") {
+      const roles: string[] = [user.globalRole, ...(user.secondaryRoles ?? [])];
+      if (!roles.includes("TEACHER") && !roles.includes("ADMIN")) {
         return NextResponse.redirect(new URL("/campus", request.url));
       }
     } catch {

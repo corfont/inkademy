@@ -37,7 +37,8 @@ export class CompanyGuard implements CanActivate {
       throw new ForbiddenException("Ruta sin companyId — CompanyGuard mal aplicado");
     }
 
-    if (user.globalRole === "ADMIN" || user.globalRole === "SUPPORT") {
+    const effectiveRoles = user.roles ?? [user.globalRole];
+    if (effectiveRoles.includes("ADMIN") || effectiveRoles.includes("SUPPORT")) {
       request.companyMembership = { role: "COMPANY_ADMIN", status: "ACTIVE" };
       return true;
     }

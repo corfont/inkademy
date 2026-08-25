@@ -361,9 +361,26 @@ export const certificateApi = {
 export const liveSessionApi = {
   join: (id: string) => apiFetch<{ joinUrl: string; role: string }>(`/live-sessions/${id}/join`),
   create: (
-    input: { courseId: string; title?: string; startsAt: string; endsAt: string; timezone?: string; capacity?: number },
+    input: { courseId: string; title?: string; startsAt: string; endsAt: string; timezone?: string; capacity?: number; teacherId?: string },
     accessToken?: string | null,
   ) => apiFetch<any>("/live-sessions", { method: "POST", body: JSON.stringify(input), accessToken }),
+  // "Repetir cada semana hasta que se cumpla la duración del curso".
+  createSeries: (
+    input: {
+      courseId: string;
+      title?: string;
+      firstStartsAt: string;
+      sessionDurationMinutes: number;
+      timezone?: string;
+      capacity?: number;
+      teacherId?: string;
+    },
+    accessToken?: string | null,
+  ) => apiFetch<any[]>("/live-sessions/series", { method: "POST", body: JSON.stringify(input), accessToken }),
+  scheduleSummary: (courseId: string, accessToken?: string | null) =>
+    apiFetch<{ totalHours: number; scheduledHours: number; remainingHours: number }>(`/live-sessions/schedule-summary/${courseId}`, { accessToken }),
+  cancel: (id: string, reason: string, accessToken?: string | null) =>
+    apiFetch<any>(`/live-sessions/${id}/cancel`, { method: "PATCH", body: JSON.stringify({ reason }), accessToken }),
   syncAttendance: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/live-sessions/${id}/sync-attendance`, { method: "POST", accessToken }),
   // Reprograma fecha/hora y notifica por correo a todos los inscritos activos.
@@ -486,12 +503,12 @@ export const adminApi = {
       accessToken,
     }),
   // --- Finanzas ---
-  financialSummary: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
-    apiFetch<any>("/admin/finance/summary", { accessToken, query: params, cache: "no-store" }),
-  updateFeeSettings: (
-    input: { culqiFeePercent?: number; stripeFeePercent?: number; detractionEnabled?: boolean; detractionPercent?: number },
+  financialSummary: (
+    params: { from?: string; to?: string; period?: "last30d" | "lastYear" | "allTime" | "year"; year?: number } = {},
     accessToken?: string | null,
-  ) => apiFetch<any>("/admin/finance/fee-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  ) => apiFetch<any>("/admin/finance/summary", { accessToken, query: params, cache: "no-store" }),
+  updateFeeSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/finance/fee-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
   expenses: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/finance/expenses", { accessToken, query: params, cache: "no-store" }),
   createExpense: (
@@ -500,6 +517,29 @@ export const adminApi = {
   ) => apiFetch<any>("/admin/finance/expenses", { method: "POST", body: JSON.stringify(input), accessToken }),
   deleteExpense: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/finance/expenses/${id}`, { method: "DELETE", accessToken }),
+  // Descarga binaria — no pasa por apiFetch (que espera JSON) — arma un blob
+  // en el cliente con el mismo header de autorización.
+  downloadFinancialReportPdf: async (
+    params: { from?: string; to?: string; period?: string; year?: number; months?: number },
+    accessToken: string,
+  ) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][]).toString();
+    const res = await fetch(`${API_URL}/admin/finance/report.pdf?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, "No pudimos generar el PDF.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "inkademy-finanzas.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  emailFinancialReport: (
+    input: { recipientEmail: string; from?: string; to?: string; period?: string; year?: number; months?: number },
+    accessToken?: string | null,
+  ) => apiFetch<{ sent: boolean; to: string }>("/admin/finance/report/email", { method: "POST", body: JSON.stringify(input), accessToken }),
   profitAndLoss: (months: number | undefined, accessToken?: string | null) =>
     apiFetch<any>("/admin/finance/profit-and-loss", { accessToken, query: { months }, cache: "no-store" }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
@@ -515,6 +555,23 @@ export const adminApi = {
     apiFetch<any>("/admin/certificate-templates", { method: "POST", body: JSON.stringify(input), accessToken }),
   updateCertificateTemplate: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/certificate-templates/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteCertificateTemplate: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/certificate-templates/${id}`, { method: "DELETE", accessToken }),
+  // --- Convenios institucionales ---
+  partnerInstitutions: (accessToken?: string | null) => apiFetch<any[]>("/admin/partner-institutions", { accessToken, cache: "no-store" }),
+  createPartnerInstitution: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>("/admin/partner-institutions", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updatePartnerInstitution: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/partner-institutions/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deletePartnerInstitution: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/partner-institutions/${id}`, { method: "DELETE", accessToken }),
+  addCoursePartnership: (
+    partnerInstitutionId: string,
+    input: { courseId: string; startDate?: string; endDate?: string },
+    accessToken?: string | null,
+  ) => apiFetch<any>(`/admin/partner-institutions/${partnerInstitutionId}/courses`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  removeCoursePartnership: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/partner-institutions/course-partnerships/${id}`, { method: "DELETE", accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
 
   // --- Catálogo: crear/editar cursos ---
@@ -523,6 +580,9 @@ export const adminApi = {
   updateCourse: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/courses/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   courseDetail: (id: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${id}`, { accessToken }),
+  approvalRule: (courseId: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${courseId}/approval-rule`, { accessToken }),
+  updateApprovalRule: (courseId: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/approval-rule`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
 
   // --- Contenido: módulos / lecciones / materiales ---
   createModule: (courseId: string, input: { title: Record<string, string>; order?: number }, accessToken?: string | null) =>
@@ -585,7 +645,7 @@ export const adminApi = {
   ) => apiFetch<any>("/admin/users", { method: "POST", body: JSON.stringify(input), accessToken }),
   updateUser: (
     id: string,
-    input: { globalRole?: string; status?: string; signatureAssetId?: string | null },
+    input: { globalRole?: string; secondaryRoles?: string[]; status?: string; signatureAssetId?: string | null },
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   resetUserPassword: (id: string, password: string | undefined, accessToken?: string | null) =>
