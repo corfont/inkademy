@@ -33,6 +33,7 @@ export default async function AdminSupportPage() {
           <thead className="border-b border-paper-border text-ash-500">
             <tr>
               <th className="p-4 font-medium">Asunto</th>
+              <th className="p-4 font-medium">Solicitante</th>
               <th className="p-4 font-medium">Categoría</th>
               <th className="p-4 font-medium">Fecha</th>
               <th className="p-4 font-medium">Prioridad</th>
@@ -46,6 +47,10 @@ export default async function AdminSupportPage() {
                   <Link href={`/admin/soporte/${ticket.id}`} className="block p-4 font-medium text-ink-900">
                     {ticket.subject}
                   </Link>
+                </td>
+                <td className="p-4 text-ash-600">
+                  {ticket.createdByName ?? "—"}
+                  {ticket.createdByEmail && <span className="block text-xs text-ash-400">{ticket.createdByEmail}</span>}
                 </td>
                 <td className="p-4 text-ash-600">{ticket.category}</td>
                 <td className="p-4 text-ash-600">{formatDate(ticket.createdAt, locale)}</td>

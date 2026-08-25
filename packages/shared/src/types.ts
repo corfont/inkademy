@@ -194,6 +194,10 @@ export interface SupportTicketSummaryDTO {
   status: TicketStatus;
   createdAt: string;
   lastMessageAt?: string | null;
+  // Solo viene poblado en /admin/soporte (staff global viendo TODOS los
+  // tickets) — en "mis tickets" (alumno/docente) es siempre uno mismo, no hace falta.
+  createdByName?: string;
+  createdByEmail?: string;
 }
 
 export interface AdminExceptionDTO {

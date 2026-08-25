@@ -14,7 +14,7 @@ import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from "@n
 import type { Request, Response } from "express";
 import { ConfigService } from "@nestjs/config";
 import { registerSchema } from "@inkademy/shared";
-import { forgotPasswordSchema, resetPasswordSchema } from "../../common/validation/local-schemas";
+import { changePasswordSchema, forgotPasswordSchema, resetPasswordSchema } from "../../common/validation/local-schemas";
 import type { RegisterInput } from "@inkademy/shared";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
@@ -121,6 +121,17 @@ export class AuthController {
     @Body(new ZodValidationPipe(resetPasswordSchema)) body: { token: string; password: string },
   ) {
     await this.authService.resetPassword(body.token, body.password);
+  }
+
+  @ApiBearerAuth()
+  @Post("change-password")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Cambia la contraseña estando ya autenticado (p.ej. tras entrar con la contraseña temporal)" })
+  async changePassword(
+    @CurrentUser() user: RequestUser,
+    @Body(new ZodValidationPipe(changePasswordSchema)) body: { currentPassword: string; newPassword: string },
+  ) {
+    await this.authService.changePassword(user.id, body.currentPassword, body.newPassword);
   }
 
   @Public()

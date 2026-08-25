@@ -156,6 +156,24 @@ export class AuthService {
     await this.prisma.user.update({ where: { id: sub }, data: { passwordHash } });
   }
 
+  /**
+   * Cambiar la contraseña estando ya autenticado (p.ej. justo después de
+   * entrar con la contraseña temporal que generó el admin al crear la
+   * cuenta) — antes solo existía el flujo de "olvidé mi contraseña" por
+   * correo, sin ninguna forma de cambiarla ya adentro de la sesión.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      throw new BadRequestException("Esta cuenta no tiene contraseña propia (inició sesión con Google/Microsoft)");
+    }
+    const valid = await argon2.verify(user.passwordHash, currentPassword);
+    if (!valid) throw new UnauthorizedException("La contraseña actual no es correcta");
+
+    const passwordHash = await argon2.hash(newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  }
+
   async verifyEmail(token: string) {
     const { sub } = this.verifyPurposeToken(token, "verify_email");
     await this.prisma.user.update({ where: { id: sub }, data: { emailVerifiedAt: new Date() } });

@@ -3,9 +3,20 @@ import { z } from "zod";
 // Esquemas zod usados tanto por los DTOs de NestJS (class-validator los envuelve
 // en los controllers) como por los formularios del frontend (react-hook-form).
 
+// Mínimo 8 caracteres, al menos una letra, un número y un carácter especial
+// de este conjunto — se usa en registro, reset de contraseña (propio y por
+// el admin) y al crear una cuenta con contraseña elegida a mano.
+export const PASSWORD_SPECIAL_CHARS = "+-*!$%&";
+export const strongPasswordSchema = z
+  .string()
+  .min(8, "Debe tener al menos 8 caracteres")
+  .regex(/[A-Za-z]/, "Debe incluir al menos una letra")
+  .regex(/\d/, "Debe incluir al menos un número")
+  .regex(/[+\-*!$%&]/, `Debe incluir al menos un carácter especial (${PASSWORD_SPECIAL_CHARS})`);
+
 export const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: strongPasswordSchema,
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   locale: z.enum(["es", "en"]).default("es"),

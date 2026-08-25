@@ -39,7 +39,13 @@ function CompleteProfileForm() {
   const searchParams = useSearchParams();
   // Preserva a dónde iba el visitante antes de que se le pidiera completar el
   // perfil (p.ej. volver a /checkout?courseId=... tras iniciar sesión desde ahí).
-  const next = searchParams.get("next") ?? "/campus";
+  // Antes el valor por defecto (sin "next") era siempre "/campus" sin
+  // importar el rol — un administrador o docente recién creado que
+  // completaba su perfil terminaba viendo el campus de alumno, aunque su
+  // globalRole en la base de datos fuera el correcto (ADMIN/TEACHER). Mismo
+  // criterio que usa /login para decidir el "home" de cada rol.
+  const roleHome = user?.globalRole === "ADMIN" || user?.globalRole === "SUPPORT" ? "/admin" : user?.globalRole === "TEACHER" ? "/docente" : "/campus";
+  const next = searchParams.get("next") ?? roleHome;
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),
   });

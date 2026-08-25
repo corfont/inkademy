@@ -8,6 +8,7 @@ import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import {
   assignCourseStaffSchema,
+  adminResetPasswordSchema,
   createUserSchema,
   gradeAnswerSchema,
   updateAssessmentSchema,
@@ -364,6 +365,20 @@ export class AdminController {
   @ApiOperation({ summary: "Cambia el rol y/o activa/desactiva una cuenta" })
   updateUser(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateUserSchema)) dto: any) {
     return this.adminService.updateUser(id, user.id, dto);
+  }
+
+  @Post("users/:id/reset-password")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Resetea la contraseña de un usuario que lo pidió — sin contraseña en el body, genera una temporal" })
+  resetUserPassword(@Param("id") id: string, @Body(new ZodValidationPipe(adminResetPasswordSchema)) dto: { password?: string }) {
+    return this.adminService.resetUserPassword(id, dto.password);
+  }
+
+  @Delete("users/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina una cuenta (rechaza si tiene órdenes/certificados/matrículas — desactívala en su lugar)" })
+  deleteUser(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.deleteUser(id, user.id);
   }
 
   // --- Docentes asignados a un curso ---

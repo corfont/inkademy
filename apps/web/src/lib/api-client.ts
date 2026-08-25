@@ -152,6 +152,8 @@ export const authApi = {
   register: (input: unknown) => apiFetch<{ user: AuthUser; accessToken: string }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
   login: (input: unknown) => apiFetch<{ user: AuthUser; accessToken: string }>("/auth/login", { method: "POST", body: JSON.stringify(input) }),
   logout: () => apiFetch<void>("/auth/logout", { method: "POST" }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiFetch<void>("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
   me: (accessToken?: string | null) => apiFetch<AuthUser>("/auth/me", { accessToken }),
   forgotPassword: (email: string) => apiFetch<void>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (input: { token: string; password: string }) => apiFetch<void>("/auth/reset-password", { method: "POST", body: JSON.stringify(input) }),
@@ -509,13 +511,23 @@ export const adminApi = {
   // --- Usuarios y roles ---
   users: (params: { q?: string; role?: string } = {}, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/users", { query: params, accessToken, cache: "no-store" }),
-  createUser: (input: { email: string; firstName: string; lastName: string; globalRole: string }, accessToken?: string | null) =>
-    apiFetch<any>("/admin/users", { method: "POST", body: JSON.stringify(input), accessToken }),
+  createUser: (
+    input: { email: string; firstName: string; lastName: string; globalRole: string; password?: string },
+    accessToken?: string | null,
+  ) => apiFetch<any>("/admin/users", { method: "POST", body: JSON.stringify(input), accessToken }),
   updateUser: (
     id: string,
     input: { globalRole?: string; status?: string; signatureAssetId?: string | null },
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  resetUserPassword: (id: string, password: string | undefined, accessToken?: string | null) =>
+    apiFetch<{ id: string; email: string; tempPassword: string | null }>(`/admin/users/${id}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+      accessToken,
+    }),
+  deleteUser: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/users/${id}`, { method: "DELETE", accessToken }),
 
   // --- Docentes asignados a un curso ---
   courseStaff: (courseId: string, accessToken?: string | null) =>

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { UploadCloud } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { authApi, catalogApi, ApiError, type FullProfileDTO } from "@/lib/api-client";
+import { ChangePasswordCard } from "@/components/campus/ChangePasswordCard";
 import { updateSessionUser } from "@/lib/auth";
 import { MOCK_AREAS } from "@/lib/mock-data";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -357,6 +358,8 @@ export default function ProfilePage() {
           {isSubmitting ? "…" : "Guardar"}
         </Button>
       </form>
+
+      <ChangePasswordCard />
     </div>
   );
 }

@@ -160,6 +160,40 @@ function UserRowItem({ user, onChange }: { user: UserRow; onChange: () => void }
     }
   }
 
+  async function handleResetPassword() {
+    const custom = prompt(
+      "Si el usuario ya te dijo qué contraseña quiere, escríbela aquí (mín. 8 caracteres, con letra, número y un carácter especial +-*!$%&).\n\nDeja el campo vacío para generar una temporal y pasársela tú.",
+    );
+    if (custom === null) return; // canceló
+    setBusy(true);
+    setRowError(null);
+    try {
+      const result = await adminApi.resetUserPassword(user.id, custom.trim() || undefined);
+      if (result.tempPassword) {
+        alert(`Contraseña temporal para ${user.email}:\n\n${result.tempPassword}\n\n(Solo se muestra esta vez — pásasela al usuario ahora.)`);
+      } else {
+        alert(`Listo: la contraseña de ${user.email} se actualizó a la que escribiste.`);
+      }
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos restablecer la contraseña.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`¿Eliminar la cuenta de ${user.email}? Si tiene compras, certificados o matrículas, no se podrá — desactívala en ese caso.`)) return;
+    setBusy(true);
+    setRowError(null);
+    try {
+      await adminApi.deleteUser(user.id);
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos eliminar la cuenta.");
+      setBusy(false);
+    }
+  }
+
   return (
     <tr className="border-b border-paper-border last:border-0">
       <td className="p-2">
@@ -203,9 +237,17 @@ function UserRowItem({ user, onChange }: { user: UserRow; onChange: () => void }
         <Badge variant={user.status === "active" ? "success" : "danger"}>{user.status === "active" ? "Activa" : "Desactivada"}</Badge>
       </td>
       <td className="p-2">
-        <Button size="sm" variant="ghost" disabled={busy} onClick={handleToggleStatus}>
-          {user.status === "active" ? "Desactivar" : "Reactivar"}
-        </Button>
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="ghost" disabled={busy} onClick={handleToggleStatus}>
+            {user.status === "active" ? "Desactivar" : "Reactivar"}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={handleResetPassword}>
+            Restablecer clave
+          </Button>
+          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+            Eliminar
+          </Button>
+        </div>
         {rowError && <p className="mt-1 text-xs text-danger">{rowError}</p>}
       </td>
     </tr>
@@ -218,20 +260,22 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [globalRole, setGlobalRole] = useState("TEACHER");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ email: string; tempPassword: string } | null>(null);
+  const [created, setCreated] = useState<{ email: string; tempPassword: string | null } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const result = await adminApi.createUser({ email, firstName, lastName, globalRole });
+      const result = await adminApi.createUser({ email, firstName, lastName, globalRole, password: password.trim() || undefined });
       setCreated({ email: result.email, tempPassword: result.tempPassword });
       setEmail("");
       setFirstName("");
       setLastName("");
+      setPassword("");
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos crear la cuenta.");
@@ -252,12 +296,15 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Crear cuenta</h2>
-        {created && (
-          <Callout variant="success">
-            Cuenta creada para {created.email}. Contraseña temporal (solo se muestra esta vez):{" "}
-            <code className="rounded bg-paper-muted px-1.5 py-0.5 font-mono">{created.tempPassword}</code>
-          </Callout>
-        )}
+        {created &&
+          (created.tempPassword ? (
+            <Callout variant="success">
+              Cuenta creada para {created.email}. Contraseña temporal (solo se muestra esta vez):{" "}
+              <code className="rounded bg-paper-muted px-1.5 py-0.5 font-mono">{created.tempPassword}</code>
+            </Callout>
+          ) : (
+            <Callout variant="success">Cuenta creada para {created.email} con la contraseña que escribiste.</Callout>
+          ))}
         {error && <Callout variant="danger">{error}</Callout>}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -283,6 +330,17 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
                 </option>
               ))}
             </Select>
+          </div>
+          <div>
+            <Label htmlFor="new-user-password">Contraseña (opcional)</Label>
+            <Input
+              id="new-user-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Déjalo vacío para generar una temporal"
+            />
+            <p className="mt-1 text-xs text-ash-500">Si la pones: mínimo 8 caracteres, con letra, número y un carácter especial (+ - * ! $ % &amp;).</p>
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>

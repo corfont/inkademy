@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { strongPasswordSchema } from "@inkademy/shared";
 
 // ============================================================================
 // Esquemas zod que NO están definidos en @inkademy/shared/validation porque el
@@ -13,7 +14,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(1),
-  password: z.string().min(8),
+  password: strongPasswordSchema,
 });
 
 export const updateLessonProgressSchema = z.object({
@@ -256,6 +257,19 @@ export const createUserSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   globalRole: z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"]),
+  // Si el admin no pone una, se genera una temporal (comportamiento anterior).
+  password: strongPasswordSchema.optional(),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: strongPasswordSchema,
+});
+
+export const adminResetPasswordSchema = z.object({
+  // Si no viene, se genera una temporal (igual que al crear la cuenta) y se
+  // devuelve una sola vez en la respuesta para que el admin se la pase al usuario.
+  password: strongPasswordSchema.optional(),
 });
 
 export const updateUserSchema = z.object({

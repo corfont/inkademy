@@ -585,12 +585,16 @@ export class AdminService {
    * a la persona; el usuario puede cambiarla luego con "¿Olvidaste tu
    * contraseña?" si lo prefiere.
    */
-  async createUser(input: { email: string; firstName: string; lastName: string; globalRole: string }) {
+  async createUser(input: { email: string; firstName: string; lastName: string; globalRole: string; password?: string }) {
     const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
     if (existing) throw new BadRequestException("Ya existe una cuenta con ese correo");
 
-    const tempPassword = randomUUID().slice(0, 12);
-    const passwordHash = await argon2.hash(tempPassword);
+    // Si el admin no eligió una contraseña, se genera una temporal (como
+    // antes); si sí puso una, ya viene validada por createUserSchema
+    // (mín. 8, letra + número + carácter especial) y no hace falta
+    // devolverla — el admin ya la sabe porque la escribió él mismo.
+    const tempPassword = input.password ? null : randomUUID().slice(0, 12);
+    const passwordHash = await argon2.hash(input.password ?? tempPassword!);
     const user = await this.prisma.user.create({
       data: {
         email: input.email,
@@ -625,6 +629,48 @@ export class AdminService {
       throw new BadRequestException("No puedes desactivar tu propia cuenta ni quitarte el rol de administrador");
     }
     return this.prisma.user.update({ where: { id }, data: input as never });
+  }
+
+  /**
+   * El admin resetea la contraseña de un usuario que se lo pidió (p.ej. por
+   * soporte, sin pasar por el flujo de "olvidé mi contraseña" por correo).
+   * Si no manda una contraseña específica, genera una temporal — mismo
+   * patrón que createUser — para pasársela al usuario por otro medio.
+   */
+  async resetUserPassword(id: string, password?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException("Usuario no encontrado");
+
+    const tempPassword = password ? null : randomUUID().slice(0, 12);
+    const passwordHash = await argon2.hash(password ?? tempPassword!);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+    return { id, email: user.email, tempPassword };
+  }
+
+  /**
+   * Elimina una cuenta de verdad (no solo desactivarla). Se niega si tiene
+   * órdenes, certificados o matrículas — son registros financieros/legales
+   * (boletas SUNAT, certificados verificables) que no deben desaparecer
+   * solo porque se borra la cuenta; en ese caso hay que desactivarla en vez
+   * de eliminarla. Sirve sobre todo para cuentas de prueba/duplicadas/spam
+   * que nunca llegaron a comprar ni matricularse.
+   */
+  async deleteUser(id: string, actorId: string) {
+    if (id === actorId) throw new BadRequestException("No puedes eliminar tu propia cuenta");
+
+    const [ordersCount, certificatesCount, enrollmentsCount] = await Promise.all([
+      this.prisma.order.count({ where: { userId: id } }),
+      this.prisma.certificate.count({ where: { userId: id } }),
+      this.prisma.enrollment.count({ where: { userId: id } }),
+    ]);
+    if (ordersCount > 0 || certificatesCount > 0 || enrollmentsCount > 0) {
+      throw new BadRequestException(
+        "Esta cuenta tiene órdenes, certificados o matrículas — no se puede eliminar sin perder ese registro. Desactívala en su lugar.",
+      );
+    }
+
+    await this.prisma.user.delete({ where: { id } });
+    return { deleted: true };
   }
 
   // --- Docentes asignados a un curso (CourseStaff) ---

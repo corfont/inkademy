@@ -24,6 +24,22 @@ export class SupportService {
     });
   }
 
+  // Solo los campos necesarios para mostrar "quién lo pidió" — evita filtrar
+  // el resto del perfil (teléfono, dirección, fecha de nacimiento, etc.) que
+  // `include: { createdBy: true }` habría traído completo.
+  private readonly createdBySelect = { select: { displayName: true, firstName: true, lastName: true, email: true } } as const;
+
+  private mapTicket<T extends { createdBy?: { displayName: string | null; firstName: string; lastName: string; email: string } }>(
+    ticket: T,
+  ) {
+    const { createdBy, ...rest } = ticket;
+    return {
+      ...rest,
+      createdByName: createdBy ? createdBy.displayName ?? `${createdBy.firstName} ${createdBy.lastName}` : undefined,
+      createdByEmail: createdBy?.email,
+    };
+  }
+
   async listMine(userId: string, companyId?: string, isGlobalStaff = false) {
     if (companyId) {
       if (!isGlobalStaff) {
@@ -34,17 +50,23 @@ export class SupportService {
           throw new ForbiddenException("Solo un COMPANY_ADMIN puede ver los tickets de la empresa");
         }
       }
-      return this.prisma.supportTicket.findMany({
+      const tickets = await this.prisma.supportTicket.findMany({
         where: { companyId },
         orderBy: { updatedAt: "desc" },
-        include: { messages: { orderBy: { createdAt: "desc" }, take: 1 } },
+        include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, createdBy: this.createdBySelect },
       });
+      return tickets.map((t) => this.mapTicket(t));
     }
-    return this.prisma.supportTicket.findMany({
-      where: { createdById: userId },
+    // Antes esto SIEMPRE filtraba por createdById, incluso para ADMIN/SUPPORT
+    // — /admin/soporte ("Todos los tickets") en realidad solo mostraba los
+    // tickets que el propio admin hubiera creado él mismo, nunca los de un
+    // alumno/docente/empresa real. Ahora el staff global ve todos.
+    const tickets = await this.prisma.supportTicket.findMany({
+      where: isGlobalStaff ? {} : { createdById: userId },
       orderBy: { updatedAt: "desc" },
-      include: { messages: { orderBy: { createdAt: "desc" }, take: 1 } },
+      include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, createdBy: this.createdBySelect },
     });
+    return tickets.map((t) => this.mapTicket(t));
   }
 
   async getTicket(userId: string, ticketId: string, isGlobalStaff: boolean) {
