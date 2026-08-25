@@ -10,6 +10,7 @@ import {
   assignCourseStaffSchema,
   adminResetPasswordSchema,
   createUserSchema,
+  extendEnrollmentAccessSchema,
   gradeAnswerSchema,
   updateAssessmentSchema,
   updateCourseSchema,
@@ -349,6 +350,25 @@ export class AdminController {
   @ApiOperation({ summary: "Busca órdenes por id, email del comprador o razón social (para ubicarlas y cancelarlas)" })
   listOrders(@Query("q") q?: string) {
     return this.adminService.listOrders(q);
+  }
+
+  // --- Matrículas (ampliar plazo de acceso como caso especial) ---
+
+  @Get("enrollments")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Busca matrículas por nombre/correo del alumno" })
+  listEnrollments(@Query("q") q?: string) {
+    return this.adminService.listEnrollments(q);
+  }
+
+  @Patch("enrollments/:id/extend-access")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Amplía (o quita) el vencimiento de acceso de una matrícula puntual" })
+  extendEnrollmentAccess(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(extendEnrollmentAccessSchema)) dto: { accessExpiresAt: Date | null },
+  ) {
+    return this.adminService.extendEnrollmentAccess(id, dto.accessExpiresAt);
   }
 
   // --- Usuarios y roles ---

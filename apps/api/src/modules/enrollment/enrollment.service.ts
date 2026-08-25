@@ -131,6 +131,15 @@ export class EnrollmentService {
     );
   }
 
+  /**
+   * Shape aplanado (enrollmentId/title/modules a nivel raíz, no anidado bajo
+   * `course`) porque es exactamente lo que espera ClassroomDetail
+   * (apps/web/src/lib/mock-data.ts) y lo que consume Classroom.tsx — antes
+   * esta respuesta anidaba todo bajo `course`/`program` y usaba `id` en vez
+   * de `enrollmentId`, así que con datos reales el aula virtual leía
+   * `detail.modules` como `undefined` y fallaba en silencio (nunca se había
+   * probado contra la API real, solo contra el mock).
+   */
   async getMineDetail(userId: string, enrollmentId: string) {
     const enrollment = await this.prisma.enrollment.findUnique({
       where: { id: enrollmentId },
@@ -140,13 +149,6 @@ export class EnrollmentService {
             modules: {
               orderBy: { order: "asc" },
               include: {
-                // Antes esta consulta no traía ni el video ni los materiales
-                // de la lección (ni las lecturas del módulo) — el aula
-                // virtual (Classroom.tsx) ya esperaba ese shape pero la API
-                // nunca se lo daba, así que un alumno real nunca veía video
-                // ni materiales, solo el fallback simulado. Se filtra
-                // visible:true — un material oculto por el admin no debe
-                // llegarle al alumno.
                 lessons: {
                   orderBy: { order: "asc" },
                   include: { materials: { where: { visible: true }, orderBy: { createdAt: "asc" } } },
@@ -154,6 +156,10 @@ export class EnrollmentService {
                 materials: { where: { visible: true }, orderBy: { createdAt: "asc" } },
               },
             },
+            // Un solo "assessmentId" para el botón "Ir a la evaluación" del
+            // aula — si el curso llega a tener más de una evaluación, se usa
+            // la primera (mismo criterio simple que ya asumía el frontend).
+            assessments: { take: 1 },
           },
         },
         program: true,
@@ -165,6 +171,12 @@ export class EnrollmentService {
       throw new NotFoundException("Matrícula no encontrada");
     }
 
+    // El acceso se corta apenas pasa accessExpiresAt, sin depender de que el
+    // sweep del worker ya haya marcado la matrícula EXPIRED — el corte es
+    // inmediato, no depende del timing de un cron. "Luego de esa fecha el
+    // usuario ya no podrá acceder al curso" (pedido explícito del admin).
+    const accessBlocked = Boolean(enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date());
+
     const progressByLesson = new Map(enrollment.lessonProgress.map((p) => [p.lessonId, p]));
     const materialDTO = (m: { id: string; title: string; assetId: string; kind: string; category: string }) => ({
       id: m.id,
@@ -174,21 +186,32 @@ export class EnrollmentService {
       url: this.storage.getPublicUrl(m.assetId),
     });
 
+    const approvalMissing =
+      enrollment.offeringKind === "COURSE" && enrollment.courseId && !accessBlocked
+        ? await this.computeApprovalMissing(enrollment.courseId, enrollment.id)
+        : [];
+
     return {
-      id: enrollment.id,
+      enrollmentId: enrollment.id,
       offeringKind: enrollment.offeringKind,
       status: enrollment.status,
       source: enrollment.source,
       progressPct: enrollment.progressPct,
       accessExpiresAt: enrollment.accessExpiresAt?.toISOString() ?? null,
+      accessBlocked,
       certificateAvailable: Boolean(enrollment.certificate && !enrollment.certificate.revoked),
-      course: enrollment.course
-        ? {
-            id: enrollment.course.id,
-            slug: enrollment.course.slug,
-            title: enrollment.course.title,
-            syllabusUrl: enrollment.course.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
-            modules: enrollment.course.modules.map((m) => ({
+      courseId: enrollment.course?.id ?? enrollment.program?.id ?? null,
+      title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
+      syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
+      assessmentId: enrollment.course?.assessments?.[0]?.id,
+      approvalMissing,
+      // Con el acceso vencido no se manda ni un solo material/video al
+      // frontend (no solo se "esconde" visualmente) — igual que un material
+      // oculto por el admin, el bloqueo real vive en la API, no en la UI.
+      modules:
+        accessBlocked || !enrollment.course
+          ? []
+          : enrollment.course.modules.map((m) => ({
               id: m.id,
               order: m.order,
               title: m.title,
@@ -198,23 +221,13 @@ export class EnrollmentService {
                 order: l.order,
                 title: l.title,
                 contentType: l.contentType,
-                durationMinutes: l.durationMinutes,
-                isFreePreview: l.isFreePreview,
-                videoUrl: l.videoAssetId ? this.storage.getPublicUrl(l.videoAssetId) : null,
+                durationMinutes: l.durationMinutes ?? undefined,
+                videoUrl: l.videoAssetId ? this.storage.getPublicUrl(l.videoAssetId) ?? undefined : undefined,
                 materials: l.materials.map(materialDTO),
-                progress: progressByLesson.get(l.id)
-                  ? {
-                      completed: progressByLesson.get(l.id)!.completed,
-                      lastPositionSeconds: progressByLesson.get(l.id)!.lastPositionSeconds,
-                    }
-                  : { completed: false, lastPositionSeconds: 0 },
+                completed: progressByLesson.get(l.id)?.completed ?? false,
+                lastPositionSeconds: progressByLesson.get(l.id)?.lastPositionSeconds ?? 0,
               })),
             })),
-          }
-        : null,
-      program: enrollment.program
-        ? { id: enrollment.program.id, slug: enrollment.program.slug, title: enrollment.program.title }
-        : null,
     };
   }
 
@@ -239,6 +252,11 @@ export class EnrollmentService {
       orderBy: { enrolledAt: "desc" },
     });
     if (!enrollment) throw new ForbiddenException("No estás matriculado en este curso");
+    if (enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date()) {
+      throw new ForbiddenException(
+        "Tu acceso a este curso venció. Si necesitas más tiempo, escribe a soporte para pedir una ampliación de plazo.",
+      );
+    }
 
     await this.prisma.lessonProgress.upsert({
       where: { enrollmentId_lessonId: { enrollmentId: enrollment.id, lessonId } },

@@ -341,6 +341,11 @@ export interface ClassroomDetail {
   modules: ClassroomModule[];
   approvalMissing: string[];
   certificateAvailable: boolean;
+  // Plazo de acceso (solo aplica a cursos grabados con fecha de término) —
+  // accessBlocked ya viene calculado desde la API (el corte real vive ahí,
+  // no en esta pantalla): si es true, `modules` llega vacío a propósito.
+  accessExpiresAt?: string | null;
+  accessBlocked?: boolean;
 }
 
 const SAMPLE_VIDEO = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";

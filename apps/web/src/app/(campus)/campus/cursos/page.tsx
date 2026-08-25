@@ -12,12 +12,16 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Callout } from "@/components/ui/Callout";
-import { localize } from "@/lib/format";
+import { localize, formatDate } from "@/lib/format";
 import type { EnrollmentSummaryDTO } from "@inkademy/shared";
 
 export const metadata: Metadata = { title: "Mis cursos" };
 
 function EnrollmentCard({ enrollment, locale, t }: { enrollment: EnrollmentSummaryDTO; locale: string; t: any }) {
+  // "Debes terminar antes de..." — antes accessExpiresAt viajaba en el DTO
+  // pero nada en pantalla se lo mostraba al alumno; el vencimiento era
+  // invisible hasta que, sin aviso, dejaba de poder entrar al curso.
+  const isExpired = enrollment.status === "EXPIRED" || (enrollment.accessExpiresAt && new Date(enrollment.accessExpiresAt) < new Date());
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
@@ -25,7 +29,17 @@ function EnrollmentCard({ enrollment, locale, t }: { enrollment: EnrollmentSumma
           <div className="flex items-center gap-2">
             <p className="font-serif text-lg font-semibold text-ink-900">{localize(enrollment.title, locale)}</p>
             <Badge variant="outline">{enrollment.offeringKind === "PROGRAM" ? "Programa" : "Curso"}</Badge>
+            {isExpired && <Badge variant="danger">Acceso vencido</Badge>}
           </div>
+          {enrollment.accessExpiresAt && !isExpired && (
+            <p className="mt-1 text-xs font-medium text-warning">Debes terminar antes del {formatDate(enrollment.accessExpiresAt, locale)}</p>
+          )}
+          {isExpired && (
+            <p className="mt-1 text-xs text-danger">
+              Tu acceso venció{enrollment.accessExpiresAt ? ` el ${formatDate(enrollment.accessExpiresAt, locale)}` : ""}. Escribe a soporte si
+              necesitas una ampliación de plazo.
+            </p>
+          )}
           <ProgressBar value={enrollment.progressPct} label={t("progress", { pct: enrollment.progressPct })} className="mt-3 max-w-sm" />
           <p className="mt-1 text-sm text-ash-500">{t("progress", { pct: Math.round(enrollment.progressPct) })}</p>
 

@@ -135,6 +135,10 @@ function MetadataSection({
   const [discountExpiresAt, setDiscountExpiresAt] = useState(
     course.discountExpiresAt ? new Date(course.discountExpiresAt).toISOString().slice(0, 10) : "",
   );
+  // Solo aplica en la práctica a cursos grabados (el alumno avanza a su
+  // ritmo, así que necesita una fecha límite o quedar abierto) — pero se
+  // deja editable para cualquier modalidad, es el admin quien decide.
+  const [accessDurationPolicy, setAccessDurationPolicy] = useState(course.accessDurationPolicy ?? "PERMANENT");
 
   function refreshAreas() {
     adminApi
@@ -248,6 +252,18 @@ function MetadataSection({
             </Select>
           </div>
         </div>
+        <div className="rounded-md bg-paper-muted p-3">
+          <Label htmlFor="edit-access-policy">Plazo de acceso (cursos grabados)</Label>
+          <Select id="edit-access-policy" value={accessDurationPolicy} onChange={(e) => setAccessDurationPolicy(e.target.value)}>
+            <option value="PERMANENT">Abierto — sin fecha de término</option>
+            <option value="DAYS_30">30 días desde la matrícula</option>
+            <option value="MONTHS_6">6 meses desde la matrícula</option>
+          </Select>
+          <p className="mt-1 text-xs text-ash-500">
+            Si tiene fecha de término, al vencer el alumno pierde el acceso al contenido y no recibe certificado — el admin puede ampliar el
+            plazo de un alumno puntual desde /admin/matriculas.
+          </p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 rounded-md bg-paper-muted p-3">
           <div>
             <Label htmlFor="edit-discount">Descuento (%)</Label>
@@ -358,6 +374,7 @@ function MetadataSection({
                 areaId,
                 durationHours: Number(durationHours),
                 durationUnit,
+                accessDurationPolicy,
                 coverImageAssetId,
                 syllabusAssetId,
                 discountPercent: discountPercent ? Number(discountPercent) : null,

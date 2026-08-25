@@ -3,13 +3,13 @@
 import { useMemo, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { CheckCircle2, Circle, FileDown, FileText, PlayCircle } from "lucide-react";
+import { CheckCircle2, Circle, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial } from "@/lib/mock-data";
 import { meApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { cn } from "@/lib/cn";
-import { localize } from "@/lib/format";
+import { localize, formatDate } from "@/lib/format";
 
 function MaterialList({ heading, materials }: { heading: string; materials: ClassroomMaterial[] }) {
   if (materials.length === 0) return null;
@@ -34,6 +34,27 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const t = useTranslations("campus.classroom");
   const locale = useLocale();
   const allLessons = useMemo(() => detail.modules.flatMap((m) => m.lessons), [detail]);
+  // El bloqueo real ya lo aplicó la API (accessBlocked viene calculado, y
+  // `modules` llega vacío) — acá solo se explica por qué no hay contenido
+  // en vez de mostrar un aula vacía sin ningún mensaje.
+  if (detail.accessBlocked) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-lg border border-danger bg-danger-bg p-10 text-center">
+        <ShieldAlert className="h-10 w-10 text-danger" aria-hidden="true" />
+        <h1 className="font-serif text-xl font-semibold text-ink-900">Tu acceso a este curso venció</h1>
+        <p className="text-sm text-ash-700">
+          {detail.accessExpiresAt
+            ? `El plazo para completar este curso era hasta el ${formatDate(detail.accessExpiresAt, locale)}. `
+            : ""}
+          Ya no puedes ver el contenido ni obtener el certificado. Si necesitas más tiempo, escribe a soporte para pedir una ampliación de
+          plazo — es una excepción que puede autorizar un administrador.
+        </p>
+        <Link href="/campus/soporte">
+          <Button>Contactar a soporte</Button>
+        </Link>
+      </div>
+    );
+  }
   const [completedMap, setCompletedMap] = useState<Record<string, boolean>>(
     Object.fromEntries(allLessons.map((l) => [l.id, l.completed])),
   );
@@ -74,6 +95,9 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
       <div className="flex flex-col gap-6">
+        {detail.accessExpiresAt && (
+          <Callout variant="warning">Debes terminar este curso antes del {formatDate(detail.accessExpiresAt, locale)} para conservar el acceso y poder certificarte.</Callout>
+        )}
         {detail.syllabusUrl && (
           <a href={detail.syllabusUrl} target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm" className="gap-1.5">

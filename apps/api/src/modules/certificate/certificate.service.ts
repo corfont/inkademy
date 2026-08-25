@@ -53,6 +53,11 @@ export class CertificateService {
       return;
     }
     if (!enrollment.course?.certificationIncluded) return;
+    // Si el plazo de acceso del curso ya venció, no se emite certificado —
+    // el alumno debía terminar antes de esa fecha (ver Course.accessDurationPolicy).
+    // Un admin puede ampliar el plazo como caso especial (AdminService.extendEnrollmentAccess),
+    // lo que revierte esto para el siguiente intento.
+    if (enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date()) return;
 
     const rule = await this.prisma.approvalRule.findUnique({ where: { courseId: enrollment.courseId } });
     if (!rule) return;

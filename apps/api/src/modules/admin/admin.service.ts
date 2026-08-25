@@ -571,6 +571,56 @@ export class AdminService {
     }));
   }
 
+  // --- Matrículas (buscar una puntual + ampliar plazo de acceso como caso
+  // especial — "el administrador como caso especial podría ampliar el
+  // plazo" tras un curso grabado con fecha de término vencida) ---
+
+  async listEnrollments(q?: string) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: q
+        ? {
+            OR: [
+              { user: { email: { contains: q, mode: "insensitive" } } },
+              { user: { firstName: { contains: q, mode: "insensitive" } } },
+              { user: { lastName: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : undefined,
+      include: { user: true, course: true, program: true },
+      orderBy: { enrolledAt: "desc" },
+      take: 50,
+    });
+    return enrollments.map((e) => ({
+      id: e.id,
+      userName: `${e.user.firstName} ${e.user.lastName}`,
+      userEmail: e.user.email,
+      offeringTitle: (e.course?.title ?? e.program?.title ?? {}) as Record<string, string>,
+      status: e.status,
+      progressPct: e.progressPct,
+      accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,
+      enrolledAt: e.enrolledAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Caso especial: el admin amplía el plazo de acceso de UNA matrícula
+   * puntual (no confundir con CompaniesService.renewSeatPool, que renueva
+   * el cupo B2B completo). Si la matrícula había quedado EXPIRED, vuelve a
+   * ACTIVE — de lo contrario el alumno seguiría bloqueado pese a la nueva
+   * fecha.
+   */
+  async extendEnrollmentAccess(id: string, newAccessExpiresAt: Date | null) {
+    const enrollment = await this.prisma.enrollment.findUnique({ where: { id } });
+    if (!enrollment) throw new NotFoundException("Matrícula no encontrada");
+    return this.prisma.enrollment.update({
+      where: { id },
+      data: {
+        accessExpiresAt: newAccessExpiresAt,
+        status: enrollment.status === "EXPIRED" ? "ACTIVE" : enrollment.status,
+      },
+    });
+  }
+
   // ==========================================================================
   // Usuarios y roles — antes no existía NINGÚN endpoint para listar cuentas,
   // cambiar el rol de alguien, o desactivar un acceso. La única forma de

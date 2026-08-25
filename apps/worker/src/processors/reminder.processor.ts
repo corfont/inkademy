@@ -103,6 +103,20 @@ async function sweepAccessExpiring(): Promise<void> {
   }
 }
 
+/**
+ * El corte de acceso real ya lo hace la API en el momento (enrollment.service.ts
+ * getMineDetail/updateLessonProgress comparan accessExpiresAt directo, no
+ * dependen de este sweep) — esto solo mantiene `status` al día para que
+ * reportes/exceptions/admin vean EXPIRED en vez de un ACTIVE ya vencido.
+ */
+async function sweepExpireAccess(): Promise<void> {
+  const { count } = await prisma.enrollment.updateMany({
+    where: { status: "ACTIVE", accessExpiresAt: { lt: new Date() } },
+    data: { status: "EXPIRED" },
+  });
+  if (count > 0) logger.info("matrículas marcadas EXPIRED por vencimiento de acceso", { count });
+}
+
 async function sweepAssessmentDue(): Promise<void> {
   const assessments = await prisma.assessment.findMany({
     where: { availableUntil: { gt: new Date() } },
@@ -134,7 +148,7 @@ async function sweepAssessmentDue(): Promise<void> {
 }
 
 async function runSweep(): Promise<void> {
-  const results = await Promise.allSettled([sweepLiveSessions(), sweepAccessExpiring(), sweepAssessmentDue()]);
+  const results = await Promise.allSettled([sweepLiveSessions(), sweepAccessExpiring(), sweepExpireAccess(), sweepAssessmentDue()]);
   results.forEach((r, i) => {
     if (r.status === "rejected") {
       logger.error("fallo una rama del sweep de recordatorios", { branch: i, err: String(r.reason) });

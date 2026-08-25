@@ -355,6 +355,12 @@ export const respondSuggestionSchema = z.object({
   response: z.string().min(1).max(2000),
 });
 
+// --- Ampliar plazo de acceso de una matrícula (caso especial del admin) ---
+export const extendEnrollmentAccessSchema = z.object({
+  // null = deja el curso abierto (sin vencimiento) para esta matrícula puntual.
+  accessExpiresAt: z.coerce.date().nullable(),
+});
+
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---
 export const upsertSettingsSchema = z.object({
   logoUrl: z.string().optional().nullable(),
