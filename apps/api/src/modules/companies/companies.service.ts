@@ -197,6 +197,25 @@ export class CompaniesService {
     return enrollment;
   }
 
+  /**
+   * Extiende la fecha de vencimiento de un pool de cupos (antes NO existía
+   * ningún flujo de renovación — "comprar más cupos" solo sumaba
+   * `seatsPurchased`, nunca tocaba `expiresAt`, así que un pool vencido
+   * seguía vencido aunque se le compraran más cupos). Se extiende desde
+   * hoy o desde el vencimiento actual, lo que sea más tarde — así una
+   * renovación anticipada no "pierde" el tiempo que ya faltaba.
+   */
+  async renewSeatPool(companyId: string, poolId: string, months: number) {
+    const pool = await this.prisma.companySeatPool.findUnique({ where: { id: poolId } });
+    if (!pool || pool.companyId !== companyId) throw new NotFoundException("Pool de cupos no encontrado");
+
+    const base = pool.expiresAt && pool.expiresAt.getTime() > Date.now() ? pool.expiresAt : new Date();
+    const newExpiresAt = new Date(base);
+    newExpiresAt.setMonth(newExpiresAt.getMonth() + months);
+
+    return this.prisma.companySeatPool.update({ where: { id: poolId }, data: { expiresAt: newExpiresAt } });
+  }
+
   async createSeatPool(
     companyId: string,
     input: { offeringKind: "COURSE" | "PROGRAM"; courseId?: string; programId?: string; seatsPurchased: number; expiresAt?: Date },
@@ -244,13 +263,21 @@ export class CompaniesService {
     const rows = enrollments
       .filter((e) => !filters.team || teamByUserId.get(e.userId) === filters.team)
       .map((e) => {
-        const bestScore = e.attempts.reduce<number | null>((best, a) => {
+        const bestAttempt = e.attempts.reduce<(typeof e.attempts)[number] | null>((best, a) => {
           if (a.score === null) return best;
-          return best === null ? a.score : Math.max(best, a.score);
+          if (!best || a.score > (best.score ?? -1)) return a;
+          return best;
         }, null);
         const totalSessions = e.courseId ? sessionsByCourse.get(e.courseId) ?? 0 : 0;
         const attended = e.courseId ? attendedByUserCourse.get(`${e.userId}:${e.courseId}`) ?? 0 : 0;
         const attendancePct = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : null;
+        // "Intentos fallidos" y "posible trampa" — antes el reporte solo
+        // mostraba la mejor nota, sin decir cuántas veces lo intentó ni si
+        // algún intento se marcó sospechoso (nota alta + tiempo de
+        // resolución anormalmente corto, ver AssessmentService.submitAttempt).
+        const attemptsCount = e.attempts.length;
+        const failedAttemptsCount = e.attempts.filter((a) => a.status === "FAILED").length;
+        const hasSuspiciousAttempt = e.attempts.some((a) => a.flaggedSuspicious);
         return {
           userId: e.userId,
           userName: `${e.user.firstName} ${e.user.lastName}`,
@@ -258,9 +285,15 @@ export class CompaniesService {
           courseId: e.courseId,
           courseTitle: (e.course?.title as Record<string, string>) ?? null,
           progressPct: e.progressPct,
-          bestScore,
+          bestScore: bestAttempt?.score ?? null,
+          bestAttemptDurationSeconds: bestAttempt?.durationSeconds ?? null,
+          attemptsCount,
+          failedAttemptsCount,
+          hasSuspiciousAttempt,
           attendancePct,
           status: e.status,
+          // Para poder ordenar "quién acabó primero" — null si aún no completó.
+          completedAt: e.completedAt?.toISOString() ?? null,
         };
       });
 

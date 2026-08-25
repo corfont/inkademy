@@ -10,6 +10,13 @@ import type { AssessmentAttemptSubmission, AssessmentResultDTO } from "@inkademy
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { CertificateService } from "../certificate/certificate.service";
 
+// Piso conservador de segundos por pregunta — asume que ni siquiera leer el
+// enunciado y las opciones toma menos de esto. Por debajo de este mínimo
+// total, combinado con una nota alta, se marca el intento como sospechoso
+// (ver submitAttempt). Ajustable si en la práctica da falsos positivos.
+const SECONDS_PER_QUESTION_FLOOR = 20;
+const SUSPICIOUS_SCORE_THRESHOLD = 90;
+
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -172,9 +179,20 @@ export class AssessmentService {
       status = finalScore >= attempt.assessment.minScore ? "PASSED" : "FAILED";
     }
 
+    const submittedAt = new Date();
+    const durationSeconds = Math.max(0, Math.round((submittedAt.getTime() - attempt.startedAt.getTime()) / 1000));
+    // Alerta heurística de posible trampa/uso de IA: nota alta + tiempo de
+    // resolución muy por debajo del mínimo razonable para leer y pensar cada
+    // pregunta (SECONDS_PER_QUESTION_FLOOR). No es una acusación ni bloquea
+    // nada — solo marca el intento para que el admin/la empresa lo revisen
+    // (ver CompaniesService.getReports y /admin/evaluaciones-pendientes).
+    const expectedMinSeconds = questions.length * SECONDS_PER_QUESTION_FLOOR;
+    const flaggedSuspicious =
+      status === "PASSED" && finalScore !== null && finalScore >= SUSPICIOUS_SCORE_THRESHOLD && durationSeconds < expectedMinSeconds;
+
     const updated = await this.prisma.assessmentAttempt.update({
       where: { id: attemptId },
-      data: { submittedAt: new Date(), score: finalScore, status },
+      data: { submittedAt, score: finalScore, status, durationSeconds, flaggedSuspicious },
     });
 
     if (!stillPending) {
@@ -239,6 +257,23 @@ export class AssessmentService {
         attempt: { include: { user: true, assessment: { include: { course: true } } } },
       },
       orderBy: { id: "asc" },
+    });
+  }
+
+  /**
+   * Intentos marcados como sospechosos (nota alta + tiempo de resolución muy
+   * corto — ver submitAttempt) para que el admin/docente decida si amerita
+   * revisión (no bloquea el certificado ni penaliza automáticamente).
+   */
+  async listSuspiciousAttempts(teacherUserId?: string) {
+    return this.prisma.assessmentAttempt.findMany({
+      where: {
+        flaggedSuspicious: true,
+        ...(teacherUserId ? { assessment: { course: { staff: { some: { userId: teacherUserId } } } } } : {}),
+      },
+      include: { user: true, assessment: { include: { course: true, questions: true } } },
+      orderBy: { submittedAt: "desc" },
+      take: 100,
     });
   }
 

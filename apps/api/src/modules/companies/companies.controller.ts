@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { createCompanySchema, inviteCollaboratorSchema, requestQuoteSchema } from "@inkademy/shared";
 import type { CreateCompanyInput, InviteCollaboratorInput, RequestQuoteInput } from "@inkademy/shared";
@@ -7,7 +7,7 @@ import { CompanyRoles } from "../../common/decorators/company-roles.decorator";
 import { CompanyGuard } from "../../common/guards/company.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { assignSeatSchema, createSeatPoolSchema } from "../../common/validation/local-schemas";
+import { assignSeatSchema, createSeatPoolSchema, renewSeatPoolSchema } from "../../common/validation/local-schemas";
 import { CertificateService } from "../certificate/certificate.service";
 import { CompaniesService } from "./companies.service";
 
@@ -89,6 +89,18 @@ export class CompaniesController {
   @ApiOperation({ summary: "Crea manualmente un pool de cupos B2B" })
   createSeatPool(@Param("companyId") companyId: string, @Body(new ZodValidationPipe(createSeatPoolSchema)) dto: any) {
     return this.companiesService.createSeatPool(companyId, dto);
+  }
+
+  @Patch(":companyId/seat-pools/:poolId/renew")
+  @UseGuards(CompanyGuard)
+  @CompanyRoles("COMPANY_ADMIN")
+  @ApiOperation({ summary: "Extiende el vencimiento de un pool de cupos (renovación, sin pasar por checkout/pago)" })
+  renewSeatPool(
+    @Param("companyId") companyId: string,
+    @Param("poolId") poolId: string,
+    @Body(new ZodValidationPipe(renewSeatPoolSchema)) dto: { months: number },
+  ) {
+    return this.companiesService.renewSeatPool(companyId, poolId, dto.months);
   }
 
   @Post(":companyId/seat-pools/:poolId/assign")

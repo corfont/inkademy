@@ -364,6 +364,8 @@ export const companyApi = {
   certificates: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/certificates`, { accessToken }),
   assignSeat: (id: string, poolId: string, userId: string, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/assign`, { method: "POST", body: JSON.stringify({ userId }), accessToken }),
+  renewSeatPool: (id: string, poolId: string, months: number, accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/renew`, { method: "PATCH", body: JSON.stringify({ months }), accessToken }),
   reports: (id: string, query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/reports`, { query, accessToken }),
   requestQuote: (id: string, input: unknown, accessToken?: string | null) =>
@@ -431,6 +433,7 @@ export const adminApi = {
   orders: (q: string | undefined, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/orders", { accessToken, query: q ? { q } : undefined }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
+  suspiciousAttempts: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/suspicious", { accessToken }),
   gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }, accessToken?: string | null) =>
     apiFetch<any>(`/admin/attempts/${attemptId}/answers/${answerId}/grade`, {
       method: "POST",

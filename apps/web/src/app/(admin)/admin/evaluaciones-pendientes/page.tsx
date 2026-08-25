@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { ShieldAlert } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
-import { localize } from "@/lib/format";
+import { localize, formatDate } from "@/lib/format";
 import { GradeAnswerDialog } from "@/components/admin/GradeAnswerDialog";
+import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Evaluaciones pendientes" };
@@ -43,6 +45,38 @@ function normalizePending(raw: any): PendingAnswer {
   };
 }
 
+interface SuspiciousAttempt {
+  attemptId: string;
+  studentName: string;
+  courseTitle: string;
+  score: number | null;
+  durationSeconds: number | null;
+  expectedMinSeconds: number;
+  submittedAt: string | null;
+}
+
+function normalizeSuspicious(raw: any): SuspiciousAttempt {
+  const student = raw.user;
+  const course = raw.assessment?.course;
+  const questionsCount: number = raw.assessment?.questions?.length ?? 0;
+  return {
+    attemptId: raw.id,
+    studentName: student?.displayName ?? [student?.firstName, student?.lastName].filter(Boolean).join(" "),
+    courseTitle: localize(course?.title, "es", "—"),
+    score: raw.score,
+    durationSeconds: raw.durationSeconds,
+    expectedMinSeconds: questionsCount * 20,
+    submittedAt: raw.submittedAt,
+  };
+}
+
+function formatDuration(seconds: number | null) {
+  if (seconds == null) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
+
 export default async function PendingReviewPage() {
   const t = await getTranslations("admin.pendingReview");
   const accessToken = getServerAccessToken();
@@ -50,10 +84,15 @@ export default async function PendingReviewPage() {
   const { data: rawPending, live } = await withFallback(() => adminApi.pendingReview(accessToken), MOCK_PENDING);
   const pending = rawPending.map(normalizePending);
 
+  const { data: rawSuspicious } = await withFallback(() => adminApi.suspiciousAttempts(accessToken), []);
+  const suspicious = rawSuspicious.map(normalizeSuspicious);
+
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("title")}</h1>
-      {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+    <div className="mx-auto flex max-w-4xl flex-col gap-8">
+      <div>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        {!live && <Callout variant="info" className="mt-4">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+      </div>
 
       {pending.length === 0 ? (
         <p className="text-ash-500">{t("empty")}</p>
@@ -78,6 +117,49 @@ export default async function PendingReviewPage() {
           ))}
         </div>
       )}
+
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <ShieldAlert className="h-5 w-5 text-danger" aria-hidden="true" />
+          <h2 className="font-serif text-xl font-semibold text-ink-900">Intentos sospechosos</h2>
+        </div>
+        <p className="mb-4 text-sm text-ash-500">
+          Aprobó con nota alta en un tiempo muy por debajo de lo esperado para leer y pensar el examen — no es una
+          acusación automática, revisa caso por caso antes de tomar cualquier acción.
+        </p>
+        {suspicious.length === 0 ? (
+          <p className="text-ash-500">Ningún intento marcado por ahora.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-paper-border bg-paper">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-paper-border text-ash-500">
+                <tr>
+                  <th className="p-3 font-medium">Alumno</th>
+                  <th className="p-3 font-medium">Curso</th>
+                  <th className="p-3 font-medium">Nota</th>
+                  <th className="p-3 font-medium">Tiempo usado</th>
+                  <th className="p-3 font-medium">Mínimo esperado</th>
+                  <th className="p-3 font-medium">Enviado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-paper-border">
+                {suspicious.map((s) => (
+                  <tr key={s.attemptId}>
+                    <td className="p-3 font-medium text-ink-900">{s.studentName}</td>
+                    <td className="p-3 text-ash-600">{s.courseTitle}</td>
+                    <td className="p-3">
+                      <Badge variant="danger">{s.score?.toFixed(1)}%</Badge>
+                    </td>
+                    <td className="p-3 text-ash-600">{formatDuration(s.durationSeconds)}</td>
+                    <td className="p-3 text-ash-600">{formatDuration(s.expectedMinSeconds)}</td>
+                    <td className="p-3 text-ash-600">{s.submittedAt ? formatDate(s.submittedAt, "es") : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

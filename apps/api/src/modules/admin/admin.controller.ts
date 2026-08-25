@@ -289,6 +289,13 @@ export class AdminController {
     return this.assessmentService.listPendingReview(user.globalRole === "TEACHER" ? user.id : undefined);
   }
 
+  @Get("attempts/suspicious")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Intentos marcados como posible trampa/uso de IA (nota alta + tiempo de resolución muy corto)" })
+  suspiciousAttempts(@CurrentUser() user: RequestUser) {
+    return this.assessmentService.listSuspiciousAttempts(user.globalRole === "TEACHER" ? user.id : undefined);
+  }
+
   @Post("attempts/:attemptId/answers/:answerId/grade")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Califica una respuesta abierta/corta" })

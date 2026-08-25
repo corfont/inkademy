@@ -623,8 +623,14 @@ model AssessmentAttempt {
   attemptNumber Int
   startedAt     DateTime      @default(now())
   submittedAt   DateTime?
+  durationSeconds Int? // submittedAt - startedAt, calculado al enviar (ver AssessmentService.submitAttempt)
   score         Float?
   status        AttemptStatus @default(IN_PROGRESS)
+  // Alerta heurística de posible uso de IA/trampa: nota alta + tiempo de
+  // resolución muy por debajo del mínimo esperado para leer y pensar el
+  // examen. No es una acusación automática — el admin/empresa decide qué
+  // hacer, ver AssessmentService.SUSPICIOUS_* y el reporte de empresa.
+  flaggedSuspicious Boolean     @default(false)
 
   answers       Answer[]
 

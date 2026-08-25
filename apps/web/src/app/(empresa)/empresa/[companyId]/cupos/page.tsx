@@ -8,6 +8,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Callout } from "@/components/ui/Callout";
 import { AssignSeatButton } from "@/components/empresa/AssignSeatButton";
 import { BuyMoreSeatsButton } from "@/components/empresa/BuyMoreSeatsButton";
+import { RenewSeatPoolButton } from "@/components/empresa/RenewSeatPoolButton";
 import { formatDate, localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Cupos" };
@@ -59,6 +60,7 @@ export default async function SeatPoolsPage({ params }: { params: { companyId: s
               <div className="flex flex-col items-end gap-2">
                 <AssignSeatButton companyId={params.companyId} poolId={pool.id} disabled={pool.seatsUsed >= pool.seatsPurchased} />
                 <BuyMoreSeatsButton companyId={params.companyId} courseId={pool.courseId} programId={pool.programId} />
+                <RenewSeatPoolButton companyId={params.companyId} poolId={pool.id} />
               </div>
             </CardContent>
           </Card>

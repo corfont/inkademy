@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { ShieldAlert } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
-import { localize } from "@/lib/format";
+import { localize, formatDate } from "@/lib/format";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Reportes" };
@@ -66,6 +68,54 @@ function aggregateReportRows(payload: { rows: any[] } | ReportRow[], locale: str
   }));
 }
 
+interface StudentDetailRow {
+  userName: string;
+  team: string;
+  courseTitle: string;
+  progressPct: number;
+  bestScore: number | null;
+  attemptsCount: number;
+  failedAttemptsCount: number;
+  hasSuspiciousAttempt: boolean;
+  status: string;
+  completedAt: string | null;
+}
+
+/**
+ * Detalle por alumno (antes esta página solo mostraba promedios por
+ * equipo+curso, sin poder responder "¿quién está llevando el curso, quién
+ * no, cuántas veces le falló, quién acabó primero?"). `rawRows` viene de
+ * `GET /companies/:id/reports` — una fila por matrícula (ver
+ * `CompaniesService.getReports`). Se ordena por fecha de finalización (los
+ * que ya completaron primero, más reciente arriba dentro de "completados";
+ * los que siguen en curso al final) para responder directamente "quién
+ * acabó primero".
+ */
+function extractStudentDetailRows(payload: { rows: any[] } | ReportRow[], locale: string): StudentDetailRow[] {
+  const rawRows: any[] = Array.isArray(payload) ? [] : payload.rows ?? [];
+  return rawRows
+    .map((row) => ({
+      userName: row.userName ?? "—",
+      team: row.team ?? "Sin equipo",
+      courseTitle: localize(row.courseTitle, locale, "Curso"),
+      progressPct: row.progressPct ?? 0,
+      bestScore: typeof row.bestScore === "number" ? row.bestScore : null,
+      attemptsCount: row.attemptsCount ?? 0,
+      failedAttemptsCount: row.failedAttemptsCount ?? 0,
+      hasSuspiciousAttempt: Boolean(row.hasSuspiciousAttempt),
+      status: row.status ?? "ACTIVE",
+      completedAt: row.completedAt ?? null,
+    }))
+    .sort((a, b) => {
+      if (a.completedAt && b.completedAt) return new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime();
+      if (a.completedAt) return -1;
+      if (b.completedAt) return 1;
+      return b.progressPct - a.progressPct;
+    });
+}
+
+const STATUS_LABEL: Record<string, string> = { ACTIVE: "En curso", COMPLETED: "Completado", EXPIRED: "Vencido", CANCELLED: "Cancelado" };
+
 export default async function ReportsPage({ params }: { params: { companyId: string } }) {
   const t = await getTranslations("empresa.reports");
   const locale = await getLocale();
@@ -76,6 +126,7 @@ export default async function ReportsPage({ params }: { params: { companyId: str
     { rows: MOCK_REPORT } as { rows: any[] },
   );
   const rows = aggregateReportRows(rawReport, locale);
+  const studentRows = extractStudentDetailRows(rawReport, locale);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -110,6 +161,64 @@ export default async function ReportsPage({ params }: { params: { companyId: str
           </tbody>
         </table>
       </div>
+
+      {studentRows.length > 0 && (
+        <div>
+          <h2 className="mb-1 font-serif text-lg font-semibold text-ink-900">Detalle por colaborador</h2>
+          <p className="mb-3 text-sm text-ash-500">
+            Ordenado por quién completó primero. Los intentos fallidos y la alerta de "posible trampa" (nota alta con
+            un tiempo de resolución muy corto) te ayudan a decidir si vale la pena revisar un caso puntual.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-paper-border bg-paper">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-paper-border text-ash-500">
+                <tr>
+                  <th className="p-3 font-medium">Colaborador</th>
+                  <th className="p-3 font-medium">Equipo</th>
+                  <th className="p-3 font-medium">Curso</th>
+                  <th className="p-3 font-medium">Avance</th>
+                  <th className="p-3 font-medium">Nota</th>
+                  <th className="p-3 font-medium">Intentos</th>
+                  <th className="p-3 font-medium">Estado</th>
+                  <th className="p-3 font-medium">Completó</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-paper-border">
+                {studentRows.map((s, idx) => (
+                  <tr key={idx}>
+                    <td className="p-3 font-medium text-ink-900">
+                      <div className="flex items-center gap-1.5">
+                        {s.userName}
+                        {s.hasSuspiciousAttempt && (
+                          <span title="Nota alta con tiempo de resolución muy corto — posible trampa, revisar">
+                            <ShieldAlert className="h-4 w-4 text-danger" aria-hidden="true" />
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3 text-ash-600">{s.team}</td>
+                    <td className="p-3 text-ash-600">{s.courseTitle}</td>
+                    <td className="p-3">
+                      <ProgressBar value={s.progressPct} className="max-w-[6rem]" />
+                    </td>
+                    <td className="p-3 text-ash-600">{s.bestScore != null ? s.bestScore.toFixed(1) : "—"}</td>
+                    <td className="p-3 text-ash-600">
+                      {s.attemptsCount}
+                      {s.failedAttemptsCount > 0 && <span className="text-danger"> ({s.failedAttemptsCount} fallido{s.failedAttemptsCount === 1 ? "" : "s"})</span>}
+                    </td>
+                    <td className="p-3">
+                      <Badge variant={s.status === "COMPLETED" ? "success" : s.status === "EXPIRED" || s.status === "CANCELLED" ? "danger" : "outline"}>
+                        {STATUS_LABEL[s.status] ?? s.status}
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-ash-600">{s.completedAt ? formatDate(s.completedAt, locale) : "En curso"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
