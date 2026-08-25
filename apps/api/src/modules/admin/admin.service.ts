@@ -274,16 +274,24 @@ export class AdminService {
   }
 
   /** `teacherUserId`: si viene, acota a los cursos donde ese usuario es CourseStaff (panel de docente). */
-  listCourses(params: { page?: number; pageSize?: number }, teacherUserId?: string) {
+  async listCourses(params: { page?: number; pageSize?: number }, teacherUserId?: string) {
     const page = Math.max(1, params.page ?? 1);
     const pageSize = Math.min(100, params.pageSize ?? 20);
-    return this.prisma.course.findMany({
+    const courses = await this.prisma.course.findMany({
       where: teacherUserId ? { staff: { some: { userId: teacherUserId } } } : undefined,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: { createdAt: "desc" },
       include: { area: true },
     });
+    // Antes /admin/catalogo no traía ninguna URL previsualizable de la
+    // portada (solo el coverImageAssetId crudo) — la lista nunca podía
+    // mostrar la imagen del curso, pedido explícito ("que se vea la
+    // imagen del curso al costadito").
+    return courses.map((c) => ({
+      ...c,
+      coverImageUrl: c.coverImageAssetId ? this.storageService.getPublicUrl(c.coverImageAssetId) : null,
+    }));
   }
 
   /** Resumen para /docente: cursos asignados, próximas sesiones a dictar, cola de calificación pendiente. */

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Avatar } from "@/components/ui/Avatar";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
 import { FileDropzone } from "./FileDropzone";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -1312,11 +1313,14 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
           <ul className="flex flex-col gap-2">
             {staff.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-3 rounded-md bg-paper-muted p-3 text-sm">
-                <div>
-                  <p className="font-medium text-ink-900">{s.userName}</p>
-                  <p className="text-xs text-ash-500">
-                    {s.userEmail} · {STAFF_ROLE_LABEL[s.role] ?? s.role}
-                  </p>
+                <div className="flex items-center gap-2.5">
+                  <Avatar name={s.userName} size="sm" />
+                  <div>
+                    <p className="font-medium text-ink-900">{s.userName}</p>
+                    <p className="text-xs text-ash-500">
+                      {s.userEmail} · {STAFF_ROLE_LABEL[s.role] ?? s.role}
+                    </p>
+                  </div>
                 </div>
                 {isAdmin && (
                   <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleRemove(s.id)}>
