@@ -42,6 +42,18 @@ function renderPreview(html: string): string {
 
 const EXAMPLE_TEMPLATE_NAME = "Plantilla Inkapitales (Escuela Especializada)";
 
+// Aproximación web de los 5 fonts estándar de PDF que puede elegir el
+// admin — la vista previa es CSS (no el PDF real), así que se mapea a la
+// familia web-safe más parecida solo para dar una idea visual antes de
+// regenerar el certificado.
+const CSS_FONT_PREVIEW: Record<NonNullable<CertificateTagPosition["fontFamily"]>, string> = {
+  helvetica: "Helvetica, Arial, sans-serif",
+  "helvetica-bold": "Helvetica, Arial, sans-serif",
+  times: "'Times New Roman', Georgia, serif",
+  "times-bold": "'Times New Roman', Georgia, serif",
+  courier: "'Courier New', Courier, monospace",
+};
+
 interface TagRow extends CertificateTagPosition {
   enabled: boolean;
 }
@@ -419,6 +431,8 @@ function BackgroundTemplateEditor({
                     top: `${r.yPercent}%`,
                     fontSize: `${(r.fontSizePt ?? 16) * 0.9}px`,
                     color: r.color,
+                    fontFamily: CSS_FONT_PREVIEW[r.fontFamily ?? "helvetica"],
+                    fontWeight: r.fontFamily?.endsWith("-bold") ? 700 : 400,
                     transform: r.align === "center" ? "translateX(-50%)" : r.align === "right" ? "translateX(-100%)" : undefined,
                   }}
                 >
@@ -440,6 +454,7 @@ function BackgroundTemplateEditor({
               <th className="p-2 font-medium">Tamaño/ancho</th>
               <th className="p-2 font-medium">Color/alto</th>
               <th className="p-2 font-medium">Alinear</th>
+              <th className="p-2 font-medium">Fuente</th>
               <th className="p-2 font-medium"></th>
             </tr>
           </thead>
@@ -500,6 +515,21 @@ function BackgroundTemplateEditor({
                         <option value="left">Izq.</option>
                         <option value="center">Centro</option>
                         <option value="right">Der.</option>
+                      </Select>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    {def.kind === "text" && (
+                      <Select
+                        className="h-7 w-24 text-xs"
+                        value={r.fontFamily ?? "helvetica"}
+                        onChange={(e) => updateTag(def.tag, { fontFamily: e.target.value as CertificateTagPosition["fontFamily"] })}
+                      >
+                        <option value="helvetica">Helvetica</option>
+                        <option value="helvetica-bold">Helvetica (negrita)</option>
+                        <option value="times">Times</option>
+                        <option value="times-bold">Times (negrita)</option>
+                        <option value="courier">Courier</option>
                       </Select>
                     )}
                   </td>

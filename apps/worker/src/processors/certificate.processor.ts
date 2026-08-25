@@ -18,9 +18,22 @@ interface TagPosition {
   fontSizePt?: number;
   color?: string;
   align?: "left" | "center" | "right";
+  fontFamily?: "helvetica" | "helvetica-bold" | "times" | "times-bold" | "courier";
   widthPercent?: number;
   heightPercent?: number;
 }
+
+// "Tipo de letra" — pedido explícito ("el tipo de letra, tamaño,
+// justificado, color y otras funciones necesarias"). Tamaño/color/alineado
+// ya existían; tipografía no. Se usan los 14 fonts estándar de PDF (no
+// requieren incrustar un archivo .ttf, pdf-lib los trae listos).
+const FONT_STANDARD: Record<NonNullable<TagPosition["fontFamily"]>, StandardFonts> = {
+  helvetica: StandardFonts.Helvetica,
+  "helvetica-bold": StandardFonts.HelveticaBold,
+  times: StandardFonts.TimesRoman,
+  "times-bold": StandardFonts.TimesRomanBold,
+  courier: StandardFonts.Courier,
+};
 
 function pickLocale(text: LocalizedText, locale: string): string {
   if (!text) return "";
@@ -94,6 +107,21 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
   const qrDataUrl = `data:image/png;base64,${qrBuffer.toString("base64")}`;
 
   const studentName = certificate.user.displayName ?? `${certificate.user.firstName} ${certificate.user.lastName}`;
+  // "Duración, cantidad de horas" — tag pedido explícitamente y que no
+  // existía en absoluto antes (el admin no tenía forma de mostrar la
+  // duración del curso en el certificado).
+  const DURATION_UNIT_ES: Record<string, [string, string]> = {
+    HOURS: ["hora", "horas"],
+    WEEKS: ["semana", "semanas"],
+    MONTHS: ["mes", "meses"],
+  };
+  const courseDuration = certificate.course
+    ? (() => {
+        const [singular, plural] = DURATION_UNIT_ES[certificate.course!.durationUnit] ?? DURATION_UNIT_ES.HOURS;
+        const hours = certificate.course!.durationHours;
+        return `${hours} ${hours === 1 ? singular : plural}`;
+      })()
+    : "";
   const issuedDate = certificate.issuedAt.toLocaleDateString(locale === "en" ? "en-US" : "es-PE", {
     year: "numeric",
     month: "long",
@@ -126,6 +154,7 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
   const textVars: Record<string, string> = {
     studentName,
     courseName: offeringName,
+    courseDuration,
     issuedDate,
     finalScore: certificate.finalScore != null ? certificate.finalScore.toFixed(1) : "Aprobado",
     code: certificate.code,
@@ -226,7 +255,17 @@ async function renderBackgroundTemplate(opts: {
     page.drawImage(image, { x: 0, y: 0, width: pageWidth, height: pageHeight });
   }
 
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  // Se incrustan los 5 fonts una sola vez (barato, son fonts estándar sin
+  // archivo real que cargar) y cada tag elige el suyo — antes todo el
+  // certificado salía forzosamente en Helvetica sin ninguna opción.
+  const fontCache = new Map<string, Awaited<ReturnType<typeof pdfDoc.embedFont>>>();
+  async function fontFor(family: TagPosition["fontFamily"]): Promise<Awaited<ReturnType<typeof pdfDoc.embedFont>>> {
+    const key = family ?? "helvetica";
+    if (!fontCache.has(key)) {
+      fontCache.set(key, await pdfDoc.embedFont(FONT_STANDARD[key as NonNullable<TagPosition["fontFamily"]>] ?? StandardFonts.Helvetica));
+    }
+    return fontCache.get(key)!;
+  }
 
   for (const pos of tagPositions) {
     const isImageTag = pos.tag in images;
@@ -258,6 +297,7 @@ async function renderBackgroundTemplate(opts: {
     if (!value) continue;
     const fontSize = pos.fontSizePt ?? 14;
     const color = hexToRgb01(pos.color);
+    const font = await fontFor(pos.fontFamily);
     const textWidth = font.widthOfTextAtSize(value, fontSize);
     const alignOffset = pos.align === "center" ? textWidth / 2 : pos.align === "right" ? textWidth : 0;
     page.drawText(value, { x: xPt - alignOffset, y: pageHeight - yFromTop - fontSize, size: fontSize, font, color });

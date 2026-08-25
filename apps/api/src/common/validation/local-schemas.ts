@@ -142,6 +142,7 @@ const tagPositionSchema = z.object({
   fontSizePt: z.number().positive().optional(),
   color: z.string().optional(),
   align: z.enum(["left", "center", "right"]).optional(),
+  fontFamily: z.enum(["helvetica", "helvetica-bold", "times", "times-bold", "courier"]).optional(),
   widthPercent: z.number().positive().max(100).optional(),
   heightPercent: z.number().positive().max(100).optional(),
 });

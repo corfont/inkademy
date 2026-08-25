@@ -20,6 +20,7 @@ export interface CertificateTagDef {
 export const CERTIFICATE_TAGS: CertificateTagDef[] = [
   { tag: "studentName", kind: "text", label: "Nombre del alumno", sample: "María Fernanda Quispe Rojas" },
   { tag: "courseName", kind: "text", label: "Nombre del curso/programa", sample: "Liderazgo de Equipos Remotos" },
+  { tag: "courseDuration", kind: "text", label: "Duración del curso (horas/semanas)", sample: "40 horas" },
   { tag: "issuedDate", kind: "text", label: "Fecha de emisión", sample: "24 de agosto de 2026" },
   { tag: "finalScore", kind: "text", label: "Nota final", sample: "17.8" },
   { tag: "code", kind: "text", label: "Código de verificación", sample: "INK-2026-00456" },
@@ -46,6 +47,8 @@ export interface CertificateTagPosition {
   fontSizePt?: number;
   color?: string; // hex, ej. "#1c2038"
   align?: "left" | "center" | "right";
+  /** Tipografía — uno de los 14 fonts estándar de PDF (sin necesidad de incrustar un archivo de fuente). Default "helvetica" si no se especifica. */
+  fontFamily?: "helvetica" | "helvetica-bold" | "times" | "times-bold" | "courier";
   /** Solo para tags de imagen (QR, firmas, logo) — porcentaje del ancho/alto de página. */
   widthPercent?: number;
   heightPercent?: number;
