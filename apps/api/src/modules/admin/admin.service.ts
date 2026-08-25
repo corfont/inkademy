@@ -558,6 +558,9 @@ export class AdminService {
             }
           : {}),
       },
+      // Antes no se veía a qué empresa pertenece cada cuenta desde
+      // /admin/usuarios — había que entrar empresa por empresa a buscarlo.
+      include: { companyMemberships: { where: { status: { not: "REMOVED" } }, include: { company: true } } },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -574,6 +577,7 @@ export class AdminService {
       // devuelve para cualquier fila — la UI solo la ofrece para docentes).
       signatureAssetId: u.signatureAssetId,
       signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
+      companies: u.companyMemberships.map((m) => ({ companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
     }));
   }
 
