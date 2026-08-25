@@ -9,8 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@inkademy/shared": "workspace:*",
     "@hookform/resolvers": "^3.9.0",
+    "@inkademy/shared": "workspace:*",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.441.0",
@@ -19,6 +19,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.2",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^2.5.2",
     "zod": "^3.23.8"
   },

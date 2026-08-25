@@ -106,6 +106,40 @@ export class AdminService {
   }
 
   /**
+   * Datos para los gráficos del dashboard (antes el panel era 100% texto:
+   * tarjetas de números y listas — sin tendencia en el tiempo ni
+   * distribución visual de nada). Todo real, agregado directo de la BD.
+   */
+  async getKpiCharts() {
+    const [revenueByMonth, enrollmentsByMonth, enrollmentsByStatus, coursesByArea] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ month: Date; total: string }>>`
+        SELECT date_trunc('month', "createdAt") as month, COALESCE(SUM(total), 0) as total
+        FROM "Order"
+        WHERE status = 'PAID' AND "createdAt" >= now() - interval '6 months'
+        GROUP BY month ORDER BY month ASC
+      `,
+      this.prisma.$queryRaw<Array<{ month: Date; count: bigint }>>`
+        SELECT date_trunc('month', "enrolledAt") as month, COUNT(*) as count
+        FROM "Enrollment"
+        WHERE "enrolledAt" >= now() - interval '6 months'
+        GROUP BY month ORDER BY month ASC
+      `,
+      this.prisma.enrollment.groupBy({ by: ["status"], _count: { status: true } }),
+      this.prisma.course.groupBy({ by: ["areaId"], where: { status: "PUBLISHED" }, _count: { areaId: true } }),
+    ]);
+
+    const areas = await this.prisma.area.findMany({ where: { id: { in: coursesByArea.map((c) => c.areaId) } } });
+    const areaNameById = new Map(areas.map((a) => [a.id, (a.name as Record<string, string>).es ?? a.slug]));
+
+    return {
+      revenueByMonth: revenueByMonth.map((r) => ({ month: r.month.toISOString().slice(0, 7), total: Number(r.total) })),
+      enrollmentsByMonth: enrollmentsByMonth.map((r) => ({ month: r.month.toISOString().slice(0, 7), count: Number(r.count) })),
+      enrollmentsByStatus: enrollmentsByStatus.map((r) => ({ status: r.status, count: r._count.status })),
+      coursesByArea: coursesByArea.map((c) => ({ area: areaNameById.get(c.areaId) ?? "—", count: c._count.areaId })),
+    };
+  }
+
+  /**
    * Las 5 reglas de excepción del "trabajo por excepción" de Inkademy.
    * Todas se calculan contra datos reales de la BD (nada hardcodeado).
    */

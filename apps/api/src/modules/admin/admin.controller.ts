@@ -50,6 +50,13 @@ export class AdminController {
     return this.adminService.getKpis();
   }
 
+  @Get("dashboard/kpi-charts")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Series de tiempo y distribuciones para los gráficos del dashboard" })
+  kpiCharts() {
+    return this.adminService.getKpiCharts();
+  }
+
   @Get("exceptions")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Cola de excepciones operativas (trabajo por excepción)" })

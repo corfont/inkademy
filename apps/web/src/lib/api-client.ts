@@ -426,7 +426,8 @@ export const chatbotApi = {
 // Admin
 // ---------------------------------------------------------------------------
 export const adminApi = {
-  kpis: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpis", { accessToken }),
+  kpis: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpis", { accessToken, cache: "no-store" }),
+  kpiCharts: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpi-charts", { accessToken, cache: "no-store" }),
   exceptions: (accessToken?: string | null) => apiFetch<AdminExceptionDTO[]>("/admin/exceptions", { accessToken }),
   courses: (accessToken?: string | null) => apiFetch<any[]>("/admin/courses", { accessToken }),
   // Panel de docente: cursos asignados, próximas clases a dictar, cola de calificación — ver AdminService.getTeacherDashboard.
