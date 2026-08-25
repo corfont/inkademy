@@ -398,10 +398,10 @@ export class AdminController {
 
   @Post("finance/expenses")
   @Roles("ADMIN")
-  @ApiOperation({ summary: "Registra un gasto (hosting, marketing, planilla, etc.)" })
+  @ApiOperation({ summary: "Registra un gasto (hosting, marketing, planilla, etc.) — de una vez, mensual o anual" })
   createExpense(
     @Body(new ZodValidationPipe(createExpenseSchema))
-    dto: { description: string; amount: number; currency?: string; category?: string; incurredAt?: Date },
+    dto: { description: string; amount: number; currency?: string; category?: string; incurredAt?: Date; recurrence?: string },
   ) {
     return this.adminService.createExpense({ ...dto, incurredAt: dto.incurredAt?.toISOString() });
   }
@@ -411,6 +411,13 @@ export class AdminController {
   @ApiOperation({ summary: "Elimina un gasto registrado" })
   deleteExpense(@Param("id") id: string) {
     return this.adminService.deleteExpense(id);
+  }
+
+  @Get("finance/profit-and-loss")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Estado de resultados mensual, punto de equilibrio y pronóstico de crecimiento" })
+  getProfitAndLoss(@Query("months") months?: string) {
+    return this.adminService.getProfitAndLoss({ months: months ? Number(months) : undefined });
   }
 
   // --- Usuarios y roles ---

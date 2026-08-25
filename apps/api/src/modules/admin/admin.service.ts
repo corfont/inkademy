@@ -606,6 +606,10 @@ export class AdminService {
 
     const taxAffectation = (sunat?.taxAffectation as "EXONERADO" | "GRAVADO" | undefined) ?? "EXONERADO";
     const isGravado = taxAffectation === "GRAVADO";
+    // 18% es la tasa vigente en Perú desde 2011, pero el Estado puede
+    // cambiarla — parametrizable en vez de hardcodeada (mismo valor que usa
+    // apps/worker para el XML real de boleta/factura, ver SunatSettings.igvPercent).
+    const igvPercent = sunat?.igvPercent ?? 18;
     const culqiFeePercent = platformSettings?.culqiFeePercent ?? 3.99;
     const stripeFeePercent = platformSettings?.stripeFeePercent ?? 4.99;
     const detractionEnabled = platformSettings?.detractionEnabled ?? false;
@@ -630,7 +634,7 @@ export class AdminService {
       // exportación de servicios — 0% por defecto, criterio general pero
       // que DEBE confirmarse con un contador según el caso — nunca se le
       // aplica el mismo IGV que a una venta nacional.
-      const igv = currency === "PEN" && isGravado ? income - income / 1.18 : 0;
+      const igv = currency === "PEN" && isGravado ? income - income / (1 + igvPercent / 100) : 0;
       // Detracción SUNAT — apagada por defecto (ver comentario del schema);
       // solo se resta si el admin la activó explícitamente. Tampoco aplica
       // a ventas internacionales.
@@ -652,6 +656,7 @@ export class AdminService {
       from: from.toISOString(),
       to: to.toISOString(),
       taxAffectation,
+      igvPercent,
       culqiFeePercent,
       stripeFeePercent,
       detractionEnabled,
@@ -684,13 +689,21 @@ export class AdminService {
     return expenses.map((e) => ({ ...e, amount: decimalToString(e.amount), incurredAt: e.incurredAt.toISOString() }));
   }
 
-  createExpense(input: { description: string; amount: number; currency?: string; category?: string; incurredAt?: string }) {
+  createExpense(input: {
+    description: string;
+    amount: number;
+    currency?: string;
+    category?: string;
+    incurredAt?: string;
+    recurrence?: string;
+  }) {
     return this.prisma.platformExpense.create({
       data: {
         description: input.description,
         amount: input.amount,
         currency: input.currency ?? "PEN",
         category: input.category ?? "OTHER",
+        recurrence: input.recurrence ?? "ONCE",
         ...(input.incurredAt ? { incurredAt: new Date(input.incurredAt) } : {}),
       },
     });
@@ -699,6 +712,107 @@ export class AdminService {
   async deleteExpense(id: string) {
     await this.prisma.platformExpense.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /**
+   * Estado de resultados (P&L) mensual + punto de equilibrio + pronóstico
+   * simple — "sería bueno conocer una especie de estado de pérdidas y
+   * ganancias... que el sistema calcule punto de equilibrio, si estamos en
+   * superávit, déficit, pronostique cuánto debería ser el crecimiento
+   * mensual". Todo en soles (PEN) — el negocio recurrente real es
+   * nacional; USD queda fuera de este cálculo (ver /admin/finanzas para el
+   * balance por moneda).
+   *
+   * Simplificación explícita: los gastos MONTHLY/ANNUAL se toman como una
+   * "carga fija mensual actual" (snapshot de hoy) y se aplica por igual a
+   * cada mes de la ventana — no se reconstruye qué gastos recurrentes
+   * existían en cada mes histórico (no hay ese dato). Se documenta en la
+   * respuesta (`monthlyFixedCosts`) para que quede claro qué se está
+   * asumiendo.
+   */
+  async getProfitAndLoss(params: { months?: number } = {}) {
+    const months = Math.min(24, Math.max(3, params.months ?? 6));
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+
+    const [revenueByMonth, expenses, sunat, platformSettings] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ month: Date; total: string }>>`
+        SELECT date_trunc('month', "createdAt") as month, COALESCE(SUM(total), 0) as total
+        FROM "Order"
+        WHERE status = 'PAID' AND currency = 'PEN' AND "createdAt" >= ${start}
+        GROUP BY month ORDER BY month ASC
+      `,
+      this.prisma.platformExpense.findMany({ where: { currency: "PEN" } }),
+      this.prisma.sunatSettings.findUnique({ where: { id: "default" } }),
+      this.prisma.platformSettings.findUnique({ where: { id: "default" } }),
+    ]);
+
+    const isGravado = (sunat?.taxAffectation ?? "EXONERADO") === "GRAVADO";
+    const igvPercent = sunat?.igvPercent ?? 18;
+    const culqiFeePercent = platformSettings?.culqiFeePercent ?? 3.99;
+
+    const monthlyFixedCosts = expenses
+      .filter((e) => e.recurrence !== "ONCE")
+      .reduce((sum, e) => sum + Number(e.amount) / (e.recurrence === "ANNUAL" ? 12 : 1), 0);
+
+    const onceByMonth = new Map<string, number>();
+    for (const e of expenses) {
+      if (e.recurrence !== "ONCE") continue;
+      const key = e.incurredAt.toISOString().slice(0, 7);
+      onceByMonth.set(key, (onceByMonth.get(key) ?? 0) + Number(e.amount));
+    }
+    const revenueMap = new Map(revenueByMonth.map((r) => [r.month.toISOString().slice(0, 7), Number(r.total)]));
+
+    // % de cada sol de ingreso que se va en costos variables (comisión de
+    // pasarela + IGV, cuando aplica) — misma matemática que
+    // getFinancialSummary, expresada como tasa sobre el ingreso.
+    const variableRate = culqiFeePercent / 100 + (isGravado ? igvPercent / (100 + igvPercent) : 0);
+
+    const monthRows = Array.from({ length: months }, (_, i) => {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      const key = d.toISOString().slice(0, 7);
+      const income = revenueMap.get(key) ?? 0;
+      const variableCosts = income * variableRate;
+      const fixedCosts = monthlyFixedCosts + (onceByMonth.get(key) ?? 0);
+      const expensesTotal = variableCosts + fixedCosts;
+      return { month: key, income, expenses: expensesTotal, profit: income - expensesTotal };
+    });
+
+    const breakEvenIncome = variableRate < 1 ? monthlyFixedCosts / (1 - variableRate) : null;
+
+    // Pronóstico simple: promedio del crecimiento mes a mes entre los
+    // meses de la ventana que sí tuvieron ingresos — no es una proyección
+    // estadística sofisticada, es una tendencia simple para orientar. Se
+    // exige al menos la mitad de los meses de la ventana con ingresos (no
+    // solo 2, aunque sean meses sueltos y lejanos) y se recorta cada tasa
+    // individual a ±300% — con pocos datos, un solo mes que pasó de casi
+    // nada a algo real dispara un "crecimiento" de miles de por ciento que
+    // no significa nada útil para decidir.
+    const withIncome = monthRows.filter((r) => r.income > 0);
+    let avgGrowthPct: number | null = null;
+    if (withIncome.length >= Math.max(2, Math.ceil(months / 2))) {
+      const growthRates: number[] = [];
+      for (let i = 1; i < withIncome.length; i++) {
+        const prev = withIncome[i - 1].income;
+        if (prev > 0) growthRates.push(Math.max(-90, Math.min(300, ((withIncome[i].income - prev) / prev) * 100)));
+      }
+      if (growthRates.length > 0) avgGrowthPct = growthRates.reduce((a, b) => a + b, 0) / growthRates.length;
+    }
+    const lastIncome = monthRows[monthRows.length - 1]?.income ?? 0;
+    const forecastNextMonth = avgGrowthPct !== null ? lastIncome * (1 + avgGrowthPct / 100) : null;
+
+    const currentProfit = monthRows[monthRows.length - 1]?.profit ?? 0;
+    const status: "SUPERAVIT" | "DEFICIT" | "EQUILIBRIO" = currentProfit > 1 ? "SUPERAVIT" : currentProfit < -1 ? "DEFICIT" : "EQUILIBRIO";
+
+    return {
+      months: monthRows,
+      monthlyFixedCosts,
+      variableRatePercent: variableRate * 100,
+      breakEvenIncome,
+      avgGrowthPct,
+      forecastNextMonth,
+      status,
+    };
   }
 
   // --- Matrículas (buscar una puntual + ampliar plazo de acceso como caso

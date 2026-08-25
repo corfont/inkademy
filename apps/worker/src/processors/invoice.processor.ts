@@ -114,6 +114,7 @@ export async function processInvoiceGenerateJob(job: Job<InvoiceGenerateJobData>
       legalName: invoice.buyerLegalName,
     },
     igvExempt,
+    igvPercent: sunatConfig.igvPercent,
     line: { description, quantity: 1, unitPrice: Number(invoice.totalAmount) },
   });
 

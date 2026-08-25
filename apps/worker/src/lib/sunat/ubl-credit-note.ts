@@ -35,6 +35,8 @@ export interface UblNoteInput {
     legalName: string;
   };
   igvExempt: boolean;
+  /** % de IGV vigente — parametrizable, ver SunatSettings.igvPercent. Default 18 si no se pasa. */
+  igvPercent?: number;
   line: {
     description: string;
     quantity: number;
@@ -93,12 +95,13 @@ export function buildUblNoteXml(input: UblNoteInput): string {
   const issueDate = formatPeruDate(input.issueDate);
   const referenceId = `${reference.series}-${reference.correlativo}`;
 
+  const igvRate = input.igvPercent ?? 18;
   const lineExtensionAmount = line.quantity * line.unitPrice;
-  const taxAmount = input.igvExempt ? 0 : lineExtensionAmount - lineExtensionAmount / 1.18;
+  const taxAmount = input.igvExempt ? 0 : lineExtensionAmount - lineExtensionAmount / (1 + igvRate / 100);
   const taxableAmount = lineExtensionAmount - taxAmount;
   const taxCategoryId = input.igvExempt ? "E" : "S";
   const taxExemptionReasonCode = input.igvExempt ? "20" : undefined;
-  const igvPercent = input.igvExempt ? "0.00" : "18.00";
+  const igvPercent = input.igvExempt ? "0.00" : igvRate.toFixed(2);
   const taxSchemeId = input.igvExempt ? "9997" : "1000";
   const taxSchemeName = input.igvExempt ? "EXO" : "IGV";
 

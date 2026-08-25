@@ -300,6 +300,7 @@ export const upsertSunatSettingsSchema = z.object({
   certPem: z.string().optional(),
   certKeyPem: z.string().optional(),
   taxAffectation: z.enum(["EXONERADO", "GRAVADO"]).optional(),
+  igvPercent: z.number().min(0).max(100).optional(),
 });
 
 export const upsertChatbotSettingsSchema = z.object({
@@ -370,6 +371,7 @@ export const createExpenseSchema = z.object({
   currency: z.enum(["PEN", "USD"]).optional(),
   category: z.enum(["HOSTING", "MARKETING", "PAYROLL", "OTHER"]).optional(),
   incurredAt: z.coerce.date().optional(),
+  recurrence: z.enum(["ONCE", "MONTHLY", "ANNUAL"]).optional(),
 });
 export const updateFeeSettingsSchema = z.object({
   culqiFeePercent: z.number().min(0).max(100).optional(),

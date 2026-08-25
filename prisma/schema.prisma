@@ -1183,6 +1183,12 @@ model PlatformExpense {
   category    String   @default("OTHER") // HOSTING | MARKETING | PAYROLL | OTHER
   incurredAt  DateTime @default(now())
   createdAt   DateTime @default(now())
+  // "Tengo un hosting que me cuesta anualmente, un dominio que me cuesta
+  // anualmente, otros gastos que podrían ser mensuales" — un gasto
+  // recurrente se registra UNA vez y el estado de resultados lo prorratea
+  // por mes (ANNUAL: amount/12, MONTHLY: amount tal cual) en vez de tener
+  // que reingresarlo a mano cada período.
+  recurrence  String   @default("ONCE") // ONCE | MONTHLY | ANNUAL
 
   @@index([incurredAt])
 }
@@ -1209,6 +1215,11 @@ model SunatSettings {
   certPem             String?  @db.Text // nunca se devuelve tal cual al frontend
   certKeyPem          String?  @db.Text // nunca se devuelve tal cual al frontend
   taxAffectation      String   @default("EXONERADO") // EXONERADO | GRAVADO
+  // % de IGV vigente — 18% en Perú desde 2011, pero es una tasa que fija el
+  // Estado y puede cambiar; se deja parametrizable en vez de hardcodeado.
+  // Usado tanto en el XML real de boleta/factura (apps/worker/src/lib/sunat)
+  // como en el estimado de /admin/finanzas.
+  igvPercent          Float    @default(18)
   updatedAt           DateTime @updatedAt
 }
 

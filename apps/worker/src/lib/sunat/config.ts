@@ -22,6 +22,8 @@ export interface ResolvedSunatConfig {
   certPem?: string;
   certKeyPem?: string;
   taxAffectation: "EXONERADO" | "GRAVADO";
+  /** % de IGV vigente (18 en Perú desde 2011) — parametrizable porque es una tasa que fija el Estado y puede cambiar. */
+  igvPercent: number;
 }
 
 export async function resolveSunatConfig(): Promise<ResolvedSunatConfig> {
@@ -42,5 +44,6 @@ export async function resolveSunatConfig(): Promise<ResolvedSunatConfig> {
     certPem: row?.certPem ?? process.env.SUNAT_CERT_PEM ?? undefined,
     certKeyPem: row?.certKeyPem ?? process.env.SUNAT_CERT_KEY_PEM ?? undefined,
     taxAffectation: ((row?.taxAffectation ?? process.env.SUNAT_TAX_AFFECTATION ?? "EXONERADO").toUpperCase() as "EXONERADO" | "GRAVADO"),
+    igvPercent: row?.igvPercent ?? Number(process.env.SUNAT_IGV_PERCENT ?? 18),
   };
 }

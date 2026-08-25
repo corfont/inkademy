@@ -31,6 +31,8 @@ export interface UblInvoiceInput {
   };
   /** true = exonerado de IGV (servicios de enseñanza — Apéndice II Ley IGV, salvo que se indique lo contrario vía SUNAT_TAX_AFFECTATION). */
   igvExempt: boolean;
+  /** % de IGV vigente (18 en Perú desde 2011) — parametrizable, ver SunatSettings.igvPercent. Default 18 si no se pasa (compatibilidad). */
+  igvPercent?: number;
   line: {
     description: string;
     quantity: number;
@@ -74,15 +76,16 @@ export function buildUblInvoiceXml(input: UblInvoiceInput): string {
   const id = `${series}-${correlativo}`;
   const issueDate = formatPeruDate(input.issueDate);
 
+  const igvRate = input.igvPercent ?? 18;
   const lineExtensionAmount = line.quantity * line.unitPrice;
   // Con IGV incluido en el precio mostrado al alumno: si está afecto,
-  // separamos base imponible + IGV (18%) a partir del precio final;
-  // si está exonerado, el precio final ES la base imponible y el IGV es 0.
-  const taxAmount = input.igvExempt ? 0 : lineExtensionAmount - lineExtensionAmount / 1.18;
+  // separamos base imponible + IGV a partir del precio final; si está
+  // exonerado, el precio final ES la base imponible y el IGV es 0.
+  const taxAmount = input.igvExempt ? 0 : lineExtensionAmount - lineExtensionAmount / (1 + igvRate / 100);
   const taxableAmount = lineExtensionAmount - taxAmount;
   const taxCategoryId = input.igvExempt ? "E" : "S"; // catálogo 07: E=Exonerado, S=Gravado-IGV
   const taxExemptionReasonCode = input.igvExempt ? "20" : undefined; // catálogo 07 SUNAT
-  const igvPercent = input.igvExempt ? "0.00" : "18.00";
+  const igvPercent = input.igvExempt ? "0.00" : igvRate.toFixed(2);
   // Catálogo 05 (tributos): 1000=IGV (solo para líneas gravadas — SUNAT
   // rechaza con error 3111 si se usa 1000 con monto 0), 9997=EXONERADO,
   // usado cuando la línea no está afecta a IGV (validado contra SUNAT beta).

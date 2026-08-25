@@ -217,6 +217,7 @@ export interface SunatSettingsDTO {
   boletaCreditSeries: string | null;
   facturaCreditSeries: string | null;
   taxAffectation: "EXONERADO" | "GRAVADO";
+  igvPercent: number;
   hasSolPassword: boolean;
   hasCertPem: boolean;
   hasCertKeyPem: boolean;
@@ -494,11 +495,13 @@ export const adminApi = {
   expenses: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/finance/expenses", { accessToken, query: params, cache: "no-store" }),
   createExpense: (
-    input: { description: string; amount: number; currency?: string; category?: string; incurredAt?: string },
+    input: { description: string; amount: number; currency?: string; category?: string; incurredAt?: string; recurrence?: string },
     accessToken?: string | null,
   ) => apiFetch<any>("/admin/finance/expenses", { method: "POST", body: JSON.stringify(input), accessToken }),
   deleteExpense: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/finance/expenses/${id}`, { method: "DELETE", accessToken }),
+  profitAndLoss: (months: number | undefined, accessToken?: string | null) =>
+    apiFetch<any>("/admin/finance/profit-and-loss", { accessToken, query: { months }, cache: "no-store" }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
   suspiciousAttempts: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/suspicious", { accessToken }),
   gradeAnswer: (attemptId: string, answerId: string, input: { score: number; isCorrect: boolean }, accessToken?: string | null) =>

@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Callout } from "@/components/ui/Callout";
 import { ExpenseManager } from "@/components/admin/ExpenseManager";
 import { FeeSettingsForm } from "@/components/admin/FeeSettingsForm";
+import { ProfitAndLossCharts } from "@/components/admin/ProfitAndLossCharts";
 import { formatPrice } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Finanzas (admin)" };
@@ -16,6 +17,7 @@ const MOCK_SUMMARY = {
   from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
   to: new Date().toISOString(),
   taxAffectation: "EXONERADO" as const,
+  igvPercent: 18,
   culqiFeePercent: 3.99,
   stripeFeePercent: 4.99,
   detractionEnabled: false,
@@ -23,12 +25,23 @@ const MOCK_SUMMARY = {
   rows: [{ currency: "PEN", income: 0, igv: 0, detraction: 0, providerFees: 0, otherExpenses: 0, balance: 0 }],
 };
 
+const MOCK_PNL = {
+  months: [{ month: new Date().toISOString().slice(0, 7), income: 0, expenses: 0, profit: 0 }],
+  monthlyFixedCosts: 0,
+  variableRatePercent: 0,
+  breakEvenIncome: null as number | null,
+  avgGrowthPct: null as number | null,
+  forecastNextMonth: null as number | null,
+  status: "EQUILIBRIO" as const,
+};
+
 export default async function AdminFinancePage() {
   const locale = await getLocale();
   const accessToken = getServerAccessToken();
-  const [{ data: summary, live: liveSummary }, { data: expenses, live: liveExpenses }] = await Promise.all([
+  const [{ data: summary, live: liveSummary }, { data: expenses, live: liveExpenses }, { data: pnl, live: livePnl }] = await Promise.all([
     withFallback(() => adminApi.financialSummary({}, accessToken), MOCK_SUMMARY),
     withFallback(() => adminApi.expenses({}, accessToken), [] as any[]),
+    withFallback(() => adminApi.profitAndLoss(6, accessToken), MOCK_PNL),
   ]);
 
   return (
@@ -36,10 +49,15 @@ export default async function AdminFinancePage() {
       <div>
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Finanzas</h1>
         <p className="mt-1 text-sm text-ash-500">
-          Últimos 30 días · {summary.taxAffectation === "GRAVADO" ? "Plataforma afecta a IGV (18%)" : "Plataforma exonerada de IGV"}
+          Últimos 30 días · {summary.taxAffectation === "GRAVADO" ? `Plataforma afecta a IGV (${summary.igvPercent}%)` : "Plataforma exonerada de IGV"}
         </p>
       </div>
-      {(!liveSummary || !liveExpenses) && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+      {(!liveSummary || !liveExpenses || !livePnl) && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+
+      <section>
+        <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Estado de resultados (últimos 6 meses)</h2>
+        <ProfitAndLossCharts data={pnl} locale={locale} />
+      </section>
 
       {summary.rows.map((row: any) => (
         <section key={row.currency} className="flex flex-col gap-4">

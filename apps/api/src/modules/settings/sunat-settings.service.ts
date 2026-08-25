@@ -19,6 +19,7 @@ export interface UpsertSunatSettingsInput {
   certPem?: string; // idem solPassword
   certKeyPem?: string; // idem solPassword
   taxAffectation?: string;
+  igvPercent?: number;
 }
 
 /**
@@ -53,6 +54,7 @@ export class SunatSettingsService {
       boletaCreditSeries: row?.boletaCreditSeries ?? null,
       facturaCreditSeries: row?.facturaCreditSeries ?? null,
       taxAffectation: row?.taxAffectation ?? "EXONERADO",
+      igvPercent: row?.igvPercent ?? 18,
       hasSolPassword: Boolean(row?.solPassword),
       hasCertPem: Boolean(row?.certPem),
       hasCertKeyPem: Boolean(row?.certKeyPem),

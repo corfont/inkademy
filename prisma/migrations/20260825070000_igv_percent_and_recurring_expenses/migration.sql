@@ -1,0 +1,5 @@
+ALTER TABLE "SunatSettings"
+  ADD COLUMN "igvPercent" DOUBLE PRECISION NOT NULL DEFAULT 18;
+
+ALTER TABLE "PlatformExpense"
+  ADD COLUMN "recurrence" TEXT NOT NULL DEFAULT 'ONCE';

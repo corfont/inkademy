@@ -79,6 +79,7 @@ export async function processInvoiceGenerateNoteJob(job: Job<InvoiceGenerateNote
     },
     buyer,
     igvExempt,
+    igvPercent: sunatConfig.igvPercent,
     line: { description: `Anulación: ${note.reasonDescription}`, quantity: 1, unitPrice: Number(note.totalAmount) },
   });
 
