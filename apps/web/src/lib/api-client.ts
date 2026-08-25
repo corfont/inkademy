@@ -231,12 +231,21 @@ export const settingsApi = {
   get: () => apiFetch<PlatformSettingsDTO>("/settings", { cache: "no-store" }),
 };
 
+// "cache: no-store" en las 5 — antes estas llamadas no fijaban ninguna
+// opción de cache, y al ser Server Components sin cookies() de por medio
+// (páginas públicas), Next.js las trataba como estáticas y cacheaba la
+// respuesta indefinidamente: un curso recién editado (imagen, descuento,
+// precio) no se veía reflejado en la home/catálogo hasta el próximo
+// build/deploy, aunque la API ya tuviera el dato nuevo.
 export const catalogApi = {
-  areas: () => apiFetch<AreaSummary[]>("/areas"),
+  areas: () => apiFetch<AreaSummary[]>("/areas", { cache: "no-store" }),
   courses: (filters: CatalogFilters = {}) =>
-    apiFetch<{ items: CourseCardDTO[]; total: number; page: number; pageSize: number }>("/courses", { query: filters as Record<string, any> }),
-  course: (slug: string) => apiFetch<CourseDetailDTO>(`/courses/${slug}`),
-  program: (slug: string) => apiFetch<ProgramDetailDTO>(`/programs/${slug}`),
+    apiFetch<{ items: CourseCardDTO[]; total: number; page: number; pageSize: number }>("/courses", {
+      query: filters as Record<string, any>,
+      cache: "no-store",
+    }),
+  course: (slug: string) => apiFetch<CourseDetailDTO>(`/courses/${slug}`, { cache: "no-store" }),
+  program: (slug: string) => apiFetch<ProgramDetailDTO>(`/programs/${slug}`, { cache: "no-store" }),
   sections: () =>
     apiFetch<{
       featured: CourseCardDTO[];
@@ -244,7 +253,7 @@ export const catalogApi = {
       new: CourseCardDTO[];
       recommendedPaths: CourseCardDTO[];
       mostDemanded: CourseCardDTO[];
-    }>("/catalog/sections"),
+    }>("/catalog/sections", { cache: "no-store" }),
 };
 
 // ---------------------------------------------------------------------------

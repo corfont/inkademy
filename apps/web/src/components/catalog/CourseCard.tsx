@@ -3,11 +3,12 @@
 import Link from "next/link";
 import type { CourseCardDTO } from "@inkademy/shared";
 import { useTranslations, useLocale } from "next-intl";
-import { BadgeCheck, Clock, Radio, User, Tag } from "lucide-react";
+import { BadgeCheck, Clock, Radio, User, Star } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
+import { useCountdown } from "@/lib/useCountdown";
 import { localize, formatPrice, formatDateTime, formatDuration, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export function CourseCard({ course }: { course: CourseCardDTO }) {
@@ -17,23 +18,32 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
   const { courseCardFields: fields } = useBrandSettings();
   const isProgram = course.type === "PROGRAM" || course.type === "DIPLOMA";
   const href = isProgram ? `/programas/${course.slug}` : `/cursos/${course.slug}`;
+  // El contador vive del lado del cliente: si el tiempo se acaba mientras
+  // el alumno tiene la página abierta, el % de descuento desaparece solo
+  // (precio y estrella vuelven a la normalidad) sin que tenga que refrescar.
+  const countdown = useCountdown(course.isOnSale ? course.discountExpiresAt : null);
+  const isOnSale = course.isOnSale && !countdown.expired;
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-paper-border bg-paper shadow-card transition-shadow hover:shadow-raised">
       <Link href={href} className="relative block focus-visible:outline-2 focus-visible:outline-ink-500">
-        <div
-          className="flex h-40 items-center justify-center bg-gradient-to-br from-ink-700 to-ink-900 text-paper"
-          role="img"
-          aria-label={localize(course.title, locale)}
-        >
-          <span className="font-serif text-4xl font-semibold opacity-70">
-            {localize(course.title, locale).charAt(0)}
-          </span>
-        </div>
-        {course.isOnSale && (
-          <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-danger px-3 py-1 text-xs font-semibold text-white shadow-md">
-            <Tag className="h-3.5 w-3.5" aria-hidden="true" />
-            -{course.discountPercent}%
+        {course.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={course.coverImageUrl} alt="" className="h-40 w-full object-cover" />
+        ) : (
+          <div
+            className="flex h-40 items-center justify-center bg-gradient-to-br from-ink-700 to-ink-900 text-paper"
+            role="img"
+            aria-label={localize(course.title, locale)}
+          >
+            <span className="font-serif text-4xl font-semibold opacity-70">
+              {localize(course.title, locale).charAt(0)}
+            </span>
+          </div>
+        )}
+        {isOnSale && countdown.label && (
+          <span className="absolute left-2 top-2 rounded-full bg-ink-950/85 px-2 py-0.5 text-[0.65rem] font-semibold text-white shadow-md">
+            ⏳ {countdown.label}
           </span>
         )}
       </Link>
@@ -80,22 +90,30 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
           )}
         </dl>
 
-        <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+        <div className="relative mt-auto flex items-center justify-between gap-3 pt-2">
+          {isOnSale && (
+            <span className="pointer-events-none absolute -top-9 right-0 z-10 flex h-20 w-20 rotate-[8deg] items-center justify-center drop-shadow-[0_4px_10px_rgba(220,0,0,0.55)]">
+              <Star className="absolute inset-0 h-full w-full fill-red-600 text-red-700 animate-pulse" aria-hidden="true" />
+              <span className="relative -rotate-[8deg] text-lg font-extrabold leading-none text-white">
+                -{course.discountPercent}%
+              </span>
+            </span>
+          )}
           {course.b2bAvailable && isProgram ? (
             <span className="font-serif text-base font-semibold text-ink-900">{t("requestProposal")}</span>
           ) : user ? (
             <div className="flex flex-col">
-              {course.isOnSale && course.originalPriceAmount && (
+              {isOnSale && course.originalPriceAmount && (
                 <span className="text-xs text-ash-500 line-through">
                   {formatPrice(course.originalPriceAmount, course.priceCurrency, locale)}
                 </span>
               )}
-              <span className={`font-serif text-lg font-semibold ${course.isOnSale ? "text-danger" : "text-gold-600"}`}>
-                {formatPrice(course.priceAmount, course.priceCurrency, locale)}
+              <span className={`font-serif text-lg font-semibold ${isOnSale ? "text-danger" : "text-gold-600"}`}>
+                {formatPrice(isOnSale ? course.priceAmount : (course.originalPriceAmount ?? course.priceAmount), course.priceCurrency, locale)}
               </span>
-              {course.isOnSale && course.discountExpiresAt && (
-                <span className="text-[0.65rem] text-ash-500">
-                  {locale === "en" ? "Until" : "Hasta el"} {new Date(course.discountExpiresAt).toLocaleDateString(locale)}
+              {isOnSale && countdown.label && (
+                <span className="font-mono text-[0.7rem] font-semibold text-danger">
+                  {locale === "en" ? "Offer ends in" : "Oferta finaliza en"} {countdown.label}
                 </span>
               )}
             </div>

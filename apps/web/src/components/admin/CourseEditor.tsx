@@ -117,6 +117,7 @@ function MetadataSection({
 }) {
   const [titleEs, setTitleEs] = useState(course.title?.es ?? "");
   const [priceAmount, setPriceAmount] = useState(String(course.priceAmount ?? "0"));
+  const [priceCurrency, setPriceCurrency] = useState(course.priceCurrency ?? "PEN");
   const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
   const [language, setLanguage] = useState(course.language ?? "es");
   const [templates, setTemplates] = useState<any[]>([]);
@@ -199,14 +200,21 @@ function MetadataSection({
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Datos generales</h2>
-        <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+        <div className="grid gap-4 sm:grid-cols-[1fr_8rem_6rem]">
           <div>
             <Label htmlFor="edit-title">Título</Label>
             <Input id="edit-title" value={titleEs} onChange={(e) => setTitleEs(e.target.value)} />
           </div>
           <div>
-            <Label htmlFor="edit-price">Precio ({course.priceCurrency ?? "PEN"})</Label>
+            <Label htmlFor="edit-price">Precio</Label>
             <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="edit-currency">Moneda</Label>
+            <Select id="edit-currency" value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)}>
+              <option value="PEN">PEN (S/)</option>
+              <option value="USD">USD ($)</option>
+            </Select>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -265,7 +273,7 @@ function MetadataSection({
           </div>
           {discountPercent && Number(discountPercent) > 0 && (
             <p className="sm:col-span-2 text-sm text-success">
-              Precio con descuento: {(Number(priceAmount) * (1 - Number(discountPercent) / 100)).toFixed(2)} {course.priceCurrency ?? "PEN"}
+              Precio con descuento: {(Number(priceAmount) * (1 - Number(discountPercent) / 100)).toFixed(2)} {priceCurrency}
               {discountExpiresAt ? ` — hasta el ${discountExpiresAt}` : ""}
             </p>
           )}
@@ -344,6 +352,7 @@ function MetadataSection({
               onSave({
                 title: { ...course.title, es: titleEs },
                 priceAmount: Number(priceAmount),
+                priceCurrency,
                 certificateTemplateId: certificateTemplateId || null,
                 language,
                 areaId,

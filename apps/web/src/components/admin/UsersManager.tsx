@@ -67,8 +67,12 @@ export function UsersManager() {
   // Agrupar por dominio de correo ayuda a ubicar de un vistazo a todos los
   // que probablemente sean de la misma empresa (p.ej. todos los
   // @corporacionandina.com) antes de asignarlos — sin esto había que
-  // adivinar mirando la lista completa sin ningún orden por dominio.
-  const groups: Array<{ label: string; rows: UserRow[] }> = groupByDomain
+  // adivinar mirando la lista completa sin ningún orden por dominio. Si
+  // alguien de ese dominio YA está vinculado a una empresa (creada a
+  // través de "Asignar a empresa"), se muestra su razón social + RUC en
+  // vez del dominio pelado — mucho más útil para reconocer de un vistazo
+  // de qué empresa se trata.
+  const groups: Array<{ domain: string; label: string; rows: UserRow[] }> = groupByDomain
     ? Object.entries(
         users.reduce<Record<string, UserRow[]>>((acc, u) => {
           const key = emailDomain(u.email);
@@ -77,8 +81,13 @@ export function UsersManager() {
         }, {}),
       )
         .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([label, rows]) => ({ label, rows }))
-    : [{ label: "", rows: users }];
+        .map(([domain, rows]) => {
+          const linkedCompanyId = rows.find((r) => r.companies && r.companies.length > 0)?.companies?.[0]?.companyId;
+          const company = linkedCompanyId ? companies.find((c) => c.id === linkedCompanyId) : null;
+          const label = company ? `${company.legalName} (RUC ${company.taxId}) — @${domain}` : `@${domain}`;
+          return { domain, label, rows };
+        })
+    : [{ domain: "", label: "", rows: users }];
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,9 +123,11 @@ export function UsersManager() {
           ) : (
             <div className="flex flex-col gap-4">
               {groups.map((group) => (
-                <div key={group.label || "all"} className="overflow-x-auto">
+                <div key={group.domain || "all"} className="overflow-x-auto">
                   {group.label && (
-                    <p className="mb-1 rounded bg-paper-muted px-2 py-1 text-xs font-semibold text-ash-600">@{group.label} ({group.rows.length})</p>
+                    <p className="mb-1 rounded bg-paper-muted px-2 py-1 text-xs font-semibold text-ash-600">
+                      {group.label} ({group.rows.length})
+                    </p>
                   )}
                   <table className="w-full text-left text-sm">
                     <thead className="border-b border-paper-border text-ash-500">

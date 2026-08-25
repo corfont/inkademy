@@ -101,7 +101,11 @@ function CheckoutForm() {
           },
         ],
         currency: currency as "PEN" | "USD",
-        paymentProvider: "CULQI",
+        // Antes siempre mandaba "CULQI" sin importar la moneda — Culqi es
+        // para rieles peruanos (PEN); un curso en USD (comprador
+        // internacional) debe ir por Stripe, que es el adapter pensado para
+        // eso (ver CommerceService / docs de arquitectura).
+        paymentProvider: currency === "USD" ? "STRIPE" : "CULQI",
         companyId: asCompany && companyId ? companyId : undefined,
         paymentMethodToken: fakeTokenize(card.number || "4111111111111111"),
         // Si compra a nombre de empresa, el backend usa el RUC de la
