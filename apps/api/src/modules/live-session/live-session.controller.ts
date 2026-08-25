@@ -5,6 +5,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { teacherScopeId } from "../../common/utils/scope";
 import {
   cancelLiveSessionSchema,
   createLiveSessionSchema,
@@ -24,17 +25,17 @@ export class LiveSessionController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Programa una sesión en vivo y crea la reunión de Teams" })
-  create(@Body(new ZodValidationPipe(createLiveSessionSchema)) dto: any) {
-    return this.liveSessionService.create(dto);
+  @ApiOperation({ summary: "Programa una sesión en vivo y crea la reunión de Teams — TEACHER solo si es CourseStaff de ese curso" })
+  create(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(createLiveSessionSchema)) dto: any) {
+    return this.liveSessionService.create(dto, teacherScopeId(user));
   }
 
   @Post("series")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Programa una serie semanal recurrente hasta completar la duración del curso" })
-  createSeries(@Body(new ZodValidationPipe(createLiveSessionSeriesSchema)) dto: any) {
-    return this.liveSessionService.createWeeklySeries(dto);
+  @ApiOperation({ summary: "Programa una serie semanal recurrente hasta completar la duración del curso — TEACHER solo si es CourseStaff de ese curso" })
+  createSeries(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(createLiveSessionSeriesSchema)) dto: any) {
+    return this.liveSessionService.createWeeklySeries(dto, teacherScopeId(user));
   }
 
   @Get("schedule-summary/:courseId")
@@ -46,23 +47,23 @@ export class LiveSessionController {
   @Patch(":id/cancel")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Cancela una sesión en vivo (libera esas horas del presupuesto del curso)" })
+  @ApiOperation({ summary: "Cancela una sesión en vivo (libera esas horas del presupuesto del curso) — TEACHER solo si es CourseStaff del curso dueño" })
   cancel(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(cancelLiveSessionSchema)) dto: { reason: string }) {
-    return this.liveSessionService.cancel(id, user.id, dto.reason);
+    return this.liveSessionService.cancel(id, user.id, dto.reason, teacherScopeId(user));
   }
 
   @Patch(":id/reschedule")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({
-    summary: "Reprograma una sesión en vivo (fecha/hora) y notifica por correo a todos los inscritos activos del curso",
+    summary: "Reprograma una sesión en vivo (fecha/hora) y notifica por correo a todos los inscritos activos del curso — TEACHER solo si es CourseStaff del curso dueño",
   })
   reschedule(
     @CurrentUser() user: RequestUser,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(rescheduleLiveSessionSchema)) dto: any,
   ) {
-    return this.liveSessionService.reschedule(id, user.id, dto);
+    return this.liveSessionService.reschedule(id, user.id, dto, teacherScopeId(user));
   }
 
   @Get(":id/join")

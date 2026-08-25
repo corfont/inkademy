@@ -176,6 +176,19 @@ export class CompaniesService {
       throw new ForbiddenException("El usuario no es miembro activo de esta empresa");
     }
 
+    // "Dos asignaciones de cupo simultáneas leían el mismo seatsUsed y las
+    // dos pasaban la validación — el contador terminaba avanzando solo 1
+    // neto pero se creaban 2 matrículas, sobre-otorgando cupos más allá de
+    // lo comprado" — hallazgo de auditoría. Se reclama el cupo PRIMERO,
+    // de forma atómica (el `where` con el tope es lo que hace que solo una
+    // llamada concurrente pueda ganar), y solo si se ganó se crea la
+    // matrícula — nunca al revés.
+    const claimed = await this.prisma.companySeatPool.updateMany({
+      where: { id: poolId, seatsUsed: { lt: pool.seatsPurchased } },
+      data: { seatsUsed: { increment: 1 } },
+    });
+    if (claimed.count === 0) throw new BadRequestException("No quedan cupos disponibles");
+
     const enrollment = await this.prisma.enrollment.create({
       data: {
         userId,
@@ -187,7 +200,6 @@ export class CompaniesService {
         accessExpiresAt: pool.expiresAt,
       },
     });
-    await this.prisma.companySeatPool.update({ where: { id: poolId }, data: { seatsUsed: pool.seatsUsed + 1 } });
 
     if (pool.courseId) {
       const course = await this.prisma.course.findUnique({ where: { id: pool.courseId } });

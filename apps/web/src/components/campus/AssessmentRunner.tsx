@@ -86,13 +86,29 @@ export interface AssessmentDefinition {
  * Queda PENDING_REVIEW hasta que el docente lo califique a mano viendo el
  * archivo (no hay nota inmediata como en las preguntas autocorregidas).
  */
+// Debe calzar con DOCUMENT_MIME_PREFIXES del lado del API (fileMimeFilter) —
+// si no, el alumno solo se enteraría del rechazo DESPUÉS de subir el archivo.
+const FILE_UPLOAD_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,image/png,image/jpeg,image/webp,image/gif,application/pdf";
+const FILE_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) {
   const t = useTranslations("campus.assessment");
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const attemptIdRef = useRef<string>(`mock-attempt-${assessment.id}`);
+
+  const totalSeconds = (assessment.timeLimitMinutes ?? 0) * 60;
+  const [remaining, setRemaining] = useState(totalSeconds);
+  const timeExpired = Boolean(assessment.timeLimitMinutes) && remaining <= 0;
 
   useEffect(() => {
     assessmentApi
@@ -103,8 +119,33 @@ function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) 
       .catch(() => {});
   }, [assessment.id]);
 
+  // Mismo temporizador visual que el examen por preguntas — a diferencia de
+  // ese, acá NO hay un "enviar lo que había" automático al llegar a cero
+  // (no tendría sentido forzar el envío sin archivo elegido): solo se
+  // bloquea seguir eligiendo/enviando y se avisa que el tiempo se acabó.
+  useEffect(() => {
+    if (!assessment.timeLimitMinutes || done) return;
+    const interval = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
+    return () => clearInterval(interval);
+  }, [assessment.timeLimitMinutes, done]);
+
+  function handleFileChange(selected: File | null) {
+    setFileError(null);
+    if (!selected) {
+      setFile(null);
+      return;
+    }
+    if (selected.size > FILE_UPLOAD_MAX_BYTES) {
+      setFileError(`El archivo pesa ${formatFileSize(selected.size)} — el máximo permitido es ${formatFileSize(FILE_UPLOAD_MAX_BYTES)}.`);
+      setFile(null);
+      return;
+    }
+    setFile(selected);
+  }
+
   async function handleSubmit() {
     if (!file) return;
+    setConfirmOpen(false);
     setSubmitting(true);
     setError(null);
     try {
@@ -129,10 +170,25 @@ function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) 
     );
   }
 
+  const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
+  const seconds = String(remaining % 60).padStart(2, "0");
+
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="mb-4 font-serif text-xl font-semibold text-ink-900">{assessment.title}</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="font-serif text-xl font-semibold text-ink-900">{assessment.title}</h1>
+        {assessment.timeLimitMinutes ? (
+          <div className="flex items-center gap-1.5 text-sm font-medium text-ink-800" role="timer" aria-live="polite">
+            <Clock className="h-4 w-4" aria-hidden="true" />
+            {minutes}:{seconds}
+          </div>
+        ) : (
+          <span className="text-xs text-ash-400">Sin límite de tiempo</span>
+        )}
+      </div>
+      {timeExpired && <Callout variant="warning" className="mb-4">Se acabó el tiempo para este examen — si ya tenías tu archivo listo, igual puedes enviarlo.</Callout>}
       {error && <Callout variant="danger" className="mb-4">{error}</Callout>}
+      {fileError && <Callout variant="danger" className="mb-4">{fileError}</Callout>}
       {assessment.sourceFileUrl && (
         <a
           href={assessment.sourceFileUrl}
@@ -144,18 +200,47 @@ function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) 
         </a>
       )}
       <div className="rounded-md border border-dashed border-paper-border p-4">
-        <p className="mb-2 text-sm font-medium text-ink-900">2. Sube tu respuesta (Word, Excel, PPT, imagen o PDF)</p>
+        <label htmlFor="file-upload-input" className="mb-2 block text-sm font-medium text-ink-900">
+          2. Sube tu respuesta (Word, Excel, PPT, imagen o PDF — máx. {formatFileSize(FILE_UPLOAD_MAX_BYTES)})
+        </label>
         <input
+          id="file-upload-input"
           type="file"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          accept={FILE_UPLOAD_ACCEPT}
+          onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
           className="block w-full text-sm"
         />
+        {file && (
+          <div className="mt-3 flex items-center justify-between rounded-md bg-paper-muted p-2.5 text-sm">
+            <span className="truncate text-ink-900">
+              {file.name} <span className="text-ash-500">({formatFileSize(file.size)})</span>
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => handleFileChange(null)}>
+              Quitar
+            </Button>
+          </div>
+        )}
       </div>
       <div className="mt-6 flex justify-end">
-        <Button disabled={!file || submitting} onClick={handleSubmit}>
+        <Button disabled={!file || submitting} onClick={() => setConfirmOpen(true)}>
           {submitting ? "Enviando…" : t("submit")}
         </Button>
       </div>
+
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title="¿Enviar este archivo como tu examen final?">
+        <p className="text-ash-600">
+          Estás a punto de enviar <strong>{file?.name}</strong> como tu respuesta final. No podrás cambiarlo después — quedará pendiente de
+          calificación por tu docente.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "…" : "Sí, enviar"}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

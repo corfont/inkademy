@@ -7,6 +7,7 @@ import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { submitFileAttemptSchema } from "../../common/validation/local-schemas";
+import { fileMimeFilter, DOCUMENT_MIME_PREFIXES } from "../../common/utils/file-filter";
 import { AssessmentService } from "./assessment.service";
 
 @ApiTags("assessments")
@@ -16,9 +17,9 @@ export class AssessmentController {
   constructor(private readonly assessmentService: AssessmentService) {}
 
   @Get(":id")
-  @ApiOperation({ summary: "Preguntas de una evaluación (sin correctAnswer, orden según config)" })
-  getAssessment(@Param("id") id: string) {
-    return this.assessmentService.getForStudent(id);
+  @ApiOperation({ summary: "Preguntas de una evaluación (sin correctAnswer, orden según config) — requiere estar matriculado en el curso" })
+  getAssessment(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.assessmentService.getForStudent(id, user.id, user.roles.includes("ADMIN") || user.roles.includes("SUPPORT"));
   }
 
   @Post(":id/attempts")
@@ -47,7 +48,9 @@ export class AttemptsController {
   @Post("uploads")
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "El alumno sube su archivo de respuesta para un examen 'cualitativo' (Word/Excel/PPT/imagen/PDF)" })
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 50 * 1024 * 1024 }, fileFilter: fileMimeFilter(DOCUMENT_MIME_PREFIXES) }),
+  )
   uploadSubmission(@UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string }) {
     return this.assessmentService.uploadSubmissionFile(file);
   }

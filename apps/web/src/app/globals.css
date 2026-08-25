@@ -74,7 +74,11 @@
 
   --success: 152 52% 32%;
   --success-bg: 150 45% 94%;
-  --warning: 38 85% 40%;
+  /* 40% de luminosidad daba solo 3.16:1 de contraste contra --warning-bg,
+     por debajo del 4.5:1 mínimo AA para texto normal (los badges de
+     tardanza/aprobación/programada usan text-xs, no "texto grande") — bajado
+     a 32% (4.65:1) sin cambiar el matiz ámbar. */
+  --warning: 38 85% 32%;
   --warning-bg: 45 88% 93%;
   --danger: 4 68% 44%;
   --danger-bg: 4 65% 95%;

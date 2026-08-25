@@ -333,10 +333,61 @@ export class AdminService {
     };
   }
 
+  /**
+   * Tarifa específica de curso si existe, si no la global (courseId=null)
+   * del docente. La búsqueda por curso específico sí puede usar el
+   * selector compuesto (courseId ahí nunca es null); la global NO —
+   * mismo bug real de Prisma+null documentado en upsertTeacherRate, así
+   * que esta usa `findFirst` en vez de `findUnique` con selector compuesto.
+   */
+  private async findTeacherRate(teacherId: string, courseId: string) {
+    return (
+      (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId, courseId } } })) ??
+      (await this.prisma.teacherRate.findFirst({ where: { teacherId, courseId: null } }))
+    );
+  }
+
   /** Verifica que un TEACHER sea CourseStaff del curso antes de dejarlo ver/editar — ADMIN/SUPPORT (teacherUserId undefined) no tiene esta restricción. */
   private async assertTeacherOwnsCourse(courseId: string, teacherUserId: string) {
     const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
     if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+  }
+
+  /**
+   * Antes createModule/updateModule/deleteModule/createLesson/updateLesson/
+   * deleteLesson/createMaterial/updateMaterial/deleteMaterial no recibían
+   * `teacherUserId` en absoluto — un TEACHER podía editar/borrar el
+   * contenido de un curso ajeno con solo conocer el id del módulo/lección/
+   * material (hallazgo de auditoría de seguridad, mismo patrón que
+   * updateCourse/getCourseDetail ya corregían a nivel de curso pero no
+   * bajaba al contenido). Estos helpers resuelven el courseId real subiendo
+   * la cadena module→course / lesson→module→course / material→(lesson o
+   * module)→course y reusan assertTeacherOwnsCourse.
+   */
+  private async assertTeacherOwnsModule(moduleId: string, teacherUserId: string) {
+    const mod = await this.prisma.courseModule.findUnique({ where: { id: moduleId }, select: { courseId: true } });
+    if (!mod) throw new NotFoundException("Módulo no encontrado");
+    await this.assertTeacherOwnsCourse(mod.courseId, teacherUserId);
+    return mod;
+  }
+
+  private async assertTeacherOwnsLesson(lessonId: string, teacherUserId: string) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+    await this.assertTeacherOwnsCourse(lesson.module.courseId, teacherUserId);
+    return lesson;
+  }
+
+  private async assertTeacherOwnsMaterial(materialId: string, teacherUserId: string) {
+    const material = await this.prisma.material.findUnique({
+      where: { id: materialId },
+      include: { lesson: { include: { module: true } }, module: true },
+    });
+    if (!material) throw new NotFoundException("Material no encontrado");
+    const courseId = material.lesson?.module.courseId ?? material.module?.courseId;
+    if (!courseId) throw new NotFoundException("Material sin curso asociado");
+    await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+    return material;
   }
 
   createCourse(input: Record<string, unknown>) {
@@ -397,20 +448,23 @@ export class AdminService {
 
   // --- Contenido: módulos / lecciones / materiales ---
 
-  createModule(courseId: string, input: { title: object; order?: number }) {
+  async createModule(courseId: string, input: { title: object; order?: number }, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
     return this.prisma.courseModule.create({ data: { courseId, title: input.title, order: input.order ?? 0 } });
   }
 
-  updateModule(id: string, input: Partial<{ title: object; order: number }>) {
+  async updateModule(id: string, input: Partial<{ title: object; order: number }>, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsModule(id, teacherUserId);
     return this.prisma.courseModule.update({ where: { id }, data: input });
   }
 
-  async deleteModule(id: string) {
+  async deleteModule(id: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsModule(id, teacherUserId);
     await this.prisma.courseModule.delete({ where: { id } });
     return { deleted: true };
   }
 
-  createLesson(
+  async createLesson(
     moduleId: string,
     input: {
       title: object;
@@ -420,19 +474,22 @@ export class AdminService {
       durationMinutes?: number;
       isFreePreview?: boolean;
     },
+    teacherUserId?: string,
   ) {
+    if (teacherUserId) await this.assertTeacherOwnsModule(moduleId, teacherUserId);
     return this.prisma.lesson.create({ data: { moduleId, ...input, order: input.order ?? 0 } as never });
   }
 
-  async updateLesson(id: string, input: Record<string, unknown>) {
+  async updateLesson(id: string, input: Record<string, unknown>, teacherUserId?: string) {
+    const lesson = teacherUserId ? await this.assertTeacherOwnsLesson(id, teacherUserId) : null;
     // "El administrador debe indicar si ese video inicia el curso" — a lo
     // más UNA lección por curso puede ser la iniciadora; marcar una nueva
     // automáticamente desmarca cualquier otra del mismo curso.
     if (input.isCourseStarter === true) {
-      const lesson = await this.prisma.lesson.findUnique({ where: { id }, include: { module: true } });
-      if (lesson) {
+      const target = lesson ?? (await this.prisma.lesson.findUnique({ where: { id }, include: { module: true } }));
+      if (target) {
         await this.prisma.lesson.updateMany({
-          where: { module: { courseId: lesson.module.courseId }, id: { not: id } },
+          where: { module: { courseId: target.module.courseId }, id: { not: id } },
           data: { isCourseStarter: false },
         });
       }
@@ -440,31 +497,38 @@ export class AdminService {
     return this.prisma.lesson.update({ where: { id }, data: input as never });
   }
 
-  async deleteLesson(id: string) {
+  async deleteLesson(id: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsLesson(id, teacherUserId);
     await this.prisma.lesson.delete({ where: { id } });
     return { deleted: true };
   }
 
-  createMaterial(
+  async createMaterial(
     lessonId: string,
     input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: string; visible?: boolean },
+    teacherUserId?: string,
   ) {
+    if (teacherUserId) await this.assertTeacherOwnsLesson(lessonId, teacherUserId);
     return this.prisma.material.create({ data: { lessonId, ...input } as never });
   }
 
   /** Lectura/documento a nivel de módulo entero (no de una lección puntual) — ver Material.moduleId. */
-  createModuleMaterial(
+  async createModuleMaterial(
     moduleId: string,
     input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: string; visible?: boolean },
+    teacherUserId?: string,
   ) {
+    if (teacherUserId) await this.assertTeacherOwnsModule(moduleId, teacherUserId);
     return this.prisma.material.create({ data: { moduleId, ...input } as never });
   }
 
-  updateMaterial(id: string, input: Record<string, unknown>) {
+  async updateMaterial(id: string, input: Record<string, unknown>, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsMaterial(id, teacherUserId);
     return this.prisma.material.update({ where: { id }, data: input as never });
   }
 
-  async deleteMaterial(id: string) {
+  async deleteMaterial(id: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsMaterial(id, teacherUserId);
     await this.prisma.material.delete({ where: { id } });
     return { deleted: true };
   }
@@ -785,9 +849,7 @@ export class AdminService {
     let totalMinutes = 0;
     for (const session of sessions) {
       if (!session.teacherId) continue;
-      const rate =
-        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: session.courseId } } })) ??
-        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: null as never } } }));
+      const rate = await this.findTeacherRate(session.teacherId, session.courseId);
       if (!rate || !rate.active || Number(rate.hourlyRateTeaching) <= 0) continue;
       const attendance = await this.prisma.attendance.findUnique({
         where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
@@ -829,9 +891,7 @@ export class AdminService {
       const attendance = await this.prisma.attendance.findUnique({
         where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
       });
-      const rate =
-        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: session.courseId } } })) ??
-        (await this.prisma.teacherRate.findUnique({ where: { teacherId_courseId: { teacherId: session.teacherId, courseId: null as never } } }));
+      const rate = await this.findTeacherRate(session.teacherId, session.courseId);
       const toleranceMinutes = rate?.toleranceMinutes ?? 10;
       const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(session, attendance, toleranceMinutes);
       rows.push({
@@ -903,8 +963,18 @@ export class AdminService {
     return this.prisma.royaltyRecipient.update({ where: { id }, data: input as never });
   }
 
-  async deleteRoyaltyRecipient(id: string) {
+  async deleteRoyaltyRecipient(id: string, actorId?: string) {
+    // "Se borra en duro y con eso se vuelve imposible reconstruir cuánto
+    // se le debía por periodos pasados (getRoyaltyCosts consulta la fila
+    // viva, no un histórico)" — hallazgo de auditoría. Guardar el "antes"
+    // en el log es la mitigación acotada; la corrección completa sería
+    // no borrar nunca esta fila (desactivarla) — decisión de alcance
+    // mayor, no algo para forzar en el mismo cambio.
+    const before = await this.prisma.royaltyRecipient.findUnique({ where: { id } });
     await this.prisma.royaltyRecipient.delete({ where: { id } });
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "ROYALTY_RECIPIENT_DELETE", entity: "RoyaltyRecipient", entityId: id, before: before as never },
+    });
     return { deleted: true };
   }
 
@@ -919,8 +989,12 @@ export class AdminService {
     });
   }
 
-  async removeCourseRoyalty(id: string) {
+  async removeCourseRoyalty(id: string, actorId?: string) {
+    const before = await this.prisma.courseRoyalty.findUnique({ where: { id } });
     await this.prisma.courseRoyalty.delete({ where: { id } });
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "COURSE_ROYALTY_REMOVE", entity: "CourseRoyalty", entityId: id, before: before as never },
+    });
     return { deleted: true };
   }
 
@@ -1072,7 +1146,20 @@ export class AdminService {
     });
   }
 
-  upsertTeacherRate(input: {
+  /**
+   * Bug real encontrado en producción (no algo tocado a propósito): Prisma
+   * NO acepta `null` dentro del selector compuesto `teacherId_courseId`
+   * para un `upsert` — Postgres trata cada NULL como distinto de cualquier
+   * otro NULL, así que un índice único que incluye una columna nullable no
+   * sirve como identificador único vía ese atajo. El `as never` que había
+   * acá silenciaba el error de TypeScript que hubiera avisado de esto, y
+   * cada vez que un admin guardaba una tarifa GLOBAL (sin curso específico,
+   * courseId=null — el caso más común) el proceso entero de la API se
+   * caía con una excepción no capturada. Se resuelve buscando la fila
+   * primero (findFirst, que sí acepta `null` como filtro normal) y
+   * creando/actualizando por `id` en vez de por el selector compuesto.
+   */
+  async upsertTeacherRate(input: {
     teacherId: string;
     courseId?: string | null;
     hourlyRateTeaching?: number;
@@ -1083,11 +1170,11 @@ export class AdminService {
     active?: boolean;
   }) {
     const courseId = input.courseId ?? null;
-    return this.prisma.teacherRate.upsert({
-      where: { teacherId_courseId: { teacherId: input.teacherId, courseId } as never },
-      create: { ...input, courseId } as never,
-      update: input as never,
-    });
+    const existing = await this.prisma.teacherRate.findFirst({ where: { teacherId: input.teacherId, courseId } });
+    if (existing) {
+      return this.prisma.teacherRate.update({ where: { id: existing.id }, data: input as never });
+    }
+    return this.prisma.teacherRate.create({ data: { ...input, courseId } as never });
   }
 
   async deleteTeacherRate(id: string) {
@@ -1144,9 +1231,24 @@ export class AdminService {
    * actividades registradas a mano, menos adelantos todavía no aplicados.
    * Queda en DRAFT — el admin la aprueba/paga después de revisarla.
    */
-  async generateTeacherLiquidation(input: { teacherId: string; periodStart: string; periodEnd: string }) {
+  async generateTeacherLiquidation(input: { teacherId: string; periodStart: string; periodEnd: string }, actorId?: string) {
     const periodStart = new Date(input.periodStart);
     const periodEnd = new Date(input.periodEnd);
+
+    // "Nada impide generar la misma liquidación dos veces con números
+    // distintos si cambió la tarifa entre medio, sin dejar rastro de que
+    // eso pasó" — hallazgo de auditoría. En vez de una restricción rígida
+    // a nivel de base de datos (que bloquearía incluso una corrección
+    // legítima), se avisa explícitamente si ya existe una para este
+    // docente+periodo exacto, para que sea una decisión consciente y no un
+    // duplicado accidental.
+    const existing = await this.prisma.teacherLiquidation.findFirst({ where: { teacherId: input.teacherId, periodStart, periodEnd } });
+    if (existing) {
+      throw new BadRequestException(
+        `Ya existe una liquidación para este docente en este periodo exacto (id ${existing.id}, estado ${existing.status}). Si la tarifa cambió después de generarla, corrígela ahí en vez de crear una segunda.`,
+      );
+    }
+
     const rates = await this.prisma.teacherRate.findMany({ where: { teacherId: input.teacherId, active: true } });
     if (rates.length === 0) {
       throw new BadRequestException("Este docente no tiene ninguna tarifa configurada — no se puede liquidar.");
@@ -1162,7 +1264,15 @@ export class AdminService {
     let grossFromTeaching = 0;
     let deductionAmount = 0;
     let currency = globalRate?.currency ?? rates[0].currency;
-    const detail: Array<{ sessionId: string; scheduledMinutes: number; payableMinutes: number; latenessMinutes: number; earlinessMinutes: number }> = [];
+    const detail: Array<{
+      sessionId: string;
+      scheduledMinutes: number;
+      payableMinutes: number;
+      latenessMinutes: number;
+      earlinessMinutes: number;
+      hourlyRateTeaching: number;
+      toleranceMinutes: number;
+    }> = [];
 
     for (const session of sessions) {
       const rate = rateByCourse.get(session.courseId) ?? globalRate;
@@ -1179,7 +1289,17 @@ export class AdminService {
       hoursTeaching += payableMinutes / 60;
       grossFromTeaching += (payableMinutes / 60) * Number(rate.hourlyRateTeaching);
       deductionAmount += ((scheduledMinutes - payableMinutes) / 60) * Number(rate.hourlyRateTeaching);
-      detail.push({ sessionId: session.id, scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes });
+      // Snapshot de la tarifa/tolerancia REALMENTE usada para este monto —
+      // si alguien edita TeacherRate después, este número ya no cambia.
+      detail.push({
+        sessionId: session.id,
+        scheduledMinutes,
+        payableMinutes,
+        latenessMinutes,
+        earlinessMinutes,
+        hourlyRateTeaching: Number(rate.hourlyRateTeaching),
+        toleranceMinutes: rate.toleranceMinutes,
+      });
     }
 
     const activityLogs = await this.prisma.teacherActivityLog.findMany({
@@ -1209,7 +1329,17 @@ export class AdminService {
         advancesDeducted,
         netAmount,
         currency,
-        detail: detail as never,
+        createdById: actorId,
+        detail: { sessions: detail, hourlyRateOtherActivities: otherActivitiesRate } as never,
+      },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "TEACHER_LIQUIDATION_GENERATE",
+        entity: "TeacherLiquidation",
+        entityId: liquidation.id,
+        after: { teacherId: input.teacherId, periodStart: input.periodStart, periodEnd: input.periodEnd, grossAmount, netAmount, currency },
       },
     });
     // Los adelantos usados quedan marcados como aplicados a ESTA liquidación
@@ -1222,26 +1352,60 @@ export class AdminService {
   }
 
   /** El admin puede perdonar la penalidad (p.ej. por confianza con el docente) y pagarle completo. */
-  async waiveTeacherLiquidationDeduction(id: string, reason: string) {
+  async waiveTeacherLiquidationDeduction(id: string, reason: string, actorId?: string) {
     const liquidation = await this.prisma.teacherLiquidation.findUnique({ where: { id } });
     if (!liquidation) throw new NotFoundException("Liquidación no encontrada");
     const restoredGross = Number(liquidation.grossAmount) + Number(liquidation.deductions);
-    return this.prisma.teacherLiquidation.update({
+    const updated = await this.prisma.teacherLiquidation.update({
       where: { id },
       data: {
         deductionsWaived: true,
         waivedReason: reason,
+        waivedById: actorId,
+        waivedAt: new Date(),
         grossAmount: restoredGross,
         netAmount: restoredGross - Number(liquidation.advancesDeducted),
       },
     });
+    // "Se puede saber que se perdonó una deducción y por qué, pero nunca
+    // quién ni cuándo" — hallazgo de auditoría. waivedById/waivedAt en la
+    // misma fila ya lo resuelven; el AuditLog además guarda el monto antes/después.
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "TEACHER_LIQUIDATION_WAIVE_DEDUCTION",
+        entity: "TeacherLiquidation",
+        entityId: id,
+        before: { grossAmount: decimalToString(liquidation.grossAmount), netAmount: decimalToString(liquidation.netAmount) },
+        after: { grossAmount: decimalToString(updated.grossAmount), netAmount: decimalToString(updated.netAmount), reason },
+      },
+    });
+    return updated;
   }
 
-  updateTeacherLiquidationStatus(id: string, status: "APPROVED" | "PAID") {
-    return this.prisma.teacherLiquidation.update({
+  async updateTeacherLiquidationStatus(id: string, status: "APPROVED" | "PAID", actorId?: string) {
+    const before = await this.prisma.teacherLiquidation.findUnique({ where: { id }, select: { status: true } });
+    const updated = await this.prisma.teacherLiquidation.update({
       where: { id },
-      data: { status, ...(status === "PAID" ? { paidAt: new Date() } : {}) },
+      data: {
+        status,
+        ...(status === "APPROVED" ? { approvedById: actorId } : {}),
+        ...(status === "PAID" ? { paidAt: new Date(), paidById: actorId } : {}),
+      },
     });
+    // "Aprobar/pagar una liquidación — literalmente liberar el dinero —
+    // no deja registro de quién lo hizo" — hallazgo de auditoría.
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: `TEACHER_LIQUIDATION_${status}`,
+        entity: "TeacherLiquidation",
+        entityId: id,
+        before: { status: before?.status },
+        after: { status },
+      },
+    });
+    return updated;
   }
 
   // --- Empresas ---
@@ -1512,16 +1676,31 @@ export class AdminService {
     };
   }
 
-  async updateFeeSettings(input: {
-    culqiFeePercent?: number;
-    stripeFeePercent?: number;
-    yapePlinFeePercent?: number;
-    detractionEnabled?: boolean;
-    detractionRucNaturalPercent?: number;
-    detractionRucNaturalThreshold?: number;
-    detractionRucEmpresaPercent?: number;
-  }) {
-    return this.prisma.platformSettings.upsert({ where: { id: "default" }, create: { id: "default", ...input }, update: input });
+  async updateFeeSettings(
+    input: {
+      culqiFeePercent?: number;
+      stripeFeePercent?: number;
+      yapePlinFeePercent?: number;
+      detractionEnabled?: boolean;
+      detractionRucNaturalPercent?: number;
+      detractionRucNaturalThreshold?: number;
+      detractionRucEmpresaPercent?: number;
+    },
+    actorId?: string,
+  ) {
+    // "Cambiar el % de comisión de pasarela o la detracción no deja
+    // registro de quién ni cuándo, y además todos los reportes pasados
+    // cambian retroactivamente al recalcularlos con el valor nuevo" —
+    // hallazgo de auditoría. Esto resuelve el "quién/cuándo" — el
+    // recálculo retroactivo de reportes históricos queda como una decisión
+    // de arquitectura más grande (historizar las tasas), no algo bounded
+    // para arreglar en el mismo cambio.
+    const before = await this.prisma.platformSettings.findUnique({ where: { id: "default" } });
+    const updated = await this.prisma.platformSettings.upsert({ where: { id: "default" }, create: { id: "default", ...input }, update: input });
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "FEE_SETTINGS_UPDATE", entity: "PlatformSettings", entityId: "default", before: before as never, after: input as never },
+    });
+    return updated;
   }
 
   /** Arma el PDF del estado financiero para el periodo pedido — reutilizado por descarga directa y por envío a correo. */
@@ -1897,8 +2076,30 @@ export class AdminService {
       const globalRole = input.globalRole ?? (await this.prisma.user.findUnique({ where: { id }, select: { globalRole: true } }))?.globalRole;
       data.secondaryRoles = input.secondaryRoles.filter((r) => r !== globalRole);
     }
+    // "Un cambio de rol o una desactivación de cuenta no deja ningún
+    // registro de qué admin lo hizo" — hallazgo de auditoría de
+    // trazabilidad. Se guarda el "antes" solo de los campos que de verdad
+    // cambian (rol/estado), no el perfil completo, para no inflar el log
+    // con ediciones de nombre/teléfono sin relevancia de seguridad.
+    const before = await this.prisma.user.findUnique({
+      where: { id },
+      select: { globalRole: true, secondaryRoles: true, status: true },
+    });
     try {
-      return await this.prisma.user.update({ where: { id }, data: data as never });
+      const updated = await this.prisma.user.update({ where: { id }, data: data as never });
+      if (input.globalRole !== undefined || input.secondaryRoles !== undefined || input.status !== undefined) {
+        await this.prisma.auditLog.create({
+          data: {
+            actorId,
+            action: "USER_UPDATE",
+            entity: "User",
+            entityId: id,
+            before: before as never,
+            after: { globalRole: updated.globalRole, secondaryRoles: updated.secondaryRoles, status: updated.status },
+          },
+        });
+      }
+      return updated;
     } catch (err) {
       // P2002 = violación de índice único — el único campo editable acá que
       // choca con otro usuario es el correo.
@@ -1915,13 +2116,17 @@ export class AdminService {
    * Si no manda una contraseña específica, genera una temporal — mismo
    * patrón que createUser — para pasársela al usuario por otro medio.
    */
-  async resetUserPassword(id: string, password?: string) {
+  async resetUserPassword(id: string, actorId: string, password?: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException("Usuario no encontrado");
 
     const tempPassword = password ? null : randomUUID().slice(0, 12);
     const passwordHash = await argon2.hash(password ?? tempPassword!);
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+    // Nunca se guarda la contraseña en el log — solo que se restableció y quién lo hizo.
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "USER_PASSWORD_RESET", entity: "User", entityId: id },
+    });
     return { id, email: user.email, tempPassword };
   }
 
@@ -1947,7 +2152,14 @@ export class AdminService {
       );
     }
 
+    const deletedSnapshot = await this.prisma.user.findUnique({
+      where: { id },
+      select: { email: true, firstName: true, lastName: true, globalRole: true },
+    });
     await this.prisma.user.delete({ where: { id } });
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "USER_DELETE", entity: "User", entityId: id, before: deletedSnapshot as never },
+    });
     return { deleted: true };
   }
 

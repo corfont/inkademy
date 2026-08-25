@@ -62,7 +62,7 @@ export class SunatSettingsService {
     };
   }
 
-  async update(input: UpsertSunatSettingsInput) {
+  async update(input: UpsertSunatSettingsInput, actorId?: string) {
     const { solPassword, certPem, certKeyPem, ...rest } = input;
     const data: Record<string, unknown> = { ...rest };
     // Solo se toca el secreto si vino un valor no vacío — un string vacío o
@@ -75,6 +75,18 @@ export class SunatSettingsService {
       where: { id: SETTINGS_ID },
       create: { id: SETTINGS_ID, ...data },
       update: data,
+    });
+    // "Un cambio al RUC, la clave SOL, el certificado, o el % de IGV no
+    // deja registro de quién lo hizo" — hallazgo de auditoría. Nunca se
+    // guardan los secretos en el log, solo qué campos cambiaron.
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "SUNAT_SETTINGS_UPDATE",
+        entity: "SunatSettings",
+        entityId: SETTINGS_ID,
+        after: { changedFields: Object.keys(input) },
+      },
     });
     return this.get();
   }

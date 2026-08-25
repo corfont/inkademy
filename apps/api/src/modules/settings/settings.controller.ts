@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Patch, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { Public } from "../../common/decorators/public.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
@@ -55,8 +57,8 @@ export class SettingsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN")
   @ApiOperation({ summary: "Actualiza la configuración de facturación electrónica SUNAT" })
-  updateSunatSettings(@Body(new ZodValidationPipe(upsertSunatSettingsSchema)) dto: any) {
-    return this.sunatSettingsService.update(dto);
+  updateSunatSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertSunatSettingsSchema)) dto: any) {
+    return this.sunatSettingsService.update(dto, user.id);
   }
 
   @Get("admin/chatbot-settings")
@@ -91,7 +93,7 @@ export class SettingsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN")
   @ApiOperation({ summary: "Actualiza la configuración del servidor SMTP" })
-  updateEmailServerSettings(@Body(new ZodValidationPipe(upsertEmailServerSettingsSchema)) dto: any) {
-    return this.emailServerSettingsService.update(dto);
+  updateEmailServerSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertEmailServerSettingsSchema)) dto: any) {
+    return this.emailServerSettingsService.update(dto, user.id);
   }
 }

@@ -60,13 +60,31 @@ export class AssessmentService {
     private readonly storageService: StorageService,
   ) {}
 
-  /** Preguntas para presentar al alumno, sin `correctAnswer`, respetando orden/aleatoriedad configurados. */
-  async getForStudent(assessmentId: string) {
+  /**
+   * Preguntas para presentar al alumno, sin `correctAnswer`, respetando
+   * orden/aleatoriedad configurados. Antes esta ruta no verificaba
+   * matrícula/pertenencia en absoluto — cualquier usuario autenticado que
+   * conociera el `assessmentId` (compartido por un compañero, visto en el
+   * historial del navegador, etc.) podía ver el banco de preguntas
+   * completo o descargar el archivo fuente de un examen "cualitativo" sin
+   * estar matriculado en el curso (hallazgo de auditoría de seguridad).
+   * ADMIN/SUPPORT y el/los TEACHER de ese curso (CourseStaff) no tienen
+   * esta restricción — necesitan poder revisar/previsualizar la evaluación.
+   */
+  async getForStudent(assessmentId: string, userId: string, isPrivileged: boolean) {
     const assessment = await this.prisma.assessment.findUnique({
       where: { id: assessmentId },
       include: { questions: true },
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+
+    if (!isPrivileged) {
+      const [enrollment, isStaff] = await Promise.all([
+        this.prisma.enrollment.findFirst({ where: { userId, courseId: assessment.courseId, offeringKind: "COURSE" } }),
+        this.prisma.courseStaff.findFirst({ where: { courseId: assessment.courseId, userId } }),
+      ]);
+      if (!enrollment && !isStaff) throw new ForbiddenException("No estás matriculado en el curso de esta evaluación");
+    }
 
     // Examen "cualitativo" — el alumno no ve preguntas, descarga el archivo
     // que subió el docente y luego sube su propia respuesta como archivo
@@ -296,9 +314,14 @@ export class AssessmentService {
    * califica el intento entero de una sola vez porque no hay preguntas
    * individuales que sumar.
    */
-  async gradeFileAttempt(attemptId: string, graderId: string, input: { score: number; passed: boolean }) {
+  async gradeFileAttempt(attemptId: string, graderId: string, input: { score: number; passed: boolean }, teacherUserId?: string) {
     const attempt = await this.prisma.assessmentAttempt.findUnique({ where: { id: attemptId }, include: { assessment: true } });
     if (!attempt) throw new NotFoundException("Intento no encontrado");
+    // Hallazgo de seguridad: antes cualquier TEACHER autenticado podía
+    // calificar (y así emitir certificado para) el intento de CUALQUIER
+    // curso con solo conocer el attemptId — sin verificar que fuera
+    // CourseStaff del curso dueño. Mismo patrón que assertTeacherOwnsAssessment.
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(attempt.assessmentId, teacherUserId);
     if (!attempt.assessment.sourceFileAssetId) throw new BadRequestException("Esta evaluación no es de tipo archivo");
     if (!attempt.submissionAssetId) throw new BadRequestException("El alumno todavía no subió su archivo de respuesta");
 
@@ -487,9 +510,18 @@ export class AssessmentService {
     });
   }
 
-  async gradeAnswer(attemptId: string, answerId: string, graderId: string, input: { score: number; isCorrect: boolean }) {
-    const answer = await this.prisma.answer.findUnique({ where: { id: answerId } });
+  async gradeAnswer(
+    attemptId: string,
+    answerId: string,
+    graderId: string,
+    input: { score: number; isCorrect: boolean },
+    teacherUserId?: string,
+  ) {
+    const answer = await this.prisma.answer.findUnique({ where: { id: answerId }, include: { attempt: true } });
     if (!answer || answer.attemptId !== attemptId) throw new NotFoundException("Respuesta no encontrada");
+    // Mismo hallazgo que gradeFileAttempt: sin esto, cualquier TEACHER podía
+    // calificar la respuesta de un examen de un curso ajeno.
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(answer.attempt.assessmentId, teacherUserId);
 
     await this.prisma.answer.update({
       where: { id: answerId },

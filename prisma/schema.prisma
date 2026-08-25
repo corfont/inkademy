@@ -1477,6 +1477,11 @@ enum EmailCampaignGoal {
 enum EmailCampaignStatus {
   DRAFT
   SCHEDULED
+  // Estado transitorio: el sweep del worker ya "reclamó" la campaña (claim
+  // atómico, ver email-campaign.processor.ts) y está enviando — evita que
+  // un reinicio a mitad de envío haga que el siguiente sweep la reenvíe
+  // completa desde cero.
+  SENDING
   SENT
   CANCELLED
 }
@@ -1598,9 +1603,23 @@ model TeacherLiquidation {
   netAmount            Decimal           @default(0) @db.Decimal(10, 2)
   currency             String            @default("PEN")
   status               LiquidationStatus @default(DRAFT)
+  // `detail` (sesión por sesión) ahora también guarda un snapshot de las
+  // tarifas/tolerancia realmente usadas al momento de generar — antes solo
+  // guardaba minutos, así que si alguien editaba la tarifa del docente
+  // DESPUÉS, ya no había forma de reconstruir con qué tarifa se calculó
+  // este monto (hallazgo de auditoría de trazabilidad).
   detail               Json?
   createdAt            DateTime          @default(now())
   paidAt               DateTime?
+
+  // Quién generó / aprobó / pagó / perdonó la deducción — antes ninguna de
+  // estas cuatro acciones (las de más impacto financiero/legal de todo el
+  // sistema) dejaba rastro de qué admin la hizo (hallazgo de auditoría).
+  createdById          String?
+  approvedById         String?
+  paidById             String?
+  waivedById           String?
+  waivedAt             DateTime?
 
   advances             TeacherAdvance[]
 }

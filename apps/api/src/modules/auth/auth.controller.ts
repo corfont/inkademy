@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { ConfigService } from "@nestjs/config";
 import { registerSchema } from "@inkademy/shared";
@@ -50,6 +51,10 @@ export class AuthController {
   }
 
   @Public()
+  // "Sin límite de registros" — hallazgo de auditoría: 10 cuentas por IP
+  // cada 10 minutos alcanza para un uso legítimo (una familia/oficina
+  // compartiendo red) sin permitir creación masiva de cuentas.
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
   @Post("register")
   @ApiOperation({ summary: "Crea una cuenta de estudiante" })
   @ApiBody({ type: RegisterDto })
@@ -65,6 +70,15 @@ export class AuthController {
   }
 
   @Public()
+  // "Sin límite de intentos de login — fuerza bruta de credenciales sin
+  // freno" — hallazgo de auditoría. El límite es por IP, no por cuenta —
+  // 10/5min resultó DEMASIADO estricto en la práctica: varios alumnos de un
+  // mismo salón/oficina detrás de un solo NAT (o simplemente la suite de
+  // Playwright, con varios logins de usuarios demo distintos) ya lo
+  // agotaban sin que nadie estuviera atacando nada. 30/5min sigue
+  // bloqueando con margen un intento de fuerza bruta real (que necesita
+  // miles de intentos, no decenas) sin golpear tráfico legítimo compartido.
+  @Throttle({ default: { limit: 30, ttl: 300_000 } })
   @UseGuards(LocalAuthGuard)
   @Post("login")
   @ApiOperation({ summary: "Inicia sesión con email + password" })
@@ -104,6 +118,9 @@ export class AuthController {
   }
 
   @Public()
+  // "Sin límite en forgot-password — se puede bombardear de correos a una
+  // víctima" — hallazgo de auditoría: 5 solicitudes por IP cada 15 min.
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Post("forgot-password")
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiBody({ type: ForgotPasswordDto })

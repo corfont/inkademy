@@ -8,6 +8,7 @@ import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { CompleteProfileDto } from "../auth/dto/auth.dto";
 import { UsersService } from "./users.service";
+import { fileMimeFilter, AVATAR_MIME_PREFIXES } from "../../common/utils/file-filter";
 import { ApiBody } from "@nestjs/swagger";
 
 @ApiTags("profile")
@@ -35,7 +36,7 @@ export class UsersController {
   @Post("avatar")
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "Sube/reemplaza la foto de perfil del usuario autenticado" })
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: fileMimeFilter(AVATAR_MIME_PREFIXES) }))
   async uploadAvatar(
     @CurrentUser() user: RequestUser,
     @UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string },

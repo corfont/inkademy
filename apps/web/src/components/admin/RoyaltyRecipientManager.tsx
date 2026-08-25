@@ -70,6 +70,8 @@ export function RoyaltyRecipientManager({ recipients, courses }: { recipients: a
         en /admin/finanzas, en la moneda que configures aquí.
       </Callout>
 
+      {recipients.length === 0 && <p className="text-sm text-ash-500">Todavía no hay ningún destinatario de regalías creado.</p>}
+
       {recipients.map((r) => (
         <Card key={r.id}>
           <CardContent className="flex flex-col gap-3 p-6">

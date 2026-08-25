@@ -159,6 +159,12 @@ async function sendCampaignToRecipients(campaign: { id: string; name: string }, 
         template: WORKER_EMAIL_JOBS.EMAIL_CAMPAIGN,
         subject,
         html,
+        // "No hay ninguna clave de idempotencia por destinatario — si el
+        // worker se reinicia a mitad de envío, el reintento manda de
+        // nuevo a todos" — hallazgo de auditoría. jobId determinístico por
+        // (campaña, destinatario): BullMQ ignora un `add` con un jobId que
+        // ya está esperando/completado en la cola.
+        jobId: `email.campaign:${campaign.id}:${r.id}`,
       });
       sent += 1;
     } catch (err) {
@@ -229,10 +235,25 @@ export async function runEmailCampaignSweep(): Promise<void> {
     where: { status: "SCHEDULED", scheduledAt: { lte: new Date() } },
   });
   for (const campaign of due) {
+    // Reclamo atómico: si el worker se cayó a mitad de un envío anterior,
+    // la campaña habría quedado en SENDING (no vuelve a SCHEDULED sola) —
+    // este `updateMany` con el guard en el `where` es lo que garantiza que
+    // solo UN sweep concurrente/reintentado la toma. El jobId por
+    // destinatario (ver sendCampaignToRecipients) es la segunda capa: si
+    // de todos modos se reprocesara, no duplicaría los correos ya encolados.
+    const claimed = await prisma.emailCampaign.updateMany({
+      where: { id: campaign.id, status: "SCHEDULED" },
+      data: { status: "SENDING" },
+    });
+    if (claimed.count === 0) continue;
     try {
       await processOneCampaign(campaign);
     } catch (err) {
       logger.error("fallo al procesar campaña de correo, se reintentará en el próximo sweep", { campaignId: campaign.id, err: String(err) });
+      // Sin esto, una campaña que falla a mitad de camino quedaría
+      // atascada en SENDING para siempre (el sweep solo busca SCHEDULED) —
+      // se libera para que el próximo sweep la vuelva a intentar de verdad.
+      await prisma.emailCampaign.update({ where: { id: campaign.id }, data: { status: "SCHEDULED" } }).catch(() => {});
     }
   }
 }

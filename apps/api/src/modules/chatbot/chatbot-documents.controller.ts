@@ -4,6 +4,10 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagg
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { ChatbotDocumentsService } from "./chatbot-documents.service";
+import { fileMimeFilter } from "../../common/utils/file-filter";
+
+// PDF/TXT/MD — lo único que ChatbotDocumentsService sabe extraer como texto.
+const CHATBOT_DOC_MIME_PREFIXES = ["application/pdf", "text/plain", "text/markdown"];
 
 @ApiTags("chatbot")
 @ApiBearerAuth()
@@ -23,7 +27,9 @@ export class ChatbotDocumentsController {
   @Roles("ADMIN")
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "Sube un documento (PDF/TXT/MD) como fuente de información para el asistente de IA" })
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 }, fileFilter: fileMimeFilter(CHATBOT_DOC_MIME_PREFIXES) }),
+  )
   upload(@UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string }, @Query("title") title?: string) {
     return this.documents.create(file, title);
   }

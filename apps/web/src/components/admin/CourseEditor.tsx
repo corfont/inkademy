@@ -533,7 +533,14 @@ function MaterialItem({ material, busy, run }: { material: any; busy: boolean; r
         >
           {material.visible ? "Visible" : "Oculto"}
         </button>
-        <button type="button" className="text-ash-400 hover:text-danger" disabled={busy} onClick={() => run(() => adminApi.deleteMaterial(material.id))}>
+        <button
+          type="button"
+          className="text-ash-400 hover:text-danger"
+          disabled={busy}
+          title="Eliminar material"
+          aria-label="Eliminar material"
+          onClick={() => run(() => adminApi.deleteMaterial(material.id))}
+        >
           <Trash2 className="h-3 w-3" />
         </button>
       </div>

@@ -41,7 +41,7 @@ export class EmailServerSettingsService {
     };
   }
 
-  async update(input: UpsertEmailServerSettingsInput) {
+  async update(input: UpsertEmailServerSettingsInput, actorId?: string) {
     const { password, ...rest } = input;
     const data: Record<string, unknown> = { ...rest };
     if (password) data.password = password;
@@ -50,6 +50,10 @@ export class EmailServerSettingsService {
       where: { id: SETTINGS_ID },
       create: { id: SETTINGS_ID, ...data },
       update: data,
+    });
+    // Nunca se guarda la contraseña en el log, solo qué campos cambiaron y quién.
+    await this.prisma.auditLog.create({
+      data: { actorId, action: "EMAIL_SERVER_SETTINGS_UPDATE", entity: "EmailServerSettings", entityId: SETTINGS_ID, after: { changedFields: Object.keys(input) } },
     });
     return this.get();
   }

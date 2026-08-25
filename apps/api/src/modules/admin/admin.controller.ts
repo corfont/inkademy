@@ -7,6 +7,8 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { teacherScopeId } from "../../common/utils/scope";
+import { fileMimeFilter, COURSE_ASSET_MIME_PREFIXES } from "../../common/utils/file-filter";
 import {
   addCoursePartnershipSchema,
   addCourseRoyaltySchema,
@@ -109,7 +111,7 @@ export class AdminController {
   listCourses(@CurrentUser() user: RequestUser, @Query("page") page?: string, @Query("pageSize") pageSize?: string) {
     return this.adminService.listCourses(
       { page: Number(page) || undefined, pageSize: Number(pageSize) || undefined },
-      user.globalRole === "TEACHER" ? user.id : undefined,
+      teacherScopeId(user),
     );
   }
 
@@ -131,14 +133,14 @@ export class AdminController {
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Actualiza un curso — TEACHER solo si es CourseStaff de ese curso" })
   updateCourse(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateCourseSchema)) dto: any) {
-    return this.adminService.updateCourse(id, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.adminService.updateCourse(id, dto, teacherScopeId(user));
   }
 
   @Get("courses/:id")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Detalle de un curso: metadata + módulos/lecciones/materiales + sesiones en vivo — TEACHER solo si es CourseStaff de ese curso" })
   getCourse(@CurrentUser() user: RequestUser, @Param("id") id: string) {
-    return this.adminService.getCourseDetail(id, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.adminService.getCourseDetail(id, teacherScopeId(user));
   }
 
   @Get("courses/:id/approval-rule")
@@ -157,72 +159,72 @@ export class AdminController {
 
   @Post("courses/:courseId/modules")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Crea un módulo dentro de un curso" })
-  createModule(@Param("courseId") courseId: string, @Body(new ZodValidationPipe(upsertModuleSchema)) dto: any) {
-    return this.adminService.createModule(courseId, dto);
+  @ApiOperation({ summary: "Crea un módulo dentro de un curso — TEACHER solo si es CourseStaff de ese curso" })
+  createModule(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string, @Body(new ZodValidationPipe(upsertModuleSchema)) dto: any) {
+    return this.adminService.createModule(courseId, dto, teacherScopeId(user));
   }
 
   @Patch("modules/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Actualiza un módulo (título/orden)" })
-  updateModule(@Param("id") id: string, @Body(new ZodValidationPipe(updateModuleSchema)) dto: any) {
-    return this.adminService.updateModule(id, dto);
+  @ApiOperation({ summary: "Actualiza un módulo (título/orden) — TEACHER solo si es CourseStaff del curso dueño" })
+  updateModule(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateModuleSchema)) dto: any) {
+    return this.adminService.updateModule(id, dto, teacherScopeId(user));
   }
 
   @Delete("modules/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Elimina un módulo (y sus lecciones/materiales en cascada)" })
-  deleteModule(@Param("id") id: string) {
-    return this.adminService.deleteModule(id);
+  @ApiOperation({ summary: "Elimina un módulo (y sus lecciones/materiales en cascada) — TEACHER solo si es CourseStaff del curso dueño" })
+  deleteModule(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.deleteModule(id, teacherScopeId(user));
   }
 
   @Post("modules/:moduleId/lessons")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Crea una lección dentro de un módulo" })
-  createLesson(@Param("moduleId") moduleId: string, @Body(new ZodValidationPipe(upsertLessonSchema)) dto: any) {
-    return this.adminService.createLesson(moduleId, dto);
+  @ApiOperation({ summary: "Crea una lección dentro de un módulo — TEACHER solo si es CourseStaff del curso dueño" })
+  createLesson(@CurrentUser() user: RequestUser, @Param("moduleId") moduleId: string, @Body(new ZodValidationPipe(upsertLessonSchema)) dto: any) {
+    return this.adminService.createLesson(moduleId, dto, teacherScopeId(user));
   }
 
   @Patch("lessons/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Actualiza una lección" })
-  updateLesson(@Param("id") id: string, @Body(new ZodValidationPipe(updateLessonSchema)) dto: any) {
-    return this.adminService.updateLesson(id, dto);
+  @ApiOperation({ summary: "Actualiza una lección — TEACHER solo si es CourseStaff del curso dueño" })
+  updateLesson(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateLessonSchema)) dto: any) {
+    return this.adminService.updateLesson(id, dto, teacherScopeId(user));
   }
 
   @Delete("lessons/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Elimina una lección (y sus materiales en cascada)" })
-  deleteLesson(@Param("id") id: string) {
-    return this.adminService.deleteLesson(id);
+  @ApiOperation({ summary: "Elimina una lección (y sus materiales en cascada) — TEACHER solo si es CourseStaff del curso dueño" })
+  deleteLesson(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.deleteLesson(id, teacherScopeId(user));
   }
 
   @Post("lessons/:lessonId/materials")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Agrega un material (PDF/Word/Excel/imagen/video/link) a una lección" })
-  createMaterial(@Param("lessonId") lessonId: string, @Body(new ZodValidationPipe(upsertMaterialSchema)) dto: any) {
-    return this.adminService.createMaterial(lessonId, dto);
+  @ApiOperation({ summary: "Agrega un material (PDF/Word/Excel/imagen/video/link) a una lección — TEACHER solo si es CourseStaff del curso dueño" })
+  createMaterial(@CurrentUser() user: RequestUser, @Param("lessonId") lessonId: string, @Body(new ZodValidationPipe(upsertMaterialSchema)) dto: any) {
+    return this.adminService.createMaterial(lessonId, dto, teacherScopeId(user));
   }
 
   @Post("modules/:moduleId/materials")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Agrega una lectura/documento (principal o complementario) a nivel de módulo completo" })
-  createModuleMaterial(@Param("moduleId") moduleId: string, @Body(new ZodValidationPipe(upsertMaterialSchema)) dto: any) {
-    return this.adminService.createModuleMaterial(moduleId, dto);
+  @ApiOperation({ summary: "Agrega una lectura/documento (principal o complementario) a nivel de módulo completo — TEACHER solo si es CourseStaff del curso dueño" })
+  createModuleMaterial(@CurrentUser() user: RequestUser, @Param("moduleId") moduleId: string, @Body(new ZodValidationPipe(upsertMaterialSchema)) dto: any) {
+    return this.adminService.createModuleMaterial(moduleId, dto, teacherScopeId(user));
   }
 
   @Patch("materials/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Actualiza un material (p.ej. mostrar/ocultar al alumno, cambiar categoría principal/complementario)" })
-  updateMaterial(@Param("id") id: string, @Body(new ZodValidationPipe(updateMaterialSchema)) dto: any) {
-    return this.adminService.updateMaterial(id, dto);
+  @ApiOperation({ summary: "Actualiza un material (p.ej. mostrar/ocultar al alumno, cambiar categoría principal/complementario) — TEACHER solo si es CourseStaff del curso dueño" })
+  updateMaterial(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateMaterialSchema)) dto: any) {
+    return this.adminService.updateMaterial(id, dto, teacherScopeId(user));
   }
 
   @Delete("materials/:id")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Elimina un material" })
-  deleteMaterial(@Param("id") id: string) {
-    return this.adminService.deleteMaterial(id);
+  @ApiOperation({ summary: "Elimina un material — TEACHER solo si es CourseStaff del curso dueño" })
+  deleteMaterial(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.deleteMaterial(id, teacherScopeId(user));
   }
 
   // --- Evaluaciones (exámenes/quizzes) y sus preguntas — TEACHER solo en cursos donde es CourseStaff ---
@@ -231,7 +233,7 @@ export class AdminController {
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Lista las evaluaciones de un curso, con sus preguntas" })
   listAssessments(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string) {
-    return this.assessmentService.listForCourse(courseId, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.listForCourse(courseId, teacherScopeId(user));
   }
 
   @Post("courses/:courseId/assessments")
@@ -242,7 +244,7 @@ export class AdminController {
     @Param("courseId") courseId: string,
     @Body(new ZodValidationPipe(upsertAssessmentSchema)) dto: any,
   ) {
-    return this.assessmentService.createAssessment(courseId, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.createAssessment(courseId, dto, teacherScopeId(user));
   }
 
   @Patch("assessments/:id")
@@ -253,14 +255,14 @@ export class AdminController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateAssessmentSchema)) dto: any,
   ) {
-    return this.assessmentService.updateAssessment(id, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.updateAssessment(id, dto, teacherScopeId(user));
   }
 
   @Delete("assessments/:id")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Elimina una evaluación (falla si ya tiene intentos de alumnos)" })
   deleteAssessment(@CurrentUser() user: RequestUser, @Param("id") id: string) {
-    return this.assessmentService.deleteAssessment(id, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.deleteAssessment(id, teacherScopeId(user));
   }
 
   @Post("assessments/:assessmentId/questions")
@@ -271,7 +273,7 @@ export class AdminController {
     @Param("assessmentId") assessmentId: string,
     @Body(new ZodValidationPipe(upsertQuestionSchema)) dto: any,
   ) {
-    return this.assessmentService.createQuestion(assessmentId, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.createQuestion(assessmentId, dto, teacherScopeId(user));
   }
 
   @Patch("questions/:id")
@@ -282,21 +284,23 @@ export class AdminController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateQuestionSchema)) dto: any,
   ) {
-    return this.assessmentService.updateQuestion(id, dto, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.updateQuestion(id, dto, teacherScopeId(user));
   }
 
   @Delete("questions/:id")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Elimina una pregunta" })
   deleteQuestion(@CurrentUser() user: RequestUser, @Param("id") id: string) {
-    return this.assessmentService.deleteQuestion(id, user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.deleteQuestion(id, teacherScopeId(user));
   }
 
   @Post("uploads")
   @Roles("ADMIN", "TEACHER")
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "Sube un archivo (video/PDF/portada) a S3/MinIO y devuelve su assetId" })
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 50 * 1024 * 1024 }, fileFilter: fileMimeFilter(COURSE_ASSET_MIME_PREFIXES) }),
+  )
   uploadAsset(@UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string }) {
     return this.adminService.uploadAsset(file);
   }
@@ -326,14 +330,14 @@ export class AdminController {
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Cola de preguntas abiertas/cortas por calificar (TEACHER ve solo sus cursos, ADMIN/SUPPORT ve todo)" })
   pendingReview(@CurrentUser() user: RequestUser) {
-    return this.assessmentService.listPendingReview(user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.listPendingReview(teacherScopeId(user));
   }
 
   @Get("attempts/suspicious")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Intentos marcados como posible trampa/uso de IA (nota alta + tiempo de resolución muy corto)" })
   suspiciousAttempts(@CurrentUser() user: RequestUser) {
-    return this.assessmentService.listSuspiciousAttempts(user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.listSuspiciousAttempts(teacherScopeId(user));
   }
 
   @Post("attempts/:attemptId/answers/:answerId/grade")
@@ -345,14 +349,14 @@ export class AdminController {
     @Param("answerId") answerId: string,
     @Body(new ZodValidationPipe(gradeAnswerSchema)) dto: { score: number; isCorrect: boolean },
   ) {
-    return this.assessmentService.gradeAnswer(attemptId, answerId, user.id, dto);
+    return this.assessmentService.gradeAnswer(attemptId, answerId, user.id, dto, teacherScopeId(user));
   }
 
   @Get("attempts/pending-file-reviews")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Cola de exámenes 'cualitativos' (archivo) pendientes de calificar (TEACHER ve solo sus cursos)" })
   pendingFileReviews(@CurrentUser() user: RequestUser) {
-    return this.assessmentService.listPendingFileReviews(user.globalRole === "TEACHER" ? user.id : undefined);
+    return this.assessmentService.listPendingFileReviews(teacherScopeId(user));
   }
 
   @Post("attempts/:attemptId/grade-file")
@@ -363,7 +367,7 @@ export class AdminController {
     @Param("attemptId") attemptId: string,
     @Body(new ZodValidationPipe(gradeFileAttemptSchema)) dto: { score: number; passed: boolean },
   ) {
-    return this.assessmentService.gradeFileAttempt(attemptId, user.id, dto);
+    return this.assessmentService.gradeFileAttempt(attemptId, user.id, dto, teacherScopeId(user));
   }
 
   @Get("teacher-grading-workload")
@@ -545,22 +549,22 @@ export class AdminController {
   @Post("teacher-liquidations/generate")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Genera la liquidación de un docente para un periodo (horas dictadas + otras actividades - adelantos)" })
-  generateTeacherLiquidation(@Body(new ZodValidationPipe(generateTeacherLiquidationSchema)) dto: any) {
-    return this.adminService.generateTeacherLiquidation(dto);
+  generateTeacherLiquidation(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(generateTeacherLiquidationSchema)) dto: any) {
+    return this.adminService.generateTeacherLiquidation(dto, user.id);
   }
 
   @Patch("teacher-liquidations/:id/waive")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Perdona la penalidad por tardanza/salida temprana de una liquidación y paga completo" })
-  waiveTeacherLiquidation(@Param("id") id: string, @Body(new ZodValidationPipe(waiveLiquidationSchema)) dto: { reason: string }) {
-    return this.adminService.waiveTeacherLiquidationDeduction(id, dto.reason);
+  waiveTeacherLiquidation(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(waiveLiquidationSchema)) dto: { reason: string }) {
+    return this.adminService.waiveTeacherLiquidationDeduction(id, dto.reason, user.id);
   }
 
   @Patch("teacher-liquidations/:id/status")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Aprueba o marca como pagada una liquidación" })
-  updateTeacherLiquidationStatus(@Param("id") id: string, @Body() dto: { status: "APPROVED" | "PAID" }) {
-    return this.adminService.updateTeacherLiquidationStatus(id, dto.status);
+  updateTeacherLiquidationStatus(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() dto: { status: "APPROVED" | "PAID" }) {
+    return this.adminService.updateTeacherLiquidationStatus(id, dto.status, user.id);
   }
 
   // --- Regalías ---
@@ -589,8 +593,8 @@ export class AdminController {
   @Delete("royalty-recipients/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Elimina a quien recibe regalías" })
-  deleteRoyaltyRecipient(@Param("id") id: string) {
-    return this.adminService.deleteRoyaltyRecipient(id);
+  deleteRoyaltyRecipient(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.deleteRoyaltyRecipient(id, user.id);
   }
 
   @Post("royalty-recipients/:id/courses")
@@ -606,8 +610,8 @@ export class AdminController {
   @Delete("royalty-recipients/course-royalties/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Desasocia un curso de quien recibe regalías" })
-  removeCourseRoyalty(@Param("id") id: string) {
-    return this.adminService.removeCourseRoyalty(id);
+  removeCourseRoyalty(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.removeCourseRoyalty(id, user.id);
   }
 
   // --- Campañas de correo a clientes ---
@@ -704,8 +708,8 @@ export class AdminController {
   @Patch("finance/fee-settings")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Configura comisiones de pasarela y las reglas de detracción por tipo de comprador" })
-  updateFeeSettings(@Body(new ZodValidationPipe(updateFeeSettingsSchema)) dto: Record<string, unknown>) {
-    return this.adminService.updateFeeSettings(dto as never);
+  updateFeeSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(updateFeeSettingsSchema)) dto: Record<string, unknown>) {
+    return this.adminService.updateFeeSettings(dto as never, user.id);
   }
 
   @Get("finance/report.pdf")
@@ -805,8 +809,12 @@ export class AdminController {
   @Post("users/:id/reset-password")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Resetea la contraseña de un usuario que lo pidió — sin contraseña en el body, genera una temporal" })
-  resetUserPassword(@Param("id") id: string, @Body(new ZodValidationPipe(adminResetPasswordSchema)) dto: { password?: string }) {
-    return this.adminService.resetUserPassword(id, dto.password);
+  resetUserPassword(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(adminResetPasswordSchema)) dto: { password?: string },
+  ) {
+    return this.adminService.resetUserPassword(id, user.id, dto.password);
   }
 
   @Delete("users/:id")

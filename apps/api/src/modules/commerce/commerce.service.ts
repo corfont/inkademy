@@ -255,8 +255,20 @@ export class CommerceService {
       include: { items: true, payments: true, user: true },
     });
 
-    if (order.status === "PAID") {
-      // ya procesada (idempotencia ante reintentos de webhook)
+    // "Dos webhooks concurrentes del mismo pago (Stripe/Culqi reintentan
+    // esto de rutina) podían leer status !== PAID los dos, y los dos
+    // ejecutar el bloque de matrícula/seat-pool — doble matrícula por un
+    // solo pago" — hallazgo de auditoría. El `updateMany` con guard en el
+    // `where` es la operación atómica: solo UNA llamada concurrente puede
+    // ganar la carrera (la que de verdad actualiza la fila), sin necesidad
+    // de un $transaction para todo el método completo.
+    const claimed = await this.prisma.order.updateMany({
+      where: { id: order.id, status: { not: "PAID" } },
+      data: { status: "PAID" },
+    });
+    if (claimed.count === 0) {
+      // Ya estaba PAID — esta misma llamada reintentada, o una concurrente
+      // que ganó la carrera. Mismo camino idempotente que antes.
       const existingEnrollments = await this.prisma.enrollment.findMany({
         where: { userId: order.userId, enrolledAt: { gte: order.createdAt } },
       });
@@ -265,8 +277,6 @@ export class CommerceService {
         receiptUrl: order.payments[0]?.receiptUrl,
       };
     }
-
-    await this.prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } });
 
     const enrollmentIds: string[] = [];
     for (const item of order.items) {
@@ -460,7 +470,14 @@ export class CommerceService {
    * que no estaba en el alcance de este pedido; queda para un endpoint
    * separado si se necesita.
    */
-  async cancelOrder(orderId: string, input: CancelOrderInput) {
+  /**
+   * "Cancelar una orden reembolsa dinero real y anula un comprobante
+   * tributario — no queda registro de qué ADMIN/SUPPORT lo hizo" —
+   * hallazgo de auditoría de trazabilidad. `actorId` es opcional solo para
+   * no romper cualquier llamador interno que no lo tenga a mano; el
+   * controller SIEMPRE lo manda (viene de @CurrentUser()).
+   */
+  async cancelOrder(orderId: string, input: CancelOrderInput, actorId?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { payments: true, electronicInvoice: true },
@@ -532,6 +549,17 @@ export class CommerceService {
       { noteId: note.id },
       { attempts: 3, backoff: { type: "exponential", delay: 15000 }, removeOnComplete: true },
     );
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "ORDER_CANCEL_REFUND",
+        entity: "Order",
+        entityId: order.id,
+        before: { status: order.status, total: decimalToString(order.total) },
+        after: { status: "REFUNDED", reasonCode: input.reasonCode, reasonDescription: input.reasonDescription, creditNoteId: note.id },
+      },
+    });
 
     return { orderId: order.id, status: "REFUNDED" as const, noteId: note.id };
   }
@@ -732,10 +760,17 @@ export class CommerceService {
   }
 
   /**
-   * Culqi no publica un esquema de verificación de firma tan estandarizado
-   * como Stripe; se documenta como simplificación en IMPLEMENTATION-NOTES.md.
-   * Se asume el payload `{ id: string, type: string, object?: string }` que
-   * Culqi envía en sus eventos de "charge".
+   * Culqi no publica firma de webhook como Stripe — la protección real acá
+   * es NUNCA confiar en el `payload.type` que llega en el body (cualquiera
+   * puede enviarlo con cualquier valor, o sin `type` en absoluto, a esta
+   * ruta pública). En vez de eso, el webhook solo dispara una
+   * re-verificación server-to-server directa contra la API de Culqi
+   * (`verifyChargeSucceeded`) — el estado que importa es el que Culqi
+   * confirma, no el que declaró quien llamó a este endpoint. Antes,
+   * `!payload.type || payload.type.includes("succeeded")...` incluso
+   * trataba un body SIN `type` como éxito — cualquiera que conociera el
+   * `providerRef` de un cargo podía matricularse gratis simulando este
+   * webhook (hallazgo de auditoría de seguridad).
    */
   async handleCulqiWebhook(payload: { id?: string; type?: string; data?: { id?: string } }) {
     const chargeId = payload.data?.id ?? payload.id;
@@ -746,15 +781,16 @@ export class CommerceService {
       this.logger.warn(`Webhook de Culqi para un charge desconocido: ${chargeId}`);
       return { received: true };
     }
+    if (payment.status === "SUCCEEDED") return { received: true }; // idempotente ante reintentos
 
-    const isSuccess = !payload.type || payload.type.includes("succeeded") || payload.type.includes("creation");
-    if (isSuccess && payment.status !== "SUCCEEDED") {
+    const reallySucceeded = await this.culqiProvider.verifyChargeSucceeded(chargeId);
+    if (reallySucceeded) {
       await this.prisma.payment.update({
         where: { id: payment.id },
         data: { status: "SUCCEEDED", paidAt: new Date() },
       });
       await this.finalizeOrderPaid(payment.orderId);
-    } else if (!isSuccess) {
+    } else {
       await this.prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
       await this.prisma.order.update({ where: { id: payment.orderId }, data: { status: "FAILED" } });
     }

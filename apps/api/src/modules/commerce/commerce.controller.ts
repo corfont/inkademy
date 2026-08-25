@@ -57,8 +57,8 @@ export class CommerceController {
     summary:
       "Cancela una orden pagada: reembolsa el cobro original (Culqi/Stripe) y emite la nota de crédito SUNAT correspondiente",
   })
-  cancelOrder(@Param("id") id: string, @Body(new ZodValidationPipe(cancelOrderSchema)) dto: CancelOrderInput) {
-    return this.commerceService.cancelOrder(id, dto);
+  cancelOrder(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(cancelOrderSchema)) dto: CancelOrderInput) {
+    return this.commerceService.cancelOrder(id, dto, user.id);
   }
 }
 

@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
 import { adminApi } from "@/lib/api-client";
+import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { EmailCampaignManager } from "@/components/admin/EmailCampaignManager";
+import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Marketing por correo (admin)" };
 
 export default async function MarketingPage() {
   const accessToken = getServerAccessToken();
-  const [campaigns, areas, companies] = await Promise.all([
-    adminApi.emailCampaigns(accessToken),
-    adminApi.areas(accessToken),
-    adminApi.companies(accessToken),
-  ]);
+  // withFallback: si la API no responde, se muestra la pantalla vacía con
+  // un aviso en vez de tirar al genérico error boundary de Next — mismo
+  // patrón que ya usan /admin/ordenes, /admin/matriculas, etc.
+  const { data: campaigns, live: campaignsLive } = await withFallback(() => adminApi.emailCampaigns(accessToken), [] as any[]);
+  const { data: areas } = await withFallback(() => adminApi.areas(accessToken), [] as any[]);
+  const { data: companies } = await withFallback(() => adminApi.companies(accessToken), [] as any[]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -22,6 +25,7 @@ export default async function MarketingPage() {
           segundo plano, solo a quienes aceptaron recibir correos de marketing.
         </p>
       </div>
+      {!campaignsLive && <Callout variant="info">No pudimos conectar con la API — no se muestran campañas reales por ahora.</Callout>}
       <EmailCampaignManager campaigns={campaigns} areas={areas} companies={companies} />
     </div>
   );

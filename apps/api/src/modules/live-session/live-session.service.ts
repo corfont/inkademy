@@ -66,6 +66,17 @@ export class LiveSessionService {
     }
   }
 
+  /**
+   * "Cualquier TEACHER podía programar/cancelar/reprogramar sesiones de un
+   * curso ajeno con solo conocer el courseId/liveSessionId" — hallazgo de
+   * auditoría de seguridad. ADMIN/SUPPORT (teacherUserId undefined) no
+   * tienen esta restricción.
+   */
+  private async assertTeacherOwnsCourse(courseId: string, teacherUserId: string) {
+    const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
+    if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+  }
+
   /** No se puede programar más horas de las que dura el curso. */
   private assertWithinCourseDuration(existingHours: number, addedHours: number, totalHours: number) {
     if (existingHours + addedHours > totalHours + 0.01) {
@@ -85,7 +96,8 @@ export class LiveSessionService {
     capacity?: number;
     organizerUpn?: string;
     teacherId?: string;
-  }) {
+  }, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(input.courseId, teacherUserId);
     const course = await this.prisma.course.findUnique({ where: { id: input.courseId } });
     if (!course) throw new NotFoundException("Curso no encontrado");
     if (input.endsAt <= input.startsAt) throw new BadRequestException("La hora de término debe ser posterior a la de inicio");
@@ -138,7 +150,8 @@ export class LiveSessionService {
     capacity?: number;
     organizerUpn?: string;
     teacherId?: string;
-  }) {
+  }, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(input.courseId, teacherUserId);
     const course = await this.prisma.course.findUnique({ where: { id: input.courseId } });
     if (!course) throw new NotFoundException("Curso no encontrado");
 
@@ -198,9 +211,10 @@ export class LiveSessionService {
   }
 
   /** El docente/admin puede cancelar en cualquier momento — libera esas horas del presupuesto del curso. */
-  async cancel(liveSessionId: string, actorId: string, reason: string) {
+  async cancel(liveSessionId: string, actorId: string, reason: string, teacherUserId?: string) {
     const session = await this.prisma.liveSession.findUnique({ where: { id: liveSessionId } });
     if (!session) throw new NotFoundException("Sesión en vivo no encontrada");
+    if (teacherUserId) await this.assertTeacherOwnsCourse(session.courseId, teacherUserId);
     if (session.status === "COMPLETED" || session.status === "CANCELLED") {
       throw new BadRequestException("Esta sesión ya finalizó o ya está cancelada");
     }
@@ -252,12 +266,14 @@ export class LiveSessionService {
     liveSessionId: string,
     actorId: string,
     input: { startsAt: Date; endsAt: Date; reason: string },
+    teacherUserId?: string,
   ) {
     const session = await this.prisma.liveSession.findUnique({
       where: { id: liveSessionId },
       include: { course: true },
     });
     if (!session) throw new NotFoundException("Sesión en vivo no encontrada");
+    if (teacherUserId) await this.assertTeacherOwnsCourse(session.courseId, teacherUserId);
     if (session.status === "COMPLETED" || session.status === "CANCELLED") {
       throw new BadRequestException("No se puede reprogramar una sesión ya finalizada o cancelada");
     }

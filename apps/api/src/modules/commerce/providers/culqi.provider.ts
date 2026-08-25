@@ -48,6 +48,39 @@ export class CulqiProvider implements PaymentProvider {
     return { success: true, providerRef: body.id, receiptUrl: body?.receipt_url };
   }
 
+  /**
+   * "Culqi no publica un esquema de verificación de firma tan estandarizado
+   * como Stripe" — pero eso no significa que haya que confiar a ciegas en
+   * el body que llega a /webhooks/culqi. En vez de firma, se hace lo que
+   * Culqi sí soporta bien: re-consultar el cargo directamente contra su API
+   * con la secret key ANTES de marcar una orden como pagada. Sin esto,
+   * cualquiera que conociera (u observara) el `providerRef` de un cargo
+   * podía simular la notificación de éxito y matricularse gratis —
+   * hallazgo de auditoría de seguridad.
+   */
+  async verifyChargeSucceeded(chargeId: string): Promise<boolean> {
+    if (!this.secretKey || chargeId.startsWith("sim_")) {
+      // Modo dev sin secret key configurada: no hay nada real que verificar.
+      return true;
+    }
+    try {
+      const res = await fetch(`https://api.culqi.com/v2/charges/${encodeURIComponent(chargeId)}`, {
+        headers: { Authorization: `Bearer ${this.secretKey}` },
+      });
+      if (!res.ok) {
+        this.logger.warn(`No se pudo verificar el cargo ${chargeId} contra la API de Culqi: HTTP ${res.status}`);
+        return false;
+      }
+      const body = await res.json().catch(() => ({}));
+      // outcome.type "venta_exitosa" es el único estado que Culqi considera
+      // realmente cobrado — cualquier otra cosa (pendiente, rechazado) no cuenta.
+      return body?.outcome?.type === "venta_exitosa";
+    } catch (err) {
+      this.logger.warn(`Error de red verificando el cargo ${chargeId} contra Culqi: ${String(err)}`);
+      return false;
+    }
+  }
+
   async refund(params: RefundParams): Promise<RefundResult> {
     if (!this.secretKey || params.providerRef.startsWith("sim_")) {
       this.logger.warn("CULQI_SECRET_KEY no configurada (o cargo simulado) — simulando reembolso (modo dev)");

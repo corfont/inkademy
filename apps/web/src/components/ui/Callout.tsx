@@ -23,8 +23,15 @@ export interface CalloutProps extends HTMLAttributes<HTMLDivElement>, VariantPro
 
 export function Callout({ className, variant, title, children, ...props }: CalloutProps) {
   const Icon = icons[variant ?? "info"];
+  // "danger" (y "warning", igual de urgente) necesita una región assertiva
+  // (role="alert") para que un lector de pantalla avise DE INMEDIATO de que
+  // algo falló — role="status" es "cortés" y puede anunciarse tarde o nunca
+  // si el usuario está en medio de otra cosa. Antes se usaba "status" para
+  // los cuatro variantes por igual, incluyendo errores de guardado/envío en
+  // todos los formularios admin.
+  const role = variant === "danger" || variant === "warning" ? "alert" : "status";
   return (
-    <div role="status" className={cn(calloutVariants({ variant }), className)} {...props}>
+    <div role={role} className={cn(calloutVariants({ variant }), className)} {...props}>
       <Icon className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
       <div>
         {title && <p className="font-medium">{title}</p>}
