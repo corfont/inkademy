@@ -600,6 +600,8 @@ export class AdminService {
     const isGravado = taxAffectation === "GRAVADO";
     const culqiFeePercent = platformSettings?.culqiFeePercent ?? 3.99;
     const stripeFeePercent = platformSettings?.stripeFeePercent ?? 4.99;
+    const detractionEnabled = platformSettings?.detractionEnabled ?? false;
+    const detractionPercent = platformSettings?.detractionPercent ?? 0;
 
     const feesByCurrency = new Map<string, number>();
     for (const p of paymentsByCurrencyProvider) {
@@ -613,18 +615,49 @@ export class AdminService {
 
     const rows = Array.from(currencies).map((currency) => {
       const income = incomeByCurrency.get(currency) ?? 0;
-      // Base imponible + IGV a partir del precio final ya cobrado (mismo
-      // criterio que apps/worker/src/lib/sunat/ubl-invoice.ts al armar el XML).
-      const igv = isGravado ? income - income / 1.18 : 0;
+      // "Todo curso se le debe aplicar IGV si es nacional y si es
+      // internacional no sé qué se le aplica" — el IGV (taxAffectation)
+      // solo se calcula sobre ventas en PEN (rieles nacionales, Culqi). Una
+      // venta en USD (comprador internacional, Stripe) se trata como
+      // exportación de servicios — 0% por defecto, criterio general pero
+      // que DEBE confirmarse con un contador según el caso — nunca se le
+      // aplica el mismo IGV que a una venta nacional.
+      const igv = currency === "PEN" && isGravado ? income - income / 1.18 : 0;
+      // Detracción SUNAT — apagada por defecto (ver comentario del schema);
+      // solo se resta si el admin la activó explícitamente. Tampoco aplica
+      // a ventas internacionales.
+      const detraction = currency === "PEN" && detractionEnabled ? income * (detractionPercent / 100) : 0;
       const providerFees = feesByCurrency.get(currency) ?? 0;
       const otherExpenses = expensesMap.get(currency) ?? 0;
-      return { currency, income, igv, providerFees, otherExpenses, balance: income - igv - providerFees - otherExpenses };
+      return {
+        currency,
+        income,
+        igv,
+        detraction,
+        providerFees,
+        otherExpenses,
+        balance: income - igv - detraction - providerFees - otherExpenses,
+      };
     });
 
-    return { from: from.toISOString(), to: to.toISOString(), taxAffectation, culqiFeePercent, stripeFeePercent, rows };
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      taxAffectation,
+      culqiFeePercent,
+      stripeFeePercent,
+      detractionEnabled,
+      detractionPercent,
+      rows,
+    };
   }
 
-  async updateFeeSettings(input: { culqiFeePercent?: number; stripeFeePercent?: number }) {
+  async updateFeeSettings(input: {
+    culqiFeePercent?: number;
+    stripeFeePercent?: number;
+    detractionEnabled?: boolean;
+    detractionPercent?: number;
+  }) {
     return this.prisma.platformSettings.upsert({ where: { id: "default" }, create: { id: "default", ...input }, update: input });
   }
 

@@ -374,6 +374,8 @@ export const createExpenseSchema = z.object({
 export const updateFeeSettingsSchema = z.object({
   culqiFeePercent: z.number().min(0).max(100).optional(),
   stripeFeePercent: z.number().min(0).max(100).optional(),
+  detractionEnabled: z.boolean().optional(),
+  detractionPercent: z.number().min(0).max(100).optional(),
 });
 
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---

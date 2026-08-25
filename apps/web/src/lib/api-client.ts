@@ -487,8 +487,10 @@ export const adminApi = {
   // --- Finanzas ---
   financialSummary: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
     apiFetch<any>("/admin/finance/summary", { accessToken, query: params, cache: "no-store" }),
-  updateFeeSettings: (input: { culqiFeePercent?: number; stripeFeePercent?: number }, accessToken?: string | null) =>
-    apiFetch<any>("/admin/finance/fee-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  updateFeeSettings: (
+    input: { culqiFeePercent?: number; stripeFeePercent?: number; detractionEnabled?: boolean; detractionPercent?: number },
+    accessToken?: string | null,
+  ) => apiFetch<any>("/admin/finance/fee-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
   expenses: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/finance/expenses", { accessToken, query: params, cache: "no-store" }),
   createExpense: (
