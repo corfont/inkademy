@@ -1332,25 +1332,47 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
           <form onSubmit={handleAssign} className="flex flex-wrap items-end gap-2 border-t border-paper-border pt-4">
             <div className="flex-1">
               <Label htmlFor="staff-email">Docente</Label>
-              <Select id="staff-email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11">
-                <option value="">Selecciona un docente…</option>
-                {teachers
-                  .filter((t) => !staff.some((s) => s.userEmail === t.email && s.role === role))
-                  .map((t) => (
-                    <option key={t.id} value={t.email}>
-                      {t.firstName} {t.lastName} ({t.email})
-                    </option>
-                  ))}
-              </Select>
-              {teachers.length === 0 && (
-                <p className="mt-1 text-xs text-ash-500">
-                  No hay ninguna cuenta con rol Docente todavía — créala en{" "}
-                  <a href="/admin/usuarios" className="underline">
-                    Usuarios y roles
-                  </a>{" "}
-                  (el docente también puede registrarse él mismo y luego le cambias el rol ahí).
-                </p>
-              )}
+              {(() => {
+                // Antes, si el único docente disponible ya estaba asignado
+                // con el rol elegido, el desplegable simplemente quedaba
+                // vacío sin ninguna explicación — el admin veía "no aparece
+                // ningún docente" y asumía que su cuenta estaba rota, cuando
+                // en realidad ya estaba asignado (con ESE rol, en ESE curso).
+                const available = teachers.filter((t) => !staff.some((s) => s.userEmail === t.email && s.role === role));
+                return (
+                  <>
+                    <Select id="staff-email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-11">
+                      <option value="">Selecciona un docente…</option>
+                      {available.map((t) => (
+                        <option key={t.id} value={t.email}>
+                          {t.firstName} {t.lastName} ({t.email})
+                        </option>
+                      ))}
+                    </Select>
+                    {teachers.length === 0 ? (
+                      <p className="mt-1 text-xs text-ash-500">
+                        No hay ninguna cuenta con rol Docente todavía — créala en{" "}
+                        <a href="/admin/usuarios" className="underline">
+                          Usuarios y roles
+                        </a>{" "}
+                        (el docente también puede registrarse él mismo y luego le cambias el rol ahí).
+                      </p>
+                    ) : (
+                      available.length === 0 && (
+                        <p className="mt-1 text-xs text-ash-500">
+                          Los {teachers.length} docente{teachers.length === 1 ? "" : "s"} que existe{teachers.length === 1 ? "" : "n"} ya
+                          está{teachers.length === 1 ? "" : "n"} asignado{teachers.length === 1 ? "" : "s"} a este curso con el rol
+                          "{STAFF_ROLE_LABEL[role] ?? role}" — cambia el rol arriba, o crea otra cuenta de docente en{" "}
+                          <a href="/admin/usuarios" className="underline">
+                            Usuarios y roles
+                          </a>
+                          .
+                        </p>
+                      )
+                    )}
+                  </>
+                );
+              })()}
             </div>
             <div>
               <Label htmlFor="staff-role">Rol</Label>

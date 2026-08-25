@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, FileDown } from "lucide-react";
-import { API_URL } from "@/lib/api-client";
+import { Download, FileDown, RefreshCw } from "lucide-react";
+import { API_URL, certificateApi, ApiError } from "@/lib/api-client";
 import { getClientAccessToken } from "@/lib/auth";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -39,6 +39,24 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
   const [companyFilter, setCompanyFilter] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regeneratedIds, setRegeneratedIds] = useState<Set<string>>(new Set());
+
+  // "Cuando pongo emitir certificado no me aparece ni una firma y debería
+  // aparecer si ya se tiene configurada" — el PDF se renderiza UNA sola vez;
+  // si la firma se configuró después de esa emisión, queda congelado sin
+  // ella. Esto fuerza a regenerarlo con la firma/plantilla ya actualizada.
+  async function handleRegenerate(certId: string) {
+    setRegeneratingId(certId);
+    try {
+      await certificateApi.regenerate(certId);
+      setRegeneratedIds((s) => new Set(s).add(certId));
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "No pudimos regenerar el PDF.");
+    } finally {
+      setRegeneratingId(null);
+    }
+  }
 
   const courseTitle = (c: CertRow) => (typeof c.title === "string" ? c.title : localize(c.title, locale));
 
@@ -190,6 +208,16 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
                       ) : (
                         <span className="text-xs text-ash-400">generando…</span>
                       )}
+                      <button
+                        type="button"
+                        disabled={regeneratingId === cert.id}
+                        onClick={() => handleRegenerate(cert.id)}
+                        title="Vuelve a generar el PDF — usa la firma/plantilla configurada ahora mismo"
+                        className="flex items-center gap-1 text-ash-500 hover:text-ink-900 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${regeneratingId === cert.id ? "animate-spin" : ""}`} aria-hidden="true" />
+                        {regeneratedIds.has(cert.id) ? "Regenerado ✓" : "Regenerar"}
+                      </button>
                     </div>
                   </td>
                 </tr>

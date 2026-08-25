@@ -337,6 +337,11 @@ export const certificateApi = {
   // Reenvía el PDF del certificado por correo — antes solo se podía descargar o verificar.
   emailToSelf: (id: string, accessToken?: string | null) =>
     apiFetch<{ sent: boolean }>(`/certificates/${id}/email`, { method: "POST", accessToken }),
+  // Fuerza a regenerar el PDF (aplica una firma/plantilla configurada
+  // DESPUÉS de que el certificado ya se había emitido — el worker solo
+  // renderiza una vez, así que sin esto el PDF viejo se quedaba congelado).
+  regenerate: (id: string, accessToken?: string | null) =>
+    apiFetch<{ regenerating: boolean }>(`/admin/certificates/${id}/regenerate`, { method: "POST", accessToken }),
 };
 
 // ---------------------------------------------------------------------------

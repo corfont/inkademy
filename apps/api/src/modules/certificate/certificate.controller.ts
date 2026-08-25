@@ -61,6 +61,15 @@ export class CertificateController {
   }
 
   @ApiBearerAuth()
+  @Post("admin/certificates/:id/regenerate")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Vuelve a generar el PDF (aplica firma/plantilla actualizada)" })
+  regenerate(@Param("id") id: string) {
+    return this.certificateService.regenerate(id);
+  }
+
+  @ApiBearerAuth()
   @Get("admin/certificates/export")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "SUPPORT")

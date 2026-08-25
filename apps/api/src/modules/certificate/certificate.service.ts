@@ -153,6 +153,28 @@ export class CertificateService {
     );
   }
 
+  /**
+   * Vuelve a generar el PDF de un certificado ya emitido — el worker solo
+   * renderiza una vez ("el certificado ya tiene PDF generado, se omite"),
+   * así que si el admin configura/actualiza la firma del docente o de la
+   * institución DESPUÉS de que un certificado ya se emitió, ese PDF queda
+   * congelado sin la firma para siempre. Reporte real: "cuando pongo emitir
+   * certificado no me aparece ni una firma y debería aparecer si ya se
+   * tiene configurada" — el certificado se había generado antes de
+   * configurar la firma.
+   */
+  async regenerate(certificateId: string) {
+    const certificate = await this.prisma.certificate.findUnique({ where: { id: certificateId } });
+    if (!certificate) throw new NotFoundException("Certificado no encontrado");
+    await this.prisma.certificate.update({ where: { id: certificateId }, data: { pdfAssetId: null } });
+    await this.certificateQueue.add(
+      CERTIFICATE_JOBS.GENERATE,
+      { certificateId },
+      { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true },
+    );
+    return { regenerating: true };
+  }
+
   async listMine(userId: string): Promise<CertificateDTO[]> {
     const certificates = await this.prisma.certificate.findMany({
       where: { userId },

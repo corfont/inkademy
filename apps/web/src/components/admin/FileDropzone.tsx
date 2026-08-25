@@ -15,24 +15,38 @@ export function FileDropzone({
   label,
   hint,
   onFile,
+  multiple = false,
 }: {
   accept?: string;
   busy?: boolean;
   label: string;
   hint?: string;
   onFile: (file: File) => void;
+  /** Permite elegir/soltar varios archivos a la vez (p.ej. base de
+   * conocimiento del asistente) — `onFile` se llama una vez por archivo, en
+   * orden. Por defecto false: el resto de usos (portada de curso, video de
+   * lección, etc.) siguen siendo de un solo archivo, sin cambios. */
+  multiple?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
+
+  const handleFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList) return;
+      const files = multiple ? Array.from(fileList) : fileList[0] ? [fileList[0]] : [];
+      files.forEach(onFile);
+    },
+    [multiple, onFile],
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLLabelElement>) => {
       e.preventDefault();
       setDragging(false);
       if (busy) return;
-      const file = e.dataTransfer.files?.[0];
-      if (file) onFile(file);
+      handleFiles(e.dataTransfer.files);
     },
-    [busy, onFile],
+    [busy, handleFiles],
   );
 
   return (
@@ -53,11 +67,11 @@ export function FileDropzone({
       <input
         type="file"
         accept={accept}
+        multiple={multiple}
         className="hidden"
         disabled={busy}
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
+          handleFiles(e.target.files);
           e.target.value = "";
         }}
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
@@ -21,17 +21,32 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function handleUpload(file: File) {
+  // Antes solo se podía subir un documento a la vez (FileDropzone sin
+  // `multiple`) — con una base de conocimiento real (varios manuales, FAQs,
+  // políticas) había que repetir la subida uno por uno. Ahora se suben en
+  // fila (secuencial, no en paralelo, para no saturar la extracción de
+  // texto): `queueTail` encadena las subidas y `pendingCount` decide cuándo
+  // ya se procesó todo el lote para recién ahí apagar "Subiendo…" y
+  // refrescar la lista una sola vez.
+  const queueTail = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingCount = useRef(0);
+
+  function handleUpload(file: File) {
+    if (pendingCount.current === 0) setError(null);
+    pendingCount.current += 1;
     setUploading(true);
-    setError(null);
-    try {
-      await adminApi.uploadChatbotDocument(file, undefined);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No pudimos procesar el documento.");
-    } finally {
-      setUploading(false);
-    }
+    queueTail.current = queueTail.current
+      .then(() => adminApi.uploadChatbotDocument(file, undefined))
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : `No pudimos procesar "${file.name}".`);
+      })
+      .finally(() => {
+        pendingCount.current -= 1;
+        if (pendingCount.current === 0) {
+          setUploading(false);
+          router.refresh();
+        }
+      });
   }
 
   async function toggleActive(doc: any) {
@@ -106,9 +121,10 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
       <FileDropzone
         accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
         busy={uploading}
-        label="Subir documento"
-        hint="PDF con texto real, o .txt/.md"
+        label="Subir documentos"
+        hint="PDF con texto real, o .txt/.md — puedes elegir o soltar varios a la vez"
         onFile={handleUpload}
+        multiple
       />
     </div>
   );
