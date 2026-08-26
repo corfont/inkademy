@@ -25,6 +25,9 @@ import { NotificationModule } from "../notification/notification.module";
   ],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy, GoogleStrategy, MicrosoftStrategy],
-  exports: [AuthService],
+  // JwtModule también se exporta — SupportGateway (WebSockets) necesita
+  // JwtService para verificar el token del handshake a mano, ya que las
+  // conexiones de socket no pasan por el JwtAuthGuard normal de HTTP.
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

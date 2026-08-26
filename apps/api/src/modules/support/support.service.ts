@@ -1,10 +1,11 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { forwardRef, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import type { CreateSupportTicketInput } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { NotificationService } from "../notification/notification.service";
 import { ChatbotService } from "../chatbot/chatbot.service";
 import { ChatbotDocumentsService } from "../chatbot/chatbot-documents.service";
+import { SupportGateway } from "./support.gateway";
 
 function isStaffRole(role?: string) {
   return role === "ADMIN" || role === "SUPPORT";
@@ -23,6 +24,7 @@ export class SupportService {
     private readonly notifications: NotificationService,
     private readonly chatbot: ChatbotService,
     private readonly chatbotDocuments: ChatbotDocumentsService,
+    @Inject(forwardRef(() => SupportGateway)) private readonly gateway: SupportGateway,
   ) {}
 
   async createTicket(userId: string, input: CreateSupportTicketInput) {
@@ -45,8 +47,9 @@ export class SupportService {
     // exactamente el comportamiento de antes de esta función.
     const attempt = await this.chatbot.attemptAutoResolve({ subject: input.subject, category: input.category, message: input.body });
     if (attempt.resolved && attempt.reply) {
-      await this.prisma.supportMessage.create({ data: { ticketId: ticket.id, isAiGenerated: true, body: attempt.reply } });
+      const aiMessage = await this.prisma.supportMessage.create({ data: { ticketId: ticket.id, isAiGenerated: true, body: attempt.reply } });
       await this.prisma.supportTicket.update({ where: { id: ticket.id }, data: { status: "WAITING_USER" } });
+      this.gateway.emitNewMessage(ticket.id, aiMessage);
     }
 
     return ticket;
@@ -102,10 +105,18 @@ export class SupportService {
     return tickets.map((t) => this.mapTicket(t));
   }
 
+  // Campos seguros del autor de un mensaje — NUNCA `include: { author: true }`
+  // en este archivo: eso trae el registro `User` completo, `passwordHash`
+  // incluido, y en `getTicket()` ese objeto se devuelve tal cual al cliente
+  // por REST (hallazgo de seguridad real: cualquiera que viera un ticket
+  // —incluido el propio alumno que lo abrió— recibía el hash de contraseña
+  // de todo el que hubiera escrito en el hilo, staff incluido).
+  private readonly messageAuthorSelect = { select: { id: true, firstName: true, lastName: true, displayName: true, email: true, globalRole: true } } as const;
+
   async getTicket(userId: string, ticketId: string, isGlobalStaff: boolean) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
-      include: { messages: { orderBy: { createdAt: "asc" }, include: { author: true } } },
+      include: { messages: { orderBy: { createdAt: "asc" }, include: { author: this.messageAuthorSelect } } },
     });
     if (!ticket) throw new NotFoundException("Ticket no encontrado");
 
@@ -139,6 +150,15 @@ export class SupportService {
       if (creator) await this.notifications.sendSupportTicketUpdate(creator.email, ticket.subject, creator.id);
     }
 
+    // El email de notificación tarda (cola); el push por socket es
+    // instantáneo — así quien tiene el ticket abierto ve la respuesta sin
+    // esperar a que llegue el correo ni tener que refrescar la página.
+    const messageWithAuthor = await this.prisma.supportMessage.findUnique({
+      where: { id: message.id },
+      include: { author: this.messageAuthorSelect },
+    });
+    this.gateway.emitNewMessage(ticketId, messageWithAuthor ?? message);
+
     return message;
   }
 
@@ -163,7 +183,7 @@ export class SupportService {
   async saveAsKnowledge(ticketId: string) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
-      include: { messages: { orderBy: { createdAt: "asc" }, include: { author: true } } },
+      include: { messages: { orderBy: { createdAt: "asc" }, include: { author: this.messageAuthorSelect } } },
     });
     if (!ticket) throw new NotFoundException("Ticket no encontrado");
     if (!ticket.messages.some((m) => m.isAiGenerated || isStaffRole(m.author?.globalRole))) {

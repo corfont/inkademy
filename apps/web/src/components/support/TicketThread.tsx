@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, BookMarked, Check, Bot } from "lucide-react";
+import { Sparkles, BookMarked, Check, Bot, Radio } from "lucide-react";
 import { supportApi, ApiError } from "@/lib/api-client";
+import { getSupportSocket } from "@/lib/socket";
 import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -57,6 +58,52 @@ export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<any[]>(ticket.messages);
+  const [live, setLive] = useState(false);
+  const seenIds = useRef(new Set(ticket.messages.map((m: any) => m.id)));
+
+  // "Chat en vivo de soporte" — antes había que refrescar la página a mano
+  // para ver una respuesta nueva (ver SupportGateway en la API). Un socket
+  // por ticket abierto: se une a la room, agrega cada mensaje nuevo que
+  // llegue (incluido el propio, así no hay que duplicar la lógica de
+  // "agregar localmente al enviar" vs. "lo que confirma el servidor").
+  useEffect(() => {
+    const socket = getSupportSocket();
+    if (!socket) return;
+    setLive(socket.connected);
+
+    function onConnect() {
+      setLive(true);
+      socket?.emit("ticket:join", { ticketId: ticket.id });
+    }
+    function onDisconnect() {
+      setLive(false);
+    }
+    function onNewMessage(payload: { ticketId: string; message: any }) {
+      if (payload.ticketId !== ticket.id) return;
+      if (seenIds.current.has(payload.message.id)) return;
+      seenIds.current.add(payload.message.id);
+      setMessages((prev) => [...prev, payload.message]);
+      // El estado (OPEN/IN_PROGRESS/WAITING_USER) y el botón "Responder" que
+      // depende de ticket.status !== "CLOSED" viven en el server component
+      // padre — un refresh liviano (sin recargar mensajes, ya los tenemos
+      // en vivo) mantiene esos datos al día sin que el hilo "salte".
+      router.refresh();
+    }
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("message:new", onNewMessage);
+    if (socket.connected) onConnect();
+
+    return () => {
+      socket.emit("ticket:leave", { ticketId: ticket.id });
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("message:new", onNewMessage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket.id]);
 
   async function handleReply() {
     if (!body.trim()) return;
@@ -65,7 +112,10 @@ export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket
     try {
       await supportApi.addMessage(ticket.id, body.trim());
       setBody("");
-      router.refresh();
+      // No se agrega el mensaje acá "a mano" — llega por el socket (ver
+      // arriba) apenas el servidor lo confirma, así el propio remitente ve
+      // exactamente el mismo objeto que ve el otro lado (con su id/autor
+      // reales), sin un doble mensaje optimista que luego haya que reconciliar.
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos enviar tu respuesta.");
     } finally {
@@ -107,7 +157,12 @@ export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket
         </a>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-serif text-2xl font-semibold text-ink-900">{ticket.subject}</h1>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {live && (
+              <span className="flex items-center gap-1 text-xs font-medium text-success" title="Las respuestas nuevas aparecen solas, sin recargar">
+                <Radio className="h-3 w-3 animate-pulse" aria-hidden="true" /> En vivo
+              </span>
+            )}
             <Badge variant={PRIORITY_VARIANT[ticket.priority] ?? "neutral"}>{ticket.priority}</Badge>
             <Badge variant="outline">{STATUS_LABEL[ticket.status] ?? ticket.status}</Badge>
           </div>
@@ -131,7 +186,7 @@ export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket
       </div>
 
       <div className="flex flex-col gap-3">
-        {ticket.messages.map((msg: any) => {
+        {messages.map((msg: any) => {
           const staff = isStaff(msg.author);
           return (
             <Card key={msg.id} className={cn((staff || msg.isAiGenerated) && "border-ink-200 bg-ink-50")}>
