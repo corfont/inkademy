@@ -168,8 +168,15 @@ export class EnrollmentService {
           courseId: e.courseId,
           programId: e.programId,
           title: (offering?.title as Record<string, string>) ?? {},
-          coverImageUrl:
-            e.course?.coverImageAssetId ? this.storage.getPublicUrl(e.course.coverImageAssetId) : null,
+          // "Que el alumno vea bonito cada curso... con su imagen" — antes
+          // solo se resolvía para offeringKind COURSE; un programa/diplomado
+          // matriculado se quedaba siempre sin portada aunque sí tuviera una
+          // configurada.
+          coverImageUrl: e.course?.coverImageAssetId
+            ? this.storage.getPublicUrl(e.course.coverImageAssetId)
+            : e.program?.coverImageAssetId
+              ? this.storage.getPublicUrl(e.program.coverImageAssetId)
+              : null,
           progressPct: e.progressPct,
           status: e.status,
           source: e.source,
