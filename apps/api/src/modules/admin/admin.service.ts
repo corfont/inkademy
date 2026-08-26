@@ -202,13 +202,20 @@ export class AdminService {
       }
     }
 
-    // 3) COURSE_WITHOUT_TEACHER — curso publicado sin ningún CourseStaff role=TEACHER.
+    // 3) COURSE_WITHOUT_TEACHER — curso publicado sin ningún CourseStaff
+    // role=TEACHER. "Los cursos remotos/asincrónicos no necesitan un
+    // docente asignado a menos que cobre alguna regalía" — un curso LIVE/
+    // HYBRID sí necesita a alguien dictando las clases, así que ese caso
+    // siempre avisa; uno RECORDED solo avisa si además tiene una
+    // CourseRoyalty configurada (alguien cobra por él, así que conviene
+    // tener a esa persona registrada como CourseStaff).
     const publishedCourses = await this.prisma.course.findMany({
       where: { status: "PUBLISHED" },
-      include: { staff: true },
+      include: { staff: true, royalties: { select: { id: true } } },
     });
     for (const course of publishedCourses) {
-      if (!course.staff.some((s) => s.role === "TEACHER")) {
+      const teacherRequired = course.modality !== "RECORDED" || course.royalties.length > 0;
+      if (teacherRequired && !course.staff.some((s) => s.role === "TEACHER")) {
         exceptions.push({
           id: `COURSE_WITHOUT_TEACHER:${course.id}`,
           type: "COURSE_WITHOUT_TEACHER",
