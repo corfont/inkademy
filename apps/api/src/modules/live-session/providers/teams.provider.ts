@@ -158,4 +158,16 @@ export class TeamsProvider implements VirtualClassroomProvider {
       };
     });
   }
+
+  /**
+   * "Zoom por defecto, Teams como segunda opción" — la grabación en la nube
+   * de Teams vive en OneDrive/Stream y su recuperación vía Graph requiere
+   * permisos y flujo aparte (`onlineMeetings` recording API) que no se
+   * implementaron en esta entrega. Se documenta como límite conocido en vez
+   * de simularlo — null es honesto, no un placeholder que aparente estar
+   * grabando cuando no lo está.
+   */
+  async getRecordingUrl(_providerMeetingId: string): Promise<string | null> {
+    return null;
+  }
 }

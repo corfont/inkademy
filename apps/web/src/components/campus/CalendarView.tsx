@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, List, LayoutGrid, Radio } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, List, LayoutGrid, Radio, PlayCircle } from "lucide-react";
 import { JoinClassButton } from "@/components/campus/JoinClassButton";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/format";
@@ -14,6 +14,28 @@ export interface CalendarEventLike {
   startsAt: string;
   liveSessionId?: string | null;
   enrollmentId?: string | null;
+  recordingUrl?: string | null;
+}
+
+// "Implementar la grabación de clases" — una vez que la grabación está
+// lista (ver LiveSessionService.syncAttendance), tiene más sentido para el
+// alumno ver la grabación que intentar "Unirme" a una clase que ya pasó.
+function LiveClassAction({ event }: { event: CalendarEventLike }) {
+  if (event.recordingUrl) {
+    return (
+      <a
+        href={event.recordingUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1.5 rounded-md bg-ink-700 px-3 py-1.5 text-sm font-medium text-paper hover:bg-ink-800"
+      >
+        <PlayCircle className="h-4 w-4" aria-hidden="true" />
+        Ver grabación
+      </a>
+    );
+  }
+  if (!event.liveSessionId) return null;
+  return <JoinClassButton liveSessionId={event.liveSessionId} />;
 }
 
 // "Si le doy clic a un curso agendado o actividad me debería derivar ya sea
@@ -211,7 +233,7 @@ export function CalendarView({ events, locale }: { events: CalendarEventLike[]; 
                         <p className="text-xs text-ash-500">{formatDateTime(ev.startsAt, locale)}</p>
                       </div>
                     </div>
-                    {ev.liveSessionId && <JoinClassButton liveSessionId={ev.liveSessionId} />}
+                    {ev.type === "LIVE_CLASS" && <LiveClassAction event={ev} />}
                   </div>
                 ))}
               </div>
@@ -236,7 +258,7 @@ export function CalendarView({ events, locale }: { events: CalendarEventLike[]; 
                     <p className="text-sm text-ash-500">{formatDateTime(event.startsAt, locale)}</p>
                   </div>
                 </div>
-                {event.liveSessionId && <JoinClassButton liveSessionId={event.liveSessionId} />}
+                {event.type === "LIVE_CLASS" && <LiveClassAction event={event} />}
               </CardContent>
             </Card>
           ))}

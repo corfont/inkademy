@@ -82,7 +82,10 @@ export class ZoomProvider implements VirtualClassroomProvider {
         start_time: params.startsAt.toISOString(),
         duration: durationMinutes,
         timezone: "UTC",
-        settings: { join_before_host: false, waiting_room: true },
+        // "Implementar la grabación de clases" — se graba en la nube de Zoom
+        // por defecto, sin que el docente tenga que activarlo a mano cada
+        // vez; getRecordingUrl la recoge después (ver syncAttendance).
+        settings: { join_before_host: false, waiting_room: true, auto_recording: "cloud" },
       }),
     });
     if (!res.ok) {
@@ -162,5 +165,34 @@ export class ZoomProvider implements VirtualClassroomProvider {
       leftAt: v.leftAt,
       durationMin: v.totalSeconds ? Math.round(v.totalSeconds / 60) : null,
     }));
+  }
+
+  /**
+   * Cloud Recordings API — Zoom tarda un rato (minutos, a veces más) en
+   * terminar de procesar la grabación después de que termina la clase, así
+   * que un 404 justo al terminar es esperado (no un error real): se
+   * devuelve null y quien llama simplemente reintenta más tarde (ver el
+   * reintento periódico de la cola "attendance-sync" en el worker).
+   */
+  async getRecordingUrl(providerMeetingId: string): Promise<string | null> {
+    if (providerMeetingId.startsWith("simulated-")) return null;
+    const token = await this.getAccessToken();
+    if (!token) return null;
+
+    const res = await fetch(`${ZOOM_API_BASE}/meetings/${providerMeetingId}/recordings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 404) return null; // todavía no hay grabación (no se grabó, o Zoom no terminó de procesarla)
+    if (!res.ok) {
+      this.logger.error(`Zoom meetings/recordings GET falló (${res.status}): ${await res.text()}`);
+      return null;
+    }
+    const body = await res.json();
+    const files: { recording_type?: string; file_type?: string; play_url?: string }[] = body.recording_files ?? [];
+    const preferred =
+      files.find((f) => f.recording_type === "shared_screen_with_speaker_view") ??
+      files.find((f) => f.file_type === "MP4") ??
+      files[0];
+    return preferred?.play_url ?? null;
   }
 }

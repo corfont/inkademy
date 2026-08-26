@@ -400,8 +400,21 @@ export class LiveSessionService {
       upserted += 1;
     }
 
-    if (new Date() > session.endsAt) {
+    const isPastEnd = new Date() > session.endsAt;
+    if (isPastEnd) {
       await this.prisma.liveSession.update({ where: { id: liveSessionId }, data: { status: "COMPLETED" } });
+    }
+
+    // "Implementar la grabación de clases" — recién tiene sentido buscarla
+    // una vez que la clase terminó, y no se vuelve a pedir si ya la
+    // tenemos (Zoom no la mueve de URL una vez procesada). Un 404
+    // (grabación aún procesándose) es esperado, no un error — se reintenta
+    // solo en la próxima sincronización (manual o del sweep del worker).
+    if (isPastEnd && !session.recordingUrl && session.providerMeetingId) {
+      const recordingUrl = await this.resolveProvider(session.provider).getRecordingUrl(session.providerMeetingId);
+      if (recordingUrl) {
+        await this.prisma.liveSession.update({ where: { id: liveSessionId }, data: { recordingUrl } });
+      }
     }
 
     await this.attendanceSyncQueue.add(

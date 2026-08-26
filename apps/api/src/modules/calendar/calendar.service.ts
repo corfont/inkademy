@@ -20,7 +20,7 @@ export class CalendarService {
           ? { startsAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
           : {}),
       },
-      include: { liveSession: { select: { courseId: true } } },
+      include: { liveSession: { select: { courseId: true, recordingUrl: true } } },
       orderBy: { startsAt: "asc" },
     });
 
@@ -36,7 +36,12 @@ export class CalendarService {
 
     return events.map(({ liveSession, ...e }) => {
       const courseId = e.courseId ?? liveSession?.courseId ?? null;
-      return { ...e, courseId, enrollmentId: courseId ? (enrollmentByCourse.get(courseId) ?? null) : null };
+      return {
+        ...e,
+        courseId,
+        enrollmentId: courseId ? (enrollmentByCourse.get(courseId) ?? null) : null,
+        recordingUrl: liveSession?.recordingUrl ?? null,
+      };
     });
   }
 

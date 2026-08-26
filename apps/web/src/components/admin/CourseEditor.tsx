@@ -1274,26 +1274,41 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
                     {session.teacherId && teachers.find((t) => t.userId === session.teacherId) && (
                       <> · {teachers.find((t) => t.userId === session.teacherId)?.userName}</>
                     )}
+                    {session.status === "COMPLETED" && (
+                      <> · grabación: {session.recordingUrl ? "lista" : session.provider === "TEAMS" ? "no disponible (Teams)" : "procesando…"}</>
+                    )}
                   </p>
                 </div>
               </div>
-              {session.status !== "COMPLETED" && session.status !== "CANCELLED" && (
-                <div className="flex items-center gap-1.5">
-                  <RescheduleSessionControl sessionId={session.id} currentStartsAt={session.startsAt} currentEndsAt={session.endsAt} />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-danger hover:bg-danger-bg"
-                    disabled={busy}
-                    onClick={() => {
-                      const reason = prompt("Motivo de la cancelación:");
-                      if (reason) run(() => liveSessionApi.cancel(session.id, reason)).then(refreshSummary);
-                    }}
+              <div className="flex items-center gap-1.5">
+                {session.recordingUrl && (
+                  <a
+                    href={session.recordingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-ink-700 hover:underline"
                   >
-                    Cancelar
-                  </Button>
-                </div>
-              )}
+                    Ver grabación
+                  </a>
+                )}
+                {session.status !== "COMPLETED" && session.status !== "CANCELLED" && (
+                  <>
+                    <RescheduleSessionControl sessionId={session.id} currentStartsAt={session.startsAt} currentEndsAt={session.endsAt} />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-danger hover:bg-danger-bg"
+                      disabled={busy}
+                      onClick={() => {
+                        const reason = prompt("Motivo de la cancelación:");
+                        if (reason) run(() => liveSessionApi.cancel(session.id, reason)).then(refreshSummary);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ul>

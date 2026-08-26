@@ -29,4 +29,12 @@ export interface VirtualClassroomProvider {
   getAttendanceReport(providerMeetingId: string, organizerUpn: string): Promise<AttendanceRecord[]>;
   /** Reprograma una reunión ya creada (ver LiveSessionService.reschedule). */
   updateMeeting(providerMeetingId: string, organizerUpn: string, params: UpdateMeetingParams): Promise<void>;
+  /**
+   * URL de la grabación en la nube, si ya está lista — null si el proveedor
+   * no soporta grabación, si la reunión no se grabó, o si Zoom todavía no
+   * terminó de procesarla (puede tardar varios minutos tras el fin de la
+   * clase; ver LiveSessionService.syncAttendance y el reintento periódico
+   * del worker en la cola "attendance-sync").
+   */
+  getRecordingUrl(providerMeetingId: string): Promise<string | null>;
 }
