@@ -1,15 +1,115 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon, Pencil } from "lucide-react";
+import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon, Pencil, Copy, Check } from "lucide-react";
 import { adminApi, companyApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { Dialog } from "@/components/ui/Dialog";
 import { ROLE_STYLE, COMPANY_CHIP_STYLE } from "@/lib/role-style";
 import { EditUserModal } from "@/components/admin/EditUserModal";
+
+/**
+ * "El administrador podría resetear la clave de cualquier usuario, inclusive
+ * la de él mismo, pero no le debe preguntar la contraseña actual, solo poner
+ * la nueva" — la API ya funcionaba así (resetUserPassword no pide ni valida
+ * contraseña actual, y no bloquea el propio id). Lo que reemplaza este
+ * diálogo es el prompt()/alert() nativos que usaba antes: frágiles (algunos
+ * navegadores los bloquean), no se ven ni un poco "modernos" y no dejan
+ * copiar la contraseña temporal con un clic.
+ */
+function ResetPasswordDialog({ user, open, onClose }: { user: UserRow; open: boolean; onClose: () => void }) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ tempPassword?: string | null } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function handleClose() {
+    setPassword("");
+    setBusy(false);
+    setError(null);
+    setResult(null);
+    setCopied(false);
+    onClose();
+  }
+
+  async function handleSubmit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await adminApi.resetUserPassword(user.id, password.trim() || undefined);
+      setResult(res);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos restablecer la contraseña.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // portapapeles no disponible: el valor sigue visible en pantalla para copiarlo a mano
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} title={`Restablecer contraseña — ${user.firstName} ${user.lastName}`} className="max-w-md">
+      {result ? (
+        <div className="flex flex-col gap-3">
+          <Callout variant="success">
+            {result.tempPassword ? "Contraseña temporal generada. Solo se muestra esta vez — pásasela al usuario ahora." : "Contraseña actualizada correctamente."}
+          </Callout>
+          {result.tempPassword && (
+            <div className="flex items-center gap-2 rounded-md border border-paper-border bg-paper-muted p-3">
+              <code className="flex-1 select-all font-mono text-sm text-ink-900">{result.tempPassword}</code>
+              <Button size="sm" variant="outline" onClick={() => handleCopy(result.tempPassword!)} className="gap-1.5">
+                {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copiado" : "Copiar"}
+              </Button>
+            </div>
+          )}
+          <Button size="sm" onClick={handleClose} className="self-end">
+            Listo
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-ash-500">
+            Como administrador no necesitas la contraseña actual — solo define la nueva, o deja el campo vacío para generar una temporal automáticamente.
+          </p>
+          <div>
+            <Label htmlFor="reset-pw">Nueva contraseña (opcional)</Label>
+            <Input
+              id="reset-pw"
+              type="text"
+              placeholder="Vacío = generar temporal"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+            />
+          </div>
+          {error && <Callout variant="danger">{error}</Callout>}
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" disabled={busy} onClick={handleClose}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={busy} onClick={handleSubmit}>
+              {busy ? "Restableciendo…" : "Restablecer"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  );
+}
 
 const ROLE_LABEL: Record<string, string> = { STUDENT: "Alumno", TEACHER: "Docente", SUPPORT: "Soporte", ADMIN: "Administrador" };
 // Orden fijo de las chips de rol — coincide con el pedido explícito
@@ -351,6 +451,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
   const [rowError, setRowError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   const [companyId, setCompanyId] = useState("");
   const [companyRole, setCompanyRole] = useState<"COMPANY_ADMIN" | "PARTICIPANT">("PARTICIPANT");
 
@@ -425,27 +526,6 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
       onChange();
     } catch (err) {
       setRowError(err instanceof ApiError ? err.message : "No pudimos quitar la firma.");
-      setBusy(false);
-    }
-  }
-
-  async function handleResetPassword() {
-    const custom = prompt(
-      "Si el usuario ya te dijo qué contraseña quiere, escríbela aquí (mín. 8 caracteres, con letra, número y un carácter especial +-*!$%&).\n\nDeja el campo vacío para generar una temporal y pasársela tú.",
-    );
-    if (custom === null) return; // canceló
-    setBusy(true);
-    setRowError(null);
-    try {
-      const result = await adminApi.resetUserPassword(user.id, custom.trim() || undefined);
-      if (result.tempPassword) {
-        alert(`Contraseña temporal para ${user.email}:\n\n${result.tempPassword}\n\n(Solo se muestra esta vez — pásasela al usuario ahora.)`);
-      } else {
-        alert(`Listo: la contraseña de ${user.email} se actualizó a la que escribiste.`);
-      }
-    } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : "No pudimos restablecer la contraseña.");
-    } finally {
       setBusy(false);
     }
   }
@@ -587,7 +667,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
             {user.status === "active" ? <Ban className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             {user.status === "active" ? "Desactivar" : "Reactivar"}
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={handleResetPassword} className="gap-1.5">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setResetOpen(true)} className="gap-1.5">
             <KeyRound className="h-3.5 w-3.5" />
             Restablecer
           </Button>
@@ -598,6 +678,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
         </div>
       </CardContent>
       {editing && <EditUserModal user={user} open={editing} onClose={() => setEditing(false)} onSaved={onChange} />}
+      <ResetPasswordDialog user={user} open={resetOpen} onClose={() => setResetOpen(false)} />
     </Card>
   );
 }
@@ -607,6 +688,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
 
   async function handleToggleRole(role: string) {
     const next = toggleRole(user, role);
@@ -631,20 +713,6 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
       onChange();
     } catch (err) {
       setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el estado.");
-      setBusy(false);
-    }
-  }
-
-  async function handleResetPassword() {
-    const custom = prompt("Deja vacío para generar una contraseña temporal.");
-    if (custom === null) return;
-    setBusy(true);
-    try {
-      const result = await adminApi.resetUserPassword(user.id, custom.trim() || undefined);
-      alert(result.tempPassword ? `Contraseña temporal: ${result.tempPassword}` : "Contraseña actualizada.");
-    } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : "No pudimos restablecer la contraseña.");
-    } finally {
       setBusy(false);
     }
   }
@@ -697,7 +765,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
           <Button size="sm" variant="ghost" disabled={busy} onClick={handleToggleStatus}>
             {user.status === "active" ? "Desactivar" : "Reactivar"}
           </Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={handleResetPassword}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setResetOpen(true)}>
             Restablecer
           </Button>
           <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
@@ -705,6 +773,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
           </Button>
         </div>
         {editing && <EditUserModal user={user} open={editing} onClose={() => setEditing(false)} onSaved={onChange} />}
+        <ResetPasswordDialog user={user} open={resetOpen} onClose={() => setResetOpen(false)} />
       </td>
     </tr>
   );

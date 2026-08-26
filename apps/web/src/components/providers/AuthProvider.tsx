@@ -4,7 +4,7 @@ import type { AuthUser } from "@inkademy/shared";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { authApi, tryRefresh } from "@/lib/api-client";
-import { clearClientAccessToken, persistSession, readSessionCookie, SESSION_COOKIE } from "@/lib/auth";
+import { clearClientAccessToken, persistSession, readSessionCookie, updateSessionUser, SESSION_COOKIE } from "@/lib/auth";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -44,13 +44,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // en la próxima navegación aunque el usuario siguiera activo. Se
   // refresca una vez al montar (por si la pestaña estuvo inactiva) y luego
   // cada 10 min — con margen sobre los 15 min de vida del token.
+  //
+  // Además, cada ciclo re-sincroniza el usuario completo (`/auth/me`) y
+  // reescribe la cookie `inkademy_session`. Esa cookie es una FOTO tomada
+  // en login/registro/edición de perfil (ver auth.ts); si el rol cambia por
+  // otra vía (p.ej. un admin le agrega el rol ADMIN o EMPRESA a esta cuenta
+  // mientras ya tenía una sesión abierta en otra pestaña/dispositivo), la
+  // foto quedaba desactualizada hasta el próximo login. Como el menú lateral
+  // y el middleware arman los accesos a partir de esa misma cookie, el
+  // síntoma era justamente "a veces carga solo el acceso de usuario y otras
+  // veces completo": dependía de qué tan vieja fuera la cookie de esa sesión
+  // en particular. Con este resync, una pestaña abierta se autocorrige sola
+  // en como máximo un ciclo (y de inmediato al abrir una pestaña nueva).
   useEffect(() => {
     if (!user) return;
-    void tryRefresh();
+    let cancelled = false;
+    async function resync() {
+      await tryRefresh();
+      try {
+        const fresh = await authApi.me();
+        if (!cancelled) {
+          setUser(fresh);
+          updateSessionUser(fresh);
+        }
+      } catch {
+        // token inválido o sin red: el próximo ciclo reintenta
+      }
+    }
+    void resync();
     const interval = setInterval(() => {
-      void tryRefresh();
+      void resync();
     }, 10 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(user)]);
 
