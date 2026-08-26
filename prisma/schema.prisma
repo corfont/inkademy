@@ -700,7 +700,9 @@ model NpsSurveyResponse {
   token       String    @unique @default(cuid())
   sentAt      DateTime  @default(now())
   sentToEmail String
-  // 0-10, escala NPS estándar — null hasta que el contacto responde.
+  // 1-5 (estrellas, no la escala 0-10 clásica — pedido explícito "que sea
+  // con estrellas") — null hasta que el contacto responde. Ver NpsService.listResponses
+  // para cómo se traduce a promotor/pasivo/detractor.
   score       Int?
   comment     String?   @db.Text
   respondedAt DateTime?

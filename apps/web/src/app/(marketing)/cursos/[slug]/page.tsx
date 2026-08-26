@@ -15,7 +15,10 @@ import { localize, formatPrice, formatDateTime, formatDuration, MODALITY_LABEL, 
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const detail = await catalogApi.course(params.slug).catch(() => MOCK_COURSE_DETAIL[params.slug]);
-  return { title: detail ? `${localize(detail.title, "es")} · Inkademy` : "Curso · Inkademy" };
+  // Sin " · Inkademy" acá: el layout raíz ya aplica ese sufijo vía su
+  // `template: "%s · Inkademy"` — agregarlo también acá duplicaba el
+  // sufijo (confirmado en vivo: la pestaña mostraba "A curso · Inkademy · Inkademy").
+  return { title: detail ? localize(detail.title, "es") : "Curso" };
 }
 
 // "Tal vez un curso diga a quién va dirigido, tal vez no" — palabras clave

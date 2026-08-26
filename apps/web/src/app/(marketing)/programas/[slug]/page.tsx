@@ -15,7 +15,10 @@ import { localize, formatPrice, formatDuration } from "@/lib/format";
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
   const program = await catalogApi.program(params.slug).catch(() => fallback);
-  return { title: program ? `${localize(program.title, "es")} · Inkademy` : "Programa · Inkademy" };
+  // Sin " · Inkademy" acá: el layout raíz ya aplica ese sufijo vía su
+  // `template: "%s · Inkademy"` — agregarlo también acá duplicaba el
+  // sufijo ("Programa X · Inkademy · Inkademy").
+  return { title: program ? localize(program.title, "es") : "Programa" };
 }
 
 export default async function ProgramDetailPage({ params }: { params: { slug: string } }) {

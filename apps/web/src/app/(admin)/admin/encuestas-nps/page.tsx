@@ -11,7 +11,7 @@ export default async function AdminNpsPage() {
   const accessToken = getServerAccessToken();
   const { data: question, live } = await withFallback(
     () => npsAdminApi.question(accessToken),
-    { question: { es: "Del 0 al 10, ¿qué tan probable es que recomiendes Inkademy a otra empresa?" }, active: true, updatedAt: null },
+    { question: { es: "¿Qué tan probable es que recomiendes Inkademy a otra empresa?" }, active: true, updatedAt: null },
   );
   const { data: companies } = await withFallback(() => npsAdminApi.companies(accessToken), []);
   const { data: results } = await withFallback(
