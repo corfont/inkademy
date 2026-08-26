@@ -431,7 +431,12 @@ export const upsertAssessmentSchema = z.object({
   type: z.string().min(1).default("quiz"), // quiz | exam | assignment
   minScore: z.number().min(0).max(100).default(70),
   maxAttempts: z.number().int().positive().default(3),
-  timeLimitMinutes: z.number().int().positive().optional(),
+  // "Si no pongo límite de tiempo me aparece un error" — el builder manda
+  // `null` explícito para poder QUITAR un límite ya puesto (con solo
+  // `.optional()`, un PATCH nunca podría limpiarlo: JSON.stringify borra
+  // las claves `undefined`, así que el valor viejo se quedaría para
+  // siempre). `.nullable()` es lo que le faltaba.
+  timeLimitMinutes: z.number().int().positive().nullable().optional(),
   displayMode: z.enum(["ALL_AT_ONCE", "ONE_BY_ONE"]).default("ALL_AT_ONCE"),
   questionOrder: z.enum(["FIXED", "RANDOM"]).default("FIXED"),
   randomizeOptions: z.boolean().default(false),

@@ -10,7 +10,44 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Dialog } from "@/components/ui/Dialog";
 import { localize } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import { ExamStartScreen } from "./ExamStartScreen";
+
+/**
+ * "Debe aparecer un contador grande para que el alumno pueda calcular su
+ * tiempo al momento de rendir el examen" — antes era un texto pequeñito
+ * junto al título, fácil de pasar por alto. Ahora es una barra fija arriba
+ * de la pantalla, con el número grande, que cambia de color cuando queda
+ * poco tiempo (mismo criterio de "avisar antes de que sea tarde" que ya
+ * usa el resto de la app para tiempos límite).
+ */
+function ExamCountdownBar({ remaining, totalSeconds }: { remaining: number; totalSeconds: number }) {
+  const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
+  const seconds = String(remaining % 60).padStart(2, "0");
+  const critical = remaining <= 60;
+  const warning = !critical && (remaining <= 300 || remaining <= totalSeconds * 0.2);
+
+  return (
+    <div
+      role="timer"
+      aria-live="polite"
+      className={cn(
+        "sticky top-0 z-10 mb-6 flex items-center justify-center gap-3 rounded-lg border-2 px-4 py-3 shadow-card transition-colors",
+        critical
+          ? "border-danger bg-danger-bg text-danger"
+          : warning
+            ? "border-warning bg-warning-bg text-warning"
+            : "border-paper-border bg-paper text-ink-900",
+      )}
+    >
+      <Clock className="h-6 w-6 flex-none" aria-hidden="true" />
+      <span className="sr-only">Tiempo restante:</span>
+      <span className="font-mono text-3xl font-bold tabular-nums tracking-wide sm:text-4xl">
+        {minutes}:{seconds}
+      </span>
+    </div>
+  );
+}
 
 export interface AssessmentQuestion {
   id: string;
@@ -187,21 +224,12 @@ function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) 
     );
   }
 
-  const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
-  const seconds = String(remaining % 60).padStart(2, "0");
-
   return (
     <div className="mx-auto max-w-xl">
+      {assessment.timeLimitMinutes ? <ExamCountdownBar remaining={remaining} totalSeconds={totalSeconds} /> : null}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(assessment.title, locale, "Evaluación")}</h1>
-        {assessment.timeLimitMinutes ? (
-          <div className="flex items-center gap-1.5 text-sm font-medium text-ink-800" role="timer" aria-live="polite">
-            <Clock className="h-4 w-4" aria-hidden="true" />
-            {minutes}:{seconds}
-          </div>
-        ) : (
-          <span className="text-xs text-ash-400">Sin límite de tiempo</span>
-        )}
+        {!assessment.timeLimitMinutes && <span className="text-xs text-ash-400">Sin límite de tiempo</span>}
       </div>
       {timeExpired && <Callout variant="warning" className="mb-4">Se acabó el tiempo para este examen — si ya tenías tu archivo listo, igual puedes enviarlo.</Callout>}
       {error && <Callout variant="danger" className="mb-4">{error}</Callout>}
@@ -399,8 +427,6 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
   }, [result]);
 
   const question = assessment.questions[current];
-  const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
-  const seconds = String(remaining % 60).padStart(2, "0");
 
   async function submit() {
     setSubmitting(true);
@@ -478,15 +504,9 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
 
   return (
     <div className="mx-auto max-w-2xl">
+      {assessment.timeLimitMinutes ? <ExamCountdownBar remaining={remaining} totalSeconds={totalSeconds} /> : null}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(assessment.title, locale, "Evaluación")}</h1>
-        {assessment.timeLimitMinutes && (
-          <div className="flex items-center gap-1.5 text-sm font-medium text-ink-800" role="timer" aria-live="polite">
-            <Clock className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">{t("timeRemaining")}:</span>
-            {minutes}:{seconds}
-          </div>
-        )}
       </div>
 
       {error && <Callout variant="danger" className="mb-4">{error}</Callout>}
