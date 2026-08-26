@@ -10,14 +10,19 @@ import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
  * configuró nada). Usa <img> normal en vez de next/image: un logo subido
  * por el admin no tiene un ancho/alto conocido en build time.
  */
-export function BrandLogo({ className }: { className?: string }) {
+export function BrandLogo({ className, maxHeightPx }: { className?: string; maxHeightPx?: number }) {
   const { logoUrl, logoHeightPx } = useBrandSettings();
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={logoUrl || "/brand/logo-horizontal.png"}
       alt="Inkademy"
-      style={{ height: logoHeightPx, width: "auto" }}
+      // maxHeightPx acota el logo en espacios angostos (el header móvil) sin
+      // depender de que el admin sepa que su "Alto del logo" (pensado para
+      // el sidebar de escritorio) también se aplicaba ahí — "el botón menú
+      // no aparecía" porque, a 64px, el logo (proporción ancha) empujaba el
+      // botón de hamburguesa fuera del viewport en pantallas angostas.
+      style={{ height: logoHeightPx, width: "auto", maxHeight: maxHeightPx }}
       className={className}
     />
   );

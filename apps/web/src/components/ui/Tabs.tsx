@@ -39,7 +39,13 @@ export function Tabs({
 
 export function TabsList({ children, className, "aria-label": ariaLabel }: { children: ReactNode; className?: string; "aria-label"?: string }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={cn("flex gap-1 border-b border-paper-border", className)}>
+    // "El botón de menú no aparecía" en /campus/cursos (móvil) — con 4
+    // pestañas sin envolver, esta fila era más ancha que la pantalla y
+    // forzaba TODA la página (incluido el header) a agrandarse, empujando
+    // el botón de menú fuera del viewport. overflow-x-auto + flex-nowrap
+    // hace que solo ESTA fila se desplace horizontalmente, sin arrastrar al
+    // resto de la página.
+    <div role="tablist" aria-label={ariaLabel} className={cn("flex flex-nowrap gap-1 overflow-x-auto border-b border-paper-border", className)}>
       {children}
     </div>
   );
@@ -68,7 +74,7 @@ export function TabsTrigger({ value, children }: { value: string; children: Reac
         }
       }}
       className={cn(
-        "-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+        "-mb-px flex-none whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
         active ? "border-ink-700 text-ink-800" : "border-transparent text-ash-500 hover:text-ash-700",
       )}
     >

@@ -94,10 +94,17 @@ export class CertificateService {
         attendanceOk = (attended / totalSessions) * 100 >= rule.minAttendancePct;
       }
     }
-    // "También pueden haber cursos sin evaluación" — un curso con cero
-    // Assessment nunca debería exigir nota mínima (antes esto bloqueaba el
-    // certificado para siempre, ya que bestAttempt siempre era null).
-    const assessmentCount = await this.prisma.assessment.count({ where: { courseId: enrollment.courseId } });
+    // "Este curso no tiene examen, por lo cual no debería aparecer este
+    // mensaje" — reporte real: un Assessment vacío (creado desde el editor
+    // pero sin ninguna Question ni examen de archivo cargado, p.ej. "A
+    // curso" → assessment "prueba" con 0 preguntas) igual contaba como "el
+    // curso SÍ tiene examen", exigiendo una nota mínima que el alumno JAMÁS
+    // podía alcanzar (no hay nada que responder) — el certificado quedaba
+    // bloqueado para siempre. Ahora solo cuenta como examen real si tiene
+    // preguntas o un archivo de examen cualitativo configurado.
+    const assessmentCount = await this.prisma.assessment.count({
+      where: { courseId: enrollment.courseId, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
+    });
     let scoreOk = true;
     let bestAttempt: { score: number | null } | null = null;
     if (assessmentCount > 0) {

@@ -170,16 +170,16 @@ export function SidebarShell({
         <div className="mt-auto pt-6">{topRight}</div>
       </aside>
 
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-paper-border bg-paper px-4 lg:hidden">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {canGoBack && (
               <button type="button" onClick={goBack} aria-label="Atrás" className="p-2 text-ink-800">
                 <ArrowLeft className="h-5 w-5" />
               </button>
             )}
-            <Link href={brandHref} className="flex items-center" aria-label="Inkademy">
-              <BrandLogo />
+            <Link href={brandHref} className="flex min-w-0 items-center" aria-label="Inkademy">
+              <BrandLogo maxHeightPx={28} className="max-w-full" />
             </Link>
           </div>
           <button
@@ -226,7 +226,12 @@ export function SidebarShell({
           </div>
         </div>
 
-        <main id="main-content" className="flex-1 bg-paper-muted p-4 sm:p-8">
+        {/* overflow-x-hidden: respaldo — si una pantalla nueva algún día
+            vuelve a tener contenido más ancho que el viewport (como pasaba
+            con las pestañas de "Mis cursos" en móvil), ese contenido se
+            recorta AQUÍ en vez de agrandar todo el documento y empujar el
+            botón de menú del header fuera de la pantalla. */}
+        <main id="main-content" className="min-w-0 flex-1 overflow-x-hidden bg-paper-muted p-4 sm:p-8">
           {children}
         </main>
       </div>

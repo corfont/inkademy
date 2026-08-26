@@ -38,7 +38,12 @@ export class EnrollmentService {
         orderBy: { score: "desc" },
       }),
       this.prisma.liveSession.count({ where: { courseId } }),
-      this.prisma.assessment.count({ where: { courseId } }),
+      // "Este curso no tiene examen, por lo cual no debería aparecer este
+      // mensaje" — un Assessment vacío (sin preguntas ni examen de archivo)
+      // no cuenta como examen real, igual que en CertificateService.checkAndIssueIfEligible.
+      this.prisma.assessment.count({
+        where: { courseId, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
+      }),
       this.prisma.courseRating.findUnique({ where: { enrollmentId } }),
     ]);
     if (!enrollment) return { missing: [], ratingRequired: false, readyForRatingPrompt: false };

@@ -239,7 +239,13 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
               <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
                 <ExternalLink className="h-10 w-10 text-ink-700" aria-hidden="true" />
                 <p className="font-medium text-ink-900">{localize(current.title, locale)}</p>
-                <a href={current.externalUrl} target="_blank" rel="noreferrer" onClick={() => markComplete(current.id)}>
+                {/* "Se puede abrir dentro de esa misma ventana en vez de una
+                    pestaña nueva" — sin target="_blank": navega la misma
+                    pestaña (la mayoría de sitios externos bloquean ser
+                    embebidos en un iframe vía X-Frame-Options/CSP, así que
+                    no se puede "incrustar" dentro del aula; esto es lo más
+                    cercano a "misma ventana" que un sitio ajeno permite). */}
+                <a href={current.externalUrl} onClick={() => markComplete(current.id)}>
                   <Button>Abrir enlace</Button>
                 </a>
               </div>
