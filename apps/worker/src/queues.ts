@@ -22,6 +22,7 @@ export const QUEUE_NAMES = {
   INVOICE: "invoice",
   SUGGESTION: "suggestion",
   SUBTITLES: "subtitles",
+  ASSESSMENT_EXPIRY: "assessment-expiry",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -218,4 +219,19 @@ export const SUBTITLES_JOBS = {
 
 export interface SubtitlesGenerateJobData {
   lessonId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cola "assessment-expiry" — mirror de ASSESSMENT_EXPIRY_JOBS. apps/api
+// encola esto al crear un AssessmentAttempt (solo si el examen tiene
+// timeLimitMinutes), con delay = timeLimitMinutes + margen. El worker solo
+// actúa si para entonces el intento SIGUE IN_PROGRESS (nunca se envió) —
+// lo cierra en FAILED, timedOut=true. Ver processors/assessment-expiry.processor.ts.
+// ---------------------------------------------------------------------------
+export const ASSESSMENT_EXPIRY_JOBS = {
+  EXPIRE_ATTEMPT: "assessment-expiry.expire-attempt",
+} as const;
+
+export interface ExpireAttemptJobData {
+  attemptId: string;
 }

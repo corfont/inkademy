@@ -16,6 +16,7 @@ export const QUEUE_NAMES = {
   INVOICE: "invoice",
   SUGGESTION: "suggestion",
   SUBTITLES: "subtitles",
+  ASSESSMENT_EXPIRY: "assessment-expiry",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -76,4 +77,16 @@ export const SUGGESTION_JOBS = {
 // --- Jobs de la cola "subtitles" ---
 export const SUBTITLES_JOBS = {
   GENERATE: "subtitles.generate",
+} as const;
+
+// --- Jobs de la cola "assessment-expiry" ---
+// "Si un alumno simplemente abandona [el examen], pero si el tiempo
+// concluye cambia su estado a culminado — expiración automática en
+// función a la duración del examen." Delayed job (delay = timeLimitMinutes
+// + margen) encolado al crear el intento; si al cumplirse el plazo sigue
+// IN_PROGRESS (nunca se envió), el worker lo cierra en FAILED — no hay
+// nada que calificar (las respuestas solo se guardan al enviar), así que
+// no pasa por el pipeline normal de corrección.
+export const ASSESSMENT_EXPIRY_JOBS = {
+  EXPIRE_ATTEMPT: "assessment-expiry.expire-attempt",
 } as const;

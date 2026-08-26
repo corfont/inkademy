@@ -25,6 +25,7 @@ import { processInvoiceGenerateJob } from "./processors/invoice.processor";
 import { processInvoiceGenerateNoteJob } from "./processors/credit-note.processor";
 import { processSuggestionAutoRespondJob } from "./processors/suggestion.processor";
 import { processSubtitlesGenerateJob } from "./processors/subtitles.processor";
+import { processExpireAttemptJob } from "./processors/assessment-expiry.processor";
 
 /**
  * La cola "invoice" tiene dos jobs (boleta/factura y nota de crédito/
@@ -66,6 +67,7 @@ const workers: Worker[] = [
   // espera a que lo procese — varios en paralelo competirían por el mismo
   // ancho de banda de subida sin ganar nada.
   new Worker(QUEUE_NAMES.SUBTITLES, processSubtitlesGenerateJob, { connection, concurrency: 1 }),
+  new Worker(QUEUE_NAMES.ASSESSMENT_EXPIRY, processExpireAttemptJob, { connection, concurrency: 5 }),
 ];
 
 workers.forEach((worker, i) => attachLifecycleLogs(worker, Object.values(QUEUE_NAMES)[i]));

@@ -6,11 +6,20 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import type { Queue } from "bullmq";
 import type { PrismaClient, Question } from "@inkademy/db";
 import type { AssessmentAttemptSubmission, AssessmentResultDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { QUEUE_NAMES, ASSESSMENT_EXPIRY_JOBS } from "../../common/queues/queue.constants";
 import { CertificateService } from "../certificate/certificate.service";
 import { StorageService } from "../../storage/storage.service";
+
+// Margen sobre timeLimitMinutes antes de dar por abandonado un intento
+// nunca enviado — mismo criterio que TIME_LIMIT_GRACE_SECONDS en
+// submitAttempt (no penalizar la latencia de red del último tramo), pero
+// acá se necesita en minutos para el delay del job.
+const ABANDONED_ATTEMPT_GRACE_MINUTES = 1;
 
 // Piso conservador de segundos por pregunta — asume que ni siquiera leer el
 // enunciado y las opciones toma menos de esto. Por debajo de este mínimo
@@ -64,6 +73,7 @@ export class AssessmentService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly certificateService: CertificateService,
     private readonly storageService: StorageService,
+    @InjectQueue(QUEUE_NAMES.ASSESSMENT_EXPIRY) private readonly assessmentExpiryQueue: Queue,
   ) {}
 
   /**
@@ -168,12 +178,19 @@ export class AssessmentService {
       throw new ForbiddenException("Completa el curso para poder presentar esta evaluación");
     }
 
-    const attemptsCount = await this.prisma.assessmentAttempt.count({ where: { assessmentId, userId } });
+    // Acotado a ESTA matrícula (no a todas las del usuario para este
+    // examen) — "si vuelves a llevar el curso es gratis" crea una
+    // matrícula nueva; sin este acotado, un alumno que retoma el curso
+    // seguiría topado por los intentos ya gastados en la matrícula
+    // anterior, aunque esté "empezando de cero".
+    const attemptsCount = await this.prisma.assessmentAttempt.count({
+      where: { assessmentId, userId, enrollmentId: enrollment.id },
+    });
     if (attemptsCount >= assessment.maxAttempts) {
       throw new ForbiddenException("Alcanzaste el número máximo de intentos");
     }
 
-    return this.prisma.assessmentAttempt.create({
+    const attempt = await this.prisma.assessmentAttempt.create({
       data: {
         assessmentId,
         enrollmentId: enrollment.id,
@@ -181,6 +198,27 @@ export class AssessmentService {
         attemptNumber: attemptsCount + 1,
       },
     });
+
+    // "Si un alumno simplemente abandona, pero si el tiempo concluye
+    // cambia su estado a culminado — expiración automática" — se programa
+    // UNA vez, al crear el intento (no en cada request), para el momento
+    // exacto en que se agota su propio tiempo. Si el alumno SÍ lo envía a
+    // tiempo, el job igual se dispara más tarde pero no hace nada (ver
+    // processor: solo actúa si sigue IN_PROGRESS).
+    if (assessment.timeLimitMinutes) {
+      await this.assessmentExpiryQueue.add(
+        ASSESSMENT_EXPIRY_JOBS.EXPIRE_ATTEMPT,
+        { attemptId: attempt.id },
+        {
+          delay: (assessment.timeLimitMinutes + ABANDONED_ATTEMPT_GRACE_MINUTES) * 60_000,
+          attempts: 2,
+          removeOnComplete: true,
+          removeOnFail: 50,
+        },
+      );
+    }
+
+    return attempt;
   }
 
   async submitAttempt(
@@ -271,7 +309,7 @@ export class AssessmentService {
     }
 
     const attemptsUsed = await this.prisma.assessmentAttempt.count({
-      where: { assessmentId: attempt.assessmentId, userId },
+      where: { assessmentId: attempt.assessmentId, userId, enrollmentId: attempt.enrollmentId },
     });
 
     return {
@@ -331,7 +369,7 @@ export class AssessmentService {
     });
 
     const attemptsUsed = await this.prisma.assessmentAttempt.count({
-      where: { assessmentId: attempt.assessmentId, userId },
+      where: { assessmentId: attempt.assessmentId, userId, enrollmentId: attempt.enrollmentId },
     });
 
     return {
