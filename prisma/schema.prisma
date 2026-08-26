@@ -374,6 +374,12 @@ model Lesson {
   title           Json
   contentType     LessonContentType
   videoAssetId    String?
+  // "Pongo un link para que se ejecute al inicio... no funciona" — bug real
+  // confirmado: contentType=LINK se podía elegir al crear una lección, pero
+  // no existía NINGÚN campo para guardar a qué URL apunta, y el reproductor
+  // del alumno no tenía ninguna rama para mostrarlo — la lección quedaba
+  // completamente inutilizable, con o sin "inicia el curso" marcado.
+  externalUrl     String?
   durationMinutes Int?
   isFreePreview   Boolean            @default(false)
   // "El administrador debe indicar si ese video inicia el curso o es

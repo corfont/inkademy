@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { CheckCircle2, Circle, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial } from "@/lib/mock-data";
 import { meApi } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -210,6 +210,19 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                   )}
                 </video>
                 {detail.blockMainVideoDownload !== false && watermarkLabel && <VideoWatermark label={watermarkLabel} />}
+              </div>
+            ) : current?.contentType === "LINK" && current.externalUrl ? (
+              // "Pongo un link... no funciona" — antes contentType=LINK no
+              // tenía ningún campo para la URL ni ninguna forma de abrirla;
+              // un enlace externo no se puede autoejecutar (los navegadores
+              // bloquean pestañas/redirecciones sin que el alumno haga clic
+              // primero), así que el CTA claro es lo más "automático" posible.
+              <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
+                <ExternalLink className="h-10 w-10 text-ink-700" aria-hidden="true" />
+                <p className="font-medium text-ink-900">{localize(current.title, locale)}</p>
+                <a href={current.externalUrl} target="_blank" rel="noreferrer" onClick={() => markComplete(current.id)}>
+                  <Button>Abrir enlace</Button>
+                </a>
               </div>
             ) : officeViewerUrl ? (
               <iframe title={officeMaterial?.title} src={officeViewerUrl} className="h-[32rem] w-full rounded-lg border border-paper-border" />

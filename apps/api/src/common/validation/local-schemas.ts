@@ -109,6 +109,8 @@ export const upsertLessonSchema = z.object({
   order: z.number().int().nonnegative().optional(),
   contentType: z.enum(["VIDEO", "PDF", "LINK", "TEXT"]),
   videoAssetId: z.string().optional(),
+  // Solo tiene sentido para contentType=LINK — a qué URL apunta la lección.
+  externalUrl: z.string().url().optional().nullable(),
   durationMinutes: z.number().int().positive().optional(),
   isFreePreview: z.boolean().optional(),
   isCourseStarter: z.boolean().optional(),

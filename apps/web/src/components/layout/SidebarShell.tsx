@@ -3,12 +3,44 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/layout/BrandLogo";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Menu, X, ArrowLeft, Home } from "lucide-react";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { cn } from "@/lib/cn";
+
+// "El botón retroceder no llega hasta la página de inicio, se desactiva
+// antes" — router.back() delega en el historial CRUDO del navegador, que
+// incluye entradas de fuera de la app (o de ANTES de iniciar sesión) y se
+// comporta distinto según cómo se llegó a la página (link externo, pestaña
+// nueva, un redirect que hizo replace() en vez de push()) — el propio
+// código ya lo advertía como "no 100% confiable". En vez de intentar leer
+// ese historial opaco, se lleva una pila propia de la app en
+// sessionStorage (sobrevive a cambiar de sección admin/campus/docente,
+// que remonta este componente) — "Atrás" navega exactamente a la página
+// anterior QUE LA APP REALMENTE VISITÓ, sin las sorpresas del historial
+// del navegador.
+const NAV_STACK_KEY = "inkademy:nav-stack";
+const NAV_STACK_MAX = 50;
+
+function readNavStack(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(NAV_STACK_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeNavStack(stack: string[]) {
+  try {
+    window.sessionStorage.setItem(NAV_STACK_KEY, JSON.stringify(stack.slice(-NAV_STACK_MAX)));
+  } catch {
+    // sessionStorage puede no estar disponible (modo privado estricto) — el botón sigue funcionando, solo cae siempre a brandHref.
+  }
+}
 
 export interface SidebarNavItem {
   href: string;
@@ -51,13 +83,41 @@ export function SidebarShell({
   };
   // "el sistema no tiene un botón atrás... tengo que estar a cada rato dando
   // retroceder al navegador" — antes no había ninguna forma de volver salvo
-  // el botón nativo del navegador. router.back() no es 100% confiable si el
-  // usuario llegó por un link externo/nueva pestaña (no hay historial propio
-  // de la app); en ese caso cae a brandHref (el panel de inicio del rol).
+  // el botón nativo del navegador. Ahora "Atrás" recorre la pila propia de
+  // la app (ver NAV_STACK_KEY arriba) en vez del historial crudo del
+  // navegador; si no queda nada más atrás, cae a brandHref (el panel de
+  // inicio del rol).
   const isHome = pathname === brandHref;
+  // "No llega hasta la página de inicio, se desactiva antes" — el bug real:
+  // antes el botón se deshabilitaba apenas pathname===brandHref, pero un
+  // usuario con más de un rol (ver roles.includes("TEACHER")/("STUDENT") en
+  // cada layout) puede cruzar de /admin a /campus y de vuelta — /campus
+  // TAMBIÉN es "home" para ese layout, así que el botón se apagaba ahí
+  // mismo aunque siguiera habiendo páginas de /admin más atrás en la pila.
+  // Ahora "puede retroceder" se calcula de la pila real, no de si la
+  // página actual coincide con brandHref.
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  useEffect(() => {
+    if (!pathname) return;
+    const stack = readNavStack();
+    if (stack[stack.length - 1] !== pathname) {
+      stack.push(pathname);
+      writeNavStack(stack);
+    }
+    setCanGoBack(stack.length > 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   function goBack() {
-    if (typeof window !== "undefined" && window.history.length > 1) router.back();
-    else router.push(brandHref);
+    const stack = readNavStack();
+    // La entrada en el tope es SIEMPRE la página actual (se agregó en el
+    // efecto de arriba) — hay que sacarla primero para encontrar la
+    // anterior de verdad.
+    if (stack.length > 0 && stack[stack.length - 1] === pathname) stack.pop();
+    const previous = stack.pop();
+    writeNavStack(stack);
+    router.push(previous ?? brandHref);
   }
 
   const nav = (
@@ -113,7 +173,7 @@ export function SidebarShell({
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="flex h-16 items-center justify-between border-b border-paper-border bg-paper px-4 lg:hidden">
           <div className="flex items-center gap-2">
-            {!isHome && (
+            {canGoBack && (
               <button type="button" onClick={goBack} aria-label="Atrás" className="p-2 text-ink-800">
                 <ArrowLeft className="h-5 w-5" />
               </button>
@@ -144,7 +204,7 @@ export function SidebarShell({
             <button
               type="button"
               onClick={goBack}
-              disabled={isHome}
+              disabled={!canGoBack}
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-ash-600 hover:bg-paper-muted hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />

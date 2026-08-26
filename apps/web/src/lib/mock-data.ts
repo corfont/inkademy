@@ -321,6 +321,8 @@ export interface ClassroomLesson {
   // lección iniciadora se abre de una vez al entrar al curso.
   isCourseStarter?: boolean;
   videoUrl?: string;
+  // Solo aplica a contentType="LINK" — a qué URL apunta la lección.
+  externalUrl?: string | null;
   // Subtítulos/transcripción automática (Fase 2, generados con Gemini) —
   // solo viene seteado cuando ya están listos (ver EnrollmentService.getMineDetail).
   subtitlesUrl?: string;

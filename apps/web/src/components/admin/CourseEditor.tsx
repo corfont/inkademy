@@ -758,6 +758,20 @@ function LessonRow({
   const [newMaterialCategory, setNewMaterialCategory] = useState<"MAIN" | "SUPPLEMENTARY">("MAIN");
   const [uploading, setUploading] = useState(false);
   const [subtitlesRequesting, setSubtitlesRequesting] = useState(false);
+  const [linkUrl, setLinkUrl] = useState(lesson.externalUrl ?? "");
+  const [savingLink, setSavingLink] = useState(false);
+
+  async function handleSaveLink() {
+    setSavingLink(true);
+    try {
+      await adminApi.updateLesson(lesson.id, { externalUrl: linkUrl.trim() || null });
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar el enlace.");
+    } finally {
+      setSavingLink(false);
+    }
+  }
 
   async function handleGenerateSubtitles() {
     setSubtitlesRequesting(true);
@@ -853,6 +867,24 @@ function LessonRow({
             <span>Sin video todavía</span>
           )}
           <DropLabel accept="video/*" busy={uploading} label="Subir video" onFile={handleVideoUpload} />
+        </div>
+      )}
+      {lesson.contentType === "LINK" && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-ash-600">
+          <Input
+            className="h-8 max-w-md text-xs"
+            placeholder="https://…"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+          />
+          <Button size="sm" variant="outline" disabled={savingLink || linkUrl === (lesson.externalUrl ?? "")} onClick={handleSaveLink}>
+            {savingLink ? "Guardando…" : "Guardar enlace"}
+          </Button>
+          {lesson.externalUrl && (
+            <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="text-ink-700 hover:underline">
+              Abrir ↗
+            </a>
+          )}
         </div>
       )}
       {lesson.contentType === "VIDEO" && lesson.videoAssetId && (
