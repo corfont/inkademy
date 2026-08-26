@@ -65,6 +65,11 @@ export const completeProfileSchema = z.object({
   socialLinks: socialLinksSchema.optional(),
   marketingConsentEmail: z.boolean().optional(),
   marketingConsentWhatsapp: z.boolean().optional(),
+  // "Los docentes deberán poder registrar su número de cuenta bancaria,
+  // CCI y banco" — para saber a dónde transferir su liquidación.
+  bankName: z.string().optional(),
+  bankAccountNumber: z.string().optional(),
+  bankAccountCci: z.string().optional(),
 });
 export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 

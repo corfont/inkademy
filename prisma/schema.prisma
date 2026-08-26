@@ -93,6 +93,13 @@ model User {
   // pero se guarda en User (no en un modelo aparte) porque el docente ya
   // es un User con globalRole=TEACHER.
   signatureAssetId      String?
+  // "Los docentes deberán poder registrar su número de cuenta bancaria,
+  // CCI y banco" — para que el admin sepa a dónde transferir la
+  // liquidación. Mismo criterio que signatureAssetId: vive en User (no en
+  // un modelo aparte) porque el docente ya es un User con globalRole=TEACHER.
+  bankName              String?
+  bankAccountNumber     String?
+  bankAccountCci        String?
   marketingConsentEmail    Boolean @default(false)
   marketingConsentWhatsapp Boolean @default(false)
   profileCompletedAt    DateTime?

@@ -49,6 +49,9 @@ interface ProfileFormValues {
   tiktok: string;
   marketingConsentEmail: boolean;
   marketingConsentWhatsapp: boolean;
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountCci: string;
 }
 
 function toFormValues(p: FullProfileDTO | null, fallbackFirstName: string, fallbackLastName: string, fallbackLocale: string, fallbackTimezone: string): ProfileFormValues {
@@ -76,6 +79,9 @@ function toFormValues(p: FullProfileDTO | null, fallbackFirstName: string, fallb
     tiktok: p?.socialLinks?.tiktok ?? "",
     marketingConsentEmail: p?.marketingConsentEmail ?? false,
     marketingConsentWhatsapp: p?.marketingConsentWhatsapp ?? false,
+    bankName: p?.bankName ?? "",
+    bankAccountNumber: p?.bankAccountNumber ?? "",
+    bankAccountCci: p?.bankAccountCci ?? "",
   };
 }
 
@@ -88,6 +94,11 @@ export default function ProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [areas, setAreas] = useState(MOCK_AREAS);
+
+  // "Los docentes deberán poder registrar su número de cuenta bancaria,
+  // CCI y banco" — solo tiene sentido para quien puede tener una
+  // liquidación (mismo criterio de roles que el resto del sidebar).
+  const isTeacher = user?.globalRole === "TEACHER" || (user?.secondaryRoles ?? []).includes("TEACHER");
 
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<ProfileFormValues>({
     defaultValues: toFormValues(null, user?.firstName ?? "", user?.lastName ?? "", user?.locale ?? "es", user?.timezone ?? "America/Lima"),
@@ -148,6 +159,9 @@ export default function ProfilePage() {
         },
         marketingConsentEmail: values.marketingConsentEmail,
         marketingConsentWhatsapp: values.marketingConsentWhatsapp,
+        bankName: values.bankName || undefined,
+        bankAccountNumber: values.bankAccountNumber || undefined,
+        bankAccountCci: values.bankAccountCci || undefined,
       });
       setUser(updated);
       updateSessionUser(updated);
@@ -296,6 +310,27 @@ export default function ProfilePage() {
             </div>
           </fieldset>
         </section>
+
+        {isTeacher && (
+          <section>
+            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Datos bancarios</h2>
+            <p className="mb-3 text-sm text-ash-500">A dónde te transferimos tu liquidación.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="bankName">Banco</Label>
+                <Input id="bankName" {...register("bankName")} />
+              </div>
+              <div>
+                <Label htmlFor="bankAccountNumber">Número de cuenta</Label>
+                <Input id="bankAccountNumber" {...register("bankAccountNumber")} />
+              </div>
+              <div>
+                <Label htmlFor="bankAccountCci">CCI</Label>
+                <Input id="bankAccountCci" {...register("bankAccountCci")} />
+              </div>
+            </div>
+          </section>
+        )}
 
         <section>
           <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("socialLinks")}</h2>

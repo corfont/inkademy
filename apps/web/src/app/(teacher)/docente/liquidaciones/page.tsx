@@ -51,10 +51,52 @@ export default async function MyLiquidationsPage() {
                 </p>
               </div>
               {Number(l.deductions) > 0 && (
-                <p className="text-xs text-ash-500">
-                  Descuento por tardanza/salida temprana: {currencySymbol(l.currency)}
-                  {Number(l.deductions).toFixed(2)} {l.deductionsWaived && "(perdonado)"}
-                </p>
+                <div className="text-xs text-ash-500">
+                  <p>
+                    Descuento por tardanza/salida temprana: {currencySymbol(l.currency)}
+                    {Number(l.deductions).toFixed(2)} {l.deductionsWaived && "(perdonado)"}
+                  </p>
+                  {/* "Que sepa POR QUÉ se le está descontando, de manera
+                      proporcional y detallada" — desglose sesión por
+                      sesión: no basta con el monto total. `detail` guarda
+                      { sessions: [...], hourlyRateOtherActivities }, no un
+                      array suelto (ver AdminService.listTeacherLiquidations). */}
+                  {Array.isArray(l.detail?.sessions) && l.detail.sessions.some((d: any) => d.latenessMinutes > 0 || d.earlinessMinutes > 0) && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-ink-600 hover:underline">Ver detalle por clase</summary>
+                      <table className="mt-2 w-full text-left">
+                        <thead>
+                          <tr className="text-[0.65rem] uppercase tracking-wide text-ash-400">
+                            <th className="pb-1 pr-3">Clase</th>
+                            <th className="pb-1 pr-3">Tardanza</th>
+                            <th className="pb-1 pr-3">Salida temprana</th>
+                            <th className="pb-1 pr-3">Tolerancia</th>
+                            <th className="pb-1">Descuento</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {l.detail.sessions
+                            .filter((d: any) => d.latenessMinutes > 0 || d.earlinessMinutes > 0)
+                            .map((d: any, i: number) => (
+                              <tr key={d.sessionId ?? i} className="border-t border-paper-border">
+                                <td className="py-1 pr-3">
+                                  {d.courseTitle?.es ?? "Clase"}
+                                  {d.sessionStartsAt && ` · ${new Date(d.sessionStartsAt).toLocaleDateString("es-PE")}`}
+                                </td>
+                                <td className="py-1 pr-3">{d.latenessMinutes > 0 ? `${d.latenessMinutes} min` : "—"}</td>
+                                <td className="py-1 pr-3">{d.earlinessMinutes > 0 ? `${d.earlinessMinutes} min` : "—"}</td>
+                                <td className="py-1 pr-3">{d.toleranceMinutes} min</td>
+                                <td className="py-1">
+                                  {currencySymbol(l.currency)}
+                                  {(((d.scheduledMinutes - d.payableMinutes) / 60) * d.hourlyRateTeaching).toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </details>
+                  )}
+                </div>
               )}
               {Number(l.advancesDeducted) > 0 && (
                 <p className="text-xs text-ash-500">

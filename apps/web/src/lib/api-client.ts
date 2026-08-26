@@ -146,6 +146,10 @@ export interface FullProfileDTO extends AuthUser {
   socialLinks: SocialLinks | null;
   marketingConsentEmail: boolean;
   marketingConsentWhatsapp: boolean;
+  // "Los docentes deberán poder registrar su número de cuenta bancaria, CCI y banco".
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankAccountCci: string | null;
 }
 
 export const authApi = {

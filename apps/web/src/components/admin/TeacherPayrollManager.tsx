@@ -144,7 +144,17 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
                 <tbody className="divide-y divide-paper-border">
                   {liquidations.map((l) => (
                     <tr key={l.id}>
-                      <td className="p-2 font-medium">{teacherName(l.teacher)}</td>
+                      <td className="p-2 font-medium">
+                        {teacherName(l.teacher)}
+                        {l.teacher?.bankAccountNumber ? (
+                          <p className="mt-0.5 font-normal text-ash-500">
+                            {l.teacher.bankName ?? "Banco no indicado"} · {l.teacher.bankAccountNumber}
+                            {l.teacher.bankAccountCci && ` · CCI ${l.teacher.bankAccountCci}`}
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 font-normal text-warning">Sin cuenta bancaria registrada</p>
+                        )}
+                      </td>
                       <td className="p-2">
                         {new Date(l.periodStart).toLocaleDateString("es-PE")} — {new Date(l.periodEnd).toLocaleDateString("es-PE")}
                       </td>

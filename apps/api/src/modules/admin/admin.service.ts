@@ -1355,12 +1355,73 @@ export class AdminService {
     return { deleted: true };
   }
 
-  listTeacherLiquidations(teacherId?: string) {
-    return this.prisma.teacherLiquidation.findMany({
+  /**
+   * "Eso se verá en su liquidación de manera proporcional y detallada
+   * para que el docente sepa por qué se le está descontando" — `detail`
+   * (JSON) ya traía el desglose sesión por sesión (minutos de tardanza/
+   * salida temprana, tolerancia, tarifa) desde que se generó la
+   * liquidación, pero solo con `sessionId` — nunca se resolvía a qué
+   * clase/curso correspondía cada fila, así que ninguna pantalla podía
+   * mostrarlo de forma legible. Se resuelve acá (curso + fecha de la
+   * clase) para todas las liquidaciones de una sola pasada.
+   */
+  async listTeacherLiquidations(teacherId?: string) {
+    const liquidations = await this.prisma.teacherLiquidation.findMany({
       where: teacherId ? { teacherId } : undefined,
-      include: { teacher: { select: { firstName: true, lastName: true, email: true } }, advances: true },
+      include: {
+        // "Al momento de transferir su pago" — el admin necesita ver el
+        // banco/cuenta/CCI del docente justo donde marca la liquidación
+        // como pagada, sin tener que ir a buscarlo a otra pantalla.
+        teacher: { select: { firstName: true, lastName: true, email: true, bankName: true, bankAccountNumber: true, bankAccountCci: true } },
+        advances: true,
+      },
       orderBy: { periodStart: "desc" },
     });
+
+    // El JSON guardado por generateTeacherLiquidation es
+    // { sessions: [...], hourlyRateOtherActivities } — NO un array suelto.
+    const sessionsOf = (detail: unknown): Array<Record<string, unknown>> => {
+      const list = (detail as { sessions?: unknown })?.sessions;
+      return Array.isArray(list) ? (list as Array<Record<string, unknown>>) : [];
+    };
+
+    const sessionIds = liquidations.flatMap((l) =>
+      sessionsOf(l.detail)
+        .map((d) => d.sessionId)
+        .filter((id): id is string => typeof id === "string"),
+    );
+    const sessions = sessionIds.length
+      ? await this.prisma.liveSession.findMany({
+          where: { id: { in: sessionIds } },
+          include: { course: { select: { title: true } } },
+        })
+      : [];
+    const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
+    return liquidations.map((l) => ({
+      ...l,
+      // Prisma.Decimal no serializa a JSON como número plano — sin esto el
+      // frontend mostraba "S/ NaN" en Bruto/Descuento/Adelantos/Neto
+      // (mismo caso que Order/Course/PartnerInstitution). Nunca se había
+      // notado porque no existía ninguna liquidación con montos reales
+      // hasta ahora.
+      grossAmount: decimalToString(l.grossAmount),
+      deductions: decimalToString(l.deductions),
+      advancesDeducted: decimalToString(l.advancesDeducted),
+      netAmount: decimalToString(l.netAmount),
+      advances: l.advances.map((a) => ({ ...a, amount: decimalToString(a.amount) })),
+      detail: {
+        ...(l.detail as Record<string, unknown> | null),
+        sessions: sessionsOf(l.detail).map((d) => {
+          const session = typeof d.sessionId === "string" ? sessionById.get(d.sessionId) : undefined;
+          return {
+            ...d,
+            courseTitle: (session?.course?.title as Record<string, string> | undefined) ?? null,
+            sessionStartsAt: session?.startsAt.toISOString() ?? null,
+          };
+        }),
+      },
+    }));
   }
 
   /**
