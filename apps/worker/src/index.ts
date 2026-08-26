@@ -24,6 +24,7 @@ import { processRecommendationJob } from "./processors/recommendation.processor"
 import { processInvoiceGenerateJob } from "./processors/invoice.processor";
 import { processInvoiceGenerateNoteJob } from "./processors/credit-note.processor";
 import { processSuggestionAutoRespondJob } from "./processors/suggestion.processor";
+import { processSubtitlesGenerateJob } from "./processors/subtitles.processor";
 
 /**
  * La cola "invoice" tiene dos jobs (boleta/factura y nota de crédito/
@@ -61,6 +62,10 @@ const workers: Worker[] = [
   new Worker(QUEUE_NAMES.RECOMMENDATION, processRecommendationJob, { connection, concurrency: 5 }),
   new Worker(QUEUE_NAMES.INVOICE, processInvoiceQueueJob, { connection, concurrency: 2 }),
   new Worker(QUEUE_NAMES.SUGGESTION, processSuggestionAutoRespondJob, { connection, concurrency: 3 }),
+  // Concurrencia baja a propósito: cada job sube un video entero a Gemini y
+  // espera a que lo procese — varios en paralelo competirían por el mismo
+  // ancho de banda de subida sin ganar nada.
+  new Worker(QUEUE_NAMES.SUBTITLES, processSubtitlesGenerateJob, { connection, concurrency: 1 }),
 ];
 
 workers.forEach((worker, i) => attachLifecycleLogs(worker, Object.values(QUEUE_NAMES)[i]));

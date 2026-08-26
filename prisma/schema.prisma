@@ -382,6 +382,14 @@ model Lesson {
   // asumir siempre "la primera por orden"). Como mucho una por curso —
   // se valida en AdminService, no a nivel de esquema.
   isCourseStarter Boolean            @default(false)
+  // Subtítulos/transcripción automática (Fase 2) — generados con Gemini
+  // (ya integrado para el asistente de IA, sin credenciales nuevas):
+  // transcribe el audio real del video y devuelve un WebVTT con marcas de
+  // tiempo. NONE = nunca se pidió; PROCESSING = job encolado/corriendo;
+  // READY = subtitlesAssetId tiene el .vtt listo; FAILED = ver subtitlesError.
+  subtitlesAssetId String?
+  subtitlesStatus  String             @default("NONE")
+  subtitlesError   String?
   materials       Material[]
   progress        LessonProgress[]
   notes           LessonNote[]

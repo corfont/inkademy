@@ -321,6 +321,9 @@ export interface ClassroomLesson {
   // lección iniciadora se abre de una vez al entrar al curso.
   isCourseStarter?: boolean;
   videoUrl?: string;
+  // Subtítulos/transcripción automática (Fase 2, generados con Gemini) —
+  // solo viene seteado cuando ya están listos (ver EnrollmentService.getMineDetail).
+  subtitlesUrl?: string;
   materials: ClassroomMaterial[];
   completed: boolean;
   lastPositionSeconds: number;

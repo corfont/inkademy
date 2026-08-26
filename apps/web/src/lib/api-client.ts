@@ -727,6 +727,8 @@ export const adminApi = {
     apiFetch<any>(`/admin/lessons/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteLesson: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/lessons/${id}`, { method: "DELETE", accessToken }),
+  generateSubtitles: (id: string, accessToken?: string | null) =>
+    apiFetch<{ queued: boolean }>(`/admin/lessons/${id}/generate-subtitles`, { method: "POST", accessToken }),
   createMaterial: (
     lessonId: string,
     input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },

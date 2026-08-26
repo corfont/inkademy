@@ -236,6 +236,11 @@ export class EnrollmentService {
                 durationMinutes: l.durationMinutes ?? undefined,
                 isCourseStarter: l.isCourseStarter,
                 videoUrl: l.videoAssetId ? this.storage.getPublicUrl(l.videoAssetId) ?? undefined : undefined,
+                // Subtítulos/transcripción (Fase 2) — solo se manda la URL si
+                // ya están listos (subtitlesStatus="READY"); mientras se
+                // generan o si falló, el reproductor no muestra ningún <track>.
+                subtitlesUrl:
+                  l.subtitlesStatus === "READY" && l.subtitlesAssetId ? this.storage.getPublicUrl(l.subtitlesAssetId) ?? undefined : undefined,
                 materials: l.materials.map(materialDTO),
                 completed: progressByLesson.get(l.id)?.completed ?? false,
                 lastPositionSeconds: progressByLesson.get(l.id)?.lastPositionSeconds ?? 0,

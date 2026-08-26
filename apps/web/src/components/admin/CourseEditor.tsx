@@ -757,6 +757,19 @@ function LessonRow({
   const [newMaterialTitle, setNewMaterialTitle] = useState("");
   const [newMaterialCategory, setNewMaterialCategory] = useState<"MAIN" | "SUPPLEMENTARY">("MAIN");
   const [uploading, setUploading] = useState(false);
+  const [subtitlesRequesting, setSubtitlesRequesting] = useState(false);
+
+  async function handleGenerateSubtitles() {
+    setSubtitlesRequesting(true);
+    try {
+      await adminApi.generateSubtitles(lesson.id);
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos encolar la generación de subtítulos.");
+    } finally {
+      setSubtitlesRequesting(false);
+    }
+  }
 
   async function handleVideoUpload(file: File) {
     setUploading(true);
@@ -840,6 +853,31 @@ function LessonRow({
             <span>Sin video todavía</span>
           )}
           <DropLabel accept="video/*" busy={uploading} label="Subir video" onFile={handleVideoUpload} />
+        </div>
+      )}
+      {lesson.contentType === "VIDEO" && lesson.videoAssetId && (
+        <div className="mt-1.5 flex items-center gap-2 text-xs">
+          {lesson.subtitlesStatus === "READY" ? (
+            <span className="text-success">✓ Subtítulos generados</span>
+          ) : lesson.subtitlesStatus === "PROCESSING" ? (
+            <span className="text-ash-500">Generando subtítulos…</span>
+          ) : lesson.subtitlesStatus === "FAILED" ? (
+            <span className="text-danger" title={lesson.subtitlesError ?? ""}>
+              No se pudieron generar (reintentar abajo)
+            </span>
+          ) : (
+            <span className="text-ash-400">Sin subtítulos todavía</span>
+          )}
+          {lesson.subtitlesStatus !== "PROCESSING" && (
+            <button
+              type="button"
+              className="font-medium text-ink-700 hover:underline disabled:opacity-50"
+              disabled={subtitlesRequesting}
+              onClick={handleGenerateSubtitles}
+            >
+              {subtitlesRequesting ? "Encolando…" : lesson.subtitlesStatus === "READY" ? "Regenerar" : "Generar subtítulos (IA)"}
+            </button>
+          )}
         </div>
       )}
       {(lesson.contentType === "VIDEO" || lesson.contentType === "TEXT") && (

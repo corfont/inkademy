@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import type { Queue } from "bullmq";
 import * as argon2 from "argon2";
 import type { PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
+import { QUEUE_NAMES, SUBTITLES_JOBS } from "../../common/queues/queue.constants";
 import { StorageService } from "../../storage/storage.service";
 import { NotificationService } from "../notification/notification.service";
 import { buildFinancialReportPdf } from "./finance-report.pdf";
@@ -15,6 +18,7 @@ export class AdminService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly storageService: StorageService,
     private readonly notificationService: NotificationService,
+    @InjectQueue(QUEUE_NAMES.SUBTITLES) private readonly subtitlesQueue: Queue,
   ) {}
 
   async getKpis() {
@@ -495,6 +499,25 @@ export class AdminService {
       }
     }
     return this.prisma.lesson.update({ where: { id }, data: input as never });
+  }
+
+  /**
+   * "Subtítulos/transcripción" (Fase 2) — usa Gemini (ya integrado para el
+   * asistente de IA, sin credenciales nuevas) para transcribir el audio
+   * real del video y devolver un WebVTT con marcas de tiempo. Encola el job
+   * (subir un video + esperar a que Gemini lo procese puede tomar más de
+   * lo razonable para una request HTTP síncrona) — apps/worker hace el
+   * trabajo real, ver processors/subtitles.processor.ts.
+   */
+  async generateLessonSubtitles(id: string, teacherUserId?: string) {
+    const lesson = teacherUserId ? await this.assertTeacherOwnsLesson(id, teacherUserId) : await this.prisma.lesson.findUnique({ where: { id } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+    if (!lesson.videoAssetId) throw new BadRequestException("Esta lección todavía no tiene un video cargado");
+    if (lesson.subtitlesStatus === "PROCESSING") throw new BadRequestException("Ya se está generando un subtítulo para esta lección");
+
+    await this.prisma.lesson.update({ where: { id }, data: { subtitlesStatus: "PROCESSING", subtitlesError: null } });
+    await this.subtitlesQueue.add(SUBTITLES_JOBS.GENERATE, { lessonId: id }, { attempts: 2, removeOnComplete: true, removeOnFail: 50 });
+    return { queued: true };
   }
 
   async deleteLesson(id: string, teacherUserId?: string) {

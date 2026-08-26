@@ -21,6 +21,7 @@ export const QUEUE_NAMES = {
   RECOMMENDATION: "recommendation",
   INVOICE: "invoice",
   SUGGESTION: "suggestion",
+  SUBTITLES: "subtitles",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -202,4 +203,19 @@ export interface InvoiceGenerateJobData {
 
 export interface InvoiceGenerateNoteJobData {
   noteId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cola "subtitles" — mirror de SUBTITLES_JOBS. apps/api ya marcó
+// Lesson.subtitlesStatus="PROCESSING" antes de encolar; el worker sube el
+// video a Gemini, espera a que lo procese, le pide la transcripción en
+// WebVTT, y actualiza subtitlesAssetId/subtitlesStatus — ver
+// processors/subtitles.processor.ts.
+// ---------------------------------------------------------------------------
+export const SUBTITLES_JOBS = {
+  GENERATE: "subtitles.generate",
+} as const;
+
+export interface SubtitlesGenerateJobData {
+  lessonId: string;
 }

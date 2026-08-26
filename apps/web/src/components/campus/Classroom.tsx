@@ -203,7 +203,11 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                   onTimeUpdate={onTimeUpdate}
                   onEnded={() => markComplete(current.id)}
                 >
-                  <track kind="captions" />
+                  {current.subtitlesUrl ? (
+                    <track kind="captions" label="Español" srcLang="es" src={current.subtitlesUrl} default />
+                  ) : (
+                    <track kind="captions" />
+                  )}
                 </video>
                 {detail.blockMainVideoDownload !== false && watermarkLabel && <VideoWatermark label={watermarkLabel} />}
               </div>

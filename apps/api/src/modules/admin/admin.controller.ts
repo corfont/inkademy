@@ -202,6 +202,13 @@ export class AdminController {
     return this.adminService.deleteLesson(id, teacherScopeId(user));
   }
 
+  @Post("lessons/:id/generate-subtitles")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Encola la transcripción automática (Gemini) del video de la lección — TEACHER solo si es CourseStaff del curso dueño" })
+  generateLessonSubtitles(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.generateLessonSubtitles(id, teacherScopeId(user));
+  }
+
   @Post("lessons/:lessonId/materials")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Agrega un material (PDF/Word/Excel/imagen/video/link) a una lección — TEACHER solo si es CourseStaff del curso dueño" })

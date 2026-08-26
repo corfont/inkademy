@@ -15,6 +15,7 @@ export const QUEUE_NAMES = {
   RECOMMENDATION: "recommendation",
   INVOICE: "invoice",
   SUGGESTION: "suggestion",
+  SUBTITLES: "subtitles",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -70,4 +71,9 @@ export const SUGGESTION_JOBS = {
   // que es una IA". El worker revisa si el admin ya respondió a mano antes
   // de que se cumpla el plazo; si es así, no hace nada.
   AUTO_RESPOND: "suggestion.auto-respond",
+} as const;
+
+// --- Jobs de la cola "subtitles" ---
+export const SUBTITLES_JOBS = {
+  GENERATE: "subtitles.generate",
 } as const;
