@@ -23,9 +23,9 @@ export class NpsAdminController {
   }
 
   @Put("question")
-  @ApiOperation({ summary: "Actualiza la pregunta de la encuesta NPS" })
+  @ApiOperation({ summary: "Actualiza la pregunta principal y/o la pregunta cualitativa de la encuesta NPS" })
   updateQuestion(@Body(new ZodValidationPipe(updateNpsQuestionSchema)) dto: UpdateNpsQuestionInput) {
-    return this.nps.updateQuestion(dto.question);
+    return this.nps.updateQuestion(dto);
   }
 
   @Get("companies")

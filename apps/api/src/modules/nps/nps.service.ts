@@ -8,13 +8,20 @@ const SURVEY_ID = "default";
 const DEFAULT_QUESTION = {
   es: "¿Qué tan probable es que recomiendes Inkademy a otra empresa?",
 };
-// "Otra pregunta más abajo en la encuesta, donde la empresa podrá poner
-// sus comentarios" — fija, no configurable por el admin (a diferencia de
-// la pregunta principal), igual que en CourseRatingPrompt.
-const COMMENT_PROMPT = { es: "¿Algo que quieras contarnos?" };
+// "Aparte una pregunta cualitativa que el administrador puede redactar" —
+// valor por defecto hasta que el admin la personalice; ya no es un texto
+// fijo sin opción de editar.
+const DEFAULT_COMMENT_PROMPT = { es: "¿Por qué le pusiste esa nota? ¿Qué podríamos mejorar?" };
 
 /** HTML del correo de invitación — reutilizado tanto para el envío real como para la vista previa del admin. */
 function buildInviteEmailHtml(companyName: string, question: string, surveyUrl: string) {
+  // Franja 0-10 decorativa — mismo formato que la encuesta real (escala NPS
+  // clásica), para que el correo anticipe visualmente cómo se responde.
+  const scaleCells = Array.from(
+    { length: 11 },
+    (_, n) =>
+      `<td style="padding:0 2px;"><div style="width:24px;height:24px;line-height:24px;border-radius:50%;background:#f5f1ea;color:#1c2038;font-size:11px;font-weight:600;">${n}</div></td>`,
+  ).join("");
   return `
   <div style="font-family: 'Work Sans', Arial, sans-serif; background: #f5f1ea; padding: 32px 16px;">
     <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 8px rgba(13,15,28,0.08);">
@@ -23,8 +30,9 @@ function buildInviteEmailHtml(companyName: string, question: string, surveyUrl: 
       </div>
       <div style="padding: 32px; text-align: center;">
         <p style="margin: 0 0 4px; font-size: 13px; color: #9497ab; text-transform: uppercase; letter-spacing: 0.05em;">${companyName}</p>
-        <p style="margin: 0 0 24px; font-size: 19px; line-height: 1.4; color: #1c2038; font-weight: 600;">${question}</p>
-        <p style="margin: 0 0 24px; font-size: 32px; letter-spacing: 6px; color: #d8b26c;">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
+        <p style="margin: 0 0 20px; font-size: 19px; line-height: 1.4; color: #1c2038; font-weight: 600;">${question}</p>
+        <table role="presentation" style="margin: 0 auto 6px;" cellpadding="0" cellspacing="0"><tr>${scaleCells}</tr></table>
+        <p style="margin: 0 0 24px; font-size: 10px; color: #9497ab;">Nada probable &nbsp;·&nbsp; Extremadamente probable</p>
         <a href="${surveyUrl}" style="display: inline-block; background: #489bf4; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 15px; padding: 14px 32px; border-radius: 999px;">Responder encuesta</a>
         <p style="margin: 20px 0 0; font-size: 13px; color: #9497ab;">Toma menos de un minuto.</p>
       </div>
@@ -52,16 +60,18 @@ export class NpsService {
     const row = await this.prisma.npsSurvey.findUnique({ where: { id: SURVEY_ID } });
     return {
       question: (row?.question as Record<string, string>) ?? DEFAULT_QUESTION,
+      commentPrompt: (row?.commentPrompt as Record<string, string> | null) ?? DEFAULT_COMMENT_PROMPT,
       active: row?.active ?? true,
       updatedAt: row?.updatedAt ?? null,
     };
   }
 
-  async updateQuestion(question: { es: string; en?: string }) {
+  async updateQuestion(input: { question?: { es: string; en?: string }; commentPrompt?: { es: string; en?: string } }) {
+    const data = { ...(input.question ? { question: input.question } : {}), ...(input.commentPrompt ? { commentPrompt: input.commentPrompt } : {}) };
     await this.prisma.npsSurvey.upsert({
       where: { id: SURVEY_ID },
-      create: { id: SURVEY_ID, question },
-      update: { question },
+      create: { id: SURVEY_ID, question: input.question ?? DEFAULT_QUESTION, commentPrompt: input.commentPrompt ?? DEFAULT_COMMENT_PROMPT },
+      update: data,
     });
     return this.getQuestion();
   }
@@ -101,7 +111,7 @@ export class NpsService {
 
     const survey = await this.prisma.npsSurvey.upsert({
       where: { id: SURVEY_ID },
-      create: { id: SURVEY_ID, question: DEFAULT_QUESTION },
+      create: { id: SURVEY_ID, question: DEFAULT_QUESTION, commentPrompt: DEFAULT_COMMENT_PROMPT },
       update: {},
     });
     if (!survey.active) throw new BadRequestException("La encuesta NPS está desactivada");
@@ -141,7 +151,7 @@ export class NpsService {
     return { html: buildInviteEmailHtml("Empresa de ejemplo S.A.C.", question, `${appUrl}/encuesta/ejemplo-token`) };
   }
 
-  /** Resultados agregados + detalle de comentarios. "Score" = estrellas 1-5 (no NPS 0-10 clásico, ver submitResponse). */
+  /** Resultados agregados + detalle de comentarios. "Score" = escala NPS estándar 0-10. */
   async listResponses(companyId?: string) {
     const responses = await this.prisma.npsSurveyResponse.findMany({
       where: { respondedAt: { not: null }, ...(companyId ? { companyId } : {}) },
@@ -149,11 +159,9 @@ export class NpsService {
       orderBy: { respondedAt: "desc" },
     });
     const total = responses.length;
-    // Mismo criterio que la fórmula NPS estándar, adaptado a una escala de
-    // 1-5 estrellas (el pedido explícito fue "estrellas", no números 0-10):
-    // 5★ = promotor, 4★ = pasivo, 1-3★ = detractor.
-    const promoters = responses.filter((r) => (r.score ?? 0) >= 5).length;
-    const detractors = responses.filter((r) => (r.score ?? 0) <= 3).length;
+    // Fórmula NPS estándar: 9-10 = promotor, 7-8 = pasivo, 0-6 = detractor.
+    const promoters = responses.filter((r) => (r.score ?? 0) >= 9).length;
+    const detractors = responses.filter((r) => (r.score ?? 0) <= 6).length;
     const npsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : null;
 
     return {
@@ -184,7 +192,7 @@ export class NpsService {
     return {
       companyName: response.company.legalName,
       question: (response.survey.question as Record<string, string>) ?? DEFAULT_QUESTION,
-      commentPrompt: COMMENT_PROMPT,
+      commentPrompt: (response.survey.commentPrompt as Record<string, string> | null) ?? DEFAULT_COMMENT_PROMPT,
       alreadyResponded: Boolean(response.respondedAt),
     };
   }

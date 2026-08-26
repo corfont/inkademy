@@ -124,17 +124,23 @@ export type UpdateQuoteStatusInput = z.infer<typeof updateQuoteStatusSchema>;
 // Encuesta NPS B2B (Fase 2) — "la estructura de la pregunta la establece
 // el administrador" — una sola pregunta, localizada como el resto del
 // contenido (título de curso, etc.).
-export const updateNpsQuestionSchema = z.object({
-  question: z.object({ es: z.string().min(1), en: z.string().optional() }),
-});
+// "Aparte una pregunta cualitativa que el administrador puede redactar" —
+// tanto la pregunta principal (0-10) como la pregunta cualitativa
+// (comentario abierto) son editables por el admin; se mandan juntas en un
+// solo PUT, cada una opcional para poder actualizar solo una a la vez.
+export const updateNpsQuestionSchema = z
+  .object({
+    question: z.object({ es: z.string().min(1), en: z.string().optional() }).optional(),
+    commentPrompt: z.object({ es: z.string().min(1), en: z.string().optional() }).optional(),
+  })
+  .refine((d) => d.question || d.commentPrompt, "Envía la pregunta principal o la pregunta cualitativa");
 export type UpdateNpsQuestionInput = z.infer<typeof updateNpsQuestionSchema>;
 
-// "Solo con el mouse marque la estrella correspondiente acumulada" — 1-5
-// estrellas (no la escala NPS clásica 0-10), + comentario de la segunda
-// pregunta. El agregado en NpsService.listResponses adapta la fórmula NPS
-// a esta escala (5★=promotor, 4★=pasivo, 1-3★=detractor).
+// Escala NPS estándar 0-10 (no estrellas — eso es CourseRating, la
+// encuesta de satisfacción de curso, un sistema aparte) + comentario de la
+// segunda pregunta. Ver NpsService.listResponses para promotor/pasivo/detractor.
 export const submitNpsResponseSchema = z.object({
-  score: z.number().int().min(1).max(5),
+  score: z.number().int().min(0).max(10),
   comment: z.string().max(2000).optional(),
 });
 export type SubmitNpsResponseInput = z.infer<typeof submitNpsResponseSchema>;

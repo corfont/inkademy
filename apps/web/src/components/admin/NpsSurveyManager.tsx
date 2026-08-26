@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, MessageCircle, Star, Eye } from "lucide-react";
+import { Send, MessageCircle, Eye } from "lucide-react";
 import { npsAdminApi, ApiError, type NpsCompanyRow, type NpsResultsDTO } from "@/lib/api-client";
 import { Textarea, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -11,14 +11,11 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
 import { formatDate } from "@/lib/format";
 
-function StarRow({ score }: { score: number }) {
-  return (
-    <span className="inline-flex items-center gap-0.5" aria-label={`${score} de 5 estrellas`}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star key={n} className={`h-3.5 w-3.5 ${n <= score ? "fill-warning text-warning" : "fill-none text-ash-300"}`} aria-hidden="true" />
-      ))}
-    </span>
-  );
+// Mismo criterio de color que la franja 100% apilada de resultados: 9-10
+// promotor (verde), 7-8 pasivo (ámbar), 0-6 detractor (rojo).
+function ScoreBadge({ score }: { score: number }) {
+  const cls = score >= 9 ? "bg-success-bg text-success" : score >= 7 ? "bg-warning-bg text-warning" : "bg-danger-bg text-danger";
+  return <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${cls}`}>{score}</span>;
 }
 
 /**
@@ -33,12 +30,13 @@ export function NpsSurveyManager({
   initialCompanies,
   initialResults,
 }: {
-  initialQuestion: { question: Record<string, string>; active: boolean; updatedAt: string | null };
+  initialQuestion: { question: Record<string, string>; commentPrompt: Record<string, string>; active: boolean; updatedAt: string | null };
   initialCompanies: NpsCompanyRow[];
   initialResults: NpsResultsDTO;
 }) {
   const router = useRouter();
   const [questionText, setQuestionText] = useState(initialQuestion.question.es ?? "");
+  const [commentPromptText, setCommentPromptText] = useState(initialQuestion.commentPrompt.es ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -81,15 +79,27 @@ export function NpsSurveyManager({
       <Card>
         <CardContent className="flex flex-col gap-3 p-6">
           <h2 className="font-serif text-lg font-semibold text-ink-900">Pregunta de la encuesta</h2>
-          <Label htmlFor="nps-question">Se envía tal cual — una sola pregunta, sin más texto alrededor.</Label>
-          <Textarea id="nps-question" value={questionText} onChange={(e) => setQuestionText(e.target.value)} rows={2} />
+          <div>
+            <Label htmlFor="nps-question">Pregunta principal (escala 0-10) — se envía tal cual, sin más texto alrededor.</Label>
+            <Textarea id="nps-question" value={questionText} onChange={(e) => setQuestionText(e.target.value)} rows={2} />
+          </div>
+          <div>
+            <Label htmlFor="nps-comment-prompt">Pregunta cualitativa (comentario abierto, debajo de la nota)</Label>
+            <Textarea id="nps-comment-prompt" value={commentPromptText} onChange={(e) => setCommentPromptText(e.target.value)} rows={2} />
+          </div>
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={busy === "question" || !questionText.trim()}
-              onClick={() => run("question", () => npsAdminApi.updateQuestion({ es: questionText }), "Pregunta actualizada.")}
+              disabled={busy === "question" || !questionText.trim() || !commentPromptText.trim()}
+              onClick={() =>
+                run(
+                  "question",
+                  () => npsAdminApi.updateQuestion({ question: { es: questionText }, commentPrompt: { es: commentPromptText } }),
+                  "Preguntas actualizadas.",
+                )
+              }
             >
-              Guardar pregunta
+              Guardar preguntas
             </Button>
             {/* "La opción de previsualizar cómo será el correo" */}
             <Button size="sm" variant="outline" disabled={loadingPreview} onClick={handlePreview} className="gap-1.5">
@@ -135,13 +145,13 @@ export function NpsSurveyManager({
                 </div>
                 <div className="mt-3 flex flex-wrap gap-4 text-sm text-ash-600">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden="true" /> {initialResults.promoters} Promotores (5★)
+                    <span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden="true" /> {initialResults.promoters} Promotores (9-10)
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden="true" /> {initialResults.passives} Pasivos (4★)
+                    <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden="true" /> {initialResults.passives} Pasivos (7-8)
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden="true" /> {initialResults.detractors} Detractores (1-3★)
+                    <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden="true" /> {initialResults.detractors} Detractores (0-6)
                   </span>
                 </div>
               </div>
@@ -155,7 +165,7 @@ export function NpsSurveyManager({
                     <div>
                       <p className="text-sm text-ink-800">{r.comment}</p>
                       <p className="mt-1 flex items-center gap-1.5 text-xs text-ash-500">
-                        {r.companyName} · {r.score != null && <StarRow score={r.score} />} · {r.respondedAt ? formatDate(r.respondedAt, "es") : ""}
+                        {r.companyName} · {r.score != null && <ScoreBadge score={r.score} />} · {r.respondedAt ? formatDate(r.respondedAt, "es") : ""}
                       </p>
                     </div>
                   </div>
@@ -185,7 +195,7 @@ export function NpsSurveyManager({
                     <td className="py-2.5 pr-4 font-medium text-ink-900">{c.legalName}</td>
                     <td className="py-2.5 pr-4 text-ash-600">{c.lastSentAt ? formatDate(c.lastSentAt, "es") : "Nunca"}</td>
                     <td className="py-2.5 pr-4 text-ash-600">{c.lastRespondedAt ? formatDate(c.lastRespondedAt, "es") : "—"}</td>
-                    <td className="py-2.5 pr-4">{c.lastScore !== null ? <StarRow score={c.lastScore} /> : "—"}</td>
+                    <td className="py-2.5 pr-4">{c.lastScore !== null ? <ScoreBadge score={c.lastScore} /> : "—"}</td>
                     <td className="py-2.5 text-right">
                       <Button
                         size="sm"

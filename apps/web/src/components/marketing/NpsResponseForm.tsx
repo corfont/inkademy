@@ -1,31 +1,39 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Star } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { npsPublicApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
+// Verde para las notas altas (promotor), ámbar para pasivo, rojo para
+// detractor — mismo criterio de color que usa el resultado del admin
+// (ver NpsSurveyManager), para que la persona vea de entrada qué está
+// marcando, no solo un número suelto.
+function scoreColor(n: number, selected: boolean) {
+  if (!selected) return "border-paper-border text-ash-500 hover:border-ink-400 hover:text-ink-900";
+  if (n >= 9) return "border-success bg-success text-white";
+  if (n >= 7) return "border-warning bg-warning text-white";
+  return "border-danger bg-danger text-white";
+}
+
 /**
- * "Esta encuesta tiene que ser gráficamente bonita para que cuando le
- * llegue al usuario solo con el mouse marque la estrella correspondiente
- * acumulada y haya otra pregunta más abajo... donde la empresa podrá
- * poner sus comentarios" — 5 estrellas (mismo widget visual que
- * CourseRatingPrompt, para que toda la plataforma use un solo lenguaje de
- * calificación) + una segunda pregunta fija para el comentario, en vez de
- * un textarea genérico sin rotular.
+ * "La encuesta NPS tiene que ser del 0 al 10 (no estrellas) y aparte una
+ * pregunta cualitativa que el administrador puede redactar" — escala NPS
+ * estándar de 11 botones (0-10) + la segunda pregunta con el texto que
+ * definió el admin (antes era fijo). Las estrellas quedan reservadas para
+ * la encuesta de satisfacción de curso (CourseRating), un sistema aparte.
  */
 export function NpsResponseForm({ token, question, commentPrompt }: { token: string; question: string; commentPrompt: string }) {
-  const [score, setScore] = useState(0);
-  const [hovered, setHovered] = useState(0);
+  const [score, setScore] = useState<number | null>(null);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit() {
-    if (score === 0) {
-      setError("Elige de 1 a 5 estrellas");
+    if (score === null) {
+      setError("Elige una nota del 0 al 10");
       return;
     }
     setSaving(true);
@@ -49,30 +57,36 @@ export function NpsResponseForm({ token, question, commentPrompt }: { token: str
     );
   }
 
-  const shown = hovered || score;
-
   return (
-    <div className="flex flex-col items-center gap-6 py-4 text-center">
+    <div className="flex flex-col items-center gap-5 py-4 text-center">
       <p className="font-serif text-xl font-semibold text-ink-900">{question}</p>
-      <div className="flex gap-1.5" role="radiogroup" aria-label="Calificación en estrellas">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            type="button"
-            role="radio"
-            aria-checked={score === n}
-            aria-label={`${n} estrella${n > 1 ? "s" : ""}`}
-            onMouseEnter={() => setHovered(n)}
-            onMouseLeave={() => setHovered(0)}
-            onClick={() => {
-              setScore(n);
-              setError(null);
-            }}
-            className="p-0.5 transition-transform hover:scale-110"
-          >
-            <Star className={cn("h-10 w-10", n <= shown ? "fill-warning text-warning" : "fill-none text-ash-300")} strokeWidth={1.5} />
-          </button>
-        ))}
+
+      <div className="flex w-full flex-col gap-2">
+        <div className="grid grid-cols-11 gap-1" role="radiogroup" aria-label="Calificación del 0 al 10">
+          {Array.from({ length: 11 }, (_, n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={score === n}
+              aria-label={`${n} de 10`}
+              onClick={() => {
+                setScore(n);
+                setError(null);
+              }}
+              className={cn(
+                "flex aspect-square items-center justify-center rounded-md border text-sm font-semibold transition-colors",
+                scoreColor(n, score === n),
+              )}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-between text-xs text-ash-500">
+          <span>Nada probable</span>
+          <span>Extremadamente probable</span>
+        </div>
       </div>
 
       <div className="w-full border-t border-paper-border pt-5">

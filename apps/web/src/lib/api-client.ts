@@ -940,9 +940,16 @@ export interface NpsResultsDTO {
 
 export const npsAdminApi = {
   question: (accessToken?: string | null) =>
-    apiFetch<{ question: Record<string, string>; active: boolean; updatedAt: string | null }>("/admin/nps/question", { accessToken, cache: "no-store" }),
-  updateQuestion: (question: Record<string, string>, accessToken?: string | null) =>
-    apiFetch<{ question: Record<string, string>; active: boolean }>("/admin/nps/question", { method: "PUT", body: JSON.stringify({ question }), accessToken }),
+    apiFetch<{ question: Record<string, string>; commentPrompt: Record<string, string>; active: boolean; updatedAt: string | null }>(
+      "/admin/nps/question",
+      { accessToken, cache: "no-store" },
+    ),
+  updateQuestion: (input: { question?: Record<string, string>; commentPrompt?: Record<string, string> }, accessToken?: string | null) =>
+    apiFetch<{ question: Record<string, string>; commentPrompt: Record<string, string>; active: boolean }>("/admin/nps/question", {
+      method: "PUT",
+      body: JSON.stringify(input),
+      accessToken,
+    }),
   companies: (accessToken?: string | null) => apiFetch<NpsCompanyRow[]>("/admin/nps/companies", { accessToken, cache: "no-store" }),
   // "La opción de previsualizar cómo será el correo" — arma el HTML real sin enviarlo.
   emailPreview: (accessToken?: string | null) => apiFetch<{ html: string }>("/admin/nps/email-preview", { accessToken, cache: "no-store" }),

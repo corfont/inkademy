@@ -684,7 +684,11 @@ model CourseRating {
 // ---------------------------------------------------------------------------
 model NpsSurvey {
   id        String   @id @default("default")
-  question  Json // { es, en } — la pregunta la redacta el admin
+  question  Json // { es, en } — la pregunta principal (0-10) la redacta el admin
+  // "Aparte una pregunta cualitativa que el administrador puede redactar" —
+  // la segunda pregunta (el comentario abierto) también la puede editar el
+  // admin ahora, antes era un texto fijo en código.
+  commentPrompt Json?
   active    Boolean  @default(true)
   updatedAt DateTime @updatedAt
 
@@ -700,9 +704,8 @@ model NpsSurveyResponse {
   token       String    @unique @default(cuid())
   sentAt      DateTime  @default(now())
   sentToEmail String
-  // 1-5 (estrellas, no la escala 0-10 clásica — pedido explícito "que sea
-  // con estrellas") — null hasta que el contacto responde. Ver NpsService.listResponses
-  // para cómo se traduce a promotor/pasivo/detractor.
+  // 0-10, escala NPS estándar (9-10 promotor, 7-8 pasivo, 0-6 detractor) —
+  // null hasta que el contacto responde. Ver NpsService.listResponses.
   score       Int?
   comment     String?   @db.Text
   respondedAt DateTime?
