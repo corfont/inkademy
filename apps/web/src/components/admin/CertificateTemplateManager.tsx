@@ -106,6 +106,14 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
   const [form, setForm] = useState(EMPTY_FORM);
   const [tagRows, setTagRows] = useState<Record<string, TagRow>>(defaultTagRows);
   const [placingTag, setPlacingTag] = useState<string | null>(null);
+  // "Cuando pongo la firma no me aparece la firma grabada" — la vista
+  // previa del editor (fondo + tags) solo mostraba una caja con el NOMBRE
+  // del tag, nunca la imagen real. Para una imagen personalizada recién
+  // subida en esta misma sesión de edición SÍ se puede mostrar la imagen
+  // real (uploadAsset devuelve su URL pública); para una ya guardada de
+  // antes (cargada vía loadForEdit, sin URL a mano) se sigue mostrando el
+  // texto como respaldo — ver customImagePreviewUrls más abajo.
+  const [customImagePreviewUrls, setCustomImagePreviewUrls] = useState<Record<string, string>>({});
 
   const previewHtml = useMemo(
     () => renderPreview(form.htmlTemplate || "<p style='padding:2rem;color:#999'>Escribe o carga una plantilla para previsualizarla.</p>"),
@@ -203,8 +211,9 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
   async function handleCustomImageUpload(tag: string, file: File) {
     setError(null);
     try {
-      const { assetId } = await adminApi.uploadAsset(file);
+      const { assetId, url } = await adminApi.uploadAsset(file);
       updateTag(tag, { customImageAssetId: assetId });
+      setCustomImagePreviewUrls((m) => ({ ...m, [tag]: url }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos subir la imagen del tag.");
     }
@@ -383,6 +392,7 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
               removeCustomTag={removeCustomTag}
               addCustomTag={addCustomTag}
               onCustomImageUpload={handleCustomImageUpload}
+              customImagePreviewUrls={customImagePreviewUrls}
               placingTag={placingTag}
               setPlacingTag={setPlacingTag}
             />
@@ -413,6 +423,7 @@ function BackgroundTemplateEditor({
   removeCustomTag,
   addCustomTag,
   onCustomImageUpload,
+  customImagePreviewUrls,
   placingTag,
   setPlacingTag,
 }: {
@@ -424,6 +435,7 @@ function BackgroundTemplateEditor({
   removeCustomTag: (tag: string) => void;
   addCustomTag: (kind: "text" | "image") => void;
   onCustomImageUpload: (tag: string, file: File) => void;
+  customImagePreviewUrls: Record<string, string>;
   placingTag: string | null;
   setPlacingTag: (tag: string | null) => void;
 }) {
@@ -431,6 +443,21 @@ function BackgroundTemplateEditor({
   const aspect = form.pageWidthPt / form.pageHeightPt;
   const previewRef = useRef<HTMLDivElement>(null);
   const customRows = Object.values(tagRows).filter((r) => isCustomTag(r.tag));
+
+  // "Cuando pongo la firma no me aparece la firma grabada" — muestra la
+  // imagen real cuando se puede resolver (recién subida en esta sesión, o
+  // el logo real, que es fijo); para teacherSignature/partnerSignatureImage
+  // (varían por curso/docente, no hay "la" imagen única acá) y para un tag
+  // personalizado ya guardado de antes (sin URL a mano), se usa una firma
+  // de muestra a la misma escala en vez de solo un rótulo con el nombre —
+  // referencia visual real de tamaño/posición aunque no sea LA imagen exacta.
+  function previewImageSrc(tag: string, custom: boolean): string {
+    if (custom) return customImagePreviewUrls[tag] ?? SAMPLE_SIGNATURE("Imagen");
+    if (tag === "logo") return "/brand/logo-horizontal.png";
+    if (tag === "qrDataUrl") return SAMPLE_QR;
+    const label = CERTIFICATE_TAGS.find((t) => t.tag === tag)?.label ?? "Firma";
+    return SAMPLE_SIGNATURE(label);
+  }
 
   function handlePreviewClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!placingTag) return;
@@ -550,7 +577,8 @@ function BackgroundTemplateEditor({
                   <div
                     key={r.tag}
                     onPointerDown={(e) => handleTagPointerDown(r.tag, e)}
-                    className={`absolute flex cursor-move touch-none items-center justify-center border border-dashed bg-ink-500/10 text-[10px] text-ink-700 ${
+                    title={custom ? "Imagen personalizada" : def!.label}
+                    className={`absolute flex cursor-move touch-none items-center justify-center overflow-hidden border border-dashed bg-ink-500/10 ${
                       draggingTag === r.tag ? "border-primary-600 ring-2 ring-primary-300" : "border-ink-500"
                     }`}
                     style={{
@@ -560,7 +588,8 @@ function BackgroundTemplateEditor({
                       height: `${r.heightPercent}%`,
                     }}
                   >
-                    {custom ? "Imagen personalizada" : def!.label}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewImageSrc(r.tag, custom)} alt="" className="h-full w-full object-contain" draggable={false} />
                   </div>
                 );
               }
