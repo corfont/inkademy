@@ -5,13 +5,14 @@ import {
   REMINDER_SWEEP_JOB,
   EMAIL_CAMPAIGN_SWEEP_JOB,
   WORKER_EMAIL_JOBS,
+  ATTENDANCE_SYNC_JOBS,
   type LiveSessionUpcomingJobData,
   type CourseAccessExpiringJobData,
   type AssessmentDueJobData,
   type LiveSessionOffset,
   type DeadlineOffset,
 } from "../queues";
-import { reminderQueue } from "../lib/queue-client";
+import { reminderQueue, attendanceSyncQueue } from "../lib/queue-client";
 import { notifyByEmail } from "../lib/notify";
 import { renderCourseStartReminder, renderLiveClassReminder, renderDeadlineReminder } from "../templates/email-templates";
 import { runEmailCampaignSweep } from "./email-campaign.processor";
@@ -149,8 +150,47 @@ async function sweepAssessmentDue(): Promise<void> {
   }
 }
 
+/**
+ * "Todas las clases en Zoom deben grabarse automáticamente y el alumno debe
+ * poder visualizarla" — Zoom ya graba (auto_recording: "cloud", ver
+ * ZoomProvider.createMeeting) y processAttendanceSyncJob ya sabe recuperar
+ * esa grabación, pero nada disparaba ese job automáticamente: solo se
+ * encolaba desde LiveSessionService.syncAttendance, que a su vez solo lo
+ * llama un humano (POST /live-sessions/:id/sync-attendance) — un endpoint
+ * que ningún botón del frontend termina llamando. En la práctica, ninguna
+ * grabación se recuperaba nunca sola. Ahora este sweep (cada 15 min, igual
+ * que el resto) encola el job para toda sesión que ya terminó y todavía no
+ * tiene recordingUrl — acotado a las últimas 48h para no reintentar para
+ * siempre una grabación que Zoom nunca vaya a generar (p.ej. reunión
+ * simulada sin token real, o clase cancelada a último momento).
+ */
+async function sweepEndedLiveSessionsForRecording(): Promise<void> {
+  const now = new Date();
+  const sessions = await prisma.liveSession.findMany({
+    where: {
+      providerMeetingId: { not: null },
+      recordingUrl: null,
+      endsAt: { lt: now, gt: new Date(now.getTime() - 2 * DAY_MS) },
+    },
+    select: { id: true },
+  });
+  for (const session of sessions) {
+    await attendanceSyncQueue().add(
+      ATTENDANCE_SYNC_JOBS.SYNC_LIVE_SESSION,
+      { liveSessionId: session.id },
+      { jobId: `${ATTENDANCE_SYNC_JOBS.SYNC_LIVE_SESSION}:sweep:${session.id}`, removeOnComplete: true, removeOnFail: 50 },
+    );
+  }
+}
+
 async function runSweep(): Promise<void> {
-  const results = await Promise.allSettled([sweepLiveSessions(), sweepAccessExpiring(), sweepExpireAccess(), sweepAssessmentDue()]);
+  const results = await Promise.allSettled([
+    sweepLiveSessions(),
+    sweepAccessExpiring(),
+    sweepExpireAccess(),
+    sweepAssessmentDue(),
+    sweepEndedLiveSessionsForRecording(),
+  ]);
   results.forEach((r, i) => {
     if (r.status === "rejected") {
       logger.error("fallo una rama del sweep de recordatorios", { branch: i, err: String(r.reason) });
