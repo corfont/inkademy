@@ -635,6 +635,10 @@ export const renewSeatPoolSchema = z.object({
   months: z.number().int().positive().max(60),
 });
 
+export const updateCertificateSettingsSchema = z.object({
+  certificateDeliveryTarget: z.enum(["STUDENT", "COMPANY_ADMIN", "BOTH"]),
+});
+
 // --- Sugerencias de curso ("me gustaría un curso de...") ---
 export const createSuggestionSchema = z.object({
   message: z.string().min(5).max(1000),

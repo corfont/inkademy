@@ -5,6 +5,7 @@ import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { Callout } from "@/components/ui/Callout";
+import { CertificateDeliverySettingsForm } from "@/components/empresa/CertificateDeliverySettingsForm";
 import { formatDate, localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Certificados de la empresa" };
@@ -30,6 +31,11 @@ export default async function CompanyCertificatesPage({ params }: { params: { co
     () => companyApi.certificates(params.companyId, accessToken),
     MOCK_ROWS.map((r) => ({ id: r.id, holderName: r.holderName, title: r.courseTitle, issuedAt: r.issuedAt, code: r.code })),
   );
+  const [{ data: memberships }, { data: settings }] = await Promise.all([
+    withFallback(() => companyApi.mine(accessToken), [] as { companyId: string; role: string }[]),
+    withFallback(() => companyApi.certificateSettings(params.companyId, accessToken), { certificateDeliveryTarget: "STUDENT" as const }),
+  ]);
+  const isCompanyAdmin = memberships.some((m) => m.companyId === params.companyId && m.role === "COMPANY_ADMIN");
 
   const rows: CompanyCertificateRow[] = rawCertificates.map((c: any) => ({
     id: c.id,
@@ -43,6 +49,7 @@ export default async function CompanyCertificatesPage({ params }: { params: { co
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <h1 className="font-serif text-2xl font-semibold text-ink-900">Certificados emitidos</h1>
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+      {isCompanyAdmin && <CertificateDeliverySettingsForm companyId={params.companyId} initialTarget={settings.certificateDeliveryTarget} />}
 
       {rows.length === 0 ? (
         <p className="text-ash-500">Todavía no se ha emitido ningún certificado a tus colaboradores.</p>

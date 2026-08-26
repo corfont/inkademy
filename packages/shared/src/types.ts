@@ -193,6 +193,10 @@ export interface CertificateDTO {
   finalScore?: number | null;
   pdfUrl?: string | null;
   verificationUrl: string;
+  // "El alumno debe ver alguna notificación para saber a quién se le envía
+  // el certificado, para que no piense que nunca le va a llegar" — solo
+  // relevante en matrículas de empresa; STUDENT | COMPANY_ADMIN | BOTH.
+  deliveredTo?: string;
 }
 
 export interface CompanyDashboardSummaryDTO {

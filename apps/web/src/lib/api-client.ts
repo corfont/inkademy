@@ -480,6 +480,10 @@ export const companyApi = {
     apiFetch<void>(`/companies/${id}/members/${membershipId}`, { method: "DELETE", accessToken }),
   seatPools: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/seat-pools`, { accessToken }),
   certificates: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/certificates`, { accessToken }),
+  certificateSettings: (id: string, accessToken?: string | null) =>
+    apiFetch<{ certificateDeliveryTarget: "STUDENT" | "COMPANY_ADMIN" | "BOTH" }>(`/companies/${id}/certificate-settings`, { accessToken }),
+  updateCertificateSettings: (id: string, certificateDeliveryTarget: "STUDENT" | "COMPANY_ADMIN" | "BOTH", accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/certificate-settings`, { method: "PATCH", body: JSON.stringify({ certificateDeliveryTarget }), accessToken }),
   assignSeat: (id: string, poolId: string, userId: string, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/assign`, { method: "POST", body: JSON.stringify({ userId }), accessToken }),
   renewSeatPool: (id: string, poolId: string, months: number, accessToken?: string | null) =>

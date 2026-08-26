@@ -143,6 +143,17 @@ export class CertificateService {
       return;
     }
 
+    // "El administrador puede escoger si quiere que los certificados le
+    // lleguen al administrador, al usuario o a ambos" — solo aplica a
+    // matrículas de empresa (enrollment.companyId); una compra B2C siempre
+    // va al alumno, como siempre. deliveredTo queda grabado en el
+    // certificado (no se recalcula después) para que el aviso que ve el
+    // alumno en /campus/certificados sea fiel a lo que de verdad pasó al
+    // emitirse, aunque la empresa cambie su preferencia más adelante.
+    const deliveredTo = enrollment.companyId
+      ? ((await this.prisma.company.findUnique({ where: { id: enrollment.companyId } }))?.certificateDeliveryTarget ?? "STUDENT")
+      : "STUDENT";
+
     const certificate = await this.prisma.certificate.create({
       data: {
         userId: enrollment.userId,
@@ -151,6 +162,7 @@ export class CertificateService {
         templateId: fallbackTemplate.id,
         templateVersion: fallbackTemplate.version,
         finalScore: finalScore ?? null,
+        deliveredTo,
         criteriaSnapshot: {
           minProgressPct: rule.minProgressPct,
           minAttendancePct: rule.minAttendancePct,
@@ -170,12 +182,19 @@ export class CertificateService {
     );
 
     const courseTitle = ((enrollment.course?.title as Record<string, string>) ?? {}).es ?? "tu curso";
-    await this.notifications.sendCertificateReady(
-      enrollment.user.email,
-      courseTitle,
-      this.verificationUrl(certificate.code),
-      enrollment.userId,
-    );
+    const verificationUrl = this.verificationUrl(certificate.code);
+    const recipients: string[] = [];
+    if (deliveredTo === "STUDENT" || deliveredTo === "BOTH") recipients.push(enrollment.user.email);
+    if (deliveredTo === "COMPANY_ADMIN" || deliveredTo === "BOTH") {
+      const admins = await this.prisma.companyMembership.findMany({
+        where: { companyId: enrollment.companyId!, role: "COMPANY_ADMIN", status: "ACTIVE" },
+        include: { user: true },
+      });
+      recipients.push(...admins.map((m) => m.user.email));
+    }
+    for (const email of recipients) {
+      await this.notifications.sendCertificateReady(email, courseTitle, verificationUrl, enrollment.userId);
+    }
   }
 
   /**
@@ -214,6 +233,7 @@ export class CertificateService {
       finalScore: c.finalScore,
       pdfUrl: c.pdfAssetId ? this.storage.getPublicUrl(c.pdfAssetId) : null,
       verificationUrl: this.verificationUrl(c.code),
+      deliveredTo: c.deliveredTo,
     }));
   }
 

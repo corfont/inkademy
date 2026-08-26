@@ -173,6 +173,15 @@ model Company {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // "El administrador puede escoger si quiere que los certificados le
+  // lleguen al administrador, al usuario o a ambos" — el COMPANY_ADMIN de
+  // esta empresa decide a quién se envía por correo el certificado cuando
+  // se emite automáticamente (la descarga desde la plataforma siempre está
+  // disponible para el alumno sin importar esta opción — esto solo cambia
+  // a dónde llega el correo). STUDENT (default) preserva el comportamiento
+  // de siempre.
+  certificateDeliveryTarget String @default("STUDENT") // STUDENT | COMPANY_ADMIN | BOTH
+
   memberships    CompanyMembership[]
   enrollments    Enrollment[]
   seatPools      CompanySeatPool[]
@@ -1027,6 +1036,13 @@ model Certificate {
   qrUrl            String?
   criteriaSnapshot Json // reglas cumplidas al momento de emitir, para trazabilidad
   revoked          Boolean              @default(false)
+  // A quién se envió realmente el correo al emitirse (STUDENT | COMPANY_ADMIN
+  // | BOTH) — snapshot del momento de emisión, igual que criteriaSnapshot:
+  // si la empresa cambia su preferencia después, los certificados ya
+  // emitidos no deben "cambiar de historia". El alumno lo ve en /campus/certificados
+  // para saber a dónde llegó (o no) el correo — la descarga directa nunca
+  // depende de este valor.
+  deliveredTo      String               @default("STUDENT")
 
   @@index([userId])
   @@index([code])

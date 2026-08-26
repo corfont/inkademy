@@ -71,6 +71,23 @@ export class CompaniesService {
     return memberships.map((m) => ({ companyId: m.companyId, legalName: m.company.legalName, role: m.role }));
   }
 
+  /**
+   * "El administrador puede escoger si quiere que los certificados le
+   * lleguen al administrador, al usuario o a ambos" — configuración propia
+   * de cada empresa, la decide su COMPANY_ADMIN (ver certificateDeliveryTarget
+   * en CertificateService.checkAndIssueIfEligible, que es donde se aplica
+   * de verdad al emitir).
+   */
+  async getCertificateSettings(companyId: string) {
+    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    return { certificateDeliveryTarget: company.certificateDeliveryTarget };
+  }
+
+  async updateCertificateSettings(companyId: string, certificateDeliveryTarget: "STUDENT" | "COMPANY_ADMIN" | "BOTH") {
+    await this.prisma.company.update({ where: { id: companyId }, data: { certificateDeliveryTarget } });
+    return { certificateDeliveryTarget };
+  }
+
   async getDashboard(companyId: string): Promise<CompanyDashboardSummaryDTO> {
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
 

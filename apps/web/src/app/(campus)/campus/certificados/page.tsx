@@ -40,6 +40,20 @@ export default async function CertificatesPage() {
                     <p className="font-serif text-lg font-semibold text-ink-900">{localize(cert.title, locale)}</p>
                     <p className="text-sm text-ash-500">{t("issuedOn", { date: formatDate(cert.issuedAt, locale) })}</p>
                     {cert.finalScore != null && <p className="text-sm text-ash-500">Nota final: {cert.finalScore}</p>}
+                    {/* "El usuario debe ver alguna notificación de a quién se le
+                        envía el certificado, para que no piense que nunca le va
+                        a llegar" — solo aplica a matrículas de empresa; una
+                        compra personal (deliveredTo="STUDENT", el default) no
+                        necesita ninguna aclaración. La descarga de arriba
+                        siempre funciona sin importar esto. */}
+                    {cert.deliveredTo === "COMPANY_ADMIN" && (
+                      <p className="mt-1 text-xs text-ash-500">
+                        Tu correo de aviso se envió al administrador de tu empresa — puedes descargarlo aquí de todas formas.
+                      </p>
+                    )}
+                    {cert.deliveredTo === "BOTH" && (
+                      <p className="mt-1 text-xs text-ash-500">Tu correo de aviso se envió a ti y al administrador de tu empresa.</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">

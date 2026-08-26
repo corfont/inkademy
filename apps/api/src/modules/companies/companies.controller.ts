@@ -7,7 +7,7 @@ import { CompanyRoles } from "../../common/decorators/company-roles.decorator";
 import { CompanyGuard } from "../../common/guards/company.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { assignSeatSchema, createSeatPoolSchema, renewSeatPoolSchema } from "../../common/validation/local-schemas";
+import { assignSeatSchema, createSeatPoolSchema, renewSeatPoolSchema, updateCertificateSettingsSchema } from "../../common/validation/local-schemas";
 import { CertificateService } from "../certificate/certificate.service";
 import { CompaniesService } from "./companies.service";
 
@@ -47,6 +47,24 @@ export class CompaniesController {
   @ApiOperation({ summary: "Certificados emitidos a colaboradores de la empresa" })
   certificates(@Param("companyId") companyId: string) {
     return this.certificateService.listForCompany(companyId);
+  }
+
+  @Get(":companyId/certificate-settings")
+  @UseGuards(CompanyGuard)
+  @ApiOperation({ summary: "A quién se envían por correo los certificados de la empresa (alumno/administrador/ambos)" })
+  getCertificateSettings(@Param("companyId") companyId: string) {
+    return this.companiesService.getCertificateSettings(companyId);
+  }
+
+  @Patch(":companyId/certificate-settings")
+  @UseGuards(CompanyGuard)
+  @CompanyRoles("COMPANY_ADMIN")
+  @ApiOperation({ summary: "Configura a quién se envían por correo los certificados de la empresa" })
+  updateCertificateSettings(
+    @Param("companyId") companyId: string,
+    @Body(new ZodValidationPipe(updateCertificateSettingsSchema)) dto: { certificateDeliveryTarget: "STUDENT" | "COMPANY_ADMIN" | "BOTH" },
+  ) {
+    return this.companiesService.updateCertificateSettings(companyId, dto.certificateDeliveryTarget);
   }
 
   @Get(":companyId/members")
