@@ -1,14 +1,28 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import type { Queue } from "bullmq";
-import type { PrismaClient } from "@inkademy/db";
+import type { AccessDurationPolicy, PrismaClient } from "@inkademy/db";
 import type { EnrollmentSummaryDTO, EnrollmentStatus } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { StorageService } from "../../storage/storage.service";
 import { QUEUE_NAMES, RECOMMENDATION_JOBS } from "../../common/queues/queue.constants";
 import { CertificateService } from "../certificate/certificate.service";
 import { CatalogService } from "../catalog/catalog.service";
+import { CalendarService } from "../calendar/calendar.service";
 import { computeCourseScore } from "../assessment/course-score";
+
+function computeAccessExpiresAt(policy: AccessDurationPolicy, from: Date): Date | null {
+  const date = new Date(from);
+  if (policy === "DAYS_30") {
+    date.setDate(date.getDate() + 30);
+    return date;
+  }
+  if (policy === "MONTHS_6") {
+    date.setMonth(date.getMonth() + 6);
+    return date;
+  }
+  return null; // PERMANENT
+}
 
 @Injectable()
 export class EnrollmentService {
@@ -17,6 +31,7 @@ export class EnrollmentService {
     private readonly storage: StorageService,
     private readonly certificateService: CertificateService,
     private readonly catalogService: CatalogService,
+    private readonly calendarService: CalendarService,
     @InjectQueue(QUEUE_NAMES.RECOMMENDATION) private readonly recommendationQueue: Queue,
   ) {}
 
@@ -166,6 +181,51 @@ export class EnrollmentService {
         };
       }),
     );
+  }
+
+  /**
+   * "Si vuelves a llevar el curso es gratis" — un alumno que ya terminó un
+   * curso puede retomarlo sin pasar por checkout: se crea una matrícula
+   * nueva (source=FREE, sin companyId aunque la original haya sido un cupo
+   * B2B — el reintento es gratis para el alumno, no consume cupos de nadie)
+   * con su propio progreso/intentos desde cero. El acotado de intentos de
+   * examen a `enrollmentId` (ver AssessmentService.createAttempt) es lo que
+   * hace que esta matrícula nueva arranque con intentos frescos.
+   */
+  async retakeCourse(userId: string, enrollmentId: string) {
+    const enrollment = await this.prisma.enrollment.findUnique({
+      where: { id: enrollmentId },
+      include: { course: true },
+    });
+    if (!enrollment || enrollment.userId !== userId) {
+      throw new NotFoundException("Matrícula no encontrada");
+    }
+    if (enrollment.offeringKind !== "COURSE" || !enrollment.course) {
+      throw new ForbiddenException("Solo se puede volver a llevar un curso");
+    }
+    if (enrollment.status !== "COMPLETED") {
+      throw new ForbiddenException("Solo puedes volver a llevar un curso que ya terminaste");
+    }
+    const alreadyRetaking = await this.prisma.enrollment.findFirst({
+      where: { userId, courseId: enrollment.courseId, status: "ACTIVE" },
+    });
+    if (alreadyRetaking) {
+      throw new BadRequestException("Ya tienes una matrícula activa en este curso");
+    }
+
+    const accessExpiresAt = computeAccessExpiresAt(enrollment.course.accessDurationPolicy, new Date());
+    const retake = await this.prisma.enrollment.create({
+      data: {
+        userId,
+        offeringKind: "COURSE",
+        courseId: enrollment.courseId,
+        source: "FREE",
+        accessExpiresAt,
+      },
+    });
+    await this.calendarService.scheduleForEnrollment(userId, enrollment.course, accessExpiresAt);
+
+    return { enrollmentId: retake.id };
   }
 
   /**

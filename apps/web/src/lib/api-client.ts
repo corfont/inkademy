@@ -336,6 +336,9 @@ export const meApi = {
       method: "POST",
       body: JSON.stringify({ stars, comment }),
     }),
+  // "Si vuelves a llevar el curso es gratis" — matrícula nueva sin checkout.
+  retakeCourse: (enrollmentId: string) =>
+    apiFetch<{ enrollmentId: string }>(`/me/enrollments/${enrollmentId}/retake`, { method: "POST" }),
   // Token de sesión de reproducción SCORM (alcance acotado, 6h) — ver
   // ScormService.createSession. playerUrl es relativo a API_URL.
   scormSession: (enrollmentId: string, lessonId: string) =>

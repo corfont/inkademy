@@ -62,6 +62,12 @@ export class EnrollmentController {
     return this.enrollmentService.upsertLessonNote(user.id, lessonId, dto.content);
   }
 
+  @Post("enrollments/:id/retake")
+  @ApiOperation({ summary: "Vuelve a llevar un curso ya terminado — matrícula nueva y gratuita" })
+  retakeCourse(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.enrollmentService.retakeCourse(user.id, id);
+  }
+
   @Post("enrollments/:id/rating")
   @ApiOperation({ summary: "Califica el curso (1-5 estrellas + comentario) al terminarlo" })
   submitRating(

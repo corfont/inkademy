@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Callout } from "@/components/ui/Callout";
 import { CourseCard } from "@/components/catalog/CourseCard";
+import { RetakeCourseButton } from "@/components/campus/RetakeCourseButton";
 import { localize, formatDate } from "@/lib/format";
 import type { EnrollmentSummaryDTO } from "@inkademy/shared";
 
@@ -68,6 +69,9 @@ function EnrollmentCard({ enrollment, locale, t }: { enrollment: EnrollmentSumma
             <Link href="/campus/certificados" className="text-sm text-ink-700 hover:underline">
               Ver certificado
             </Link>
+          )}
+          {enrollment.status === "COMPLETED" && enrollment.offeringKind === "COURSE" && (
+            <RetakeCourseButton enrollmentId={enrollment.id} />
           )}
         </div>
       </CardContent>
