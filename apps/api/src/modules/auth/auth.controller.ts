@@ -147,13 +147,20 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Post("change-password")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Cambia la contraseña estando ya autenticado (p.ej. tras entrar con la contraseña temporal)" })
+  @ApiOperation({ summary: "Cambia la contraseña estando ya autenticado (p.ej. tras entrar con la contraseña temporal) — cierra cualquier otra sesión abierta en otro dispositivo" })
   async changePassword(
     @CurrentUser() user: RequestUser,
     @Body(new ZodValidationPipe(changePasswordSchema)) body: { currentPassword: string; newPassword: string },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    await this.authService.changePassword(user.id, body.currentPassword, body.newPassword);
+    // Rota currentSessionId (ver AuthService.changePassword) — se le
+    // reemiten tokens acá mismo para que ESTE dispositivo (el que hizo el
+    // cambio) siga con la sesión abierta; cualquier OTRO dispositivo con
+    // la contraseña vieja queda cerrado en su próxima request.
+    const updatedUser = await this.authService.changePassword(user.id, body.currentPassword, body.newPassword);
+    const accessToken = this.authService.signAccessToken(updatedUser);
+    this.setRefreshCookie(res, this.authService.signRefreshToken(updatedUser));
+    return { accessToken };
   }
 
   @Public()

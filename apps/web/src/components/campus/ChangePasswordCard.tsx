@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authApi, ApiError } from "@/lib/api-client";
+import { setClientAccessToken } from "@/lib/auth";
 import { Input, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -31,7 +32,12 @@ export function ChangePasswordCard() {
     }
     setBusy(true);
     try {
-      await authApi.changePassword(currentPassword, newPassword);
+      // "Un usuario podría tenerlo abierto en más de un dispositivo" — el
+      // cambio cierra la sesión en cualquier OTRO dispositivo; acá se
+      // guarda el token fresco que devuelve la API para que ESTA pestaña
+      // (la que hizo el cambio) siga conectada sin tener que reloguearse.
+      const { accessToken } = await authApi.changePassword(currentPassword, newPassword);
+      setClientAccessToken(accessToken);
       setSuccess(true);
       setCurrentPassword("");
       setNewPassword("");

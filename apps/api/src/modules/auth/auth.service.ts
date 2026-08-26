@@ -177,10 +177,21 @@ export class AuthService {
     return;
   }
 
+  /**
+   * "Un usuario podría tenerlo abierto en más de un dispositivo" — cambiar
+   * la contraseña (por cualquiera de los tres caminos: este, changePassword,
+   * o AdminService.resetUserPassword) rota currentSessionId, así que
+   * cualquier sesión abierta en OTRO dispositivo con la contraseña vieja
+   * queda cerrada en su próxima request (ver JwtStrategy/AuthService.refresh).
+   * Acá el que llama no está autenticado (vino de un link de correo), así
+   * que no hay "este mismo dispositivo" que mantener con sesión iniciada —
+   * simplemente rota y listo, el flujo normal lo manda a /login después.
+   */
   async resetPassword(token: string, password: string) {
     const { sub } = this.verifyPurposeToken(token, "reset_password");
     const passwordHash = await argon2.hash(password);
-    await this.prisma.user.update({ where: { id: sub }, data: { passwordHash } });
+    const user = await this.prisma.user.update({ where: { id: sub }, data: { passwordHash } });
+    await this.startNewSession(user);
   }
 
   /**
@@ -188,6 +199,14 @@ export class AuthService {
    * entrar con la contraseña temporal que generó el admin al crear la
    * cuenta) — antes solo existía el flujo de "olvidé mi contraseña" por
    * correo, sin ninguna forma de cambiarla ya adentro de la sesión.
+   *
+   * "Un usuario podría tenerlo abierto en más de un dispositivo" — al
+   * cambiarla acá también se rota currentSessionId (cierra cualquier OTRA
+   * sesión abierta con la contraseña vieja), pero a diferencia de
+   * resetPassword, quien llama SÍ está autenticado en este mismo
+   * dispositivo — se le devuelve el usuario actualizado para que el
+   * controller le emita tokens frescos y no quede desconectado a mitad de
+   * su propia acción.
    */
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -198,7 +217,8 @@ export class AuthService {
     if (!valid) throw new UnauthorizedException("La contraseña actual no es correcta");
 
     const passwordHash = await argon2.hash(newPassword);
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    const updated = await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    return this.startNewSession(updated);
   }
 
   async verifyEmail(token: string) {

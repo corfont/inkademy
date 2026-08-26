@@ -2678,7 +2678,13 @@ export class AdminService {
 
     const tempPassword = password ? null : randomUUID().slice(0, 12);
     const passwordHash = await argon2.hash(password ?? tempPassword!);
-    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+    // "Un usuario podría tenerlo abierto en más de un dispositivo" — un
+    // reset de contraseña por el admin también rota currentSessionId,
+    // cerrando cualquier sesión que esta cuenta tuviera abierta en
+    // cualquier dispositivo (mismo mecanismo que AuthService.changePassword/
+    // resetPassword). El admin que lo ejecuta no es el afectado, así que
+    // no hace falta reemitirle tokens a nadie acá.
+    await this.prisma.user.update({ where: { id }, data: { passwordHash, currentSessionId: randomUUID() } });
     // Nunca se guarda la contraseña en el log — solo que se restableció y quién lo hizo.
     await this.prisma.auditLog.create({
       data: { actorId, action: "USER_PASSWORD_RESET", entity: "User", entityId: id },

@@ -156,8 +156,9 @@ export const authApi = {
   register: (input: unknown) => apiFetch<{ user: AuthUser; accessToken: string }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
   login: (input: unknown) => apiFetch<{ user: AuthUser; accessToken: string }>("/auth/login", { method: "POST", body: JSON.stringify(input) }),
   logout: () => apiFetch<void>("/auth/logout", { method: "POST" }),
+  // Rota la sesión del lado del servidor (cierra otros dispositivos) — devuelve un accessToken fresco para que ESTE no se desconecte.
   changePassword: (currentPassword: string, newPassword: string) =>
-    apiFetch<void>("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
+    apiFetch<{ accessToken: string }>("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
   me: (accessToken?: string | null) => apiFetch<AuthUser>("/auth/me", { accessToken }),
   forgotPassword: (email: string) => apiFetch<void>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (input: { token: string; password: string }) => apiFetch<void>("/auth/reset-password", { method: "POST", body: JSON.stringify(input) }),
