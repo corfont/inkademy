@@ -1320,7 +1320,12 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
                 )}
                 {session.status !== "COMPLETED" && session.status !== "CANCELLED" && (
                   <>
-                    <RescheduleSessionControl sessionId={session.id} currentStartsAt={session.startsAt} currentEndsAt={session.endsAt} />
+                    <RescheduleSessionControl
+                      sessionId={session.id}
+                      currentStartsAt={session.startsAt}
+                      currentEndsAt={session.endsAt}
+                      onSuccess={refreshSummary}
+                    />
                     <Button
                       size="sm"
                       variant="ghost"

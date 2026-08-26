@@ -16,10 +16,22 @@ export function RescheduleSessionControl({
   sessionId,
   currentStartsAt,
   currentEndsAt,
+  onSuccess,
 }: {
   sessionId: string;
   currentStartsAt: string;
   currentEndsAt: string;
+  /**
+   * "Reprogramé para que sea una hora completa y el aviso seguía diciendo
+   * que faltaba por programar" — bug real: router.refresh() trae `course`
+   * fresco del server, pero el resumen de horas de LiveSessionsSection vive
+   * en estado de cliente aparte, recalculado en un useEffect que solo mira
+   * `course.liveSessions.length` (una reprogramación no cambia la
+   * cantidad de sesiones, así que ese efecto nunca se volvía a disparar).
+   * Este callback deja que quien nos contiene refresque ese resumen
+   * directamente en vez de depender de un efecto que nunca se entera.
+   */
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -49,6 +61,7 @@ export function RescheduleSessionControl({
       });
       setNotifiedCount(result.notifiedCount);
       router.refresh();
+      onSuccess?.();
       setOpen(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos reprogramar la sesión.");
