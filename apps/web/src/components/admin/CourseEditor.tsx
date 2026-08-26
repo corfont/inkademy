@@ -114,6 +114,31 @@ function StatusToggle({ status, busy, onChange }: { status: string; busy: boolea
   );
 }
 
+// "El descuento aparece con un conteo hacia atrás que no corresponde" —
+// bug real: <input type="date"> solo da "YYYY-MM-DD" sin hora, y al
+// mandarlo tal cual, z.coerce.date() del backend lo interpreta como
+// MEDIANOCHE UTC (así lo exige el spec de ECMAScript para un string
+// solo-fecha) — para un admin en Perú (UTC-5) eso son las 7pm del día
+// ANTERIOR, así que "vence el 15" en realidad vencía casi un día antes
+// de lo esperado. Un string con hora pero SIN sufijo de zona (distinto
+// de uno solo-fecha) SÍ se interpreta como hora LOCAL del navegador —
+// por eso se arma "fin de ese día" a mano antes de mandarlo.
+function dateOnlyToLocalEndOfDayISOString(dateOnly: string): string {
+  return new Date(`${dateOnly}T23:59:59.999`).toISOString();
+}
+// Inverso, para precargar el <input type="date"> a partir del instante
+// UTC guardado — recortar el ISO string directamente (como se hacía
+// antes) daba el día equivocado para casi cualquier hora de la tarde/
+// noche en zonas UTC-negativas, porque comparaba el día en UTC, no en la
+// zona local de quien lo está editando.
+function isoStringToLocalDateOnly(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function MetadataSection({
   course,
   busy,
@@ -141,7 +166,7 @@ function MetadataSection({
   const [uploadingSyllabus, setUploadingSyllabus] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
   const [discountExpiresAt, setDiscountExpiresAt] = useState(
-    course.discountExpiresAt ? new Date(course.discountExpiresAt).toISOString().slice(0, 10) : "",
+    course.discountExpiresAt ? isoStringToLocalDateOnly(course.discountExpiresAt) : "",
   );
   // Solo aplica en la práctica a cursos grabados (el alumno avanza a su
   // ritmo, así que necesita una fecha límite o quedar abierto) — pero se
@@ -398,7 +423,8 @@ function MetadataSection({
                 coverImageAssetId,
                 syllabusAssetId,
                 discountPercent: discountPercent ? Number(discountPercent) : null,
-                discountExpiresAt: discountPercent && discountExpiresAt ? discountExpiresAt : null,
+                discountExpiresAt:
+                  discountPercent && discountExpiresAt ? dateOnlyToLocalEndOfDayISOString(discountExpiresAt) : null,
                 blockMainVideoDownload,
               })
             }
@@ -1584,7 +1610,7 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
             />
           </div>
           <div>
-            <Label htmlFor={`ar-score-${courseId}`}>Nota mínima (solo si hay evaluación)</Label>
+            <Label htmlFor={`ar-score-${courseId}`}>Nota mínima (%, sobre 100 — solo si hay evaluación)</Label>
             <Input
               id={`ar-score-${courseId}`}
               type="number"
