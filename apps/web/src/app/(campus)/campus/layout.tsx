@@ -35,6 +35,11 @@ export default function CampusLayout({ children }: { children: React.ReactNode }
       { href: "/docente/cursos", label: "Mis cursos (docente)", icon: LibraryBig, section: "Docente" },
       { href: "/docente/evaluaciones-pendientes", label: "Evaluaciones pendientes (docente)", icon: ClipboardCheck, section: "Docente" },
       { href: "/docente/liquidaciones", label: "Mis liquidaciones", icon: Banknote, section: "Docente" },
+      // "Fechas y horas que va a dictar" — faltaban acá aunque ya existían
+      // en el nav nativo de /docente (docente/layout.tsx): este bloque
+      // "prestado" se había quedado desactualizado respecto a ese.
+      { href: "/docente/agenda", label: "Agenda (docente)", icon: CalendarDays, section: "Docente" },
+      { href: "/docente/soporte", label: "Soporte (docente)", icon: LifeBuoy, section: "Docente" },
     );
   }
   // ADMIN secundario ve el set completo; SUPPORT secundario (sin ADMIN) solo
