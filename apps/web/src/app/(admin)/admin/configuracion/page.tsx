@@ -53,6 +53,8 @@ export default async function AdvancedSettingsPage() {
             detractionRucNaturalPercent={summary.detractionRucNaturalPercent}
             detractionRucNaturalThreshold={summary.detractionRucNaturalThreshold}
             detractionRucEmpresaPercent={summary.detractionRucEmpresaPercent}
+            usdExchangeRate={summary.usdExchangeRate}
+            exchangeRateSourceUrl={summary.exchangeRateSourceUrl ?? null}
           />
         </CardContent>
       </Card>

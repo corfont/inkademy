@@ -649,6 +649,8 @@ export const updateFeeSettingsSchema = z.object({
   detractionRucNaturalPercent: z.number().min(0).max(100).optional(),
   detractionRucNaturalThreshold: z.number().min(0).optional(),
   detractionRucEmpresaPercent: z.number().min(0).max(100).optional(),
+  usdExchangeRate: z.number().min(0).optional(),
+  exchangeRateSourceUrl: z.string().url().optional().nullable(),
 });
 
 // --- Apariencia de la plataforma (logo, tipografía, fondo) ---

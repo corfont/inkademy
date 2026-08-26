@@ -1861,6 +1861,9 @@ export class AdminService {
       detractionRucNaturalThreshold: platformSettings?.detractionRucNaturalThreshold ?? 700,
       detractionRucEmpresaPercent: platformSettings?.detractionRucEmpresaPercent ?? 12,
     };
+    const usdExchangeRate = platformSettings?.usdExchangeRate ?? 3.75;
+    const exchangeRateSourceUrl =
+      platformSettings?.exchangeRateSourceUrl ?? "https://www.sbs.gob.pe/app/pp/sistip_portal/paginas/publicacion/tipocambiopromedio.aspx";
 
     // "Yape y Plin tienen comisiones diferentes, ¿aplica sobre la venta con
     // IGV o sin IGV?" — ya se investigó esto antes (ver comentario en
@@ -1884,13 +1887,29 @@ export class AdminService {
     const expensesMap = new Map(expensesByCurrency.map((e) => [e.currency, Number(e._sum.amount ?? 0)]));
 
     const incomeByCurrency = new Map<string, number>();
+    // detractionByCurrency: en la moneda propia de la orden (se resta del
+    // "saldo total" de esa moneda, para que la aritmética del balance no
+    // mezcle monedas). detractionPenByCurrency: el monto real que hay que
+    // depositar al Banco de la Nación, siempre en soles — para una orden en
+    // USD, "aunque la factura sea en dólares, se debe pagar la detracción
+    // con el tipo de cambio del dólar del día": la regla (%, umbral en S/)
+    // se evalúa sobre el equivalente en soles, no sobre el monto en dólares.
     const detractionByCurrency = new Map<string, number>();
+    const detractionPenByCurrency = new Map<string, number>();
     for (const o of orders) {
       incomeByCurrency.set(o.currency, (incomeByCurrency.get(o.currency) ?? 0) + Number(o.total));
-      // La detracción solo aplica a operaciones nacionales (rieles PEN) — una
-      // venta internacional en USD se trata como exportación de servicios.
       if (o.currency === "PEN") {
-        detractionByCurrency.set(o.currency, (detractionByCurrency.get(o.currency) ?? 0) + this.computeDetraction(o, detractionSettings));
+        const d = this.computeDetraction(o, detractionSettings);
+        detractionByCurrency.set(o.currency, (detractionByCurrency.get(o.currency) ?? 0) + d);
+        detractionPenByCurrency.set(o.currency, (detractionPenByCurrency.get(o.currency) ?? 0) + d);
+      } else {
+        const totalInPen = Number(o.total) * usdExchangeRate;
+        const dPen = this.computeDetraction({ ...o, total: totalInPen }, detractionSettings);
+        // Se resta del balance en SU moneda de origen (convertida de vuelta)
+        // para no mezclar soles dentro de un saldo en dólares.
+        const dOwnCurrency = usdExchangeRate > 0 ? dPen / usdExchangeRate : 0;
+        detractionByCurrency.set(o.currency, (detractionByCurrency.get(o.currency) ?? 0) + dOwnCurrency);
+        detractionPenByCurrency.set(o.currency, (detractionPenByCurrency.get(o.currency) ?? 0) + dPen);
       }
     }
 
@@ -1936,6 +1955,10 @@ export class AdminService {
         income,
         igv,
         detraction,
+        // Monto real a depositar al Banco de la Nación, siempre en soles —
+        // para PEN es el mismo número que `detraction`; para USD es el
+        // equivalente convertido al tipo de cambio del día (usdExchangeRate).
+        detractionPenEquivalent: detractionPenByCurrency.get(currency) ?? 0,
         providerFees,
         otherExpenses,
         balance: income - igv - detraction - providerFees - otherExpenses,
@@ -1962,6 +1985,8 @@ export class AdminService {
       culqiFeePercent,
       stripeFeePercent,
       yapePlinFeePercent,
+      usdExchangeRate,
+      exchangeRateSourceUrl,
       ...detractionSettings,
       availableYears: availableYears.map((r) => r.year),
       partnerCosts: partnerCosts.breakdown.map((b) => ({ ...b, courseTitle: courseTitleById.get(b.courseId) ?? null })),
@@ -2028,6 +2053,8 @@ export class AdminService {
       detractionRucNaturalPercent?: number;
       detractionRucNaturalThreshold?: number;
       detractionRucEmpresaPercent?: number;
+      usdExchangeRate?: number;
+      exchangeRateSourceUrl?: string | null;
     },
     actorId?: string,
   ) {

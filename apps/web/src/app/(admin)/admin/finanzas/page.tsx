@@ -29,8 +29,10 @@ const MOCK_SUMMARY = {
   detractionRucNaturalPercent: 12,
   detractionRucNaturalThreshold: 700,
   detractionRucEmpresaPercent: 12,
+  usdExchangeRate: 3.75,
+  exchangeRateSourceUrl: "https://www.sbs.gob.pe/app/pp/sistip_portal/paginas/publicacion/tipocambiopromedio.aspx",
   availableYears: [new Date().getFullYear()],
-  rows: [{ currency: "PEN", income: 0, igv: 0, detraction: 0, providerFees: 0, otherExpenses: 0, balance: 0 }],
+  rows: [{ currency: "PEN", income: 0, igv: 0, detraction: 0, detractionPenEquivalent: 0, providerFees: 0, otherExpenses: 0, balance: 0 }],
 };
 
 const MOCK_PNL = {
@@ -114,12 +116,17 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
                 <p className="text-sm text-ash-500">IGV a pagar a SUNAT</p>
               </CardContent>
             </Card>
-            {row.currency === "PEN" && summary.detractionEnabled && (
+            {summary.detractionEnabled && (
               <Card>
                 <CardContent className="p-5">
                   <Receipt className="h-5 w-5 text-warning" aria-hidden="true" />
                   <p className="mt-3 font-serif text-xl font-semibold text-ink-900">{formatPrice(row.detraction, row.currency, locale)}</p>
                   <p className="text-sm text-ash-500">Detracción SUNAT</p>
+                  {row.currency !== "PEN" && row.detractionPenEquivalent > 0 && (
+                    <p className="mt-1 text-xs text-ash-500">
+                      ≈ {formatPrice(row.detractionPenEquivalent, "PEN", locale)} a depositar (T.C. {summary.usdExchangeRate})
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -168,6 +175,8 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
               detractionRucNaturalPercent={summary.detractionRucNaturalPercent}
               detractionRucNaturalThreshold={summary.detractionRucNaturalThreshold}
               detractionRucEmpresaPercent={summary.detractionRucEmpresaPercent}
+              usdExchangeRate={summary.usdExchangeRate}
+              exchangeRateSourceUrl={summary.exchangeRateSourceUrl ?? null}
             />
           </CardContent>
         </Card>

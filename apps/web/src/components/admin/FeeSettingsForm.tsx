@@ -34,6 +34,8 @@ export function FeeSettingsForm({
   detractionRucNaturalPercent,
   detractionRucNaturalThreshold,
   detractionRucEmpresaPercent,
+  usdExchangeRate,
+  exchangeRateSourceUrl,
 }: {
   culqiFeePercent: number;
   stripeFeePercent: number;
@@ -42,6 +44,8 @@ export function FeeSettingsForm({
   detractionRucNaturalPercent: number;
   detractionRucNaturalThreshold: number;
   detractionRucEmpresaPercent: number;
+  usdExchangeRate: number;
+  exchangeRateSourceUrl: string | null;
 }) {
   const router = useRouter();
   const [culqi, setCulqi] = useState(String(culqiFeePercent));
@@ -51,6 +55,8 @@ export function FeeSettingsForm({
   const [rucNaturalPct, setRucNaturalPct] = useState(String(detractionRucNaturalPercent));
   const [rucNaturalThreshold, setRucNaturalThreshold] = useState(String(detractionRucNaturalThreshold));
   const [rucEmpresaPct, setRucEmpresaPct] = useState(String(detractionRucEmpresaPercent));
+  const [exchangeRate, setExchangeRate] = useState(String(usdExchangeRate));
+  const [sourceUrl, setSourceUrl] = useState(exchangeRateSourceUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -68,6 +74,8 @@ export function FeeSettingsForm({
         detractionRucNaturalPercent: Number(rucNaturalPct),
         detractionRucNaturalThreshold: Number(rucNaturalThreshold),
         detractionRucEmpresaPercent: Number(rucEmpresaPct),
+        usdExchangeRate: Number(exchangeRate),
+        exchangeRateSourceUrl: sourceUrl.trim() || null,
       });
       setSaved(true);
       router.refresh();
@@ -198,6 +206,45 @@ export function FeeSettingsForm({
                   className="w-28"
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {detractOn && (
+          <div className="mt-4 border-t border-paper-border pt-3">
+            <p className="text-xs text-ash-600">
+              <strong>Ventas en USD</strong>: aunque la factura sea en dólares, la detracción (cuando aplica) se calcula sobre el equivalente en
+              soles y se deposita al Banco de la Nación en soles — nunca en dólares. Actualiza el tipo de cambio del día antes de cerrar el
+              periodo; la fuente oficial recomendada es la SBS, pero puede cambiar de dirección, así que el link también es editable.
+            </p>
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <div>
+                <Label htmlFor="usd-exchange-rate">Tipo de cambio USD → PEN (venta)</Label>
+                <Input
+                  id="usd-exchange-rate"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                  className="w-28"
+                />
+              </div>
+              <div className="min-w-[16rem] flex-1">
+                <Label htmlFor="exchange-rate-source">Link de referencia (tipo de cambio del día)</Label>
+                <Input
+                  id="exchange-rate-source"
+                  type="url"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  placeholder="https://www.sbs.gob.pe/..."
+                />
+              </div>
+              {sourceUrl && (
+                <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-600 underline">
+                  Ver tipo de cambio del día ↗
+                </a>
+              )}
             </div>
           </div>
         )}

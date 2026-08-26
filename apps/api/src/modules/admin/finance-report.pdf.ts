@@ -40,6 +40,12 @@ export async function buildFinancialReportPdf(summary: any, pnl: any): Promise<B
     line(`Ingresos: ${fmt(row.income)}`);
     line(`IGV a pagar a SUNAT: ${fmt(row.igv)}`);
     line(`Detracción SUNAT: ${fmt(row.detraction)}`);
+    if (row.currency !== "PEN" && row.detractionPenEquivalent > 0) {
+      line(`  (equivalente a depositar: PEN ${row.detractionPenEquivalent.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, T.C. ${summary.usdExchangeRate})`, {
+        size: 9,
+        color: gray,
+      });
+    }
     line(`Comisión de pasarela: ${fmt(row.providerFees)}`);
     line(`Otros gastos: ${fmt(row.otherExpenses)}`);
     line(`Saldo total: ${fmt(row.balance)}`, { f: bold, gapAfter: 16 });
