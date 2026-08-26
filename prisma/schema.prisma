@@ -933,6 +933,14 @@ model AssessmentAttempt {
   // examen. No es una acusación automática — el admin/empresa decide qué
   // hacer, ver AssessmentService.SUSPICIOUS_* y el reporte de empresa.
   flaggedSuspicious Boolean     @default(false)
+  // "El temporizador sigue corriendo en el servidor aunque el alumno cierre
+  // la pestaña o se desconecte; al enviar las respuestas, verificar que no
+  // haya excedido la duración máxima" — durationSeconds ya se calcula
+  // server-side (startedAt real, no confiado al cliente); esto solo marca
+  // si ese tiempo real superó el límite del examen (con margen de red) —
+  // el intento igual se califica normalmente, pero queda auditado como
+  // fuera de tiempo (mismo criterio no-bloqueante que flaggedSuspicious).
+  timedOut          Boolean     @default(false)
 
   answers       Answer[]
 
@@ -961,6 +969,13 @@ model ApprovalRule {
   courseId           String  @unique
   minProgressPct     Float   @default(100)
   minAttendancePct   Float?  // solo aplica si el curso tiene sesiones en vivo
+  // "El administrador puede poner un plazo de conexión mínima, por ejemplo
+  // 20 min; si el alumno ha estado 20 min o más se le considera presente" —
+  // umbral de minutos POR SESIÓN para contar como "asistió" (distinto de
+  // minAttendancePct, que es el % de sesiones asistidas sobre el total).
+  // null = cualquier conexión (joinedAt != null) cuenta, comportamiento de
+  // siempre.
+  minConnectionMinutes Int?
   minScore           Float   @default(70)
   requiresAssignment Boolean @default(false)
   // BEST_ATTEMPT (default): la nota final es la mejor nota entre todos los

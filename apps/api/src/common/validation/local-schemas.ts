@@ -128,6 +128,12 @@ const formativeQuizQuestionSchema = z.object({
   options: z.array(z.string().min(1)).min(2).max(6),
   correctIndex: z.number().int().min(0),
   explanation: z.string().optional().nullable(),
+  // "Interacciones sobre un video: al llegar a un segundo disparo, pausar y
+  // mostrar la pregunta bloqueando el avance hasta responder" — si se
+  // define, la pregunta deja de ser un autochequeo debajo del video (como
+  // hasta ahora) y pasa a interrumpir la reproducción en ese segundo
+  // exacto. null/ausente = comportamiento de siempre (no bloqueante).
+  videoTimestampSeconds: z.number().int().min(0).optional().nullable(),
 });
 export const formativeQuizSchema = z.object({ questions: z.array(formativeQuizQuestionSchema).max(20) });
 
@@ -245,6 +251,11 @@ export const updateCertificateTemplateSchema = z.object({
 export const updateApprovalRuleSchema = z.object({
   minProgressPct: z.number().min(0).max(100).optional(),
   minAttendancePct: z.number().min(0).max(100).optional().nullable(),
+  // "El administrador puede poner un plazo de conexión mínima, por ejemplo
+  // 20 min; si el alumno ha estado 20 min o más se le considera presente"
+  // — umbral por sesión (no confundir con minAttendancePct, que es el % de
+  // SESIONES a las que asistió sobre el total del curso).
+  minConnectionMinutes: z.number().int().min(0).optional().nullable(),
   minScore: z.number().min(0).max(100).optional(),
   requiresAssignment: z.boolean().optional(),
   scoreMode: z.enum(["BEST_ATTEMPT", "WEIGHTED_AVERAGE"]).optional(),

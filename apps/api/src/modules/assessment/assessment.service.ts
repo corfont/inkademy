@@ -18,6 +18,12 @@ import { StorageService } from "../../storage/storage.service";
 // (ver submitAttempt). Ajustable si en la práctica da falsos positivos.
 const SECONDS_PER_QUESTION_FLOOR = 20;
 const SUSPICIOUS_SCORE_THRESHOLD = 90;
+// "El temporizador sigue corriendo en el servidor... verificar que no haya
+// excedido la duración máxima al enviar las respuestas" — margen sobre
+// timeLimitMinutes para no penalizar latencia de red normal del propio
+// envío (el cliente ya auto-envía al llegar a 0, este margen es solo para
+// el viaje de esa request, no para dar tiempo extra real de examen).
+const TIME_LIMIT_GRACE_SECONDS = 30;
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -246,9 +252,18 @@ export class AssessmentService {
     const flaggedSuspicious =
       status === "PASSED" && finalScore !== null && finalScore >= SUSPICIOUS_SCORE_THRESHOLD && durationSeconds < expectedMinSeconds;
 
+    // "Verificar que no haya excedido la duración máxima al enviar las
+    // respuestas" — durationSeconds es real (startedAt server-side), así
+    // que ni cerrar la pestaña ni desconectarse lo esquiva. Superado el
+    // límite (con margen de red), el intento nunca puede quedar PASSED, sin
+    // importar qué tan buenas fueran las respuestas.
+    const timeLimitSeconds = attempt.assessment.timeLimitMinutes ? attempt.assessment.timeLimitMinutes * 60 : null;
+    const timedOut = timeLimitSeconds !== null && durationSeconds > timeLimitSeconds + TIME_LIMIT_GRACE_SECONDS;
+    if (timedOut && status === "PASSED") status = "FAILED";
+
     const updated = await this.prisma.assessmentAttempt.update({
       where: { id: attemptId },
-      data: { submittedAt, score: finalScore, status, durationSeconds, flaggedSuspicious },
+      data: { submittedAt, score: finalScore, status, durationSeconds, flaggedSuspicious, timedOut },
     });
 
     if (!stillPending) {
@@ -266,6 +281,7 @@ export class AssessmentService {
       pendingReviewCount: allAnswers.filter((a) => a.isCorrect === null).length,
       attemptsUsed,
       maxAttempts: attempt.assessment.maxAttempts,
+      timedOut,
     };
   }
 
@@ -300,6 +316,8 @@ export class AssessmentService {
 
     const submittedAt = new Date();
     const durationSeconds = Math.max(0, Math.round((submittedAt.getTime() - attempt.startedAt.getTime()) / 1000));
+    const timeLimitSeconds = attempt.assessment.timeLimitMinutes ? attempt.assessment.timeLimitMinutes * 60 : null;
+    const timedOut = timeLimitSeconds !== null && durationSeconds > timeLimitSeconds + TIME_LIMIT_GRACE_SECONDS;
     const updated = await this.prisma.assessmentAttempt.update({
       where: { id: attemptId },
       data: {
@@ -308,6 +326,7 @@ export class AssessmentService {
         status: "PENDING_REVIEW",
         submissionAssetId: input.submissionAssetId,
         submissionMimeType: input.submissionMimeType,
+        timedOut,
       },
     });
 
@@ -322,6 +341,7 @@ export class AssessmentService {
       pendingReviewCount: 1,
       attemptsUsed,
       maxAttempts: attempt.assessment.maxAttempts,
+      timedOut,
     };
   }
 

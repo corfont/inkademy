@@ -778,6 +778,9 @@ export const adminApi = {
   // le había quedado sin `cache: "no-store"`.
   courseDetail: (id: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${id}`, { accessToken, cache: "no-store" }),
   approvalRule: (courseId: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${courseId}/approval-rule`, { accessToken }),
+  // "El docente al final debería poder visualizar/descargar la lista de los inscritos y su reporte de asistencia"
+  attendanceReport: (courseId: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/attendance-report`, { accessToken, cache: "no-store" }),
   updateApprovalRule: (courseId: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/courses/${courseId}/approval-rule`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
 

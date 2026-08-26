@@ -45,6 +45,7 @@ export class EnrollmentService {
     const rule = approvalRule ?? {
       minProgressPct: 100,
       minAttendancePct: null as number | null,
+      minConnectionMinutes: null as number | null,
       minScore: 70,
       requiresAssignment: false,
       scoreMode: "BEST_ATTEMPT",
@@ -63,7 +64,13 @@ export class EnrollmentService {
     }
     if (rule.minAttendancePct !== null && attendanceStats > 0) {
       const attended = await this.prisma.attendance.count({
-        where: { userId: enrollment.userId, liveSession: { courseId }, joinedAt: { not: null } },
+        where: {
+          userId: enrollment.userId,
+          liveSession: { courseId },
+          ...(rule.minConnectionMinutes !== null
+            ? { durationMin: { gte: rule.minConnectionMinutes } }
+            : { joinedAt: { not: null } }),
+        },
       });
       const attendancePct = (attended / attendanceStats) * 100;
       if (attendancePct < rule.minAttendancePct) {

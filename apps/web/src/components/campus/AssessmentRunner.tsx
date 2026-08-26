@@ -327,9 +327,14 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [result, setResult] = useState<{ score: number | null; status: string; pendingReviewCount: number; attemptsUsed?: number; maxAttempts?: number } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    score: number | null;
+    status: string;
+    pendingReviewCount: number;
+    attemptsUsed?: number;
+    maxAttempts?: number;
+    timedOut?: boolean;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const attemptIdRef = useRef<string>(`mock-attempt-${assessment.id}`);
@@ -405,6 +410,11 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
           {result.status === "PASSED" ? t("passed") : result.status === "FAILED" ? t("failed") : t("pendingReview")}
         </p>
         {result.score !== null && <p className="mt-2 text-ash-600">{t("score", { score: result.score })}</p>}
+        {result.timedOut && (
+          <Callout variant="danger" className="mt-4 text-left">
+            Enviaste este intento después de que se acabó el tiempo permitido — por eso no puede quedar aprobado, sin importar el puntaje.
+          </Callout>
+        )}
         {result.pendingReviewCount > 0 && (
           <Callout variant="warning" className="mt-4 text-left">
             {t("pendingReview")}

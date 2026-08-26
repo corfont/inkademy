@@ -202,6 +202,10 @@ export interface AssessmentResultDTO {
   // vuelta al examen a mano.
   attemptsUsed: number;
   maxAttempts: number;
+  // "Verificar que no haya excedido la duración máxima al enviar las
+  // respuestas" — true si el tiempo real (server-side) superó el límite
+  // del examen; en ese caso el intento nunca queda PASSED.
+  timedOut: boolean;
 }
 
 export interface CertificateDTO {

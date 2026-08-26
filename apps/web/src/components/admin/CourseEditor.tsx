@@ -63,6 +63,8 @@ export function CourseEditor({ course }: { course: any }) {
 
       <LiveSessionsSection course={course} busy={busy} run={run} />
 
+      {course.liveSessions.length > 0 && <AttendanceReportSection courseId={course.id} />}
+
       <ApprovalRuleSection courseId={course.id} />
 
       <AssessmentsSection courseId={course.id} />
@@ -1060,7 +1062,13 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
     setSaving(true);
     try {
       const cleaned = questions
-        .map((q) => ({ ...q, text: q.text.trim(), options: q.options.map((o: string) => o.trim()), explanation: q.explanation?.trim() || null }))
+        .map((q) => ({
+          ...q,
+          text: q.text.trim(),
+          options: q.options.map((o: string) => o.trim()),
+          explanation: q.explanation?.trim() || null,
+          videoTimestampSeconds: q.videoTimestampSeconds === "" || q.videoTimestampSeconds == null ? null : Number(q.videoTimestampSeconds),
+        }))
         .filter((q) => q.text && q.options.every((o: string) => o));
       await adminApi.updateLesson(lesson.id, { formativeQuiz: { questions: cleaned } });
       router.refresh();
@@ -1081,6 +1089,8 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
           <p className="text-[11px] text-ash-500">
             Preguntas de autoevaluación dentro de esta lección — el alumno ve al toque si acertó, con la explicación que pongas. No cuenta para la
             nota ni el certificado.
+            {lesson.contentType === "VIDEO" &&
+              " Si le pones un segundo del video, esa pregunta interrumpe la reproducción justo ahí (pausa y bloquea seguir viendo hasta responder) en vez de mostrarse como autochequeo debajo."}
           </p>
           {questions.map((q, qIdx) => (
             <div key={q.id} className="rounded-md border border-paper-border bg-paper p-3">
@@ -1130,6 +1140,16 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
                 value={q.explanation ?? ""}
                 onChange={(e) => updateQuestion(q.id, { explanation: e.target.value })}
               />
+              {lesson.contentType === "VIDEO" && (
+                <Input
+                  className="mt-2 h-7 w-56 text-xs"
+                  type="number"
+                  min="0"
+                  placeholder="Segundo del video (opcional)"
+                  value={q.videoTimestampSeconds ?? ""}
+                  onChange={(e) => updateQuestion(q.id, { videoTimestampSeconds: e.target.value })}
+                />
+              )}
             </div>
           ))}
           <div className="flex items-center gap-2">
@@ -1372,6 +1392,113 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
   );
 }
 
+function csvEscape(value: string) {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/**
+ * "El docente al final debería poder visualizar/descargar la lista de los
+ * inscritos y su reporte de asistencia de lo que dure el curso" — tabla
+ * alumno × sesión con los minutos reales conectado y si cuenta como
+ * "presente" (según ApprovalRule.minConnectionMinutes), más un botón para
+ * descargarlo como CSV. La descarga se arma en el navegador (Blob) — no
+ * hay ningún endpoint de exportación en el backend, evita construir un
+ * segundo formato de respuesta solo para esto.
+ */
+function AttendanceReportSection({ courseId }: { courseId: string }) {
+  const [report, setReport] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    adminApi
+      .attendanceReport(courseId)
+      .then(setReport)
+      .catch(() => setReport(null))
+      .finally(() => setLoading(false));
+  }, [courseId]);
+
+  function handleDownload() {
+    if (!report) return;
+    const header = ["Alumno", "Correo", ...report.sessions.map((s: any) => new Date(s.startsAt).toLocaleDateString("es-PE")), "Asistencia"];
+    const lines = report.rows.map((r: any) => {
+      const cells = report.sessions.map((s: any) => {
+        const cell = r.bySession[s.id];
+        return cell?.durationMin !== null && cell?.durationMin !== undefined ? `${cell.durationMin} min${cell.present ? "" : " (no cuenta)"}` : "—";
+      });
+      return [r.userName, r.userEmail, ...cells, r.attendancePct !== null ? `${r.attendancePct}%` : "—"];
+    });
+    const csv = [header, ...lines].map((row) => row.map((c: string) => csvEscape(String(c))).join(",")).join("\n");
+    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "asistencia.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Asistencia a clases en vivo</h2>
+          {report?.rows.length > 0 && (
+            <Button size="sm" variant="outline" onClick={handleDownload} className="gap-1.5">
+              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              Descargar CSV
+            </Button>
+          )}
+        </div>
+        {report?.minConnectionMinutes !== null && report?.minConnectionMinutes !== undefined && (
+          <p className="text-sm text-ash-500">Cuenta como presente: {report.minConnectionMinutes} min o más conectado por sesión.</p>
+        )}
+        {loading ? (
+          <p className="text-sm text-ash-500">Cargando…</p>
+        ) : !report || report.rows.length === 0 ? (
+          <p className="text-sm text-ash-500">Todavía no hay alumnos inscritos, o ninguna sesión registró asistencia.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-paper-border text-xs uppercase tracking-wide text-ash-500">
+                  <th className="pb-2 pr-4">Alumno</th>
+                  {report.sessions.map((s: any) => (
+                    <th key={s.id} className="pb-2 pr-4 text-center">
+                      {new Date(s.startsAt).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+                    </th>
+                  ))}
+                  <th className="pb-2 text-right">Asistencia</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-paper-border">
+                {report.rows.map((r: any) => (
+                  <tr key={r.userId}>
+                    <td className="py-2 pr-4 font-medium text-ink-900">{r.userName}</td>
+                    {report.sessions.map((s: any) => {
+                      const cell = r.bySession[s.id];
+                      return (
+                        <td key={s.id} className="py-2 pr-4 text-center">
+                          {cell?.durationMin !== null && cell?.durationMin !== undefined ? (
+                            <span className={cell.present ? "text-success" : "text-danger"}>{cell.durationMin}′</span>
+                          ) : (
+                            <span className="text-ash-300">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="py-2 text-right font-medium text-ink-900">{r.attendancePct !== null ? `${r.attendancePct}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * Regla de habilitación de certificado (ApprovalRule) — antes solo se podía
  * crear editando prisma/seed.ts a mano, sin ninguna pantalla de admin. Un
@@ -1389,7 +1516,9 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
     adminApi
       .approvalRule(courseId)
       .then(setRule)
-      .catch(() => setRule({ minProgressPct: 100, minAttendancePct: null, minScore: 70, requiresAssignment: false, scoreMode: "BEST_ATTEMPT" }));
+      .catch(() =>
+        setRule({ minProgressPct: 100, minAttendancePct: null, minConnectionMinutes: null, minScore: 70, requiresAssignment: false, scoreMode: "BEST_ATTEMPT" }),
+      );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
@@ -1403,6 +1532,8 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
       await adminApi.updateApprovalRule(courseId, {
         minProgressPct: Number(rule.minProgressPct),
         minAttendancePct: rule.minAttendancePct === "" || rule.minAttendancePct === null ? null : Number(rule.minAttendancePct),
+        minConnectionMinutes:
+          rule.minConnectionMinutes === "" || rule.minConnectionMinutes === null ? null : Number(rule.minConnectionMinutes),
         minScore: Number(rule.minScore),
         requiresAssignment: rule.requiresAssignment,
         scoreMode: rule.scoreMode ?? "BEST_ATTEMPT",
@@ -1457,6 +1588,17 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
               value={rule.minAttendancePct ?? ""}
               placeholder="Sin exigir"
               onChange={(e) => setRule((r: any) => ({ ...r, minAttendancePct: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`ar-connection-${courseId}`}>Minutos mínimos conectado por sesión (para contar "presente")</Label>
+            <Input
+              id={`ar-connection-${courseId}`}
+              type="number"
+              min="0"
+              value={rule.minConnectionMinutes ?? ""}
+              placeholder="Cualquier conexión cuenta"
+              onChange={(e) => setRule((r: any) => ({ ...r, minConnectionMinutes: e.target.value }))}
             />
           </div>
         </div>

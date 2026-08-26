@@ -327,6 +327,10 @@ export interface FormativeQuizQuestion {
   options: string[];
   correctIndex: number;
   explanation?: string | null;
+  // Si está definido, la pregunta interrumpe el video en ese segundo exacto
+  // (pausa + bloquea seguir viendo hasta responder) en vez de mostrarse
+  // como autochequeo debajo del reproductor.
+  videoTimestampSeconds?: number | null;
 }
 export interface FormativeQuiz {
   questions: FormativeQuizQuestion[];

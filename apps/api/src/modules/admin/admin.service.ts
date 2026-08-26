@@ -442,6 +442,61 @@ export class AdminService {
     return this.prisma.course.update({ where: { id }, data: input as never });
   }
 
+  /**
+   * "El docente al final debería poder visualizar/descargar la lista de
+   * los inscritos y su reporte de asistencia" — por sesión (durationMin
+   * real) y si esa sesión cuenta como "presente" según
+   * ApprovalRule.minConnectionMinutes (o cualquier conexión, si no está
+   * configurado). Lectura, no escritura — usa assertTeacherOwnsCourse
+   * (membresía), no assertTeacherCanEditCourse: un docente con edición
+   * bloqueada igual necesita ver quién asistió.
+   */
+  async getAttendanceReport(courseId: string, teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+
+    const [sessions, enrollments, rule] = await Promise.all([
+      this.prisma.liveSession.findMany({ where: { courseId }, orderBy: { startsAt: "asc" } }),
+      this.prisma.enrollment.findMany({
+        where: { courseId, offeringKind: "COURSE", status: { in: ["ACTIVE", "COMPLETED"] } },
+        include: { user: true },
+        orderBy: { enrolledAt: "asc" },
+      }),
+      this.prisma.approvalRule.findUnique({ where: { courseId } }),
+    ]);
+    const minConnectionMinutes = rule?.minConnectionMinutes ?? null;
+
+    const attendance = await this.prisma.attendance.findMany({
+      where: { liveSessionId: { in: sessions.map((s) => s.id) } },
+    });
+    const byKey = new Map(attendance.map((a) => [`${a.liveSessionId}:${a.userId}`, a]));
+
+    const rows = enrollments.map((e) => {
+      const bySession: Record<string, { durationMin: number | null; present: boolean }> = {};
+      let attendedCount = 0;
+      for (const s of sessions) {
+        const a = byKey.get(`${s.id}:${e.userId}`);
+        const present = a ? (minConnectionMinutes !== null ? (a.durationMin ?? 0) >= minConnectionMinutes : a.joinedAt !== null) : false;
+        if (present) attendedCount += 1;
+        bySession[s.id] = { durationMin: a?.durationMin ?? null, present };
+      }
+      return {
+        userId: e.userId,
+        userName: e.user.displayName ?? `${e.user.firstName} ${e.user.lastName}`,
+        userEmail: e.user.email,
+        bySession,
+        attendedCount,
+        totalSessions: sessions.length,
+        attendancePct: sessions.length > 0 ? Math.round((attendedCount / sessions.length) * 10000) / 100 : null,
+      };
+    });
+
+    return {
+      minConnectionMinutes,
+      sessions: sessions.map((s) => ({ id: s.id, startsAt: s.startsAt.toISOString(), title: s.title })),
+      rows,
+    };
+  }
+
   async getCourseDetail(id: string, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherOwnsCourse(id, teacherUserId);
     const course = await this.prisma.course.findUnique({
@@ -684,6 +739,7 @@ export class AdminService {
         courseId,
         minProgressPct: 100,
         minAttendancePct: null,
+        minConnectionMinutes: null,
         minScore: 70,
         requiresAssignment: false,
         scoreMode: "BEST_ATTEMPT",
@@ -696,6 +752,7 @@ export class AdminService {
     input: {
       minProgressPct?: number;
       minAttendancePct?: number | null;
+      minConnectionMinutes?: number | null;
       minScore?: number;
       requiresAssignment?: boolean;
       scoreMode?: string;

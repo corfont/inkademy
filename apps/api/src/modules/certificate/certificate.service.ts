@@ -76,6 +76,7 @@ export class CertificateService {
     const rule = (await this.prisma.approvalRule.findUnique({ where: { courseId: enrollment.courseId } })) ?? {
       minProgressPct: 100,
       minAttendancePct: null as number | null,
+      minConnectionMinutes: null as number | null,
       minScore: 70,
       requiresAssignment: false,
       scoreMode: "BEST_ATTEMPT",
@@ -86,11 +87,16 @@ export class CertificateService {
     if (rule.minAttendancePct !== null) {
       const totalSessions = await this.prisma.liveSession.count({ where: { courseId: enrollment.courseId } });
       if (totalSessions > 0) {
+        // "Si el alumno ha estado 20 min o más se le considera presente" —
+        // con minConnectionMinutes configurado, "asistió" exige ese mínimo
+        // de minutos reales, no solo haberse conectado un instante.
         const attended = await this.prisma.attendance.count({
           where: {
             userId: enrollment.userId,
             liveSession: { courseId: enrollment.courseId },
-            joinedAt: { not: null },
+            ...(rule.minConnectionMinutes !== null
+              ? { durationMin: { gte: rule.minConnectionMinutes } }
+              : { joinedAt: { not: null } }),
           },
         });
         attendanceOk = (attended / totalSessions) * 100 >= rule.minAttendancePct;

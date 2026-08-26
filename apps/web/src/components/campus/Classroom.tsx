@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
-import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz } from "@/lib/mock-data";
+import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz, FormativeQuizQuestion } from "@/lib/mock-data";
 import { meApi, API_URL } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
@@ -120,6 +120,76 @@ function FormativeQuizWidget({ quiz }: { quiz: FormativeQuiz }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * "Al llegar al segundo disparo: pausar, bloquear los controles y desplegar
+ * un overlay con la pregunta correspondiente de forma síncrona. El modal no
+ * puede cerrarse con Esc ni clic fuera." — cubre todo el reproductor
+ * (position:absolute inset-0), sin botón de cierre ni onClick de fondo; la
+ * única salida es responder (ver continueAfterCheckpoint en Classroom).
+ * Mismo criterio formativo que FormativeQuizWidget: muestra si acertó o no
+ * + la explicación antes de dejar continuar, no fuerza la respuesta
+ * correcta (no es un examen).
+ */
+function VideoCheckpointOverlay({ question, onContinue }: { question: FormativeQuizQuestion; onContinue: () => void }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const answered = selected !== null;
+  const isCorrect = answered && selected === question.correctIndex;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="absolute inset-0 z-10 flex items-center justify-center bg-ink-950/90 p-6"
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div className="flex w-full max-w-md flex-col gap-4 rounded-lg bg-paper p-6 shadow-raised">
+        <div className="flex items-center gap-2">
+          <HelpCircle className="h-5 w-5 text-indigo-600" aria-hidden="true" />
+          <p className="text-xs font-semibold uppercase tracking-wide text-ash-500">Pausa para verificar</p>
+        </div>
+        <p className="text-sm font-medium text-ink-900">{question.text}</p>
+        <div className="flex flex-col gap-1.5">
+          {question.options.map((option, oIdx) => {
+            const isSelected = selected === oIdx;
+            const showAsCorrect = answered && oIdx === question.correctIndex;
+            const showAsWrong = answered && isSelected && oIdx !== question.correctIndex;
+            return (
+              <button
+                key={oIdx}
+                type="button"
+                disabled={answered}
+                onClick={() => setSelected(oIdx)}
+                className={cn(
+                  "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                  !answered && "border-paper-border hover:border-indigo-400 hover:bg-indigo-50",
+                  showAsCorrect && "border-success bg-success-bg text-success",
+                  showAsWrong && "border-danger bg-danger-bg text-danger",
+                  answered && !showAsCorrect && !showAsWrong && "border-paper-border text-ash-500",
+                )}
+              >
+                <span>{option}</span>
+                {showAsCorrect && <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                {showAsWrong && <XCircle className="h-4 w-4 shrink-0" aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+        {answered && (
+          <div className="flex flex-col gap-3 rounded-md bg-paper-muted p-3 text-xs text-ash-600">
+            <div>
+              <span className="font-medium">{isCorrect ? "¡Correcto!" : "No era la respuesta correcta."}</span>
+              {question.explanation && <span> {question.explanation}</span>}
+            </div>
+            <Button size="sm" onClick={onContinue} className="self-end">
+              Continuar viendo
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -298,6 +368,28 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const currentModule = detail.modules.find((m) => m.lessons.some((l) => l.id === current?.id));
   const lastSentRef = useRef(0);
 
+  // "Interacciones sobre un video: bloquear el avance, pausar y mostrar la
+  // pregunta al llegar al segundo disparo" — checkpoints = preguntas del
+  // formativeQuiz de la lección actual que tienen videoTimestampSeconds.
+  // Se reinician al cambiar de lección (useEffect abajo).
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoCheckpoints = useMemo(
+    () =>
+      (current?.formativeQuiz?.questions ?? [])
+        .filter((q): q is FormativeQuizQuestion & { videoTimestampSeconds: number } => q.videoTimestampSeconds != null)
+        .sort((a, b) => a.videoTimestampSeconds - b.videoTimestampSeconds),
+    [current?.id],
+  );
+  const nonCheckpointQuestions = (current?.formativeQuiz?.questions ?? []).filter((q) => q.videoTimestampSeconds == null);
+  const [maxWatchedSeconds, setMaxWatchedSeconds] = useState(0);
+  const [answeredCheckpoints, setAnsweredCheckpoints] = useState<Record<string, boolean>>({});
+  const [activeCheckpoint, setActiveCheckpoint] = useState<FormativeQuizQuestion | null>(null);
+  useEffect(() => {
+    setMaxWatchedSeconds(current?.lastPositionSeconds ?? 0);
+    setAnsweredCheckpoints({});
+    setActiveCheckpoint(null);
+  }, [current?.id]);
+
   async function persistProgress(lessonId: string, patch: { completed?: boolean; lastPositionSeconds?: number }) {
     try {
       const result = await meApi.updateLessonProgress(lessonId, patch);
@@ -328,6 +420,35 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
       lastSentRef.current = seconds;
       persistProgress(current.id, { lastPositionSeconds: seconds });
     }
+    if (!activeCheckpoint && seconds > maxWatchedSeconds) setMaxWatchedSeconds(seconds);
+    const due = videoCheckpoints.find((q) => !answeredCheckpoints[q.id] && (q.videoTimestampSeconds ?? 0) <= e.currentTarget.currentTime);
+    if (due) {
+      e.currentTarget.pause();
+      setActiveCheckpoint(due);
+    }
+  }
+
+  // "Bloquear los clics hacia adelante en la barra de progreso: el usuario
+  // solo puede pausar, retroceder o reproducir el tiempo ya visto" — se
+  // detecta con onSeeking (dispara ANTES de que el navegador termine de
+  // saltar) y se fuerza de vuelta a lo ya visto. No es infalible contra un
+  // usuario decidido con devtools (ningún <video> nativo lo es sin DRM
+  // real), pero sí bloquea el uso normal de la barra de progreso.
+  function onSeeking(e: SyntheticEvent<HTMLVideoElement>) {
+    if (e.currentTarget.currentTime > maxWatchedSeconds + 1) {
+      e.currentTarget.currentTime = maxWatchedSeconds;
+    }
+  }
+
+  // Responder (bien o mal) desbloquea seguir viendo — mismo criterio
+  // formativo que FormativeQuizWidget: se muestra si acertó o no + la
+  // explicación, y recién ahí el alumno decide seguir. No es un examen, es
+  // un chequeo de comprensión; forzar la respuesta correcta para avanzar
+  // volvería esto punitivo, distinto al resto de "evaluación formativa".
+  function continueAfterCheckpoint(question: FormativeQuizQuestion) {
+    setAnsweredCheckpoints((m) => ({ ...m, [question.id]: true }));
+    setActiveCheckpoint(null);
+    videoRef.current?.play();
   }
 
   const lessonMaterials = current?.materials ?? [];
@@ -402,6 +523,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
               <div className="relative overflow-hidden rounded-lg">
                 <video
                   key={current.id}
+                  ref={videoRef}
                   controls
                   // "El sistema no debe permitir que el usuario pueda descargar
                   // la clase [principal]" — sin botón de descarga del
@@ -413,6 +535,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                   className="w-full bg-ink-950"
                   src={current.videoUrl}
                   onTimeUpdate={onTimeUpdate}
+                  onSeeking={onSeeking}
                   onEnded={() => markComplete(current.id)}
                 >
                   {current.subtitlesUrl ? (
@@ -422,6 +545,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                   )}
                 </video>
                 {detail.blockMainVideoDownload !== false && watermarkLabel && <VideoWatermark label={watermarkLabel} />}
+                {activeCheckpoint && <VideoCheckpointOverlay question={activeCheckpoint} onContinue={() => continueAfterCheckpoint(activeCheckpoint)} />}
               </div>
             ) : current?.contentType === "LINK" && current.externalUrl ? (
               // "Pongo un link... no funciona" — antes contentType=LINK no
@@ -475,7 +599,9 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                 </span>
               )}
             </div>
-            {current?.formativeQuiz?.questions?.length ? <FormativeQuizWidget quiz={current.formativeQuiz} /> : null}
+            {/* Las preguntas con videoTimestampSeconds ya se muestran como
+                overlay bloqueante al llegar a su segundo — no se repiten acá. */}
+            {nonCheckpointQuestions.length > 0 && <FormativeQuizWidget quiz={{ questions: nonCheckpointQuestions }} />}
           </div>
 
           {/* "Al costado podrá tomar notas si quisiera" — sincronizadas con

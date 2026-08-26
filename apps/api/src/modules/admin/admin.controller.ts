@@ -165,6 +165,13 @@ export class AdminController {
     return this.adminService.getCourseDetail(id, teacherScopeId(user));
   }
 
+  @Get("courses/:id/attendance-report")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Lista de inscritos + asistencia por sesión en vivo — TEACHER solo si es CourseStaff de ese curso" })
+  getAttendanceReport(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.getAttendanceReport(id, teacherScopeId(user));
+  }
+
   @Get("courses/:id/approval-rule")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Regla de habilitación de certificado del curso (nota mínima, % de avance, asistencia, tarea)" })
