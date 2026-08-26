@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
 import { FileDropzone } from "./FileDropzone";
+import { ExamBuilder } from "./ExamBuilder";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 /**
@@ -67,7 +68,7 @@ export function CourseEditor({ course }: { course: any }) {
 
       <ApprovalRuleSection courseId={course.id} />
 
-      <AssessmentsSection courseId={course.id} />
+      <AssessmentsSection course={course} onCourseChange={router.refresh} />
     </div>
   );
 }
@@ -1654,24 +1655,120 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
 }
 
 // ============================================================================
-// Evaluaciones (exámenes/quizzes) y sus preguntas — antes no existía ningún
-// módulo de autoría: el alumno podía presentar exámenes y el staff podía
-// calificar respuestas abiertas, pero la única forma de crear una
-// Assessment/Question era editando prisma/seed.ts a mano.
+// Evaluaciones (exámenes/quizzes) — antes solo se podían crear (título +
+// reglas básicas) y las preguntas solo se creaban/borraban sin reordenar,
+// editar, ni archivar el examen. Ahora el detalle de cada examen (reglas,
+// cabecera/pie/instrucciones, preguntas con drag-and-drop, vista previa,
+// archivar/restaurar) vive en ExamBuilder (modal) — ver ExamBuilder.tsx.
+// Acá solo queda la lista + la plantilla de curso que heredan sus exámenes.
 // ============================================================================
 
-const QUESTION_TYPE_LABEL: Record<string, string> = {
-  SINGLE_CHOICE: "Opción única",
-  MULTI_CHOICE: "Opción múltiple",
-  TRUE_FALSE: "Verdadero/Falso",
-  ORDERING: "Ordenar",
-  SHORT_ANSWER: "Respuesta corta",
-  OPEN: "Respuesta abierta (calificación manual)",
-};
+function WeightFormulaCard({ assessments }: { assessments: any[] }) {
+  const weighted = assessments.filter((a) => (a.weightPercent ?? 0) > 0);
+  if (weighted.length === 0) return null;
+  const total = Math.round(weighted.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0) * 100) / 100;
+  const complete = Math.round(total) === 100;
 
-function AssessmentsSection({ courseId }: { courseId: string }) {
+  return (
+    <div className="rounded-lg border border-paper-border p-4">
+      <p className="text-sm font-semibold text-ink-900">Fórmula de nota ponderada</p>
+      <ul className="mt-2 flex flex-col gap-1 text-sm text-ink-700">
+        {weighted.map((a) => (
+          <li key={a.id}>
+            {a.weightPercent}% × nota de &ldquo;{a.title?.es}&rdquo;
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-paper-muted">
+        <div
+          className={`h-full transition-all ${complete ? "bg-success" : "bg-warning"}`}
+          style={{ width: `${Math.min(100, total)}%` }}
+        />
+      </div>
+      <p className={`mt-1 text-xs ${complete ? "text-success" : "text-warning"}`}>
+        {complete
+          ? "Suma exactamente 100% — la fórmula está completa."
+          : `Suma ${total}% de 100% — todavía falta ponderar ${Math.round((100 - total) * 100) / 100}% para completar la fórmula.`}
+      </p>
+    </div>
+  );
+}
+
+function ExamTemplateSection({ course, onSaved }: { course: any; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [headerText, setHeaderText] = useState(course.examHeaderText?.es ?? "");
+  const [footerText, setFooterText] = useState(course.examFooterText?.es ?? "");
+  const [instructionsText, setInstructionsText] = useState(course.examInstructionsText?.es ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function handleSave() {
+    setBusy(true);
+    try {
+      await adminApi.updateCourse(course.id, {
+        examHeaderText: headerText.trim() ? { es: headerText } : null,
+        examFooterText: footerText.trim() ? { es: footerText } : null,
+        examInstructionsText: instructionsText.trim() ? { es: instructionsText } : null,
+      });
+      onSaved();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar la plantilla.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-paper-border p-4">
+      <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => setOpen((o) => !o)}>
+        <span className="text-sm font-semibold text-ink-900">Plantilla de exámenes del curso</span>
+        <span className="text-xs text-ash-500">{open ? "Ocultar" : "Editar"}</span>
+      </button>
+      <p className="mt-1 text-xs text-ash-500">
+        Cabecera, pie e instrucciones que heredan TODOS los exámenes de este curso — para no repetir el mismo texto en cada uno. Cada examen
+        puede personalizar la suya en su propio editor.
+      </p>
+      {open && (
+        <div className="mt-3 flex flex-col gap-3">
+          <div>
+            <Label htmlFor="course-exam-header">Cabecera</Label>
+            <textarea
+              id="course-exam-header"
+              className="min-h-[3rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+              value={headerText}
+              onChange={(e) => setHeaderText(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="course-exam-instructions">Instrucciones</Label>
+            <textarea
+              id="course-exam-instructions"
+              className="min-h-[3rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+              value={instructionsText}
+              onChange={(e) => setInstructionsText(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="course-exam-footer">Pie de página</Label>
+            <textarea
+              id="course-exam-footer"
+              className="min-h-[3rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+              value={footerText}
+              onChange={(e) => setFooterText(e.target.value)}
+            />
+          </div>
+          <Button size="sm" variant="outline" disabled={busy} onClick={handleSave} className="self-start">
+            Guardar plantilla
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseChange: () => void }) {
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   // "Módulo para crear evaluaciones O subir un archivo (Word/Excel/PPT/
@@ -1681,10 +1778,11 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
   // offline y sube su respuesta como otro archivo (ver AssessmentRunner).
   const [isFileUpload, setIsFileUpload] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function refresh() {
     try {
-      const data = await adminApi.assessments(courseId);
+      const data = await adminApi.assessments(course.id, showArchived);
       setAssessments(data);
     } catch {
       setAssessments([]);
@@ -1696,13 +1794,13 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+  }, [course.id, showArchived]);
 
   async function handleCreate() {
     if (!newTitle.trim()) return;
     setCreating(true);
     try {
-      await adminApi.createAssessment(courseId, { title: { es: newTitle } });
+      await adminApi.createAssessment(course.id, { title: { es: newTitle } });
       setNewTitle("");
       await refresh();
     } catch (err) {
@@ -1720,7 +1818,7 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
     setUploadingFile(true);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
-      await adminApi.createAssessment(courseId, { title: { es: newTitle }, sourceFileAssetId: assetId, sourceFileMimeType: file.type });
+      await adminApi.createAssessment(course.id, { title: { es: newTitle }, sourceFileAssetId: assetId, sourceFileMimeType: file.type });
       setNewTitle("");
       setIsFileUpload(false);
       await refresh();
@@ -1731,433 +1829,117 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
     }
   }
 
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 p-6">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">Evaluaciones</h2>
-        {loading ? (
-          <p className="text-sm text-ash-500">Cargando…</p>
-        ) : assessments.length === 0 ? (
-          <p className="text-sm text-ash-500">Todavía no hay evaluaciones para este curso.</p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {(() => {
-              const totalWeight = assessments.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0);
-              return (
-                totalWeight > 0 && (
-                  <Callout variant={Math.round(totalWeight) === 100 ? "info" : "warning"}>
-                    Suma de pesos configurados: {totalWeight}%.{" "}
-                    {Math.round(totalWeight) === 100
-                      ? "Cuadra con la fórmula de promedio ponderado (activa el modo en la regla de habilitación de certificado, arriba)."
-                      : "Para que el promedio ponderado tenga sentido, los pesos de los exámenes que participan en la fórmula deberían sumar 100%."}
-                  </Callout>
-                )
-              );
-            })()}
-            {assessments.map((a) => (
-              <AssessmentBlock key={a.id} assessment={a} onChange={refresh} />
-            ))}
-          </div>
-        )}
-        <div className="flex flex-col gap-2 border-t border-paper-border pt-4">
-          <div className="flex gap-2">
-            <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-            {!isFileUpload && (
-              <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
-                + Nueva evaluación
-              </Button>
-            )}
-          </div>
-          <label className="flex items-center gap-2 text-xs text-ash-600">
-            <input type="checkbox" checked={isFileUpload} onChange={(e) => setIsFileUpload(e.target.checked)} />
-            Es un examen de archivo (el docente sube el examen en Word/Excel/PPT/imagen/PDF, en vez de escribir preguntas)
-          </label>
-          {isFileUpload && (
-            <DropLabel
-              busy={uploadingFile}
-              label="Subir archivo del examen y crear"
-              small
-              onFile={handleCreateFileExam}
-            />
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [minScore, setMinScore] = useState(String(assessment.minScore));
-  const [maxAttempts, setMaxAttempts] = useState(String(assessment.maxAttempts));
-  const [timeLimitMinutes, setTimeLimitMinutes] = useState(assessment.timeLimitMinutes ? String(assessment.timeLimitMinutes) : "");
-  const [displayMode, setDisplayMode] = useState(assessment.displayMode ?? "ALL_AT_ONCE");
-  const [weightPercent, setWeightPercent] = useState(assessment.weightPercent != null ? String(assessment.weightPercent) : "");
-  const [busy, setBusy] = useState(false);
-
-  async function handleSaveRules() {
-    setBusy(true);
-    try {
-      await adminApi.updateAssessment(assessment.id, {
-        minScore: Number(minScore),
-        maxAttempts: Number(maxAttempts),
-        timeLimitMinutes: timeLimitMinutes ? Number(timeLimitMinutes) : undefined,
-        displayMode,
-        weightPercent: weightPercent.trim() === "" ? null : Number(weightPercent),
-      });
-      onChange();
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar las reglas.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDelete() {
+  async function handleDelete(assessment: any) {
     if (!confirm(`¿Eliminar "${assessment.title?.es}"? Solo se puede si nadie la ha presentado todavía.`)) return;
-    setBusy(true);
     try {
       await adminApi.deleteAssessment(assessment.id);
-      onChange();
+      await refresh();
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "No pudimos eliminar la evaluación.");
-      setBusy(false);
     }
   }
 
-  const isFileUpload = Boolean(assessment.sourceFileAssetId);
+  const editingAssessment = assessments.find((a) => a.id === editingId) ?? null;
+  const activeAssessments = assessments.filter((a) => !a.archived);
 
   return (
-    <div className="rounded-lg border border-paper-border p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-medium text-ink-900">
-            {assessment.title?.es} {isFileUpload && <Badge variant="outline">Examen de archivo</Badge>}
-          </p>
-          <p className="text-xs text-ash-500">
-            {isFileUpload
-              ? `Sin preguntas — se califica el archivo completo que sube el alumno`
-              : `${assessment.questions?.length ?? 0} pregunta${assessment.questions?.length === 1 ? "" : "s"}`}{" "}
-            · {assessment._count?.attempts ?? 0} intento(s) de alumnos
-            {assessment.weightPercent != null && ` · peso en fórmula: ${assessment.weightPercent}%`}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setExpanded((e) => !e)}>
-            {expanded ? "Ocultar" : "Gestionar"}
-          </Button>
-          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="mt-4 flex flex-col gap-4 border-t border-paper-border pt-4">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <div>
-              <Label htmlFor={`minScore-${assessment.id}`}>Nota mínima (%)</Label>
-              <Input
-                id={`minScore-${assessment.id}`}
-                type="number"
-                min="0"
-                max="100"
-                value={minScore}
-                onChange={(e) => setMinScore(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor={`weight-${assessment.id}`}>Peso en fórmula ponderada (%)</Label>
-              <Input
-                id={`weight-${assessment.id}`}
-                type="number"
-                min="0"
-                max="100"
-                placeholder="No participa"
-                value={weightPercent}
-                onChange={(e) => setWeightPercent(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor={`maxAttempts-${assessment.id}`}>Intentos máximos</Label>
-              <Input
-                id={`maxAttempts-${assessment.id}`}
-                type="number"
-                min="1"
-                value={maxAttempts}
-                onChange={(e) => setMaxAttempts(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor={`timeLimit-${assessment.id}`}>Límite de tiempo (min)</Label>
-              <Input
-                id={`timeLimit-${assessment.id}`}
-                type="number"
-                min="1"
-                value={timeLimitMinutes}
-                onChange={(e) => setTimeLimitMinutes(e.target.value)}
-                placeholder="Sin límite"
-              />
-            </div>
-            <div>
-              <Label htmlFor={`displayMode-${assessment.id}`}>Cómo se muestran las preguntas</Label>
-              <Select id={`displayMode-${assessment.id}`} value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
-                <option value="ALL_AT_ONCE">Todas juntas en una pantalla</option>
-                <option value="ONE_BY_ONE">Una por una (sin volver atrás)</option>
-              </Select>
-            </div>
+    <>
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-semibold text-ink-900">Evaluaciones</h2>
+            <label className="flex items-center gap-1.5 text-xs text-ash-600">
+              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+              Mostrar archivados
+            </label>
           </div>
-          <Button size="sm" variant="outline" disabled={busy} onClick={handleSaveRules} className="self-start">
-            Guardar reglas
-          </Button>
 
-          {isFileUpload ? (
-            <p className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
-              Este examen no tiene preguntas — el alumno descarga el archivo que subiste, lo completa offline, y sube su respuesta como archivo
-              para que lo califiques a mano en /docente/evaluaciones-pendientes.
-            </p>
+          <ExamTemplateSection course={course} onSaved={onCourseChange} />
+
+          {loading ? (
+            <p className="text-sm text-ash-500">Cargando…</p>
+          ) : assessments.length === 0 ? (
+            <p className="text-sm text-ash-500">Todavía no hay evaluaciones para este curso.</p>
           ) : (
-            <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
-              <h3 className="text-sm font-semibold text-ink-900">Preguntas</h3>
-              {(assessment.questions ?? []).map((q: any) => (
-                <QuestionRow key={q.id} question={q} onChange={onChange} />
-              ))}
-              <NewQuestionForm assessmentId={assessment.id} onChange={onChange} />
+            <div className="flex flex-col gap-4">
+              <WeightFormulaCard assessments={activeAssessments} />
+              {assessments.map((a) => {
+                const hasAttempts = (a._count?.attempts ?? 0) > 0;
+                return (
+                  <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-paper-border p-4">
+                    <div>
+                      <p className="font-medium text-ink-900">
+                        {a.title?.es} {a.archived && <Badge variant="outline">Archivado</Badge>}{" "}
+                        {a.sourceFileAssetId && <Badge variant="outline">Examen de archivo</Badge>}
+                      </p>
+                      <p className="text-xs text-ash-500">
+                        {a.sourceFileAssetId
+                          ? "Sin preguntas — se califica el archivo completo que sube el alumno"
+                          : `${a.questions?.length ?? 0} pregunta${a.questions?.length === 1 ? "" : "s"}`}{" "}
+                        · {a._count?.attempts ?? 0} intento(s) de alumnos
+                        {a.weightPercent != null && ` · peso en fórmula: ${a.weightPercent}%`}
+                      </p>
+                    </div>
+                    <div className="flex flex-none gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setEditingId(a.id)}>
+                        Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-danger hover:bg-danger-bg"
+                        disabled={hasAttempts}
+                        title={hasAttempts ? "No se puede eliminar: ya tiene intentos de alumnos. Archívala en su lugar (botón Editar)." : undefined}
+                        onClick={() => handleDelete(a)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuestionRow({ question, onChange }: { question: any; onChange: () => void }) {
-  const [busy, setBusy] = useState(false);
-
-  async function handleDelete() {
-    if (!confirm("¿Eliminar esta pregunta?")) return;
-    setBusy(true);
-    try {
-      await adminApi.deleteQuestion(question.id);
-      onChange();
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos eliminar la pregunta.");
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-md bg-paper-muted p-3 text-sm">
-      <div>
-        <p className="text-ink-900">{question.text?.es}</p>
-        <p className="text-xs text-ash-500">
-          {QUESTION_TYPE_LABEL[question.type] ?? question.type} · {question.points} pto(s)
-          {question.options?.length ? ` · ${question.options.length} opciones` : ""}
-        </p>
-      </div>
-      <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
-        <Trash2 className="h-4 w-4" aria-hidden="true" />
-      </Button>
-    </div>
-  );
-}
-
-function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onChange: () => void }) {
-  const [type, setType] = useState("SINGLE_CHOICE");
-  const [text, setText] = useState("");
-  const [optionsText, setOptionsText] = useState(""); // una opción por línea
-  const [correctIndex, setCorrectIndex] = useState(0); // SINGLE_CHOICE/TRUE_FALSE
-  const [correctIndexes, setCorrectIndexes] = useState<number[]>([]); // MULTI_CHOICE
-  const [shortAnswer, setShortAnswer] = useState("");
-  const [points, setPoints] = useState("1");
-  const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  const needsOptions = type === "SINGLE_CHOICE" || type === "MULTI_CHOICE" || type === "ORDERING";
-  const optionLines = optionsText
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  async function handleSubmit() {
-    if (!text.trim()) return;
-    setBusy(true);
-    try {
-      let options: { id: string; text: string }[] | undefined;
-      let correctAnswer: string | string[] | undefined;
-
-      if (type === "TRUE_FALSE") {
-        options = [
-          { id: "true", text: "Verdadero" },
-          { id: "false", text: "Falso" },
-        ];
-        correctAnswer = correctIndex === 0 ? "true" : "false";
-      } else if (type === "ORDERING") {
-        // El orden en que el admin escribe las líneas ES el orden correcto —
-        // al alumno se le presentan barajadas (ver AssessmentService.getForStudent).
-        options = optionLines.map((line, i) => ({ id: `opt-${i}`, text: line }));
-        correctAnswer = optionLines.map((_, i) => `opt-${i}`);
-      } else if (needsOptions) {
-        options = optionLines.map((line, i) => ({ id: `opt-${i}`, text: line }));
-        correctAnswer = type === "SINGLE_CHOICE" ? `opt-${correctIndex}` : correctIndexes.map((i) => `opt-${i}`);
-      } else if (type === "SHORT_ANSWER") {
-        correctAnswer = shortAnswer;
-      }
-
-      await adminApi.createQuestion(assessmentId, {
-        type,
-        text: { es: text },
-        options,
-        correctAnswer,
-        points: Number(points) || 1,
-      });
-      setText("");
-      setOptionsText("");
-      setShortAnswer("");
-      setPoints("1");
-      setCorrectIndex(0);
-      setCorrectIndexes([]);
-      setOpen(false);
-      onChange();
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos crear la pregunta.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="self-start">
-        + Agregar pregunta
-      </Button>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-paper-border p-4">
-      <div>
-        <Label htmlFor="q-type">Tipo de pregunta</Label>
-        <Select
-          id="q-type"
-          value={type}
-          onChange={(e) => {
-            setType(e.target.value);
-            setCorrectIndex(0);
-            setCorrectIndexes([]);
-          }}
-        >
-          <option value="SINGLE_CHOICE">Opción única</option>
-          <option value="MULTI_CHOICE">Opción múltiple</option>
-          <option value="TRUE_FALSE">Verdadero/Falso</option>
-          <option value="ORDERING">Ordenar</option>
-          <option value="SHORT_ANSWER">Respuesta corta</option>
-          <option value="OPEN">Respuesta abierta (calificación manual)</option>
-        </Select>
-      </div>
-      <div>
-        <Label htmlFor="q-text">Pregunta</Label>
-        <Input id="q-text" value={text} onChange={(e) => setText(e.target.value)} />
-      </div>
-
-      {type === "ORDERING" && (
-        <div>
-          <Label htmlFor="q-ordering-options">Opciones, en el ORDEN CORRECTO (una por línea)</Label>
-          <textarea
-            id="q-ordering-options"
-            className="min-h-[5rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
-            value={optionsText}
-            onChange={(e) => setOptionsText(e.target.value)}
-            placeholder={"Primer paso\nSegundo paso\nTercer paso"}
-          />
-          <p className="mt-1 text-xs text-ash-500">Al alumno se le muestran barajadas — tiene que reordenarlas hasta calzar con este orden.</p>
-        </div>
-      )}
-
-      {type === "TRUE_FALSE" && (
-        <div>
-          <Label>Respuesta correcta</Label>
-          <div className="flex gap-4 text-sm">
-            <label className="flex items-center gap-1.5">
-              <input type="radio" checked={correctIndex === 0} onChange={() => setCorrectIndex(0)} /> Verdadero
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input type="radio" checked={correctIndex === 1} onChange={() => setCorrectIndex(1)} /> Falso
-            </label>
-          </div>
-        </div>
-      )}
-
-      {needsOptions && type !== "ORDERING" && (
-        <div>
-          <Label htmlFor="q-options">Opciones (una por línea)</Label>
-          <textarea
-            id="q-options"
-            className="min-h-[5rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
-            value={optionsText}
-            onChange={(e) => setOptionsText(e.target.value)}
-            placeholder={"Opción A\nOpción B\nOpción C"}
-          />
-          {optionLines.length > 0 && (
-            <div className="mt-2 flex flex-col gap-1">
-              <p className="text-xs text-ash-500">Marca la(s) correcta(s):</p>
-              {optionLines.map((line, i) =>
-                type === "SINGLE_CHOICE" ? (
-                  <label key={i} className="flex items-center gap-1.5 text-sm">
-                    <input type="radio" checked={correctIndex === i} onChange={() => setCorrectIndex(i)} />
-                    {line}
-                  </label>
-                ) : (
-                  <label key={i} className="flex items-center gap-1.5 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={correctIndexes.includes(i)}
-                      onChange={(e) =>
-                        setCorrectIndexes((prev) => (e.target.checked ? [...prev, i] : prev.filter((x) => x !== i)))
-                      }
-                    />
-                    {line}
-                  </label>
-                ),
+          <div className="flex flex-col gap-2 border-t border-paper-border pt-4">
+            <div className="flex gap-2">
+              <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+              {!isFileUpload && (
+                <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
+                  + Nueva evaluación
+                </Button>
               )}
             </div>
-          )}
-        </div>
-      )}
+            <label className="flex items-center gap-2 text-xs text-ash-600">
+              <input type="checkbox" checked={isFileUpload} onChange={(e) => setIsFileUpload(e.target.checked)} />
+              Es un examen de archivo (el docente sube el examen en Word/Excel/PPT/imagen/PDF, en vez de escribir preguntas)
+            </label>
+            {isFileUpload && (
+              <DropLabel
+                busy={uploadingFile}
+                label="Subir archivo del examen y crear"
+                small
+                onFile={handleCreateFileExam}
+              />
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-      {type === "SHORT_ANSWER" && (
-        <div>
-          <Label htmlFor="q-short">Respuesta correcta (coincidencia exacta)</Label>
-          <Input id="q-short" value={shortAnswer} onChange={(e) => setShortAnswer(e.target.value)} />
-        </div>
-      )}
-
-      {type === "OPEN" && (
-        <Callout variant="info">Esta pregunta queda pendiente de calificación manual (ver "Evaluaciones pendientes").</Callout>
-      )}
-
-      <div>
-        <Label htmlFor="q-points">Puntos</Label>
-        <Input
-          id="q-points"
-          type="number"
-          min="0"
-          step="0.5"
-          value={points}
-          onChange={(e) => setPoints(e.target.value)}
-          className="max-w-[6rem]"
+      {editingAssessment && (
+        <ExamBuilder
+          key={editingAssessment.id}
+          assessment={editingAssessment}
+          course={course}
+          otherWeightsSum={
+            Math.round(
+              activeAssessments.filter((a) => a.id !== editingAssessment.id).reduce((sum, a) => sum + (a.weightPercent ?? 0), 0) * 100,
+            ) / 100
+          }
+          onClose={() => setEditingId(null)}
+          onChange={refresh}
         />
-      </div>
-
-      <div className="flex gap-2">
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-          Cancelar
-        </Button>
-        <Button size="sm" disabled={busy || !text.trim()} onClick={handleSubmit}>
-          {busy ? "Guardando…" : "Agregar pregunta"}
-        </Button>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 

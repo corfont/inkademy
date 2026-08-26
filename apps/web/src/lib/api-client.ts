@@ -391,7 +391,15 @@ export const commerceApi = {
 // Evaluación
 // ---------------------------------------------------------------------------
 export const assessmentApi = {
-  get: (id: string) => apiFetch<any>(`/assessments/${id}`),
+  // "No pudimos cargar tu campus" real en /campus/cursos/.../evaluacion/... —
+  // esta llamada corre en un Server Component (primera carga Y cada
+  // navegación, por ser RSC) y nunca mandaba el token: en el servidor
+  // `apiFetch` solo saca el token de `getClientAccessToken()`, que no existe
+  // ahí (typeof window === "undefined"). Sin accessToken explícito, la API
+  // siempre respondía 401 — y withFallback relanza 401/403 a propósito (no
+  // los absorbe como "datos de referencia"), así que la página se rompía
+  // para CUALQUIER alumno real, siempre. Ver AssessmentPage.
+  get: (id: string, accessToken?: string | null) => apiFetch<any>(`/assessments/${id}`, { accessToken }),
   createAttempt: (assessmentId: string) => apiFetch<any>(`/assessments/${assessmentId}/attempts`, { method: "POST" }),
   submit: (attemptId: string, input: unknown) =>
     apiFetch<AssessmentResultDTO>(`/attempts/${attemptId}/submit`, { method: "POST", body: JSON.stringify(input) }),
@@ -834,8 +842,8 @@ export const adminApi = {
   },
 
   // --- Evaluaciones (exámenes/quizzes) y preguntas ---
-  assessments: (courseId: string, accessToken?: string | null) =>
-    apiFetch<any[]>(`/admin/courses/${courseId}/assessments`, { accessToken }),
+  assessments: (courseId: string, includeArchived?: boolean, accessToken?: string | null) =>
+    apiFetch<any[]>(`/admin/courses/${courseId}/assessments`, { query: { includeArchived: includeArchived ? "true" : undefined }, accessToken }),
   createAssessment: (courseId: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/courses/${courseId}/assessments`, { method: "POST", body: JSON.stringify(input), accessToken }),
   updateAssessment: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
@@ -848,6 +856,13 @@ export const adminApi = {
     apiFetch<any>(`/admin/questions/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteQuestion: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/questions/${id}`, { method: "DELETE", accessToken }),
+  // Drag-and-drop del builder de exámenes — reemplaza el orden de TODAS las preguntas del examen.
+  reorderQuestions: (assessmentId: string, orderedQuestionIds: string[], accessToken?: string | null) =>
+    apiFetch<any>(`/admin/assessments/${assessmentId}/questions/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ orderedQuestionIds }),
+      accessToken,
+    }),
 
   // --- Usuarios y roles ---
   users: (params: { q?: string; role?: string } = {}, accessToken?: string | null) =>

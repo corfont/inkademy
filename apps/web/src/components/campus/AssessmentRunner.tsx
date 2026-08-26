@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { Clock } from "lucide-react";
 import { assessmentApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Dialog } from "@/components/ui/Dialog";
+import { localize } from "@/lib/format";
+import { ExamStartScreen } from "./ExamStartScreen";
 
 export interface AssessmentQuestion {
   id: string;
   type: "SINGLE_CHOICE" | "MULTI_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "OPEN" | "ORDERING";
-  text: string;
+  text: Record<string, string>;
   options?: { id: string; text: string }[];
 }
 
@@ -68,7 +70,7 @@ function OrderingField({
 
 export interface AssessmentDefinition {
   id: string;
-  title: string;
+  title: Record<string, string>;
   timeLimitMinutes: number | null;
   displayMode?: "ALL_AT_ONCE" | "ONE_BY_ONE";
   questions: AssessmentQuestion[];
@@ -78,6 +80,18 @@ export interface AssessmentDefinition {
   isFileUpload?: boolean;
   sourceFileUrl?: string | null;
   sourceFileMimeType?: string | null;
+  // "Todo lo que necesite saber el alumno antes de rendir el examen" — ver
+  // ExamStartScreen/ExamHeaderCard, alimentados por AssessmentService.getForStudent.
+  courseTitle?: Record<string, string> | null;
+  maxAttempts?: number | null;
+  attemptsUsed?: number | null;
+  minScore?: number | null;
+  availableFrom?: string | null;
+  availableUntil?: string | null;
+  titleFontFamily?: string | null;
+  headerText?: Record<string, string> | null;
+  footerText?: Record<string, string> | null;
+  instructionsText?: Record<string, string> | null;
 }
 
 /**
@@ -98,6 +112,7 @@ function formatFileSize(bytes: number): string {
 
 function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) {
   const t = useTranslations("campus.assessment");
+  const locale = useLocale();
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -176,7 +191,7 @@ function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) 
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="font-serif text-xl font-semibold text-ink-900">{assessment.title}</h1>
+        <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(assessment.title, locale, "Evaluación")}</h1>
         {assessment.timeLimitMinutes ? (
           <div className="flex items-center gap-1.5 text-sm font-medium text-ink-800" role="timer" aria-live="polite">
             <Clock className="h-4 w-4" aria-hidden="true" />
@@ -254,9 +269,10 @@ function QuestionFieldset({
   answers: Record<string, unknown>;
   setAnswers: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
 }) {
+  const locale = useLocale();
   return (
     <fieldset className="rounded-lg border border-paper-border bg-paper p-6">
-      <legend className="font-medium text-ink-900">{question.text}</legend>
+      <legend className="font-medium text-ink-900">{localize(question.text, locale)}</legend>
       <div className="mt-4 flex flex-col gap-2">
         {question.type === "TRUE_FALSE" && (
           <>
@@ -318,12 +334,21 @@ function QuestionFieldset({
 }
 
 export function AssessmentRunner({ assessment }: { assessment: AssessmentDefinition }) {
+  // "El intento se creaba solo con abrir la página" — antes FileUploadRunner
+  // y QuestionBasedRunner creaban el intento en un useEffect al montar, sin
+  // que el alumno hubiera dado ningún paso. Ahora ninguno de los dos se
+  // monta (y por lo tanto ningún intento se crea) hasta hacer clic en
+  // "Comenzar" en ExamStartScreen — ver AssessmentService.getForStudent para
+  // los datos que alimentan esa pantalla previa.
+  const [started, setStarted] = useState(false);
+  if (!started) return <ExamStartScreen exam={assessment} onStart={() => setStarted(true)} />;
   if (assessment.isFileUpload) return <FileUploadRunner assessment={assessment} />;
   return <QuestionBasedRunner assessment={assessment} />;
 }
 
 function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition }) {
   const t = useTranslations("campus.assessment");
+  const locale = useLocale();
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -441,7 +466,7 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-serif text-xl font-semibold text-ink-900">{assessment.title}</h1>
+        <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(assessment.title, locale, "Evaluación")}</h1>
         {assessment.timeLimitMinutes && (
           <div className="flex items-center gap-1.5 text-sm font-medium text-ink-800" role="timer" aria-live="polite">
             <Clock className="h-4 w-4" aria-hidden="true" />
