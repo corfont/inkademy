@@ -1083,6 +1083,24 @@ model Quote {
   offeringDescription String      @db.Text
   status              QuoteStatus @default(REQUESTED)
   salesOwner          String?
+  // Pipeline comercial (Fase 2) — antes un Quote era solo el pedido inicial
+  // en texto libre: no había forma de fijar un monto real, hacerle
+  // seguimiento con fecha de vigencia, o convertirlo en cupos reales al
+  // aceptarse. `courseId`/`programId`/`convertedSeatPoolId` son referencias
+  // sueltas (sin `@relation`, mismo patrón que AuditLog.entityId) — evita
+  // tocar Course/Program/CompanySeatPool solo para agregar una relación
+  // inversa que nadie más necesita.
+  courseId            String?
+  programId           String?
+  seatsQuoted         Int?
+  amount              Decimal?    @db.Decimal(10, 2)
+  currency            String?
+  validUntil          DateTime?
+  // Notas internas del equipo comercial — jamás se exponen a la empresa
+  // (a diferencia de offeringDescription, que sí escribió la empresa).
+  internalNotes       String?     @db.Text
+  respondedAt         DateTime?
+  convertedSeatPoolId String?     @unique
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 }

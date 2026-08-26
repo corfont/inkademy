@@ -239,6 +239,20 @@ export class NotificationService {
     );
   }
 
+  /** Ventas ya fijó un monto real para la cotización que pidió la empresa (pipeline comercial, Fase 2). */
+  sendQuoteResponded(to: string, amount: number, currency: string, userId: string) {
+    const formatted = `${currency === "USD" ? "US$" : "S/"} ${amount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: "Tu cotización está lista — Inkademy",
+        html: `<p>Ya tenemos lista la cotización que pediste: <b>${formatted}</b>.</p><p>Ingresa a tu panel de empresa para revisar el detalle y aceptarla o rechazarla.</p>`,
+      },
+      userId,
+    );
+  }
+
   /** "Esto me debería permitir descargarlo o pasarlo a PDF o mandarlo por correo" — envía el reporte financiero como adjunto. */
   sendFinancialReport(to: string, pdfUrl: string, periodLabel: string) {
     return this.enqueueEmail(EMAIL_JOBS.GENERIC, {

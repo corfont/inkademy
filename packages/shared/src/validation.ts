@@ -96,6 +96,26 @@ export const requestQuoteSchema = z.object({
 });
 export type RequestQuoteInput = z.infer<typeof requestQuoteSchema>;
 
+// Pipeline comercial (Fase 2) — el equipo de ventas fija un monto real,
+// a qué oferta corresponde, y hasta cuándo es válida la cotización.
+export const respondToQuoteSchema = z.object({
+  offeringKind: z.enum(["COURSE", "PROGRAM"]).optional(),
+  courseId: z.string().uuid().optional(),
+  programId: z.string().uuid().optional(),
+  seatsQuoted: z.number().int().positive().optional(),
+  amount: z.number().nonnegative(),
+  currency: z.enum(["PEN", "USD"]),
+  validUntil: z.string().datetime().optional(),
+  salesOwner: z.string().optional(),
+  internalNotes: z.string().optional(),
+});
+export type RespondToQuoteInput = z.infer<typeof respondToQuoteSchema>;
+
+export const updateQuoteStatusSchema = z.object({
+  status: z.enum(["ACCEPTED", "REJECTED"]),
+});
+export type UpdateQuoteStatusInput = z.infer<typeof updateQuoteStatusSchema>;
+
 export const checkoutItemSchema = z.object({
   offeringKind: z.enum(["COURSE", "PROGRAM"]),
   courseId: z.string().uuid().optional(),

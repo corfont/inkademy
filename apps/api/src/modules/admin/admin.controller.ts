@@ -50,7 +50,9 @@ import {
   upsertProgramSchema,
   upsertQuestionSchema,
 } from "../../common/validation/local-schemas";
+import { respondToQuoteSchema } from "@inkademy/shared";
 import { AssessmentService } from "../assessment/assessment.service";
+import { CompaniesService } from "../companies/companies.service";
 import { AdminService } from "./admin.service";
 
 @ApiTags("admin")
@@ -61,6 +63,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly assessmentService: AssessmentService,
+    private readonly companiesService: CompaniesService,
   ) {}
 
   @Get("dashboard/kpis")
@@ -670,6 +673,27 @@ export class AdminController {
   @ApiOperation({ summary: "Lista todas las empresas" })
   listCompanies() {
     return this.adminService.listCompanies();
+  }
+
+  @Get("quotes")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Pipeline comercial: todas las cotizaciones B2B, de todas las empresas" })
+  listAllQuotes() {
+    return this.companiesService.listAllQuotes();
+  }
+
+  @Patch("quotes/:id/respond")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Ventas fija monto/oferta/vigencia de una cotización — pasa a SENT" })
+  respondToQuote(@Param("id") id: string, @Body(new ZodValidationPipe(respondToQuoteSchema)) dto: any) {
+    return this.companiesService.respondToQuote(id, dto);
+  }
+
+  @Post("quotes/:id/convert")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Convierte una cotización ACEPTADA en cupos B2B reales" })
+  convertQuote(@Param("id") id: string) {
+    return this.companiesService.convertQuoteToSeatPool(id);
   }
 
   @Get("orders")

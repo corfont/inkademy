@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { createCompanySchema, inviteCollaboratorSchema, requestQuoteSchema } from "@inkademy/shared";
-import type { CreateCompanyInput, InviteCollaboratorInput, RequestQuoteInput } from "@inkademy/shared";
+import { createCompanySchema, inviteCollaboratorSchema, requestQuoteSchema, updateQuoteStatusSchema } from "@inkademy/shared";
+import type { CreateCompanyInput, InviteCollaboratorInput, RequestQuoteInput, UpdateQuoteStatusInput } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { CompanyRoles } from "../../common/decorators/company-roles.decorator";
 import { CompanyGuard } from "../../common/guards/company.guard";
@@ -144,5 +144,17 @@ export class CompaniesController {
   @ApiOperation({ summary: "Lista cotizaciones de la empresa" })
   listQuotes(@Param("companyId") companyId: string) {
     return this.companiesService.listQuotes(companyId);
+  }
+
+  @Patch(":companyId/quotes/:id/status")
+  @UseGuards(CompanyGuard)
+  @CompanyRoles("COMPANY_ADMIN")
+  @ApiOperation({ summary: "Acepta o rechaza una cotización ya respondida por ventas" })
+  updateQuoteStatus(
+    @Param("companyId") companyId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateQuoteStatusSchema)) dto: UpdateQuoteStatusInput,
+  ) {
+    return this.companiesService.updateQuoteStatus(companyId, id, dto.status);
   }
 }

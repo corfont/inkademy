@@ -1,7 +1,14 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
-import type { CompanyDashboardSummaryDTO, CreateCompanyInput, InviteCollaboratorInput, RequestQuoteInput } from "@inkademy/shared";
+import type {
+  CompanyDashboardSummaryDTO,
+  CreateCompanyInput,
+  InviteCollaboratorInput,
+  RequestQuoteInput,
+  RespondToQuoteInput,
+} from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { decimalToString } from "../../common/utils/money";
 import { CalendarService } from "../calendar/calendar.service";
 import { NotificationService } from "../notification/notification.service";
 
@@ -323,7 +330,116 @@ export class CompaniesService {
     });
   }
 
+  // El `amount` de Prisma es un Decimal — serializado tal cual por JSON
+  // llega como `{s,e,d}` (representación interna de decimal.js), no como
+  // número, y `Number(amount)` en el frontend daba NaN. Se convierte acá a
+  // string (mismo patrón que decimalToString ya usa en el resto de la API)
+  // para que llegue al cliente como cualquier otro monto.
+  private mapQuoteAmount<T extends { amount: unknown }>(quote: T): T {
+    return { ...quote, amount: quote.amount === null ? null : decimalToString(quote.amount as never) };
+  }
+
   async listQuotes(companyId: string) {
-    return this.prisma.quote.findMany({ where: { companyId }, orderBy: { createdAt: "desc" } });
+    const quotes = await this.prisma.quote.findMany({ where: { companyId }, orderBy: { createdAt: "desc" } });
+    return quotes.map((q) => this.mapQuoteAmount(q));
+  }
+
+  /**
+   * "Facturación/cotización con pipeline comercial" (Fase 2) — antes un
+   * Quote solo tenía el pedido inicial en texto libre, sin panel para que
+   * ventas le diera seguimiento. Vista cross-empresa para /admin/cotizaciones,
+   * con el nombre de la empresa ya resuelto (evita otro round-trip en el frontend).
+   */
+  async listAllQuotes() {
+    const quotes = await this.prisma.quote.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { company: { select: { legalName: true, taxId: true } } },
+    });
+    // IDs de curso/programa son referencias sueltas (sin @relation, ver
+    // comentario en el schema) — se resuelven acá en una sola consulta cada
+    // una en vez de traerlas anidadas.
+    const courseIds = quotes.map((q) => q.courseId).filter((id): id is string => Boolean(id));
+    const programIds = quotes.map((q) => q.programId).filter((id): id is string => Boolean(id));
+    const [courses, programs] = await Promise.all([
+      courseIds.length ? this.prisma.course.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true } }) : [],
+      programIds.length ? this.prisma.program.findMany({ where: { id: { in: programIds } }, select: { id: true, title: true } }) : [],
+    ]);
+    const courseTitleById = new Map(courses.map((c) => [c.id, c.title]));
+    const programTitleById = new Map(programs.map((p) => [p.id, p.title]));
+    return quotes.map((q) =>
+      this.mapQuoteAmount({
+        ...q,
+        courseTitle: q.courseId ? (courseTitleById.get(q.courseId) as never) ?? null : null,
+        programTitle: q.programId ? (programTitleById.get(q.programId) as never) ?? null : null,
+      }),
+    );
+  }
+
+  /**
+   * Ventas fija el monto real, a qué oferta corresponde y hasta cuándo es
+   * válida — pasa a SENT. `internalNotes` nunca se expone a la empresa (a
+   * diferencia de `offeringDescription`, que escribió la propia empresa).
+   */
+  async respondToQuote(quoteId: string, input: RespondToQuoteInput) {
+    const quote = await this.prisma.quote.findUnique({ where: { id: quoteId } });
+    if (!quote) throw new NotFoundException("Cotización no encontrada");
+    const updated = await this.prisma.quote.update({
+      where: { id: quoteId },
+      data: {
+        courseId: input.courseId,
+        programId: input.programId,
+        seatsQuoted: input.seatsQuoted,
+        amount: input.amount,
+        currency: input.currency,
+        validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+        salesOwner: input.salesOwner,
+        internalNotes: input.internalNotes,
+        status: "SENT",
+        respondedAt: new Date(),
+      },
+    });
+    const requester = await this.prisma.user.findUnique({ where: { id: quote.requestedByUserId } });
+    if (requester) {
+      await this.notifications.sendQuoteResponded(requester.email, updated.amount ? Number(updated.amount) : 0, updated.currency ?? "PEN", requester.id);
+    }
+    return this.mapQuoteAmount(updated);
+  }
+
+  /**
+   * La empresa acepta o rechaza — solo tiene sentido sobre una cotización
+   * ya respondida (SENT); no se puede "aceptar" algo que todavía no tiene
+   * monto fijado.
+   */
+  async updateQuoteStatus(companyId: string, quoteId: string, status: "ACCEPTED" | "REJECTED") {
+    const quote = await this.prisma.quote.findUnique({ where: { id: quoteId } });
+    if (!quote || quote.companyId !== companyId) throw new NotFoundException("Cotización no encontrada");
+    if (quote.status !== "SENT") throw new BadRequestException("Solo se puede responder a una cotización que ya fue enviada por ventas");
+    const updated = await this.prisma.quote.update({ where: { id: quoteId }, data: { status } });
+    return this.mapQuoteAmount(updated);
+  }
+
+  /**
+   * Cierra el círculo del pipeline: una cotización ACEPTADA se convierte en
+   * cupos B2B reales (mismo `createSeatPool` que usa el alta manual) — sin
+   * esto, aceptar una cotización no tenía ningún efecto real en el sistema,
+   * era solo una etiqueta.
+   */
+  async convertQuoteToSeatPool(quoteId: string) {
+    const quote = await this.prisma.quote.findUnique({ where: { id: quoteId } });
+    if (!quote) throw new NotFoundException("Cotización no encontrada");
+    if (quote.status !== "ACCEPTED") throw new BadRequestException("Solo se puede convertir una cotización aceptada");
+    if (quote.convertedSeatPoolId) throw new BadRequestException("Esta cotización ya se convirtió en cupos");
+    if (!quote.seatsQuoted || (!quote.courseId && !quote.programId)) {
+      throw new BadRequestException("A esta cotización le falta el curso/programa o la cantidad de cupos para poder convertirla");
+    }
+    const pool = await this.createSeatPool(quote.companyId, {
+      offeringKind: quote.courseId ? "COURSE" : "PROGRAM",
+      courseId: quote.courseId ?? undefined,
+      programId: quote.programId ?? undefined,
+      seatsPurchased: quote.seatsQuoted,
+      expiresAt: quote.validUntil ?? undefined,
+    });
+    await this.prisma.quote.update({ where: { id: quoteId }, data: { convertedSeatPoolId: pool.id } });
+    return pool;
   }
 }

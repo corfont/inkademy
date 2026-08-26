@@ -470,6 +470,8 @@ export const companyApi = {
   requestQuote: (id: string, input: unknown, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/quotes`, { method: "POST", body: JSON.stringify(input), accessToken }),
   quotes: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/quotes`, { accessToken }),
+  updateQuoteStatus: (id: string, quoteId: string, status: "ACCEPTED" | "REJECTED", accessToken?: string | null) =>
+    apiFetch<any>(`/companies/${id}/quotes/${quoteId}/status`, { method: "PATCH", body: JSON.stringify({ status }), accessToken }),
 };
 
 // ---------------------------------------------------------------------------
@@ -695,6 +697,12 @@ export const adminApi = {
   removeCourseRoyalty: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/royalty-recipients/course-royalties/${id}`, { method: "DELETE", accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
+  // --- Pipeline comercial (cotizaciones B2B) ---
+  quotes: (accessToken?: string | null) => apiFetch<any[]>("/admin/quotes", { accessToken, cache: "no-store" }),
+  respondToQuote: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/quotes/${id}/respond`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  convertQuote: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/quotes/${id}/convert`, { method: "POST", accessToken }),
 
   // --- Catálogo: crear/editar cursos ---
   createCourse: (input: Record<string, unknown>, accessToken?: string | null) =>
