@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import type { Queue } from "bullmq";
+import * as XLSX from "xlsx";
 import type { PrismaClient, Question } from "@inkademy/db";
 import type { AssessmentAttemptSubmission, AssessmentResultDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -893,6 +894,183 @@ export class AssessmentService {
     // drag-and-drop del builder (ver reorderQuestions).
     const last = await this.prisma.question.findFirst({ where: { assessmentId }, orderBy: { order: "desc" } });
     return this.prisma.question.create({ data: { assessmentId, order: (last?.order ?? -1) + 1, ...input } as never });
+  }
+
+  // "Es un poco pesado hacer pregunta por pregunta... ¿hay posibilidad de
+  // que se tenga una plantilla en Excel?" — mismas etiquetas en español que
+  // ya usa el builder (ver QUESTION_TYPE_LABEL en ExamBuilder.tsx), para
+  // que la plantilla y la UI hablen igual. Se acepta también el valor
+  // crudo del enum (SINGLE_CHOICE, etc.) al importar, por si alguien
+  // pega/genera el archivo con esos valores en vez de tipearlos a mano.
+  private static readonly QUESTION_TYPE_LABEL_ES: Record<string, string> = {
+    SINGLE_CHOICE: "Opción única",
+    MULTI_CHOICE: "Opción múltiple",
+    TRUE_FALSE: "Verdadero/Falso",
+    ORDERING: "Ordenar",
+    SHORT_ANSWER: "Respuesta corta",
+    OPEN: "Respuesta abierta",
+  };
+  private static readonly QUESTION_TEMPLATE_HEADERS = [
+    "Tipo",
+    "Pregunta",
+    "Opción 1",
+    "Opción 2",
+    "Opción 3",
+    "Opción 4",
+    "Opción 5",
+    "Opción 6",
+    "Respuesta correcta",
+    "Puntos",
+  ];
+
+  buildQuestionsTemplateXlsx(): Buffer {
+    const instructions = [
+      ["Cómo usar esta plantilla"],
+      [""],
+      ["1. No cambies los encabezados de la hoja \"Preguntas\" ni el orden de las columnas."],
+      ["2. Una fila = una pregunta. Borra las filas de ejemplo antes de subir tu propio archivo (o déjalas y edítalas)."],
+      ["3. Columna \"Tipo\": Opción única | Opción múltiple | Verdadero/Falso | Ordenar | Respuesta corta | Respuesta abierta"],
+      ["4. Columna \"Respuesta correcta\", según el tipo:"],
+      ["   - Opción única: el NÚMERO de la opción correcta (1, 2, 3...)."],
+      ["   - Opción múltiple: los números de las opciones correctas separados por coma. Ej: 1,3"],
+      ["   - Verdadero/Falso: escribe Verdadero o Falso."],
+      ["   - Ordenar: déjala vacía — el orden correcto es el mismo en que escribiste las Opciones 1, 2, 3..."],
+      ["   - Respuesta corta: escribe acá la respuesta exacta que se acepta como correcta."],
+      ["   - Respuesta abierta: déjala vacía — se califica a mano en /docente/evaluaciones-pendientes."],
+      ["5. Columna \"Puntos\": puntaje de la pregunta (la suma de todas las preguntas del examen no puede superar 100)."],
+      ["6. Sube el archivo terminado con el botón \"Subir preguntas\" del examen."],
+    ];
+    const exampleRows = [
+      ["Opción única", "¿Cuál es la capital de Perú?", "Lima", "Cusco", "Arequipa", "", "", "", "1", "10"],
+      ["Opción múltiple", "¿Cuáles son números pares?", "2", "3", "4", "5", "", "", "1,3", "10"],
+      ["Verdadero/Falso", "El sol es una estrella.", "", "", "", "", "", "", "Verdadero", "10"],
+      ["Ordenar", "Ordena los pasos del método científico", "Observar", "Hipotetizar", "Experimentar", "Concluir", "", "", "", "10"],
+      ["Respuesta corta", "¿Cuánto es 2+2?", "", "", "", "", "", "", "4", "10"],
+      ["Respuesta abierta", "Explica con tus palabras la ley de la oferta y la demanda", "", "", "", "", "", "", "", "50"],
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(instructions), "Instrucciones");
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([AssessmentService.QUESTION_TEMPLATE_HEADERS, ...exampleRows]),
+      "Preguntas",
+    );
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  /**
+   * Devuelve las preguntas creadas y, por cada fila inválida, su número y el
+   * motivo — una fila con error NO bloquea al resto (el docente corrige esa
+   * fila puntual y puede reintentar solo esas, en vez de perder todo el
+   * archivo por un solo typo).
+   */
+  async importQuestionsFromXlsx(
+    assessmentId: string,
+    fileBuffer: Buffer,
+    teacherUserId?: string,
+  ): Promise<{ created: number; errors: { row: number; message: string }[] }> {
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(assessmentId, teacherUserId);
+
+    const wb = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheet = wb.Sheets["Preguntas"] ?? wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) throw new BadRequestException("El archivo no tiene ninguna hoja legible");
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+    const dataRows = rows.slice(1); // primera fila = encabezados
+
+    const errors: { row: number; message: string }[] = [];
+    const toCreate: { type: string; text: { es: string }; options?: { id: string; text: string }[]; correctAnswer?: string | string[]; points: number }[] = [];
+
+    const typeByLabel = new Map<string, string>(
+      Object.entries(AssessmentService.QUESTION_TYPE_LABEL_ES).map(([enumVal, label]) => [label.toLowerCase(), enumVal]),
+    );
+
+    dataRows.forEach((row, i) => {
+      const rowNumber = i + 2; // +1 por el header, +1 porque Excel es 1-indexado
+      const cell = (idx: number) => String(row[idx] ?? "").trim();
+      const tipoRaw = cell(0);
+      const text = cell(1);
+      if (!tipoRaw && !text) return; // fila vacía, se ignora en silencio
+
+      const type = typeByLabel.get(tipoRaw.toLowerCase()) ?? (Object.keys(AssessmentService.QUESTION_TYPE_LABEL_ES).includes(tipoRaw.toUpperCase()) ? tipoRaw.toUpperCase() : null);
+      if (!type) {
+        errors.push({ row: rowNumber, message: `Tipo "${tipoRaw}" no reconocido. Usa: ${Object.values(AssessmentService.QUESTION_TYPE_LABEL_ES).join(" | ")}` });
+        return;
+      }
+      if (!text) {
+        errors.push({ row: rowNumber, message: "Falta el texto de la pregunta" });
+        return;
+      }
+      const pointsRaw = cell(9);
+      const points = pointsRaw ? Number(pointsRaw) : 1;
+      if (!Number.isFinite(points) || points <= 0) {
+        errors.push({ row: rowNumber, message: `Puntos inválidos: "${pointsRaw}"` });
+        return;
+      }
+      const optionTexts = [2, 3, 4, 5, 6, 7].map((idx) => cell(idx)).filter(Boolean);
+      const correctRaw = cell(8);
+
+      try {
+        if (type === "TRUE_FALSE") {
+          const normalized = correctRaw.toLowerCase();
+          const isTrue = ["verdadero", "v", "true"].includes(normalized);
+          const isFalse = ["falso", "f", "false"].includes(normalized);
+          if (!isTrue && !isFalse) throw new Error(`"Respuesta correcta" debe ser Verdadero o Falso (llegó "${correctRaw}")`);
+          toCreate.push({
+            type,
+            text: { es: text },
+            options: [
+              { id: "true", text: "Verdadero" },
+              { id: "false", text: "Falso" },
+            ],
+            correctAnswer: isTrue ? "true" : "false",
+            points,
+          });
+        } else if (type === "ORDERING") {
+          if (optionTexts.length < 2) throw new Error("Ordenar necesita al menos 2 opciones (Opción 1, Opción 2, ...)");
+          const options = optionTexts.map((t, idx) => ({ id: `opt-${idx}`, text: t }));
+          toCreate.push({ type, text: { es: text }, options, correctAnswer: options.map((o) => o.id), points });
+        } else if (type === "SINGLE_CHOICE" || type === "MULTI_CHOICE") {
+          if (optionTexts.length < 2) throw new Error(`${AssessmentService.QUESTION_TYPE_LABEL_ES[type]} necesita al menos 2 opciones`);
+          const options = optionTexts.map((t, idx) => ({ id: `opt-${idx}`, text: t }));
+          if (type === "SINGLE_CHOICE") {
+            const n = Number(correctRaw);
+            if (!Number.isInteger(n) || n < 1 || n > optionTexts.length) {
+              throw new Error(`"Respuesta correcta" debe ser un número entre 1 y ${optionTexts.length} (llegó "${correctRaw}")`);
+            }
+            toCreate.push({ type, text: { es: text }, options, correctAnswer: `opt-${n - 1}`, points });
+          } else {
+            const indexes = correctRaw
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map(Number);
+            if (indexes.length === 0 || indexes.some((n) => !Number.isInteger(n) || n < 1 || n > optionTexts.length)) {
+              throw new Error(`"Respuesta correcta" debe ser números entre 1 y ${optionTexts.length} separados por coma (llegó "${correctRaw}")`);
+            }
+            toCreate.push({ type, text: { es: text }, options, correctAnswer: indexes.map((n) => `opt-${n - 1}`), points });
+          }
+        } else if (type === "SHORT_ANSWER") {
+          if (!correctRaw) throw new Error('Respuesta corta necesita la respuesta exacta en "Respuesta correcta"');
+          toCreate.push({ type, text: { es: text }, correctAnswer: correctRaw, points });
+        } else {
+          // OPEN: sin opciones, calificación manual.
+          toCreate.push({ type, text: { es: text }, points });
+        }
+      } catch (err) {
+        errors.push({ row: rowNumber, message: err instanceof Error ? err.message : "Fila inválida" });
+      }
+    });
+
+    if (toCreate.length === 0) return { created: 0, errors };
+
+    const last = await this.prisma.question.findFirst({ where: { assessmentId }, orderBy: { order: "desc" } });
+    const startOrder = (last?.order ?? -1) + 1;
+    await this.prisma.$transaction(
+      toCreate.map((q, idx) => this.prisma.question.create({ data: { assessmentId, order: startOrder + idx, ...q } as never })),
+    );
+
+    return { created: toCreate.length, errors };
   }
 
   async updateQuestion(id: string, input: Record<string, unknown>, teacherUserId?: string) {

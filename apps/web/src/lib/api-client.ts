@@ -860,6 +860,34 @@ export const adminApi = {
   deleteQuestion: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/questions/${id}`, { method: "DELETE", accessToken }),
   // Drag-and-drop del builder de exámenes — reemplaza el orden de TODAS las preguntas del examen.
+  // "¿Hay posibilidad de tener una plantilla en Excel?" — descarga binaria,
+  // mismo patrón que downloadReportPdf (arma el blob en el cliente con el
+  // token del propio navegador, ya que este botón vive en un componente de
+  // cliente sin accessToken explícito propagado).
+  downloadQuestionsTemplate: async (assessmentId: string) => {
+    const token = getClientAccessToken();
+    const res = await fetch(`${API_URL}/admin/assessments/${assessmentId}/questions/template.xlsx`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new ApiError(res.status, "No pudimos generar la plantilla.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "plantilla-preguntas.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  importQuestions: (assessmentId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<{ created: number; errors: { row: number; message: string }[] }>(
+      `/admin/assessments/${assessmentId}/questions/import`,
+      { method: "POST", body: form },
+    );
+  },
   reorderQuestions: (assessmentId: string, orderedQuestionIds: string[], accessToken?: string | null) =>
     apiFetch<any>(`/admin/assessments/${assessmentId}/questions/reorder`, {
       method: "PATCH",

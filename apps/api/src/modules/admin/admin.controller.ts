@@ -8,7 +8,7 @@ import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { teacherScopeId } from "../../common/utils/scope";
-import { fileMimeFilter, COURSE_ASSET_MIME_PREFIXES } from "../../common/utils/file-filter";
+import { fileMimeFilter, COURSE_ASSET_MIME_PREFIXES, DOCUMENT_MIME_PREFIXES } from "../../common/utils/file-filter";
 import { ScormService } from "../scorm/scorm.service";
 import {
   addCoursePartnershipSchema,
@@ -340,6 +340,34 @@ export class AdminController {
     @Body(new ZodValidationPipe(upsertQuestionSchema)) dto: any,
   ) {
     return this.assessmentService.createQuestion(assessmentId, dto, teacherScopeId(user));
+  }
+
+  // "Hacer pregunta por pregunta es pesado... ¿se puede armar una plantilla
+  // en Excel?" — plantilla descargable (con instrucciones + ejemplos por
+  // tipo de pregunta) y su importación en lote.
+  @Get("assessments/:assessmentId/questions/template.xlsx")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Descarga la plantilla Excel para cargar preguntas en lote" })
+  downloadQuestionsTemplate(@Res() res: Response) {
+    const buffer = this.assessmentService.buildQuestionsTemplateXlsx();
+    res.set({
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": 'attachment; filename="plantilla-preguntas.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  @Post("assessments/:assessmentId/questions/import")
+  @Roles("ADMIN", "TEACHER")
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: "Crea preguntas en lote desde un archivo Excel (ver plantilla)" })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: fileMimeFilter(DOCUMENT_MIME_PREFIXES) }))
+  importQuestions(
+    @CurrentUser() user: RequestUser,
+    @Param("assessmentId") assessmentId: string,
+    @UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string },
+  ) {
+    return this.assessmentService.importQuestionsFromXlsx(assessmentId, file.buffer, teacherScopeId(user));
   }
 
   @Patch("assessments/:assessmentId/questions/reorder")

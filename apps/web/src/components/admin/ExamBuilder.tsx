@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -328,6 +328,10 @@ export function ExamBuilder({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [minScore, setMinScore] = useState(String(assessment.minScore));
   const [maxAttempts, setMaxAttempts] = useState(String(assessment.maxAttempts));
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(assessment.timeLimitMinutes ? String(assessment.timeLimitMinutes) : "");
@@ -393,6 +397,23 @@ export function ExamBuilder({
       alert(err instanceof ApiError ? err.message : "No pudimos actualizar el estado.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite volver a elegir el mismo archivo tras corregirlo
+    if (!file) return;
+    setImportBusy(true);
+    setImportResult(null);
+    try {
+      const result = await adminApi.importQuestions(assessment.id, file);
+      setImportResult(result);
+      if (result.created > 0) onChange();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos importar el archivo.");
+    } finally {
+      setImportBusy(false);
     }
   }
 
@@ -565,6 +586,50 @@ export function ExamBuilder({
                 examen no podrá usarse en una evaluación (los alumnos no podrán empezar un intento).
               </Callout>
             )}
+
+            {/* "Es un poco pesado hacer pregunta por pregunta... ¿se puede
+                tener una plantilla en Excel?" — descarga la plantilla,
+                trabaja las preguntas en Excel, y sube el archivo acá para
+                crearlas todas de una vez (una fila con error no bloquea al
+                resto, se avisa cuál corregir). */}
+            <div className="flex flex-wrap items-center gap-2 rounded-md bg-paper-muted p-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => adminApi.downloadQuestionsTemplate(assessment.id).catch(() => alert("No pudimos generar la plantilla."))}
+              >
+                Descargar plantilla Excel
+              </Button>
+              <Button size="sm" variant="outline" disabled={importBusy} onClick={() => fileInputRef.current?.click()}>
+                {importBusy ? "Subiendo…" : "Subir preguntas"}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <span className="text-xs text-ash-500">Preguntas creadas en lote desde un archivo Excel (ver plantilla).</span>
+            </div>
+            {importResult && (
+              <Callout variant={importResult.errors.length > 0 ? "warning" : "success"}>
+                <p className="font-medium">
+                  {importResult.created} pregunta{importResult.created === 1 ? "" : "s"} creada{importResult.created === 1 ? "" : "s"}
+                  {importResult.errors.length > 0 && ` · ${importResult.errors.length} fila(s) con error`}
+                </p>
+                {importResult.errors.length > 0 && (
+                  <ul className="mt-1 list-inside list-disc text-xs">
+                    {importResult.errors.map((e, i) => (
+                      <li key={i}>
+                        Fila {e.row}: {e.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Callout>
+            )}
+
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={questions.map((q) => q.id)} strategy={verticalListSortingStrategy}>
                 <div className="flex flex-col gap-2">

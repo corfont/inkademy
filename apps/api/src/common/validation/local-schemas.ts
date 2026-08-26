@@ -429,7 +429,13 @@ export const grantFreeAccessSchema = z
 export const upsertAssessmentSchema = z.object({
   title: localizedTextSchema,
   type: z.string().min(1).default("quiz"), // quiz | exam | assignment
-  minScore: z.number().min(0).max(100).default(70),
+  // "La nota mínima no debería repetirse... hereda la regla del curso" —
+  // SIN default acá a propósito: si el creador no manda minScore, debe
+  // llegar `undefined` de verdad hasta AssessmentService.createAssessment
+  // para que pueda heredar ApprovalRule.minScore. Con `.default(70)` acá,
+  // Zod completaba el valor ANTES de llegar al service — este nunca veía
+  // un `undefined` real y el 70 fijo del schema ganaba siempre.
+  minScore: z.number().min(0).max(100).optional(),
   maxAttempts: z.number().int().positive().default(3),
   // "Si no pongo límite de tiempo me aparece un error" — el builder manda
   // `null` explícito para poder QUITAR un límite ya puesto (con solo
