@@ -15,6 +15,7 @@ export default async function MarketingPage() {
   const { data: campaigns, live: campaignsLive } = await withFallback(() => adminApi.emailCampaigns(accessToken), [] as any[]);
   const { data: areas } = await withFallback(() => adminApi.areas(accessToken), [] as any[]);
   const { data: companies } = await withFallback(() => adminApi.companies(accessToken), [] as any[]);
+  const { data: courses } = await withFallback(() => adminApi.courses(accessToken), [] as any[]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -26,7 +27,7 @@ export default async function MarketingPage() {
         </p>
       </div>
       {!campaignsLive && <Callout variant="info">No pudimos conectar con la API — no se muestran campañas reales por ahora.</Callout>}
-      <EmailCampaignManager campaigns={campaigns} areas={areas} companies={companies} />
+      <EmailCampaignManager campaigns={campaigns} areas={areas} companies={companies} courses={courses} />
     </div>
   );
 }

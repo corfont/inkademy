@@ -33,7 +33,17 @@ const STATUS_LABEL: Record<string, string> = { DRAFT: "Borrador", SCHEDULED: "Pr
  * sweep de apps/worker cada 2 minutos — "enviar ahora" solo adelanta la
  * fecha programada a ahora mismo, ver AdminService.sendEmailCampaignNow.
  */
-export function EmailCampaignManager({ campaigns, areas, companies }: { campaigns: EmailCampaignDTO[]; areas: any[]; companies: any[] }) {
+export function EmailCampaignManager({
+  campaigns,
+  areas,
+  companies,
+  courses,
+}: {
+  campaigns: EmailCampaignDTO[];
+  areas: any[];
+  companies: any[];
+  courses: any[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,7 +68,7 @@ export function EmailCampaignManager({ campaigns, areas, companies }: { campaign
     <div className="flex flex-col gap-6">
       {error && <Callout variant="danger">{error}</Callout>}
 
-      <NewCampaignForm areas={areas} companies={companies} busy={busy} run={run} />
+      <NewCampaignForm areas={areas} companies={companies} courses={courses} busy={busy} run={run} />
 
       {drafts.length > 0 && (
         <div className="flex flex-col gap-3">
@@ -119,7 +129,26 @@ function CampaignCard({ campaign: c, busy, run, readOnly }: { campaign: EmailCam
   );
 }
 
-function NewCampaignForm({ areas, companies, busy, run }: { areas: any[]; companies: any[]; busy: boolean; run: (a: () => Promise<unknown>) => Promise<void> }) {
+const ENROLLMENT_STATUS_LABEL: Record<string, string> = {
+  ANY: "Cualquiera",
+  HAS_ACTIVE: "Llevando un curso o más ahora",
+  COMPLETED_NO_ACTIVE: "Ya terminó todo, nada pendiente (upsell)",
+  NONE: "Nunca se ha matriculado (primera compra)",
+};
+
+function NewCampaignForm({
+  areas,
+  companies,
+  courses,
+  busy,
+  run,
+}: {
+  areas: any[];
+  companies: any[];
+  courses: any[];
+  busy: boolean;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+}) {
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"MANUAL" | "AUTOMATIC_AI">("MANUAL");
   const [goal, setGoal] = useState("NEW_COURSES");
@@ -127,8 +156,13 @@ function NewCampaignForm({ areas, companies, busy, run }: { areas: any[]; compan
   const [bodyHtml, setBodyHtml] = useState("");
   const [interests, setInterests] = useState("");
   const [areaIds, setAreaIds] = useState<string[]>([]);
+  const [courseIds, setCourseIds] = useState<string[]>([]);
   const [companyId, setCompanyId] = useState("");
   const [inactiveDays, setInactiveDays] = useState("");
+  const [enrollmentStatus, setEnrollmentStatus] = useState("ANY");
+  const [countries, setCountries] = useState("");
+  const [globalRole, setGlobalRole] = useState("");
+  const [excludeRecentPurchaseDays, setExcludeRecentPurchaseDays] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [recurrence, setRecurrence] = useState<"ONCE" | "WEEKLY" | "MONTHLY">("ONCE");
   const [previewCount, setPreviewCount] = useState<number | null>(null);
@@ -138,8 +172,13 @@ function NewCampaignForm({ areas, companies, busy, run }: { areas: any[]; compan
     const filter: Record<string, unknown> = {};
     if (interests.trim()) filter.interests = interests.split(",").map((s) => s.trim()).filter(Boolean);
     if (areaIds.length) filter.areaIds = areaIds;
+    if (courseIds.length) filter.courseIds = courseIds;
     if (companyId) filter.companyId = companyId;
     if (inactiveDays) filter.inactiveDays = Number(inactiveDays);
+    if (enrollmentStatus !== "ANY") filter.enrollmentStatus = enrollmentStatus;
+    if (countries.trim()) filter.countries = countries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    if (globalRole) filter.globalRole = globalRole;
+    if (excludeRecentPurchaseDays) filter.excludeRecentPurchaseDays = Number(excludeRecentPurchaseDays);
     return Object.keys(filter).length ? filter : null;
   }
 
@@ -174,8 +213,13 @@ function NewCampaignForm({ areas, companies, busy, run }: { areas: any[]; compan
     setBodyHtml("");
     setInterests("");
     setAreaIds([]);
+    setCourseIds([]);
     setCompanyId("");
     setInactiveDays("");
+    setEnrollmentStatus("ANY");
+    setCountries("");
+    setGlobalRole("");
+    setExcludeRecentPurchaseDays("");
     setScheduledAt("");
     setPreviewCount(null);
   }
@@ -264,6 +308,57 @@ function NewCampaignForm({ areas, companies, busy, run }: { areas: any[]; compan
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <Label htmlFor="camp-courses">Por curso puntual (matriculados en)</Label>
+              <select
+                id="camp-courses"
+                multiple
+                className="h-24 w-full rounded-md border border-paper-border bg-paper px-2 py-1 text-sm"
+                value={courseIds}
+                onChange={(e) => setCourseIds(Array.from(e.target.selectedOptions, (o) => o.value))}
+              >
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title?.es ?? c.slug}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="camp-enrollment-status">Estado de matrícula</Label>
+              <Select id="camp-enrollment-status" value={enrollmentStatus} onChange={(e) => setEnrollmentStatus(e.target.value)}>
+                {Object.entries(ENROLLMENT_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="camp-role">Rol</Label>
+              <Select id="camp-role" value={globalRole} onChange={(e) => setGlobalRole(e.target.value)}>
+                <option value="">Cualquiera</option>
+                <option value="STUDENT">Alumno</option>
+                <option value="TEACHER">Docente</option>
+                <option value="SUPPORT">Soporte</option>
+                <option value="ADMIN">Administrador</option>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="camp-countries">Por país (código ISO, separado por comas)</Label>
+              <Input id="camp-countries" value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="PE, CO, MX" />
+            </div>
+            <div>
+              <Label htmlFor="camp-exclude-recent">Excluir si compró en los últimos (días)</Label>
+              <Input
+                id="camp-exclude-recent"
+                type="number"
+                min="1"
+                value={excludeRecentPurchaseDays}
+                onChange={(e) => setExcludeRecentPurchaseDays(e.target.value)}
+                placeholder="Ej. 15 — no molestar a quien acaba de comprar"
+              />
             </div>
           </div>
           <div className="mt-2 flex items-center gap-2">

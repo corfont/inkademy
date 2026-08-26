@@ -489,15 +489,28 @@ export const upsertEmailServerSettingsSchema = z.object({
 
 // "Un módulo donde enviar correos a nuestros clientes... programado
 // automático con IA, o que uno redacte y parametrice para mandar correos
-// masivos" — el filtro de audiencia es deliberadamente simple (no un motor
-// de segmentación completo): por interés, por área (vía cursos en los que
-// el destinatario está matriculado), por empresa, o por inactividad.
+// masivos" — el filtro de audiencia empezó deliberadamente simple; esta
+// segunda vuelta (Fase 2, "segmentación y campañas de marketing avanzadas")
+// suma dimensiones reales de negocio sin convertirlo en un motor completo:
+// por curso puntual (no solo área), por estado de matrícula (mismo
+// concepto que el semáforo de /admin/usuarios), por país, por rol, y
+// excluyendo a quien compró hace poco (para no spamear a un comprador
+// reciente con una campaña de descuento).
 export const emailAudienceFilterSchema = z
   .object({
     interests: z.array(z.string()).optional(),
     areaIds: z.array(z.string()).optional(),
+    courseIds: z.array(z.string()).optional(),
     companyId: z.string().optional(),
     inactiveDays: z.number().int().min(1).optional(),
+    // ANY (default) = sin filtrar por esto. HAS_ACTIVE = lleva un curso o
+    // más ahora mismo. COMPLETED_NO_ACTIVE = ya terminó todo lo que tenía y
+    // no lleva nada más (candidato a upsell). NONE = nunca se matriculó
+    // (candidato a primera compra).
+    enrollmentStatus: z.enum(["ANY", "HAS_ACTIVE", "COMPLETED_NO_ACTIVE", "NONE"]).optional(),
+    countries: z.array(z.string()).optional(),
+    globalRole: z.enum(["STUDENT", "TEACHER", "SUPPORT", "ADMIN"]).optional(),
+    excludeRecentPurchaseDays: z.number().int().min(1).optional(),
   })
   .nullable()
   .optional();
