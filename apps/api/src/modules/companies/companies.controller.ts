@@ -1,19 +1,25 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards, UseInterceptors } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { createCompanySchema, inviteCollaboratorSchema, requestQuoteSchema, updateQuoteStatusSchema } from "@inkademy/shared";
 import type { CreateCompanyInput, InviteCollaboratorInput, RequestQuoteInput, UpdateQuoteStatusInput } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { CompanyRoles } from "../../common/decorators/company-roles.decorator";
 import { CompanyGuard } from "../../common/guards/company.guard";
+import { TenantContextInterceptor } from "../../common/interceptors/tenant-context.interceptor";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { assignSeatSchema, createSeatPoolSchema, renewSeatPoolSchema, updateCertificateSettingsSchema } from "../../common/validation/local-schemas";
 import { CertificateService } from "../certificate/certificate.service";
 import { CompaniesService } from "./companies.service";
 
+// TenantContextInterceptor a nivel de controller (no ruta por ruta): en las
+// rutas sin :companyId (create/listMine) no hay req.companyMembership, así
+// que no hace nada — y así ninguna ruta nueva de este controller se olvida
+// de tener el respaldo de RLS activo (ver prisma.module.ts).
 @ApiTags("companies")
 @ApiBearerAuth()
 @Controller("companies")
+@UseInterceptors(TenantContextInterceptor)
 export class CompaniesController {
   constructor(
     private readonly companiesService: CompaniesService,
