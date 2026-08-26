@@ -204,6 +204,19 @@ export class AssessmentService {
       throw new ForbiddenException("Completa el curso para poder presentar esta evaluación");
     }
 
+    // "Solo me dejó hacer 2 de 3 intentos" — bug real: el runner del
+    // alumno llama a este endpoint en un useEffect que se vuelve a
+    // disparar en cada montaje (recargar la página, atrás del navegador,
+    // reabrir la pestaña) — sin este resume, cada uno de esos remontajes
+    // creaba un AssessmentAttempt IN_PROGRESS nuevo y quemaba un intento
+    // por algo que el alumno nunca llegó a responder. Si ya hay uno sin
+    // enviar, se retoma ESE en vez de crear otro.
+    const existingInProgress = await this.prisma.assessmentAttempt.findFirst({
+      where: { assessmentId, userId, enrollmentId: enrollment.id, status: "IN_PROGRESS" },
+      orderBy: { startedAt: "desc" },
+    });
+    if (existingInProgress) return existingInProgress;
+
     // Acotado a ESTA matrícula (no a todas las del usuario para este
     // examen) — "si vuelves a llevar el curso es gratis" crea una
     // matrícula nueva; sin este acotado, un alumno que retoma el curso
@@ -216,14 +229,32 @@ export class AssessmentService {
       throw new ForbiddenException("Alcanzaste el número máximo de intentos");
     }
 
-    const attempt = await this.prisma.assessmentAttempt.create({
-      data: {
-        assessmentId,
-        enrollmentId: enrollment.id,
-        userId,
-        attemptNumber: attemptsCount + 1,
-      },
-    });
+    let attempt;
+    try {
+      attempt = await this.prisma.assessmentAttempt.create({
+        data: {
+          assessmentId,
+          enrollmentId: enrollment.id,
+          userId,
+          attemptNumber: attemptsCount + 1,
+        },
+      });
+    } catch (err) {
+      // Carrera real entre dos requests casi simultáneas (ambas pasaron el
+      // chequeo de arriba antes de que la primera terminara de crear el
+      // suyo) — el índice único parcial de la migración
+      // 20260826220000_attempt_in_progress_unique es lo que la detecta acá.
+      // La que pierde la carrera simplemente retoma la que ganó, en vez de
+      // fallar con un error que el alumno no esperaba.
+      if ((err as { code?: string })?.code === "P2002") {
+        const winner = await this.prisma.assessmentAttempt.findFirst({
+          where: { assessmentId, userId, enrollmentId: enrollment.id, status: "IN_PROGRESS" },
+          orderBy: { startedAt: "desc" },
+        });
+        if (winner) return winner;
+      }
+      throw err;
+    }
 
     // "Si un alumno simplemente abandona, pero si el tiempo concluye
     // cambia su estado a culminado — expiración automática" — se programa

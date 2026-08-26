@@ -101,7 +101,7 @@ export class EnrollmentService {
       if (bestScore === null || bestScore < rule.minScore) {
         const label = rule.scoreMode === "WEIGHTED_AVERAGE" ? "tu nota ponderada actual" : "tu mejor nota";
         missing.push(
-          `Aprueba ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}${bestScore !== null ? ` (${label}: ${bestScore.toFixed(1)})` : ""}`,
+          `Aprueba ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}/100${bestScore !== null ? ` (${label}: ${bestScore.toFixed(1)}/100)` : ""}`,
         );
       }
     }

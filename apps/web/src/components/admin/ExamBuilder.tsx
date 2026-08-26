@@ -449,8 +449,11 @@ export function ExamBuilder({
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <Label htmlFor="minScore">Nota mínima</Label>
+            <Label htmlFor="minScore">Nota mínima (%, sobre 100)</Label>
             <Input id="minScore" type="number" min="0" max="100" value={minScore} onChange={(e) => setMinScore(e.target.value)} />
+            <p className="mt-1 text-xs text-ash-500">
+              No es la escala vigesimal (0-20) — el examen se corrige y se compara sobre 100 (ej.: 70 = necesitas 70% para aprobar).
+            </p>
           </div>
           <div>
             <Label htmlFor="weight">Peso en fórmula ponderada (%)</Label>
