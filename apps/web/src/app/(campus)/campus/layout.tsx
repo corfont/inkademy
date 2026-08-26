@@ -37,13 +37,23 @@ export default function CampusLayout({ children }: { children: React.ReactNode }
       { href: "/docente/liquidaciones", label: "Mis liquidaciones", icon: Banknote, section: "Docente" },
     );
   }
-  if ((roles.includes("ADMIN") || roles.includes("SUPPORT")) && user?.globalRole !== "ADMIN" && user?.globalRole !== "SUPPORT") {
+  // ADMIN secundario ve el set completo; SUPPORT secundario (sin ADMIN) solo
+  // ve lo que le compete — antes se le mostraban Finanzas/Convenios/Regalías
+  // (fuera de su alcance) y le faltaban las colas de soporte/sugerencias que
+  // sí necesita.
+  if (roles.includes("ADMIN") && user?.globalRole !== "ADMIN") {
     navItems.push(
       { href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" },
       { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users, section: "Administración" },
       { href: "/admin/finanzas", label: "Finanzas", icon: Wallet, section: "Administración" },
       { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake, section: "Administración" },
       { href: "/admin/regalias", label: "Regalías", icon: Percent, section: "Administración" },
+    );
+  } else if (roles.includes("SUPPORT") && user?.globalRole !== "SUPPORT") {
+    navItems.push(
+      { href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" },
+      { href: "/admin/soporte", label: "Soporte (tickets)", icon: LifeBuoy, section: "Administración" },
+      { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus, section: "Administración" },
     );
   }
   if (roles.includes("COMPANY") && user?.globalRole !== "COMPANY") {

@@ -40,6 +40,12 @@ export class EnrollmentController {
     return this.enrollmentService.updateLessonProgress(user.id, lessonId, dto);
   }
 
+  @Patch("materials/:materialId/read")
+  @ApiOperation({ summary: "Marca una lectura principal como leída y recalcula progressPct" })
+  markMaterialRead(@CurrentUser() user: RequestUser, @Param("materialId") materialId: string) {
+    return this.enrollmentService.markMaterialRead(user.id, materialId);
+  }
+
   @Get("lessons/:lessonId/notes")
   @ApiOperation({ summary: "Mi nota personal sobre esta lección (antes vivía solo en localStorage)" })
   getLessonNote(@CurrentUser() user: RequestUser, @Param("lessonId") lessonId: string) {

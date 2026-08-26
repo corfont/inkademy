@@ -7,15 +7,36 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 export class CalendarService {
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
 
+  // "Si le doy clic a un curso agendado o actividad me debería derivar ya
+  // sea al curso o al Teams" — cada evento trae ahora `courseId` (propio o
+  // resuelto vía la sesión en vivo) y `enrollmentId` (la matrícula de ESTE
+  // usuario en ese curso, para poder linkear a /campus/cursos/:enrollmentId,
+  // que es la ruta real del reproductor — no existe una ruta por courseId).
   async listMine(userId: string, from?: Date, to?: Date) {
-    return this.prisma.calendarEvent.findMany({
+    const events = await this.prisma.calendarEvent.findMany({
       where: {
         userId,
         ...(from || to
           ? { startsAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
           : {}),
       },
+      include: { liveSession: { select: { courseId: true } } },
       orderBy: { startsAt: "asc" },
+    });
+
+    const courseIds = [...new Set(events.map((e) => e.courseId ?? e.liveSession?.courseId).filter((id): id is string => Boolean(id)))];
+    const enrollments = courseIds.length
+      ? await this.prisma.enrollment.findMany({
+          where: { userId, courseId: { in: courseIds } },
+          select: { id: true, courseId: true },
+          orderBy: { enrolledAt: "desc" },
+        })
+      : [];
+    const enrollmentByCourse = new Map(enrollments.map((e) => [e.courseId, e.id]));
+
+    return events.map(({ liveSession, ...e }) => {
+      const courseId = e.courseId ?? liveSession?.courseId ?? null;
+      return { ...e, courseId, enrollmentId: courseId ? (enrollmentByCourse.get(courseId) ?? null) : null };
     });
   }
 
@@ -55,7 +76,7 @@ export class CalendarService {
     const title = (course.title as Record<string, string>)?.es ?? "Curso Inkademy";
 
     await this.prisma.calendarEvent.create({
-      data: { userId, type: "COURSE_START", title: `Inicio: ${title}`, startsAt: new Date() },
+      data: { userId, type: "COURSE_START", title: `Inicio: ${title}`, startsAt: new Date(), courseId: course.id },
     });
 
     if (accessExpiresAt) {
@@ -65,6 +86,7 @@ export class CalendarService {
           type: "ACCESS_EXPIRATION",
           title: `Vence tu acceso a: ${title}`,
           startsAt: accessExpiresAt,
+          courseId: course.id,
         },
       });
     }
@@ -81,6 +103,7 @@ export class CalendarService {
           startsAt: session.startsAt,
           endsAt: session.endsAt,
           liveSessionId: session.id,
+          courseId: course.id,
         },
       });
     }

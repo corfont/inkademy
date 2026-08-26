@@ -195,6 +195,7 @@ export class EnrollmentService {
         program: true,
         certificate: true,
         lessonProgress: true,
+        materialProgress: true,
       },
     });
     if (!enrollment || enrollment.userId !== userId) {
@@ -208,6 +209,7 @@ export class EnrollmentService {
     const accessBlocked = Boolean(enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date());
 
     const progressByLesson = new Map(enrollment.lessonProgress.map((p) => [p.lessonId, p]));
+    const readMaterialIds = new Set(enrollment.materialProgress.map((p) => p.materialId));
     // "Cuando agrego un link no se muestra... el usuario que tiene ese curso
     // no lo ve" — un material kind="link" no tiene assetId (nunca se subió
     // un archivo), así que su url viene de externalUrl tal cual.
@@ -228,6 +230,9 @@ export class EnrollmentService {
       url: m.kind === "link" ? m.externalUrl ?? null : m.assetId ? this.storage.getPublicUrl(m.assetId) : null,
       allowDownload: m.allowDownload,
       allowView: m.allowView,
+      // "El alumno deberá marcar como leído" — solo tiene sentido/se expone
+      // para MAIN; el frontend igual no muestra el botón en SUPPLEMENTARY.
+      read: m.category === "MAIN" ? readMaterialIds.has(m.id) : undefined,
     });
 
     const approval =
@@ -342,14 +347,70 @@ export class EnrollmentService {
       },
     });
 
-    const [totalLessons, completedLessons] = await Promise.all([
-      this.prisma.lesson.count({ where: { module: { courseId: lesson.module.courseId } } }),
-      this.prisma.lessonProgress.count({ where: { enrollmentId: enrollment.id, completed: true } }),
+    return this.recomputeProgress(enrollment.id, lesson.module.courseId, userId);
+  }
+
+  /**
+   * "Si un curso tiene lecturas principales el alumno deberá marcar como
+   * leído para que el sistema entienda que ha leído ese documento; para las
+   * lecturas complementarias no." Solo materiales category=MAIN cuentan
+   * para el % de avance — un material SUPPLEMENTARY se rechaza acá para que
+   * ninguna llamada (ni un futuro bug de frontend) pueda inflar el avance
+   * marcando lecturas opcionales.
+   */
+  async markMaterialRead(userId: string, materialId: string) {
+    const material = await this.prisma.material.findUnique({
+      where: { id: materialId },
+      include: { lesson: { include: { module: true } }, module: true },
+    });
+    if (!material) throw new NotFoundException("Material no encontrado");
+    if (material.category !== "MAIN") {
+      throw new ForbiddenException("Solo las lecturas principales se marcan como leídas");
+    }
+    const courseId = material.lesson?.module.courseId ?? material.module?.courseId;
+    if (!courseId) throw new NotFoundException("Material no encontrado");
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { userId, offeringKind: "COURSE", courseId, status: { in: ["ACTIVE", "COMPLETED"] } },
+      orderBy: { enrolledAt: "desc" },
+    });
+    if (!enrollment) throw new ForbiddenException("No estás matriculado en este curso");
+    if (enrollment.accessExpiresAt && enrollment.accessExpiresAt < new Date()) {
+      throw new ForbiddenException("Tu acceso a este curso venció.");
+    }
+
+    await this.prisma.materialProgress.upsert({
+      where: { enrollmentId_materialId: { enrollmentId: enrollment.id, materialId } },
+      create: { enrollmentId: enrollment.id, materialId, userId },
+      update: {},
+    });
+
+    return this.recomputeProgress(enrollment.id, courseId, userId);
+  }
+
+  /**
+   * Recalcula progressPct sobre TODAS las unidades completables del curso:
+   * lecciones (LessonProgress.completed) + lecturas principales
+   * (MaterialProgress) — antes solo contaba lecciones, así que un curso con
+   * lecturas obligatorias podía llegar a 100% sin que el alumno las hubiera
+   * abierto nunca. Compartido por updateLessonProgress y markMaterialRead
+   * para que ambos caminos usen el mismo denominador.
+   */
+  private async recomputeProgress(enrollmentId: string, courseId: string, userId: string) {
+    const [totalLessons, completedLessons, totalMainMaterials, readMainMaterials] = await Promise.all([
+      this.prisma.lesson.count({ where: { module: { courseId } } }),
+      this.prisma.lessonProgress.count({ where: { enrollmentId, completed: true } }),
+      this.prisma.material.count({
+        where: { category: "MAIN", visible: true, OR: [{ lesson: { module: { courseId } } }, { module: { courseId } }] },
+      }),
+      this.prisma.materialProgress.count({ where: { enrollmentId } }),
     ]);
-    const progressPct = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 10000) / 100 : 0;
+    const totalUnits = totalLessons + totalMainMaterials;
+    const completedUnits = completedLessons + readMainMaterials;
+    const progressPct = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 10000) / 100 : 0;
 
     const updated = await this.prisma.enrollment.update({
-      where: { id: enrollment.id },
+      where: { id: enrollmentId },
       data: {
         progressPct,
         ...(progressPct >= 100 ? { status: "COMPLETED", completedAt: new Date() } : {}),

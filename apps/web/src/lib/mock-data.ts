@@ -317,6 +317,9 @@ export interface ClassroomMaterial {
   // visualizarse, o ambos" — ambos true por defecto.
   allowDownload?: boolean;
   allowView?: boolean;
+  // "El alumno deberá marcar como leído para que el sistema entienda que ha
+  // leído ese documento" — solo tiene sentido en category="MAIN".
+  read?: boolean;
 }
 export interface FormativeQuizQuestion {
   id: string;

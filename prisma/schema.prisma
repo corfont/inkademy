@@ -115,6 +115,7 @@ model User {
   certificates          Certificate[]
   attendances           Attendance[]
   lessonProgress        LessonProgress[]
+  materialProgress      MaterialProgress[]
   lessonNotes           LessonNote[]
   courseRatings         CourseRating[]
   royaltyRecipient      RoyaltyRecipient[]
@@ -362,6 +363,7 @@ model Course {
   royalties              CourseRoyalty[]
   teacherRates           TeacherRate[]
   activityLogs           TeacherActivityLog[]
+  calendarEvents         CalendarEvent[]
 
   @@index([areaId])
   @@index([status])
@@ -509,6 +511,26 @@ model Material {
   allowDownload Boolean         @default(true)
   allowView     Boolean         @default(true)
   createdAt   DateTime          @default(now())
+
+  progress    MaterialProgress[]
+}
+
+// "Si un curso tiene lecturas principales el alumno deberá marcar como
+// leído para que el sistema entienda que ha leído ese documento; para las
+// complementarias no" — solo se crea para materiales category=MAIN (se
+// valida en el service, no acá); su existencia = leído, no hace falta un
+// booleano. Alimenta el % de avance junto con LessonProgress.
+model MaterialProgress {
+  id           String     @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  materialId   String
+  material     Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt       DateTime   @default(now())
+
+  @@unique([enrollmentId, materialId])
 }
 
 enum LiveSessionStatus {
@@ -637,7 +659,8 @@ model Enrollment {
   enrolledAt      DateTime         @default(now())
   completedAt     DateTime?
 
-  lessonProgress  LessonProgress[]
+  lessonProgress   LessonProgress[]
+  materialProgress MaterialProgress[]
   attempts        AssessmentAttempt[]
   certificate     Certificate?
   rating          CourseRating?
@@ -1312,6 +1335,13 @@ model CalendarEvent {
   icsUid        String            @unique @default(uuid())
   liveSessionId String?
   liveSession   LiveSession?      @relation(fields: [liveSessionId], references: [id])
+  // "Si le doy clic a un curso agendado o actividad me debería derivar ya
+  // sea al curso o al Teams" — para poder llevar a la ficha del curso en
+  // eventos SIN sesión en vivo (COURSE_START, ACCESS_EXPIRATION, etc.). Los
+  // LIVE_CLASS ya resuelven el curso vía liveSession.courseId; este campo
+  // cubre el resto.
+  courseId      String?
+  course        Course?           @relation(fields: [courseId], references: [id])
   createdAt     DateTime          @default(now())
 
   @@index([userId, startsAt])

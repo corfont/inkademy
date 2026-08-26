@@ -16,6 +16,7 @@ interface CalendarEventLike {
   title: string;
   startsAt: string;
   liveSessionId?: string | null;
+  enrollmentId?: string | null;
 }
 
 const MOCK_EVENTS: CalendarEventLike[] = [

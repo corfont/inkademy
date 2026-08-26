@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, List, LayoutGrid, Radio } from "lucide-react";
 import { JoinClassButton } from "@/components/campus/JoinClassButton";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -12,6 +13,21 @@ export interface CalendarEventLike {
   title: string;
   startsAt: string;
   liveSessionId?: string | null;
+  enrollmentId?: string | null;
+}
+
+// "Si le doy clic a un curso agendado o actividad me debería derivar ya sea
+// al curso o al Teams" — clic en el título/ícono lleva a la ficha del curso
+// (si el evento tiene enrollmentId); el botón "Unirme" (para LIVE_CLASS)
+// sigue aparte para ir directo a Teams, sin anidar un <button> dentro de un
+// <a> (mismo criterio que ya usa CourseCard con título y CTA separados).
+function EventTitle({ event, children }: { event: CalendarEventLike; children: React.ReactNode }) {
+  if (!event.enrollmentId) return <>{children}</>;
+  return (
+    <Link href={`/campus/cursos/${event.enrollmentId}`} className="hover:underline">
+      {children}
+    </Link>
+  );
 }
 
 const WEEKDAY_LABELS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -189,7 +205,9 @@ export function CalendarView({ events, locale }: { events: CalendarEventLike[]; 
                         <CalendarDays className="h-4 w-4 text-ink-700" aria-hidden="true" />
                       )}
                       <div>
-                        <p className="font-medium text-ink-900">{ev.title}</p>
+                        <p className="font-medium text-ink-900">
+                          <EventTitle event={ev}>{ev.title}</EventTitle>
+                        </p>
                         <p className="text-xs text-ash-500">{formatDateTime(ev.startsAt, locale)}</p>
                       </div>
                     </div>
@@ -212,7 +230,9 @@ export function CalendarView({ events, locale }: { events: CalendarEventLike[]; 
                     <CalendarDays className="h-5 w-5 text-ink-700" aria-hidden="true" />
                   )}
                   <div>
-                    <p className="font-medium text-ink-900">{event.title}</p>
+                    <p className="font-medium text-ink-900">
+                      <EventTitle event={event}>{event.title}</EventTitle>
+                    </p>
                     <p className="text-sm text-ash-500">{formatDateTime(event.startsAt, locale)}</p>
                   </div>
                 </div>

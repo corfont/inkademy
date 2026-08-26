@@ -31,6 +31,12 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
   const [courseId, setCourseId] = useState("");
   const [data, setData] = useState(initial);
   const [loading, setLoading] = useState(false);
+  // "Debe también poderse ordenar o filtrar por estrellas para leer los
+  // comentarios" — starFilter=0 es "todas"; sortOrder ordena la lista de
+  // comentarios (los datos ya vienen completos del API, se filtra/ordena
+  // acá mismo sin otro roundtrip).
+  const [starFilter, setStarFilter] = useState(0);
+  const [sortOrder, setSortOrder] = useState<"recent" | "highest" | "lowest">("recent");
 
   useEffect(() => {
     setLoading(true);
@@ -74,8 +80,15 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
                 {[5, 4, 3, 2, 1].map((n) => {
                   const count = data.distribution[n] ?? 0;
                   const pct = data.totalResponses > 0 ? Math.round((count / data.totalResponses) * 100) : 0;
+                  const active = starFilter === n;
                   return (
-                    <div key={n} className="flex items-center gap-2 text-sm">
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setStarFilter(active ? 0 : n)}
+                      title={`Filtrar comentarios de ${n} estrella${n === 1 ? "" : "s"}`}
+                      className={`flex items-center gap-2 rounded-md px-1.5 py-0.5 text-sm transition-colors ${active ? "bg-gold-100" : "hover:bg-paper-muted"}`}
+                    >
                       <span className="flex w-10 items-center gap-0.5 text-ash-600">
                         {n} <Star className="h-3.5 w-3.5 fill-gold-400 text-gold-400" aria-hidden="true" />
                       </span>
@@ -85,7 +98,7 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
                       <span className="w-16 shrink-0 text-right text-xs text-ash-500">
                         {count} · {pct}%
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -94,27 +107,54 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
 
           <Card>
             <CardContent className="p-6">
-              <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">Comentarios</h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-serif text-lg font-semibold text-ink-900">Comentarios</h2>
+                <div className="flex items-center gap-2">
+                  {starFilter > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setStarFilter(0)}
+                      className="inline-flex items-center gap-1 rounded-full bg-gold-100 px-2.5 py-1 text-xs font-medium text-gold-700"
+                    >
+                      {starFilter} <Star className="h-3 w-3 fill-gold-700 text-gold-700" aria-hidden="true" /> · Quitar filtro
+                    </button>
+                  )}
+                  <Select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)} className="h-8 w-44 text-xs">
+                    <option value="recent">Más recientes</option>
+                    <option value="highest">Mejor calificados</option>
+                    <option value="lowest">Peor calificados</option>
+                  </Select>
+                </div>
+              </div>
               {loading ? (
                 <p className="text-sm text-ash-500">Cargando…</p>
-              ) : data.responses.filter((r: any) => r.comment).length === 0 ? (
-                <p className="text-sm text-ash-500">Ninguna calificación con comentario todavía.</p>
               ) : (
-                <div className="flex flex-col divide-y divide-paper-border">
-                  {data.responses
-                    .filter((r: any) => r.comment)
-                    .map((r: any) => (
-                      <div key={r.id} className="flex items-start gap-3 py-3">
-                        <MessageCircle className="mt-0.5 h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
-                        <div>
-                          <p className="text-sm text-ink-800">{r.comment}</p>
-                          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ash-500">
-                            <StarRow stars={r.stars} /> · {r.studentName} · {localize(r.courseTitle, "es")} · {formatDate(r.createdAt, "es")}
-                          </p>
+                (() => {
+                  const comments = data.responses
+                    .filter((r: any) => r.comment && (starFilter === 0 || r.stars === starFilter))
+                    .sort((a: any, b: any) =>
+                      sortOrder === "highest" ? b.stars - a.stars : sortOrder === "lowest" ? a.stars - b.stars : 0,
+                    );
+                  return comments.length === 0 ? (
+                    <p className="text-sm text-ash-500">
+                      {starFilter > 0 ? `Ninguna calificación de ${starFilter} estrellas con comentario.` : "Ninguna calificación con comentario todavía."}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col divide-y divide-paper-border">
+                      {comments.map((r: any) => (
+                        <div key={r.id} className="flex items-start gap-3 py-3">
+                          <MessageCircle className="mt-0.5 h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
+                          <div>
+                            <p className="text-sm text-ink-800">{r.comment}</p>
+                            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ash-500">
+                              <StarRow stars={r.stars} /> · {r.studentName} · {localize(r.courseTitle, "es")} · {formatDate(r.createdAt, "es")}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                </div>
+                      ))}
+                    </div>
+                  );
+                })()
               )}
             </CardContent>
           </Card>

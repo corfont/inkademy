@@ -320,7 +320,10 @@ export const meApi = {
     apiFetch<EnrollmentSummaryDTO[]>("/me/enrollments", { query: { status }, accessToken }),
   enrollment: (id: string, accessToken?: string | null) => apiFetch<any>(`/me/enrollments/${id}`, { accessToken }),
   updateLessonProgress: (lessonId: string, input: { completed?: boolean; lastPositionSeconds?: number }) =>
-    apiFetch<void>(`/me/lessons/${lessonId}/progress`, { method: "PATCH", body: JSON.stringify(input) }),
+    apiFetch<{ progressPct: number; status: string }>(`/me/lessons/${lessonId}/progress`, { method: "PATCH", body: JSON.stringify(input) }),
+  // "El alumno deberá marcar como leído" (solo lecturas principales) — recalcula progressPct igual que una lección.
+  markMaterialRead: (materialId: string) =>
+    apiFetch<{ progressPct: number; status: string }>(`/me/materials/${materialId}/read`, { method: "PATCH" }),
   // "Las notas del alumno se guardaban solo en localStorage" — ahora sincronizan entre dispositivos.
   lessonNote: (lessonId: string) => apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`),
   saveLessonNote: (lessonId: string, content: string) =>
@@ -557,7 +560,15 @@ export const adminApi = {
   kpis: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpis", { accessToken, cache: "no-store" }),
   kpiCharts: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpi-charts", { accessToken, cache: "no-store" }),
   exceptions: (accessToken?: string | null) => apiFetch<AdminExceptionDTO[]>("/admin/exceptions", { accessToken }),
-  courses: (accessToken?: string | null) => apiFetch<any[]>("/admin/courses", { accessToken }),
+  // `mine: true` fuerza el acotado "solo mis cursos asignados" aunque la
+  // cuenta también tenga ADMIN/SUPPORT como rol secundario — lo usa
+  // /docente/cursos, que debe mostrar SIEMPRE el subconjunto del docente
+  // (si quisiera ver todo, entraría a /admin/catalogo). Sin este flag,
+  // listCourses() trata cualquier ADMIN/SUPPORT como "sin restricción" (ver
+  // teacherScopeId), que es lo correcto para /admin/catalogo pero vacía de
+  // sentido a la pantalla "Mis cursos" del docente.
+  courses: (accessToken?: string | null, opts?: { mine?: boolean }) =>
+    apiFetch<any[]>(`/admin/courses${opts?.mine ? "?mine=true" : ""}`, { accessToken, cache: "no-store" }),
   // Panel de docente: cursos asignados, próximas clases a dictar, cola de calificación — ver AdminService.getTeacherDashboard.
   teacherDashboard: (accessToken?: string | null) => apiFetch<any>("/admin/my-courses", { accessToken }),
   programs: (accessToken?: string | null) => apiFetch<any[]>("/admin/programs", { accessToken }),

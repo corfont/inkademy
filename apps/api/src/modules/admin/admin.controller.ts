@@ -115,11 +115,19 @@ export class AdminController {
   @Get("courses")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Lista cursos (admin, incluye DRAFT/ARCHIVED) — TEACHER solo ve los cursos donde es CourseStaff" })
-  listCourses(@CurrentUser() user: RequestUser, @Query("page") page?: string, @Query("pageSize") pageSize?: string) {
-    return this.adminService.listCourses(
-      { page: Number(page) || undefined, pageSize: Number(pageSize) || undefined },
-      teacherScopeId(user),
-    );
+  listCourses(
+    @CurrentUser() user: RequestUser,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    // "He entrado como docente y me aparecen todos los cursos" — quien
+    // también tiene ADMIN/SUPPORT como rol secundario cae en la rama "sin
+    // restricción" de teacherScopeId (correcto para /admin/catalogo). Este
+    // flag lo fuerza a "solo lo mío" para /docente/cursos, sin tocar el
+    // comportamiento de /admin/catalogo.
+    @Query("mine") mine?: string,
+  ) {
+    const teacherId = mine === "true" && user.roles.includes("TEACHER") ? user.id : teacherScopeId(user);
+    return this.adminService.listCourses({ page: Number(page) || undefined, pageSize: Number(pageSize) || undefined }, teacherId);
   }
 
   @Get("my-courses")

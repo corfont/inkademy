@@ -172,7 +172,17 @@ function ScormPlayer({ enrollmentId, lessonId }: { enrollmentId: string; lessonI
   );
 }
 
-function MaterialList({ heading, materials }: { heading: string; materials: ClassroomMaterial[] }) {
+function MaterialList({
+  heading,
+  materials,
+  readMap,
+  onMarkRead,
+}: {
+  heading: string;
+  materials: ClassroomMaterial[];
+  readMap?: Record<string, boolean>;
+  onMarkRead?: (materialId: string) => void;
+}) {
   if (materials.length === 0) return null;
   return (
     <div>
@@ -191,13 +201,33 @@ function MaterialList({ heading, materials }: { heading: string; materials: Clas
           const linkProps = allowView
             ? { target: "_blank", rel: "noreferrer" }
             : { download: true }; // solo descarga: fuerza guardar en vez de previsualizar
+          const isRead = readMap?.[mat.id] ?? false;
           return (
-            <li key={mat.id}>
+            <li key={mat.id} className="flex items-center justify-between gap-3">
               <a href={mat.url} {...linkProps} className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
                 <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
                 {mat.title}
                 {!allowDownload && <span className="text-xs text-ash-400">(solo vista)</span>}
               </a>
+              {/* "Si un curso tiene lecturas principales el alumno deberá
+                  marcar como leído para que el sistema entienda que ha leído
+                  ese documento; para las complementarias no" — el toggle solo
+                  se pasa (onMarkRead) para materiales MAIN. */}
+              {onMarkRead &&
+                (isRead ? (
+                  <span className="flex flex-none items-center gap-1 text-xs font-medium text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Leído
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onMarkRead(mat.id)}
+                    className="flex-none rounded-full border border-paper-border px-2.5 py-1 text-xs font-medium text-ash-600 hover:border-ink-400 hover:text-ink-900"
+                  >
+                    Marcar como leído
+                  </button>
+                ))}
             </li>
           );
         })}
@@ -244,6 +274,20 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const [completedMap, setCompletedMap] = useState<Record<string, boolean>>(
     Object.fromEntries(allLessons.map((l) => [l.id, l.completed])),
   );
+  // "El alumno deberá marcar como leído" — recopila TODAS las lecturas
+  // principales (de lecciones y de módulos) para poder mostrar "Leído" ya
+  // marcado desde el inicio, sin esperar a que el alumno abra cada lección.
+  const allMainMaterials = useMemo(
+    () => [
+      ...detail.modules.flatMap((m) => m.lessons.flatMap((l) => l.materials)),
+      ...detail.modules.flatMap((m) => m.materials),
+    ].filter((m) => m.category !== "SUPPLEMENTARY"),
+    [detail],
+  );
+  const [readMap, setReadMap] = useState<Record<string, boolean>>(
+    Object.fromEntries(allMainMaterials.map((m) => [m.id, m.read ?? false])),
+  );
+  const [progressPct, setProgressPct] = useState(detail.progressPct ?? 0);
   // "El administrador debe indicar si ese video inicia el curso" — si hay
   // una lección marcada como iniciadora, es la primera que ve el alumno al
   // entrar, sin importar el orden real de los módulos/lecciones.
@@ -256,7 +300,8 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
 
   async function persistProgress(lessonId: string, patch: { completed?: boolean; lastPositionSeconds?: number }) {
     try {
-      await meApi.updateLessonProgress(lessonId, patch);
+      const result = await meApi.updateLessonProgress(lessonId, patch);
+      if (result?.progressPct !== undefined) setProgressPct(result.progressPct);
     } catch {
       // best-effort: si la API no está disponible, el estado local sigue reflejando el intento del alumno
     }
@@ -265,6 +310,16 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   function markComplete(lessonId: string) {
     setCompletedMap((m) => ({ ...m, [lessonId]: true }));
     persistProgress(lessonId, { completed: true });
+  }
+
+  async function markMaterialRead(materialId: string) {
+    setReadMap((m) => ({ ...m, [materialId]: true }));
+    try {
+      const result = await meApi.markMaterialRead(materialId);
+      if (result?.progressPct !== undefined) setProgressPct(result.progressPct);
+    } catch {
+      setReadMap((m) => ({ ...m, [materialId]: false })); // revierte si la API falló
+    }
   }
 
   function onTimeUpdate(e: SyntheticEvent<HTMLVideoElement>) {
@@ -402,7 +457,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                     </Link>
                   ) : (
                     <p className="text-sm text-ash-500">
-                      La evaluación se habilita al completar el 100% del curso (llevas {Math.round(detail.progressPct ?? 0)}%).
+                      La evaluación se habilita al completar el 100% del curso (llevas {Math.round(progressPct)}%).
                     </p>
                   ))}
               </div>
@@ -445,8 +500,8 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         {hasAnyMaterials && (
           <section className="flex flex-col gap-4">
             <h2 className="font-serif text-lg font-semibold text-ink-900">{t("materials")}</h2>
-            <MaterialList heading="De esta lección" materials={lessonMain} />
-            <MaterialList heading="Lecturas principales del módulo" materials={moduleMain} />
+            <MaterialList heading="De esta lección" materials={lessonMain} readMap={readMap} onMarkRead={markMaterialRead} />
+            <MaterialList heading="Lecturas principales del módulo" materials={moduleMain} readMap={readMap} onMarkRead={markMaterialRead} />
             <MaterialList heading="Lecturas complementarias" materials={[...lessonSupplementary, ...moduleSupplementary]} />
           </section>
         )}

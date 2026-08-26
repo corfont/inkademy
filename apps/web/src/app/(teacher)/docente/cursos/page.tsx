@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Mis cursos (docente)" };
 export default async function TeacherCoursesPage() {
   const locale = await getLocale();
   const accessToken = getServerAccessToken();
-  const { data: courses, live } = await withFallback(() => adminApi.courses(accessToken), [] as any[]);
+  const { data: courses, live } = await withFallback(() => adminApi.courses(accessToken, { mine: true }), [] as any[]);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
