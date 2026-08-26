@@ -23,10 +23,10 @@ export default async function CompanyDashboardPage({ params }: { params: { compa
   );
 
   const kpis = [
-    { label: t("activeParticipants"), value: dashboard.activeParticipants, icon: Users },
-    { label: t("seatsAvailable"), value: dashboard.seatsAvailable, icon: Ticket },
-    { label: t("averageProgress"), value: `${Math.round(dashboard.averageProgressPct)}%`, icon: TrendingUp },
-    { label: t("atRisk"), value: dashboard.atRiskParticipants, icon: AlertTriangle },
+    { label: t("activeParticipants"), value: dashboard.activeParticipants, icon: Users, accent: "bg-indigo-50 text-indigo-600" },
+    { label: t("seatsAvailable"), value: dashboard.seatsAvailable, icon: Ticket, accent: "bg-gold-100 text-gold-700" },
+    { label: t("averageProgress"), value: `${Math.round(dashboard.averageProgressPct)}%`, icon: TrendingUp, accent: "bg-success-bg text-success" },
+    { label: t("atRisk"), value: dashboard.atRiskParticipants, icon: AlertTriangle, accent: "bg-danger-bg text-danger" },
   ];
 
   return (
@@ -39,9 +39,11 @@ export default async function CompanyDashboardPage({ params }: { params: { compa
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi) => (
-          <Card key={kpi.label}>
+          <Card key={kpi.label} className="transition-shadow hover:shadow-raised">
             <CardContent className="p-5">
-              <kpi.icon className="h-5 w-5 text-ink-700" aria-hidden="true" />
+              <span className={`flex h-10 w-10 items-center justify-center rounded-full ${kpi.accent}`}>
+                <kpi.icon className="h-5 w-5" aria-hidden="true" />
+              </span>
               <p className="mt-3 font-serif text-3xl font-semibold text-ink-900">{kpi.value}</p>
               <p className="text-sm text-ash-500">{kpi.label}</p>
             </CardContent>
