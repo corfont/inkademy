@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { BookOpen, CalendarDays, Award, Sparkles, Star } from "lucide-react";
+import { BookOpen, CalendarDays, Award, Sparkles, Star, CheckCircle2, TrendingUp } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
@@ -11,6 +11,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { Avatar } from "@/components/ui/Avatar";
 import { localize } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Mi campus" };
@@ -22,15 +23,28 @@ export default async function CampusDashboardPage() {
   const accessToken = cookieStore.get(ACCESS_TOKEN_COOKIE)?.value ?? null;
   const sessionUser = readSessionCookie(cookieStore.get(SESSION_COOKIE)?.value);
 
-  const { data: enrollments, live } = await withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS);
+  const [{ data: enrollments, live }, { data: certificates }] = await Promise.all([
+    withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS),
+    withFallback(() => meApi.certificates(accessToken), []),
+  ]);
 
   const inProgress = enrollments.filter((e) => e.status === "ACTIVE");
+  const completed = enrollments.filter((e) => e.status === "COMPLETED");
   const continueItem = inProgress[0];
   // "El alumno deberá de ver notificaciones de lo que tiene pendiente por si
   // no sabe" — un curso ya terminado que solo espera la calificación en
   // estrellas se avisa acá también, no solo dentro del aula (ver
   // CourseRatingPrompt en Classroom.tsx).
   const pendingRating = enrollments.filter((e) => e.readyForRatingPrompt);
+  const avgProgress = enrollments.length > 0 ? Math.round(enrollments.reduce((s, e) => s + e.progressPct, 0) / enrollments.length) : 0;
+
+  const name = sessionUser?.displayName ?? [sessionUser?.firstName, sessionUser?.lastName].filter(Boolean).join(" ");
+  const stats = [
+    { label: "Cursos matriculados", value: enrollments.length, icon: BookOpen, accent: "bg-indigo-50 text-indigo-600" },
+    { label: "En curso", value: inProgress.length, icon: TrendingUp, accent: "bg-warning-bg text-warning" },
+    { label: "Completados", value: completed.length, icon: CheckCircle2, accent: "bg-success-bg text-success" },
+    { label: "Certificados", value: certificates.length, icon: Award, accent: "bg-gold-100 text-gold-700" },
+  ];
 
   const quickAccess = [
     { href: "/campus/cursos", label: "Mis cursos", icon: BookOpen, accent: "bg-indigo-50 text-indigo-600" },
@@ -41,11 +55,42 @@ export default async function CampusDashboardPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
-      <h1 className="font-serif text-2xl font-semibold text-ink-900">
-        {t("greeting", { name: sessionUser?.firstName ?? "" })}
-      </h1>
+      {/* "En el saludo debería aparecer mi foto. El alumno también debe
+          tener un dashboard" — antes era solo un h1 de texto sin ningún
+          dato agregado; ahora suma la foto/iniciales y un resumen real
+          (matriculados/en curso/completados/certificados), no solo el CTA
+          de "continuar donde quedaste". */}
+      <div className="flex items-center gap-4">
+        <Avatar name={name || "?"} src={sessionUser?.avatarUrl} size="lg" />
+        <div>
+          <h1 className="font-serif text-2xl font-semibold text-ink-900">
+            {t("greeting", { name: sessionUser?.firstName ?? "" })}
+          </h1>
+          {enrollments.length > 0 && (
+            <p className="text-sm text-ash-500">
+              {avgProgress}% de avance promedio en tus {enrollments.length} curso{enrollments.length === 1 ? "" : "s"}
+            </p>
+          )}
+        </div>
+      </div>
 
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardContent className="flex items-center gap-3 p-4">
+              <span className={`flex h-10 w-10 flex-none items-center justify-center rounded-full ${s.accent}`}>
+                <s.icon className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="font-serif text-xl font-semibold text-ink-900">{s.value}</p>
+                <p className="text-xs text-ash-500">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       {pendingRating.length > 0 && (
         <Card className="border-warning bg-warning-bg">

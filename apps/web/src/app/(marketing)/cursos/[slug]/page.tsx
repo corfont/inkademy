@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Avatar } from "@/components/ui/Avatar";
+import { SaveCourseButton } from "@/components/marketing/SaveCourseButton";
 import { localize, formatPrice, formatDateTime, formatDuration, MODALITY_LABEL, TYPE_LABEL, LEVEL_LABEL } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
@@ -52,6 +53,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   // (riesgo real de pago duplicado, y el caso explícito que reportó el
   // admin: un trabajador con cupo pagado por su empresa no debería ver precio).
   let myEnrollment: { id: string } | null = null;
+  let isSaved = false;
   if (isAuthenticated) {
     try {
       const mine = await meApi.enrollments(undefined, accessToken);
@@ -60,6 +62,12 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
     } catch {
       // si falla la consulta de matrículas, se degrada al comportamiento
       // anterior (mostrar precio) en vez de romper la página del curso.
+    }
+    if (!myEnrollment) {
+      isSaved = await meApi
+        .isCourseSaved(course.id, accessToken)
+        .then((r) => r.saved)
+        .catch(() => false);
     }
   }
 
@@ -305,11 +313,14 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
                     </Button>
                   </Link>
                 ) : (
-                  <Link href={`/checkout?courseId=${course.id}`} className="mt-5 block">
-                    <Button className="w-full" size="lg">
-                      {tc("enroll")}
-                    </Button>
-                  </Link>
+                  <>
+                    <Link href={`/checkout?courseId=${course.id}`} className="mt-5 block">
+                      <Button className="w-full" size="lg">
+                        {tc("enroll")}
+                      </Button>
+                    </Link>
+                    {isAuthenticated && <SaveCourseButton courseId={course.id} initialSaved={isSaved} />}
+                  </>
                 )}
               </div>
             </div>

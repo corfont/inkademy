@@ -195,6 +195,13 @@ export interface AssessmentResultDTO {
   score: number | null;
   status: AttemptStatus;
   pendingReviewCount: number;
+  // "Si el alumno obtuvo la nota mínima y el admin permite más de un
+  // intento, ¿puede volver a rendir para sacar mejor nota?" — sí (se
+  // califica con el mejor intento), pero antes la UI no mostraba cuántos
+  // intentos quedaban ni ofrecía reintentar, había que saber navegar de
+  // vuelta al examen a mano.
+  attemptsUsed: number;
+  maxAttempts: number;
 }
 
 export interface CertificateDTO {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { EnrollmentStatus } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
@@ -76,5 +76,29 @@ export class EnrollmentController {
   @ApiOperation({ summary: "Cursos recomendados para el usuario, con motivo" })
   listRecommendations(@CurrentUser() user: RequestUser) {
     return this.enrollmentService.listRecommendations(user.id);
+  }
+
+  @Get("saved-courses")
+  @ApiOperation({ summary: "Cursos que el alumno guardó para decidir después (sin matricularse)" })
+  listSaved(@CurrentUser() user: RequestUser) {
+    return this.enrollmentService.listSaved(user.id);
+  }
+
+  @Get("saved-courses/:courseId")
+  @ApiOperation({ summary: "¿Este curso está guardado por el usuario actual?" })
+  isSaved(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string) {
+    return this.enrollmentService.isSaved(user.id, courseId);
+  }
+
+  @Post("saved-courses/:courseId")
+  @ApiOperation({ summary: "Guarda un curso" })
+  saveCourse(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string) {
+    return this.enrollmentService.saveCourse(user.id, courseId);
+  }
+
+  @Delete("saved-courses/:courseId")
+  @ApiOperation({ summary: "Quita un curso de guardados" })
+  unsaveCourse(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string) {
+    return this.enrollmentService.unsaveCourse(user.id, courseId);
   }
 }

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Callout } from "@/components/ui/Callout";
+import { CourseCard } from "@/components/catalog/CourseCard";
 import { localize, formatDate } from "@/lib/format";
 import type { EnrollmentSummaryDTO } from "@inkademy/shared";
 
@@ -79,11 +80,19 @@ export default async function MyCoursesPage() {
   const locale = await getLocale();
   const accessToken = cookies().get(ACCESS_TOKEN_COOKIE)?.value ?? null;
 
-  const { data: enrollments, live } = await withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS);
+  const [{ data: enrollments, live }, { data: saved }] = await Promise.all([
+    withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS),
+    withFallback(() => meApi.savedCourses(accessToken), []),
+  ]);
 
-  const inProgress = enrollments.filter((e) => e.status === "ACTIVE" && e.progressPct > 0);
+  // "¿Cuál es la diferencia entre la pestaña En Progreso y Próximos?" —
+  // antes las separaba solo progressPct===0 vs >0, sin ningún concepto real
+  // de "curso que todavía no empieza" (fecha de cohorte, etc.) detrás — la
+  // distinción confundía más de lo que ayudaba. Se fusionan en una sola
+  // pestaña "En curso"; la barra de progreso de cada tarjeta ya deja claro
+  // si un curso recién matriculado (0%) o a medias.
+  const inProgress = enrollments.filter((e) => e.status === "ACTIVE");
   const completed = enrollments.filter((e) => e.status === "COMPLETED");
-  const upcoming = enrollments.filter((e) => e.status === "ACTIVE" && e.progressPct === 0);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -94,7 +103,6 @@ export default async function MyCoursesPage() {
         <TabsList aria-label={t("title")}>
           <TabsTrigger value="inProgress">{t("inProgress")}</TabsTrigger>
           <TabsTrigger value="completed">{t("completed")}</TabsTrigger>
-          <TabsTrigger value="upcoming">{t("upcoming")}</TabsTrigger>
           <TabsTrigger value="saved">{t("saved")}</TabsTrigger>
         </TabsList>
 
@@ -108,15 +116,16 @@ export default async function MyCoursesPage() {
             {completed.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : completed.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
           </div>
         </TabsContent>
-        <TabsContent value="upcoming">
-          <div className="flex flex-col gap-4">
-            {upcoming.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : upcoming.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
-          </div>
-        </TabsContent>
         <TabsContent value="saved">
-          {/* El esquema de datos aún no define un modelo de "guardados"/wishlist;
-              esta pestaña queda lista en la UI a la espera de ese endpoint. */}
-          <p className="text-ash-500">{t("empty")}</p>
+          {saved.length === 0 ? (
+            <p className="text-ash-500">{t("savedEmpty")}</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {saved.map((course) => (
+                <CourseCard key={course.id} course={course} />
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

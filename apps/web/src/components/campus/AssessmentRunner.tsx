@@ -327,7 +327,9 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [result, setResult] = useState<{ score: number | null; status: string; pendingReviewCount: number } | null>(null);
+  const [result, setResult] = useState<{ score: number | null; status: string; pendingReviewCount: number; attemptsUsed?: number; maxAttempts?: number } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const attemptIdRef = useRef<string>(`mock-attempt-${assessment.id}`);
@@ -389,6 +391,13 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
   }
 
   if (result) {
+    // "Si el alumno obtuvo la nota mínima y el admin permite más de un
+    // intento, ¿podría volver a rendir para sacar mejor nota?" — sí, la
+    // nota final del curso se queda con el mejor intento (ver
+    // course-score.ts); antes no había ninguna forma de saberlo ni de
+    // reintentar sin salir y volver a entrar a mano.
+    const attemptsRemaining =
+      result.maxAttempts !== undefined && result.attemptsUsed !== undefined ? result.maxAttempts - result.attemptsUsed : undefined;
     return (
       <div className="mx-auto max-w-xl rounded-lg border border-paper-border bg-paper p-8 text-center shadow-card">
         <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("resultTitle")}</h1>
@@ -400,6 +409,20 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
           <Callout variant="warning" className="mt-4 text-left">
             {t("pendingReview")}
           </Callout>
+        )}
+        {attemptsRemaining !== undefined && (
+          <div className="mt-6 border-t border-paper-border pt-6">
+            <p className="text-sm text-ash-500">
+              Intentos usados: {result.attemptsUsed} de {result.maxAttempts}
+            </p>
+            {attemptsRemaining > 0 ? (
+              <Button variant="outline" className="mt-3" onClick={() => window.location.reload()}>
+                Reintentar examen ({attemptsRemaining} restante{attemptsRemaining === 1 ? "" : "s"})
+              </Button>
+            ) : (
+              <p className="mt-2 text-xs text-ash-400">Usaste todos tus intentos disponibles.</p>
+            )}
+          </div>
         )}
       </div>
     );

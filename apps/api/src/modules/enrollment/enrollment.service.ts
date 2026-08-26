@@ -534,4 +534,34 @@ export class EnrollmentService {
     });
     return { content: note.content, updatedAt: note.updatedAt };
   }
+
+  // "Hay una opción de Guardados. ¿Cómo guardo un curso? ¿Para qué sirve?"
+  // — guardar un curso desde su ficha pública para decidir después, sin
+  // matricularse todavía. No requiere que el curso esté publicado ya
+  // matriculado ni nada más: es solo una lista personal de interés.
+  async listSaved(userId: string) {
+    const saved = await this.prisma.savedCourse.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+    return this.catalogService.getCourseCardsByIds(saved.map((s) => s.courseId));
+  }
+
+  async isSaved(userId: string, courseId: string) {
+    const row = await this.prisma.savedCourse.findUnique({ where: { userId_courseId: { userId, courseId } } });
+    return { saved: Boolean(row) };
+  }
+
+  async saveCourse(userId: string, courseId: string) {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId }, select: { id: true } });
+    if (!course) throw new NotFoundException("Curso no encontrado");
+    await this.prisma.savedCourse.upsert({
+      where: { userId_courseId: { userId, courseId } },
+      create: { userId, courseId },
+      update: {},
+    });
+    return { saved: true };
+  }
+
+  async unsaveCourse(userId: string, courseId: string) {
+    await this.prisma.savedCourse.deleteMany({ where: { userId, courseId } });
+    return { saved: false };
+  }
 }

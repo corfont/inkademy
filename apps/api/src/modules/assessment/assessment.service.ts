@@ -255,11 +255,17 @@ export class AssessmentService {
       await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
     }
 
+    const attemptsUsed = await this.prisma.assessmentAttempt.count({
+      where: { assessmentId: attempt.assessmentId, userId },
+    });
+
     return {
       attemptId: updated.id,
       score: updated.score,
       status: updated.status,
       pendingReviewCount: allAnswers.filter((a) => a.isCorrect === null).length,
+      attemptsUsed,
+      maxAttempts: attempt.assessment.maxAttempts,
     };
   }
 
@@ -305,7 +311,18 @@ export class AssessmentService {
       },
     });
 
-    return { attemptId: updated.id, score: null, status: updated.status, pendingReviewCount: 1 };
+    const attemptsUsed = await this.prisma.assessmentAttempt.count({
+      where: { assessmentId: attempt.assessmentId, userId },
+    });
+
+    return {
+      attemptId: updated.id,
+      score: null,
+      status: updated.status,
+      pendingReviewCount: 1,
+      attemptsUsed,
+      maxAttempts: attempt.assessment.maxAttempts,
+    };
   }
 
   /**

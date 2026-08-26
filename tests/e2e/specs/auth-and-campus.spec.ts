@@ -44,7 +44,10 @@ test.describe("Campus del alumno", () => {
 
     await page.goto("/campus/cursos");
     await expect(page.getByRole("heading", { name: "Mis cursos" })).toBeVisible();
-    await expect(page.getByText(/completado/)).toBeVisible();
-    await expect(page.getByText(/para aprobar te falta/i)).toBeVisible();
+    // "En curso" ahora fusiona los cursos recién matriculados (0%) con los
+    // que ya tienen avance — el alumno demo tiene varios activos a la vez,
+    // así que puede haber más de un "% completado" visible en la pestaña.
+    await expect(page.getByText(/completado/).first()).toBeVisible();
+    await expect(page.getByText(/para aprobar te falta/i).first()).toBeVisible();
   });
 });

@@ -344,6 +344,12 @@ export const meApi = {
   certificates: (accessToken?: string | null) => apiFetch<CertificateDTO[]>("/me/certificates", { accessToken }),
   recommendations: (accessToken?: string | null) => apiFetch<CourseCardDTO[]>("/me/recommendations", { accessToken }),
   orders: (accessToken?: string | null) => apiFetch<any[]>("/me/orders", { accessToken }),
+  // "Hay una opción de Guardados. ¿Cómo guardo un curso?" — lista personal de interés, sin matricularse.
+  savedCourses: (accessToken?: string | null) => apiFetch<CourseCardDTO[]>("/me/saved-courses", { accessToken, cache: "no-store" }),
+  isCourseSaved: (courseId: string, accessToken?: string | null) =>
+    apiFetch<{ saved: boolean }>(`/me/saved-courses/${courseId}`, { accessToken, cache: "no-store" }),
+  saveCourse: (courseId: string) => apiFetch<{ saved: boolean }>(`/me/saved-courses/${courseId}`, { method: "POST" }),
+  unsaveCourse: (courseId: string) => apiFetch<{ saved: boolean }>(`/me/saved-courses/${courseId}`, { method: "DELETE" }),
 };
 
 // ---------------------------------------------------------------------------

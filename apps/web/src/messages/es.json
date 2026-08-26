@@ -241,10 +241,10 @@
     },
     "courses": {
       "title": "Mis cursos",
-      "inProgress": "En progreso",
+      "inProgress": "En curso",
       "completed": "Finalizados",
-      "upcoming": "Próximos",
       "saved": "Guardados",
+      "savedEmpty": "No tienes cursos guardados. Guarda uno desde su ficha para verlo acá.",
       "progress": "{pct}% completado",
       "missingTitle": "Para aprobar te falta:",
       "noMissing": "Cumples todos los requisitos de aprobación.",

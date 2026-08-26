@@ -8,7 +8,7 @@ import { getCategoryColor } from "@/lib/category-colors";
  * usuario ya tiene foto cargada (ver EditUserModal), se muestra esa en vez
  * de las iniciales.
  */
-export function Avatar({ name, size = "md", src }: { name: string; size?: "sm" | "md"; src?: string | null }) {
+export function Avatar({ name, size = "md", src }: { name: string; size?: "sm" | "md" | "lg"; src?: string | null }) {
   const initials =
     name
       .trim()
@@ -17,7 +17,7 @@ export function Avatar({ name, size = "md", src }: { name: string; size?: "sm" |
       .map((w) => w.charAt(0).toUpperCase())
       .join("") || "?";
   const color = getCategoryColor(name || "?");
-  const dimensions = size === "sm" ? "h-6 w-6 text-[0.65rem]" : "h-8 w-8 text-xs";
+  const dimensions = size === "sm" ? "h-6 w-6 text-[0.65rem]" : size === "lg" ? "h-14 w-14 text-lg" : "h-8 w-8 text-xs";
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={src} alt="" className={`inline-flex flex-none rounded-full object-cover ${dimensions}`} />;

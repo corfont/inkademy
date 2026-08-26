@@ -116,6 +116,7 @@ model User {
   attendances           Attendance[]
   lessonProgress        LessonProgress[]
   materialProgress      MaterialProgress[]
+  savedCourses          SavedCourse[]
   lessonNotes           LessonNote[]
   courseRatings         CourseRating[]
   royaltyRecipient      RoyaltyRecipient[]
@@ -364,6 +365,7 @@ model Course {
   teacherRates           TeacherRate[]
   activityLogs           TeacherActivityLog[]
   calendarEvents         CalendarEvent[]
+  savedBy                SavedCourse[]
 
   @@index([areaId])
   @@index([status])
@@ -693,6 +695,21 @@ model CourseRating {
   createdAt    DateTime   @default(now())
 
   @@index([courseId])
+}
+
+// "Hay una opción de Guardados. ¿Cómo guardo un curso? ¿Para qué sirve?" —
+// antes la pestaña existía en la UI pero no había ningún modelo ni botón
+// detrás; el alumno guarda un curso desde su ficha pública para decidir
+// después, sin tener que comprarlo/matricularse todavía.
+model SavedCourse {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, courseId])
 }
 
 // ---------------------------------------------------------------------------
