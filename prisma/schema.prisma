@@ -789,6 +789,15 @@ model Assessment {
   sourceFileAssetId String?
   sourceFileMimeType String?
 
+  // "Hay cursos, por ejemplo un diplomado, que van a tener varios exámenes y
+  // posiblemente haya una fórmula de ponderación" — % que este examen aporta
+  // a la nota final del curso cuando ApprovalRule.scoreMode="WEIGHTED_AVERAGE"
+  // (ver AssessmentService/course-score.ts). null/0 = no participa en la
+  // fórmula. No se valida que la suma de todos los pesos del curso dé 100 a
+  // nivel de esquema — se avisa en el editor si no cuadra, pero no bloquea
+  // guardar mientras se arma la fórmula.
+  weightPercent     Float?
+
   questions         Question[]
   attempts          AssessmentAttempt[]
 
@@ -857,6 +866,13 @@ model ApprovalRule {
   minAttendancePct   Float?  // solo aplica si el curso tiene sesiones en vivo
   minScore           Float   @default(70)
   requiresAssignment Boolean @default(false)
+  // BEST_ATTEMPT (default): la nota final es la mejor nota entre todos los
+  // exámenes del curso — sirve para el caso normal (un examen, o varios
+  // exámenes intercambiables). WEIGHTED_AVERAGE: la nota final es el
+  // promedio ponderado de Assessment.weightPercent — para diplomados con
+  // varios exámenes que pesan distinto. Ver computeCourseScore en
+  // apps/api/src/modules/assessment/course-score.ts.
+  scoreMode          String  @default("BEST_ATTEMPT")
 }
 
 // ---------------------------------------------------------------------------

@@ -647,13 +647,20 @@ export class AdminService {
         minAttendancePct: null,
         minScore: 70,
         requiresAssignment: false,
+        scoreMode: "BEST_ATTEMPT",
       }
     );
   }
 
   updateApprovalRule(
     courseId: string,
-    input: { minProgressPct?: number; minAttendancePct?: number | null; minScore?: number; requiresAssignment?: boolean },
+    input: {
+      minProgressPct?: number;
+      minAttendancePct?: number | null;
+      minScore?: number;
+      requiresAssignment?: boolean;
+      scoreMode?: string;
+    },
   ) {
     return this.prisma.approvalRule.upsert({
       where: { courseId },

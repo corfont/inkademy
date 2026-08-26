@@ -224,6 +224,7 @@ export const updateApprovalRuleSchema = z.object({
   minAttendancePct: z.number().min(0).max(100).optional().nullable(),
   minScore: z.number().min(0).max(100).optional(),
   requiresAssignment: z.boolean().optional(),
+  scoreMode: z.enum(["BEST_ATTEMPT", "WEIGHTED_AVERAGE"]).optional(),
 });
 
 export const upsertPartnerInstitutionSchema = z.object({
@@ -405,6 +406,10 @@ export const upsertAssessmentSchema = z.object({
   // de siempre).
   sourceFileAssetId: z.string().optional().nullable(),
   sourceFileMimeType: z.string().optional().nullable(),
+  // Peso (%) de este examen en la nota final del curso — solo se usa si
+  // ApprovalRule.scoreMode="WEIGHTED_AVERAGE" (diplomados con varios
+  // exámenes ponderados). Ver computeCourseScore.
+  weightPercent: z.number().min(0).max(100).optional().nullable(),
 });
 export const updateAssessmentSchema = upsertAssessmentSchema.partial();
 

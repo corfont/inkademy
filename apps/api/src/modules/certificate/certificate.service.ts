@@ -15,6 +15,7 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { StorageService } from "../../storage/storage.service";
 import { CERTIFICATE_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
 import { NotificationService } from "../notification/notification.service";
+import { computeCourseScore } from "../assessment/course-score";
 
 @Injectable()
 export class CertificateService {
@@ -77,6 +78,7 @@ export class CertificateService {
       minAttendancePct: null as number | null,
       minScore: 70,
       requiresAssignment: false,
+      scoreMode: "BEST_ATTEMPT",
     };
 
     const progressOk = enrollment.progressPct >= rule.minProgressPct;
@@ -102,18 +104,8 @@ export class CertificateService {
     // podía alcanzar (no hay nada que responder) — el certificado quedaba
     // bloqueado para siempre. Ahora solo cuenta como examen real si tiene
     // preguntas o un archivo de examen cualitativo configurado.
-    const assessmentCount = await this.prisma.assessment.count({
-      where: { courseId: enrollment.courseId, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
-    });
-    let scoreOk = true;
-    let bestAttempt: { score: number | null } | null = null;
-    if (assessmentCount > 0) {
-      bestAttempt = await this.prisma.assessmentAttempt.findFirst({
-        where: { enrollmentId, score: { not: null } },
-        orderBy: { score: "desc" },
-      });
-      scoreOk = (bestAttempt?.score ?? 0) >= rule.minScore;
-    }
+    const { hasAssessments, finalScore } = await computeCourseScore(this.prisma, enrollmentId, enrollment.courseId, rule.scoreMode ?? "BEST_ATTEMPT");
+    const scoreOk = !hasAssessments || (finalScore ?? 0) >= rule.minScore;
 
     let assignmentOk = true;
     if (rule.requiresAssignment) {
@@ -158,14 +150,15 @@ export class CertificateService {
         enrollmentId: enrollment.id,
         templateId: fallbackTemplate.id,
         templateVersion: fallbackTemplate.version,
-        finalScore: bestAttempt?.score ?? null,
+        finalScore: finalScore ?? null,
         criteriaSnapshot: {
           minProgressPct: rule.minProgressPct,
           minAttendancePct: rule.minAttendancePct,
           minScore: rule.minScore,
+          scoreMode: rule.scoreMode ?? "BEST_ATTEMPT",
           requiresAssignment: rule.requiresAssignment,
           achievedProgressPct: enrollment.progressPct,
-          achievedScore: bestAttempt?.score ?? null,
+          achievedScore: finalScore ?? null,
         },
       },
     });

@@ -8,6 +8,7 @@ import { StorageService } from "../../storage/storage.service";
 import { QUEUE_NAMES, RECOMMENDATION_JOBS } from "../../common/queues/queue.constants";
 import { CertificateService } from "../certificate/certificate.service";
 import { CatalogService } from "../catalog/catalog.service";
+import { computeCourseScore } from "../assessment/course-score";
 
 @Injectable()
 export class EnrollmentService {
@@ -30,20 +31,10 @@ export class EnrollmentService {
     courseId: string,
     enrollmentId: string,
   ): Promise<{ missing: string[]; ratingRequired: boolean; readyForRatingPrompt: boolean }> {
-    const [approvalRule, enrollment, bestAttempt, attendanceStats, assessmentCount, rating] = await Promise.all([
+    const [approvalRule, enrollment, attendanceStats, rating] = await Promise.all([
       this.prisma.approvalRule.findUnique({ where: { courseId } }),
       this.prisma.enrollment.findUnique({ where: { id: enrollmentId } }),
-      this.prisma.assessmentAttempt.findFirst({
-        where: { enrollmentId, status: { in: ["GRADED", "PASSED", "FAILED"] } },
-        orderBy: { score: "desc" },
-      }),
       this.prisma.liveSession.count({ where: { courseId } }),
-      // "Este curso no tiene examen, por lo cual no debería aparecer este
-      // mensaje" — un Assessment vacío (sin preguntas ni examen de archivo)
-      // no cuenta como examen real, igual que en CertificateService.checkAndIssueIfEligible.
-      this.prisma.assessment.count({
-        where: { courseId, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
-      }),
       this.prisma.courseRating.findUnique({ where: { enrollmentId } }),
     ]);
     if (!enrollment) return { missing: [], ratingRequired: false, readyForRatingPrompt: false };
@@ -51,7 +42,18 @@ export class EnrollmentService {
     // curso sin ApprovalRule configurada (nunca hubo pantalla de admin para
     // crearla) NO debe fingir que no falta nada; antes esta lista quedaba
     // vacía siempre en ese caso, sin importar el avance real.
-    const rule = approvalRule ?? { minProgressPct: 100, minAttendancePct: null as number | null, minScore: 70, requiresAssignment: false };
+    const rule = approvalRule ?? {
+      minProgressPct: 100,
+      minAttendancePct: null as number | null,
+      minScore: 70,
+      requiresAssignment: false,
+      scoreMode: "BEST_ATTEMPT",
+    };
+    // Mismo cálculo (mejor intento o promedio ponderado) que
+    // CertificateService.checkAndIssueIfEligible — comparten esta función
+    // para que los dos gates ("qué falta para aprobar" acá y "se emite el
+    // certificado" allá) nunca queden desincronizados.
+    const { hasAssessments, finalScore: bestScore } = await computeCourseScore(this.prisma, enrollmentId, courseId, rule.scoreMode ?? "BEST_ATTEMPT");
 
     const missing: string[] = [];
     if (enrollment.progressPct < rule.minProgressPct) {
@@ -73,11 +75,11 @@ export class EnrollmentService {
     // Solo exigir nota mínima si el curso tiene al menos una evaluación configurada
     // — de lo contrario un `minScore: 0` (curso sin examen) generaría un requisito
     // sin sentido ("aprueba una evaluación con nota mínima 0").
-    if (assessmentCount > 0) {
-      const bestScore = bestAttempt?.score ?? null;
+    if (hasAssessments) {
       if (bestScore === null || bestScore < rule.minScore) {
+        const label = rule.scoreMode === "WEIGHTED_AVERAGE" ? "tu nota ponderada actual" : "tu mejor nota";
         missing.push(
-          `Aprueba una evaluación con nota mínima ${rule.minScore}${bestScore !== null ? ` (tu mejor nota: ${bestScore})` : ""}`,
+          `Aprueba ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}${bestScore !== null ? ` (${label}: ${bestScore.toFixed(1)})` : ""}`,
         );
       }
     }

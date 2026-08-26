@@ -1220,7 +1220,7 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
     adminApi
       .approvalRule(courseId)
       .then(setRule)
-      .catch(() => setRule({ minProgressPct: 100, minAttendancePct: null, minScore: 70, requiresAssignment: false }));
+      .catch(() => setRule({ minProgressPct: 100, minAttendancePct: null, minScore: 70, requiresAssignment: false, scoreMode: "BEST_ATTEMPT" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
@@ -1236,6 +1236,7 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
         minAttendancePct: rule.minAttendancePct === "" || rule.minAttendancePct === null ? null : Number(rule.minAttendancePct),
         minScore: Number(rule.minScore),
         requiresAssignment: rule.requiresAssignment,
+        scoreMode: rule.scoreMode ?? "BEST_ATTEMPT",
       });
       setSaved(true);
     } catch (err) {
@@ -1289,6 +1290,24 @@ function ApprovalRuleSection({ courseId }: { courseId: string }) {
               onChange={(e) => setRule((r: any) => ({ ...r, minAttendancePct: e.target.value }))}
             />
           </div>
+        </div>
+        <div>
+          <Label htmlFor={`ar-scoremode-${courseId}`}>Cómo se calcula la nota final</Label>
+          <Select
+            id={`ar-scoremode-${courseId}`}
+            value={rule.scoreMode ?? "BEST_ATTEMPT"}
+            onChange={(e) => setRule((r: any) => ({ ...r, scoreMode: e.target.value }))}
+            className="max-w-sm"
+          >
+            <option value="BEST_ATTEMPT">Mejor nota entre todos los exámenes (por defecto)</option>
+            <option value="WEIGHTED_AVERAGE">Promedio ponderado — cada examen pesa lo que le asignes abajo</option>
+          </Select>
+          {rule.scoreMode === "WEIGHTED_AVERAGE" && (
+            <p className="mt-1 text-xs text-ash-500">
+              Para diplomados con varios exámenes: asigna el % de peso de cada examen en la sección "Evaluaciones" más abajo. Un examen sin peso
+              asignado no participa en el promedio. Si ningún examen tiene peso todavía, se usa "mejor nota" mientras armas la fórmula.
+            </p>
+          )}
         </div>
         <label className="flex items-center gap-2 text-sm text-ash-600">
           <input
@@ -1396,6 +1415,19 @@ function AssessmentsSection({ courseId }: { courseId: string }) {
           <p className="text-sm text-ash-500">Todavía no hay evaluaciones para este curso.</p>
         ) : (
           <div className="flex flex-col gap-4">
+            {(() => {
+              const totalWeight = assessments.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0);
+              return (
+                totalWeight > 0 && (
+                  <Callout variant={Math.round(totalWeight) === 100 ? "info" : "warning"}>
+                    Suma de pesos configurados: {totalWeight}%.{" "}
+                    {Math.round(totalWeight) === 100
+                      ? "Cuadra con la fórmula de promedio ponderado (activa el modo en la regla de habilitación de certificado, arriba)."
+                      : "Para que el promedio ponderado tenga sentido, los pesos de los exámenes que participan en la fórmula deberían sumar 100%."}
+                  </Callout>
+                )
+              );
+            })()}
             {assessments.map((a) => (
               <AssessmentBlock key={a.id} assessment={a} onChange={refresh} />
             ))}
@@ -1434,6 +1466,7 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
   const [maxAttempts, setMaxAttempts] = useState(String(assessment.maxAttempts));
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(assessment.timeLimitMinutes ? String(assessment.timeLimitMinutes) : "");
   const [displayMode, setDisplayMode] = useState(assessment.displayMode ?? "ALL_AT_ONCE");
+  const [weightPercent, setWeightPercent] = useState(assessment.weightPercent != null ? String(assessment.weightPercent) : "");
   const [busy, setBusy] = useState(false);
 
   async function handleSaveRules() {
@@ -1444,6 +1477,7 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
         maxAttempts: Number(maxAttempts),
         timeLimitMinutes: timeLimitMinutes ? Number(timeLimitMinutes) : undefined,
         displayMode,
+        weightPercent: weightPercent.trim() === "" ? null : Number(weightPercent),
       });
       onChange();
     } catch (err) {
@@ -1479,6 +1513,7 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
               ? `Sin preguntas — se califica el archivo completo que sube el alumno`
               : `${assessment.questions?.length ?? 0} pregunta${assessment.questions?.length === 1 ? "" : "s"}`}{" "}
             · {assessment._count?.attempts ?? 0} intento(s) de alumnos
+            {assessment.weightPercent != null && ` · peso en fórmula: ${assessment.weightPercent}%`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -1493,7 +1528,7 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
 
       {expanded && (
         <div className="mt-4 flex flex-col gap-4 border-t border-paper-border pt-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <Label htmlFor={`minScore-${assessment.id}`}>Nota mínima (%)</Label>
               <Input
@@ -1503,6 +1538,18 @@ function AssessmentBlock({ assessment, onChange }: { assessment: any; onChange: 
                 max="100"
                 value={minScore}
                 onChange={(e) => setMinScore(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`weight-${assessment.id}`}>Peso en fórmula ponderada (%)</Label>
+              <Input
+                id={`weight-${assessment.id}`}
+                type="number"
+                min="0"
+                max="100"
+                placeholder="No participa"
+                value={weightPercent}
+                onChange={(e) => setWeightPercent(e.target.value)}
               />
             </div>
             <div>
