@@ -149,14 +149,14 @@ export function CatalogListClient({
               {sorted.map((course) => {
                 const modalityStyle = offeringStyle(MODALITY_STYLE, course.modality);
                 return (
-                  <tr key={course.id}>
+                  <tr key={course.id} className="transition-colors hover:bg-paper-muted">
                     <td className="p-3">
                       <div className="flex items-center gap-3">
                         {course.coverImageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={course.coverImageUrl} alt="" className="h-12 w-16 flex-none rounded object-cover" />
+                          <img src={course.coverImageUrl} alt="" className="h-12 w-16 flex-none rounded object-cover shadow-card" />
                         ) : (
-                          <div className="flex h-12 w-16 flex-none items-center justify-center rounded bg-ink-100 text-xs font-semibold text-ink-500">
+                          <div className="flex h-12 w-16 flex-none items-center justify-center rounded bg-indigo-50 font-serif text-sm font-semibold text-indigo-600">
                             {titleOf(course).charAt(0)}
                           </div>
                         )}
@@ -200,7 +200,7 @@ export function CatalogListClient({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={course.coverImageUrl} alt="" className="h-32 w-full object-cover" />
                 ) : (
-                  <div className="flex h-32 items-center justify-center bg-ink-100 font-serif text-3xl font-semibold text-ink-400">
+                  <div className="flex h-32 items-center justify-center bg-indigo-50 font-serif text-3xl font-semibold text-indigo-400">
                     {titleOf(course).charAt(0)}
                   </div>
                 )}

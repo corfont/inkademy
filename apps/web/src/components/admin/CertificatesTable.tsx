@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, FileDown, RefreshCw } from "lucide-react";
+import { Award, Download, FileDown, RefreshCw } from "lucide-react";
 import { API_URL, certificateApi, ApiError } from "@/lib/api-client";
 import { getClientAccessToken } from "@/lib/auth";
 import { Badge } from "@/components/ui/Badge";
@@ -173,7 +173,9 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
 
       {groups.map((group) => (
         <div key={group.label || "all"} className="overflow-x-auto rounded-lg border border-paper-border bg-paper">
-          {group.label && <p className="border-b border-paper-border bg-paper-muted/50 px-4 py-2 text-sm font-semibold text-ink-900">{group.label}</p>}
+          {group.label && (
+            <p className="border-b border-paper-border bg-indigo-50/60 px-4 py-2 text-sm font-semibold text-indigo-900">{group.label}</p>
+          )}
           <table className="w-full text-left text-sm">
             <thead className="border-b border-paper-border text-ash-500">
               <tr>
@@ -187,8 +189,15 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
             </thead>
             <tbody className="divide-y divide-paper-border">
               {group.rows.map((cert) => (
-                <tr key={cert.id}>
-                  <td className="p-4 font-medium text-ink-900">{cert.code}</td>
+                <tr key={cert.id} className="transition-colors hover:bg-paper-muted">
+                  <td className="p-4">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-gold-100 text-gold-700">
+                        <Award className="h-3.5 w-3.5" aria-hidden="true" />
+                      </span>
+                      <span className="font-mono text-xs text-ink-900">{cert.code}</span>
+                    </div>
+                  </td>
                   <td className="p-4 text-ash-600">{cert.holderName}</td>
                   <td className="p-4 text-ash-600">{courseTitle(cert)}</td>
                   <td className="p-4 text-ash-600">{formatDate(cert.issuedAt, locale)}</td>

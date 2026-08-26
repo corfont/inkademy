@@ -2,10 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CreditCard, Receipt, ArrowLeftRight } from "lucide-react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Input, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+
+function SectionHeader({ icon: Icon, accent, title }: { icon: typeof CreditCard; accent: string; title: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className={`flex h-8 w-8 items-center justify-center rounded-full ${accent}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <h3 className="font-serif text-sm font-semibold text-ink-900">{title}</h3>
+    </div>
+  );
+}
 
 /**
  * El % de comisión de Culqi/Stripe depende del contrato comercial real de
@@ -87,79 +99,77 @@ export function FeeSettingsForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
-        <p>
-          <span className="font-semibold text-ink-800">Comisión Culqi</span>: se aplica a ventas en <strong>soles (PEN)</strong> — tarjeta, Yape,
-          Plin, rieles nacionales.
+    <div className="flex flex-col gap-5">
+      <div className="rounded-lg border border-paper-border p-4">
+        <SectionHeader icon={CreditCard} accent="bg-indigo-50 text-indigo-600" title="Comisiones de pasarela" />
+        <p className="mt-2 text-xs text-ash-600">
+          <span className="font-semibold text-ink-800">Culqi</span> se aplica a ventas en <strong>soles (PEN)</strong> — tarjeta, Yape, Plin,
+          rieles nacionales. <span className="font-semibold text-ink-800">Stripe</span> se aplica a ventas en <strong>dólares (USD)</strong> —
+          compradores internacionales. No son dos comisiones del mismo proveedor, cada una corresponde a una pasarela distinta según la moneda.
         </p>
-        <p className="mt-1">
-          <span className="font-semibold text-ink-800">Comisión Stripe</span>: se aplica a ventas en <strong>dólares (USD)</strong> — compradores
-          internacionales.
+
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <Label htmlFor="culqi-fee">Comisión Culqi (%) — ventas en soles</Label>
+            <Input id="culqi-fee" type="number" min="0" max="100" step="0.01" value={culqi} onChange={(e) => setCulqi(e.target.value)} className="w-28" />
+          </div>
+          <div>
+            <Label htmlFor="stripe-fee">Comisión Stripe (%) — ventas en dólares</Label>
+            <Input id="stripe-fee" type="number" min="0" max="100" step="0.01" value={stripe} onChange={(e) => setStripe(e.target.value)} className="w-28" />
+          </div>
+          <div>
+            <Label htmlFor="yapeplin-fee">Comisión adicional Yape/Plin (%)</Label>
+            <Input
+              id="yapeplin-fee"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={yapePlin}
+              onChange={(e) => setYapePlin(e.target.value)}
+              className="w-28"
+            />
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-ash-500">
+          Investigado a pedido (revisado con BCP/Culqi): Culqi cobra <strong>3.44% + S/0.20 + IGV</strong> parejo en tarjeta nacional y Yape/Plin —
+          no hay un cargo adicional específico por aceptar Yape/Plin encima de esa comisión (por eso el default de Comisión Culqi bajó de 3.99% a
+          3.44%, que era en realidad la tarifa de tarjeta internacional). Sí existe una comisión de <strong>Yape Empresa (BCP) del 2.95%</strong>,
+          pero esa aplica solo si un negocio recibe Yape directo a su propia cuenta/QR — no es el caso de Inkapitales, que cobra siempre a través
+          de Culqi como pasarela. Se deja en 0% por defecto; súbelo solo si tu contrato específico con Culqi confirma un cargo adicional real. Si
+          lo subes, se aplica <strong>solo</strong> a los cobros que Culqi reporta como Yape/Plin (no a tarjeta) — y siempre sobre el monto{" "}
+          <strong>bruto efectivamente cobrado (con IGV incluido)</strong>, que es como realmente descuenta la pasarela, nunca sobre el neto.
         </p>
-        <p className="mt-1">No son dos comisiones del mismo proveedor — cada una corresponde a una pasarela distinta según la moneda del curso.</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <Label htmlFor="culqi-fee">Comisión Culqi (%) — ventas en soles</Label>
-          <Input id="culqi-fee" type="number" min="0" max="100" step="0.01" value={culqi} onChange={(e) => setCulqi(e.target.value)} className="w-28" />
-        </div>
-        <div>
-          <Label htmlFor="stripe-fee">Comisión Stripe (%) — ventas en dólares</Label>
-          <Input id="stripe-fee" type="number" min="0" max="100" step="0.01" value={stripe} onChange={(e) => setStripe(e.target.value)} className="w-28" />
-        </div>
-        <div>
-          <Label htmlFor="yapeplin-fee">Comisión adicional Yape/Plin (%)</Label>
-          <Input
-            id="yapeplin-fee"
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            value={yapePlin}
-            onChange={(e) => setYapePlin(e.target.value)}
-            className="w-28"
-          />
-        </div>
-      </div>
-      <p className="-mt-2 text-xs text-ash-500">
-        Investigado a pedido (revisado con BCP/Culqi): Culqi cobra <strong>3.44% + S/0.20 + IGV</strong> parejo en tarjeta nacional y Yape/Plin — no
-        hay un cargo adicional específico por aceptar Yape/Plin encima de esa comisión (por eso el default de Comisión Culqi bajó de 3.99% a
-        3.44%, que era en realidad la tarifa de tarjeta internacional). Sí existe una comisión de <strong>Yape Empresa (BCP) del 2.95%</strong>,
-        pero esa aplica solo si un negocio recibe Yape directo a su propia cuenta/QR — no es el caso de Inkapitales, que cobra siempre a través de
-        Culqi como pasarela. Se deja en 0% por defecto; súbelo solo si tu contrato específico con Culqi confirma un cargo adicional real. Si lo
-        subes, se aplica <strong>solo</strong> a los cobros que Culqi reporta como Yape/Plin (no a tarjeta) — y siempre sobre el monto{" "}
-        <strong>bruto efectivamente cobrado (con IGV incluido)</strong>, que es como realmente descuenta la pasarela, nunca sobre el neto.
-      </p>
-
-      <div className="rounded-md bg-paper-muted p-3">
-        <label className="flex items-center gap-2 text-sm font-medium text-ink-900">
+      <div className="rounded-lg border border-paper-border p-4">
+        <SectionHeader icon={Receipt} accent="bg-gold-100 text-gold-700" title="Detracción SUNAT" />
+        <label className="mt-3 flex items-center gap-2 text-sm font-medium text-ink-900">
           <input type="checkbox" checked={detractOn} onChange={(e) => setDetractOn(e.target.checked)} />
           Aplicar detracción SUNAT
         </label>
         <p className="mt-1 text-xs text-ash-500">Interruptor maestro — si la SUNAT suspende la detracción por completo, apágalo aquí sin perder los % configurados.</p>
 
         {detractOn && (
-          <div className="mt-3 overflow-x-auto">
+          <div className="mt-3 overflow-x-auto rounded-md border border-paper-border">
             <table className="w-full text-left text-xs">
-              <thead className="text-ash-500">
+              <thead className="bg-paper-muted text-ash-500">
                 <tr>
-                  <th className="p-1.5 font-medium">Tipo de cliente</th>
-                  <th className="p-1.5 font-medium">Comprobante</th>
-                  <th className="p-1.5 font-medium">¿Aplica detracción?</th>
+                  <th className="p-2.5 font-medium">Tipo de cliente</th>
+                  <th className="p-2.5 font-medium">Comprobante</th>
+                  <th className="p-2.5 font-medium">¿Aplica detracción?</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-paper-border">
                 <tr>
-                  <td className="p-1.5">Persona natural (consumidor final)</td>
-                  <td className="p-1.5">Boleta de venta</td>
-                  <td className="p-1.5 text-ash-500">No — cobras el 100% directo</td>
+                  <td className="p-2.5">Persona natural (consumidor final)</td>
+                  <td className="p-2.5">Boleta de venta</td>
+                  <td className="p-2.5 text-ash-500">No — cobras el 100% directo</td>
                 </tr>
                 <tr>
-                  <td className="p-1.5">Persona natural con negocio (RUC empieza con 10)</td>
-                  <td className="p-1.5">Factura</td>
-                  <td className="p-1.5">
+                  <td className="p-2.5">Persona natural con negocio (RUC empieza con 10)</td>
+                  <td className="p-2.5">Factura</td>
+                  <td className="p-2.5">
                     Sí, {rucNaturalPct}% si supera{" "}
                     <Input
                       type="number"
@@ -173,13 +183,13 @@ export function FeeSettingsForm({
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-1.5">Empresa / persona jurídica (RUC empieza con 20)</td>
-                  <td className="p-1.5">Factura</td>
-                  <td className="p-1.5">Sí, siempre — {rucEmpresaPct}% al Banco de la Nación, {100 - Number(rucEmpresaPct)}% a tu cuenta</td>
+                  <td className="p-2.5">Empresa / persona jurídica (RUC empieza con 20)</td>
+                  <td className="p-2.5">Factura</td>
+                  <td className="p-2.5">Sí, siempre — {rucEmpresaPct}% al Banco de la Nación, {100 - Number(rucEmpresaPct)}% a tu cuenta</td>
                 </tr>
               </tbody>
             </table>
-            <div className="mt-3 flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 border-t border-paper-border bg-paper-muted/50 p-3">
               <div>
                 <Label htmlFor="detract-natural-pct">% detracción — persona natural con negocio</Label>
                 <Input
@@ -209,46 +219,47 @@ export function FeeSettingsForm({
             </div>
           </div>
         )}
-
-        {detractOn && (
-          <div className="mt-4 border-t border-paper-border pt-3">
-            <p className="text-xs text-ash-600">
-              <strong>Ventas en USD</strong>: aunque la factura sea en dólares, la detracción (cuando aplica) se calcula sobre el equivalente en
-              soles y se deposita al Banco de la Nación en soles — nunca en dólares. Actualiza el tipo de cambio del día antes de cerrar el
-              periodo; la fuente oficial recomendada es la SBS, pero puede cambiar de dirección, así que el link también es editable.
-            </p>
-            <div className="mt-2 flex flex-wrap items-end gap-3">
-              <div>
-                <Label htmlFor="usd-exchange-rate">Tipo de cambio USD → PEN (venta)</Label>
-                <Input
-                  id="usd-exchange-rate"
-                  type="number"
-                  min="0"
-                  step="0.001"
-                  value={exchangeRate}
-                  onChange={(e) => setExchangeRate(e.target.value)}
-                  className="w-28"
-                />
-              </div>
-              <div className="min-w-[16rem] flex-1">
-                <Label htmlFor="exchange-rate-source">Link de referencia (tipo de cambio del día)</Label>
-                <Input
-                  id="exchange-rate-source"
-                  type="url"
-                  value={sourceUrl}
-                  onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="https://www.sbs.gob.pe/..."
-                />
-              </div>
-              {sourceUrl && (
-                <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-600 underline">
-                  Ver tipo de cambio del día ↗
-                </a>
-              )}
-            </div>
-          </div>
-        )}
       </div>
+
+      {detractOn && (
+        <div className="rounded-lg border border-paper-border p-4">
+          <SectionHeader icon={ArrowLeftRight} accent="bg-indigo-50 text-indigo-600" title="Ventas en USD — tipo de cambio" />
+          <p className="mt-2 text-xs text-ash-600">
+            Aunque la factura sea en dólares, la detracción (cuando aplica) se calcula sobre el equivalente en soles y se deposita al Banco de la
+            Nación en soles — nunca en dólares. Actualiza el tipo de cambio del día antes de cerrar el periodo; la fuente oficial recomendada es
+            la SBS, pero puede cambiar de dirección, así que el link también es editable.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div>
+              <Label htmlFor="usd-exchange-rate">Tipo de cambio USD → PEN (venta)</Label>
+              <Input
+                id="usd-exchange-rate"
+                type="number"
+                min="0"
+                step="0.001"
+                value={exchangeRate}
+                onChange={(e) => setExchangeRate(e.target.value)}
+                className="w-28"
+              />
+            </div>
+            <div className="min-w-[16rem] flex-1">
+              <Label htmlFor="exchange-rate-source">Link de referencia (tipo de cambio del día)</Label>
+              <Input
+                id="exchange-rate-source"
+                type="url"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                placeholder="https://www.sbs.gob.pe/..."
+              />
+            </div>
+            {sourceUrl && (
+              <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-600 underline">
+                Ver tipo de cambio del día ↗
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       <div>
         <Button size="sm" variant="outline" disabled={busy} onClick={handleSave}>
