@@ -96,6 +96,15 @@ export function SidebarShell({
   // mismo aunque siguiera habiendo páginas de /admin más atrás en la pila.
   // Ahora "puede retroceder" se calcula de la pila real, no de si la
   // página actual coincide con brandHref.
+  //
+  // "Cuando le doy al botón de la casita para ir al inicio, no va al
+  // inicio" — el botón "Inicio" se ocultaba por completo cuando
+  // pathname===brandHref (isHome), así que si el usuario ya estaba "cerca"
+  // de home (p.ej. en /campus mismo, con el resto de la vista aún
+  // cargando) el botón desaparecía justo donde antes estaba y el clic caía
+  // en otro elemento — se percibía como "no pasa nada". Ahora se muestra
+  // siempre; en home queda simplemente resaltado (aria-current) en vez de
+  // desaparecer.
   const [canGoBack, setCanGoBack] = useState(false);
 
   useEffect(() => {
@@ -178,6 +187,15 @@ export function SidebarShell({
                 <ArrowLeft className="h-5 w-5" />
               </button>
             )}
+            {/* El header móvil solo tenía el logo (no se ve como una
+                "casita") y ningún ícono de inicio equivalente al de
+                escritorio — se agrega aquí para que exista la misma
+                acción visible en ambos tamaños de pantalla. */}
+            {!isHome && (
+              <Link href={brandHref} aria-label="Inicio" className="p-2 text-ink-800">
+                <Home className="h-5 w-5" />
+              </Link>
+            )}
             <Link href={brandHref} className="flex min-w-0 items-center" aria-label="Inkademy">
               <BrandLogo maxHeightPx={28} className="max-w-full" />
             </Link>
@@ -210,15 +228,17 @@ export function SidebarShell({
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               Atrás
             </button>
-            {!isHome && (
-              <Link
-                href={brandHref}
-                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-ash-600 hover:bg-paper-muted hover:text-ink-900"
-              >
-                <Home className="h-4 w-4" aria-hidden="true" />
-                Inicio
-              </Link>
-            )}
+            <Link
+              href={brandHref}
+              aria-current={isHome ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium hover:bg-paper-muted hover:text-ink-900",
+                isHome ? "text-ink-900" : "text-ash-600",
+              )}
+            >
+              <Home className="h-4 w-4" aria-hidden="true" />
+              Inicio
+            </Link>
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />

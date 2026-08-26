@@ -91,7 +91,11 @@ export default function ProfilePage() {
   const tp = useTranslations("auth.completeProfile");
   const { user, setUser } = useAuth();
   const [saved, setSaved] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  // "Entro a perfil y le pongo [mis datos] y..." — antes el catch descartaba
+  // el error real (`catch {}`) y siempre mostraba el mismo mensaje genérico,
+  // así que si el guardado fallaba por un motivo puntual (p.ej. un DNI ya
+  // usado por otra cuenta) el usuario nunca se enteraba de por qué.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [areas, setAreas] = useState(MOCK_AREAS);
@@ -132,7 +136,7 @@ export default function ProfilePage() {
 
   async function onSubmit(values: ProfileFormValues) {
     setSaved(false);
-    setSaveError(false);
+    setSaveError(null);
     try {
       const updated = await authApi.completeProfile({
         firstName: values.firstName,
@@ -167,9 +171,10 @@ export default function ProfilePage() {
       setUser(updated);
       updateSessionUser(updated);
       setSaved(true);
-    } catch {
-      // Si la API no responde, no fingimos que se guardó.
-      setSaveError(true);
+    } catch (err) {
+      // Si la API no responde, no fingimos que se guardó — y ahora se
+      // muestra el motivo real cuando la API lo da (p.ej. validación).
+      setSaveError(err instanceof ApiError ? err.message : "No pudimos guardar tus cambios. Intenta de nuevo.");
     }
   }
 
@@ -179,7 +184,7 @@ export default function ProfilePage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 flex flex-col gap-8">
         {saved && <Callout variant="success">{t("saved")}</Callout>}
-        {saveError && <Callout variant="danger">No pudimos guardar tus cambios. Intenta de nuevo.</Callout>}
+        {saveError && <Callout variant="danger">{saveError}</Callout>}
 
         <section>
           <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Foto de perfil</h2>
