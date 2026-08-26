@@ -318,6 +318,16 @@ export interface ClassroomMaterial {
   allowDownload?: boolean;
   allowView?: boolean;
 }
+export interface FormativeQuizQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string | null;
+}
+export interface FormativeQuiz {
+  questions: FormativeQuizQuestion[];
+}
 export interface ClassroomLesson {
   id: string;
   order: number;
@@ -333,6 +343,10 @@ export interface ClassroomLesson {
   // Subtítulos/transcripción automática (Fase 2, generados con Gemini) —
   // solo viene seteado cuando ya están listos (ver EnrollmentService.getMineDetail).
   subtitlesUrl?: string;
+  // "Cursos e-learning interactivos con evaluación formativa integrada" —
+  // preguntas de autoevaluación dentro de la lección, feedback inmediato,
+  // nunca cuenta para la nota/certificado (eso es Assessment/ApprovalRule).
+  formativeQuiz?: FormativeQuiz | null;
   materials: ClassroomMaterial[];
   completed: boolean;
   lastPositionSeconds: number;

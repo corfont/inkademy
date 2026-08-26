@@ -292,6 +292,7 @@ export class EnrollmentService {
                 materials: l.materials.map(materialDTO),
                 completed: progressByLesson.get(l.id)?.completed ?? false,
                 lastPositionSeconds: progressByLesson.get(l.id)?.lastPositionSeconds ?? 0,
+                formativeQuiz: l.formativeQuiz ?? null,
               })),
             })),
     };

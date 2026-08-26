@@ -420,6 +420,15 @@ model Lesson {
   subtitlesAssetId String?
   subtitlesStatus  String             @default("NONE")
   subtitlesError   String?
+
+  // "Cursos e-learning interactivos con evaluación formativa integrada" —
+  // preguntas de autoevaluación DENTRO de la lección (feedback inmediato con
+  // explicación, no cuenta para la nota/certificado — eso lo sigue haciendo
+  // Assessment/ApprovalRule). Shape: { questions: [{ id, text, options[],
+  // correctIndex, explanation? }] }. Null = lección normal sin quiz
+  // formativo. Ver formativeQuizSchema en local-schemas.ts.
+  formativeQuiz   Json?
+
   materials       Material[]
   progress        LessonProgress[]
   notes           LessonNote[]

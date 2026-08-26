@@ -973,7 +973,148 @@ function LessonRow({
         />
       </div>
       <p className="mt-1 text-[11px] text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>
+      <FormativeQuizEditor lesson={lesson} />
     </li>
+  );
+}
+
+/**
+ * "Cursos e-learning interactivos con evaluación formativa integrada" — el
+ * docente arma preguntas de autoevaluación DENTRO de la lección (feedback
+ * inmediato al alumno, con explicación). A propósito separado de
+ * Evaluaciones/Assessment: esto nunca cuenta para la nota ni el
+ * certificado, es solo práctica.
+ */
+function FormativeQuizEditor({ lesson }: { lesson: any }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [questions, setQuestions] = useState<any[]>(lesson.formativeQuiz?.questions ?? []);
+  const [saving, setSaving] = useState(false);
+
+  function addQuestion() {
+    setQuestions((qs) => [
+      ...qs,
+      { id: `q${Date.now()}${Math.random().toString(36).slice(2, 6)}`, text: "", options: ["", ""], correctIndex: 0, explanation: "" },
+    ]);
+  }
+
+  function updateQuestion(id: string, patch: Partial<any>) {
+    setQuestions((qs) => qs.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  }
+
+  function updateOption(id: string, optIdx: number, value: string) {
+    setQuestions((qs) => qs.map((q) => (q.id === id ? { ...q, options: q.options.map((o: string, i: number) => (i === optIdx ? value : o)) } : q)));
+  }
+
+  function addOption(id: string) {
+    setQuestions((qs) => qs.map((q) => (q.id === id && q.options.length < 6 ? { ...q, options: [...q.options, ""] } : q)));
+  }
+
+  function removeOption(id: string, optIdx: number) {
+    setQuestions((qs) =>
+      qs.map((q) =>
+        q.id === id && q.options.length > 2
+          ? {
+              ...q,
+              options: q.options.filter((_: string, i: number) => i !== optIdx),
+              correctIndex: q.correctIndex === optIdx ? 0 : q.correctIndex > optIdx ? q.correctIndex - 1 : q.correctIndex,
+            }
+          : q,
+      ),
+    );
+  }
+
+  function removeQuestion(id: string) {
+    setQuestions((qs) => qs.filter((q) => q.id !== id));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const cleaned = questions
+        .map((q) => ({ ...q, text: q.text.trim(), options: q.options.map((o: string) => o.trim()), explanation: q.explanation?.trim() || null }))
+        .filter((q) => q.text && q.options.every((o: string) => o));
+      await adminApi.updateLesson(lesson.id, { formativeQuiz: { questions: cleaned } });
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar la evaluación formativa.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 border-t border-paper-border pt-2">
+      <button type="button" className="text-xs font-medium text-ink-700 hover:underline" onClick={() => setOpen((o) => !o)}>
+        {open ? "Ocultar" : "Gestionar"} evaluación formativa {questions.length > 0 && `(${questions.length})`}
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-col gap-3">
+          <p className="text-[11px] text-ash-500">
+            Preguntas de autoevaluación dentro de esta lección — el alumno ve al toque si acertó, con la explicación que pongas. No cuenta para la
+            nota ni el certificado.
+          </p>
+          {questions.map((q, qIdx) => (
+            <div key={q.id} className="rounded-md border border-paper-border bg-paper p-3">
+              <div className="flex items-start justify-between gap-2">
+                <Input
+                  className="h-8 flex-1 text-xs"
+                  placeholder={`Pregunta ${qIdx + 1}`}
+                  value={q.text}
+                  onChange={(e) => updateQuestion(q.id, { text: e.target.value })}
+                />
+                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => removeQuestion(q.id)} aria-label="Eliminar pregunta">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {q.options.map((opt: string, oIdx: number) => (
+                  <div key={oIdx} className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`correct-${q.id}`}
+                      checked={q.correctIndex === oIdx}
+                      onChange={() => updateQuestion(q.id, { correctIndex: oIdx })}
+                      title="Marcar como respuesta correcta"
+                    />
+                    <Input
+                      className="h-7 flex-1 text-xs"
+                      placeholder={`Opción ${oIdx + 1}`}
+                      value={opt}
+                      onChange={(e) => updateOption(q.id, oIdx, e.target.value)}
+                    />
+                    {q.options.length > 2 && (
+                      <button type="button" className="text-ash-400 hover:text-danger" onClick={() => removeOption(q.id, oIdx)} aria-label="Quitar opción">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {q.options.length < 6 && (
+                  <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => addOption(q.id)}>
+                    + Agregar opción
+                  </button>
+                )}
+              </div>
+              <Input
+                className="mt-2 h-7 text-xs"
+                placeholder="Explicación (opcional) — se muestra después de responder"
+                value={q.explanation ?? ""}
+                onChange={(e) => updateQuestion(q.id, { explanation: e.target.value })}
+              />
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={addQuestion}>
+              + Agregar pregunta
+            </Button>
+            <Button size="sm" disabled={saving} onClick={handleSave}>
+              {saving ? "Guardando…" : "Guardar evaluación formativa"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

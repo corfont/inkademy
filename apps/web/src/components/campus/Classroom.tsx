@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
-import type { ClassroomDetail, ClassroomMaterial } from "@/lib/mock-data";
+import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
+import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz } from "@/lib/mock-data";
 import { meApi } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
@@ -45,6 +45,81 @@ function VideoWatermark({ label }: { label: string }) {
       style={POSITIONS[posIndex]}
     >
       {label}
+    </div>
+  );
+}
+
+/**
+ * "Cursos e-learning interactivos con evaluación formativa integrada" —
+ * autoevaluación dentro de la lección misma, con feedback inmediato (correcto
+ * / incorrecto + explicación). A propósito NO se guarda ningún intento ni se
+ * envía nada al backend: es formativa (para que el alumno se autoevalúe),
+ * nunca cuenta para la nota o el certificado — eso lo sigue haciendo la
+ * evaluación normal (Assessment/ApprovalRule).
+ */
+function FormativeQuizWidget({ quiz }: { quiz: FormativeQuiz }) {
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+
+  return (
+    <div className="mt-6 flex flex-col gap-4 rounded-lg border border-paper-border bg-paper p-5">
+      <div className="flex items-center gap-2">
+        <HelpCircle className="h-5 w-5 text-brand-600" aria-hidden="true" />
+        <h2 className="font-serif text-base font-semibold text-ink-900">Ponte a prueba</h2>
+      </div>
+      <p className="-mt-2 text-xs text-ash-500">
+        Autoevaluación de esta lección — no afecta tu nota ni el certificado, es solo para que veas si lo estás entendiendo.
+      </p>
+      {quiz.questions.map((q, qIdx) => {
+        const selected = answers[q.id];
+        const answered = selected !== undefined;
+        const isCorrect = answered && selected === q.correctIndex;
+        return (
+          <div key={q.id} className="flex flex-col gap-2 border-t border-paper-border pt-4 first:border-t-0 first:pt-0">
+            <p className="text-sm font-medium text-ink-900">
+              {qIdx + 1}. {q.text}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {q.options.map((option, oIdx) => {
+                const isSelected = selected === oIdx;
+                const showAsCorrect = answered && oIdx === q.correctIndex;
+                const showAsWrong = answered && isSelected && oIdx !== q.correctIndex;
+                return (
+                  <button
+                    key={oIdx}
+                    type="button"
+                    disabled={answered}
+                    onClick={() => setAnswers((a) => ({ ...a, [q.id]: oIdx }))}
+                    className={cn(
+                      "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                      !answered && "border-paper-border hover:border-brand-400 hover:bg-brand-50",
+                      showAsCorrect && "border-success bg-success-bg text-success",
+                      showAsWrong && "border-danger bg-danger-bg text-danger",
+                      answered && !showAsCorrect && !showAsWrong && "border-paper-border text-ash-500",
+                    )}
+                  >
+                    <span>{option}</span>
+                    {showAsCorrect && <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                    {showAsWrong && <XCircle className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                  </button>
+                );
+              })}
+            </div>
+            {answered && (
+              <div className="flex items-start gap-2 rounded-md bg-paper-muted p-3 text-xs text-ash-600">
+                <span className="font-medium">{isCorrect ? "¡Correcto!" : "No es la respuesta correcta."}</span>
+                {q.explanation && <span>{q.explanation}</span>}
+                <button
+                  type="button"
+                  className="ml-auto shrink-0 font-medium text-brand-600 hover:underline"
+                  onClick={() => setAnswers((a) => { const next = { ...a }; delete next[q.id]; return next; })}
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -295,6 +370,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                 </span>
               )}
             </div>
+            {current?.formativeQuiz?.questions?.length ? <FormativeQuizWidget quiz={current.formativeQuiz} /> : null}
           </div>
 
           {/* "Al costado podrá tomar notas si quisiera" — sincronizadas con

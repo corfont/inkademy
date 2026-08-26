@@ -109,6 +109,20 @@ export const upsertModuleSchema = z.object({
 });
 export const updateModuleSchema = upsertModuleSchema.partial();
 
+// "Cursos e-learning interactivos con evaluación formativa integrada" —
+// preguntas cortas de autoevaluación DENTRO de la lección misma, para que
+// el alumno vea de una vez si entendió (feedback inmediato, con
+// explicación) — a diferencia de una Assessment normal, esto NUNCA se
+// guarda ni cuenta para la nota/certificado (es formativo, no sumativo).
+const formativeQuizQuestionSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  options: z.array(z.string().min(1)).min(2).max(6),
+  correctIndex: z.number().int().min(0),
+  explanation: z.string().optional().nullable(),
+});
+export const formativeQuizSchema = z.object({ questions: z.array(formativeQuizQuestionSchema).max(20) });
+
 export const upsertLessonSchema = z.object({
   title: localizedTextSchema,
   order: z.number().int().nonnegative().optional(),
@@ -119,6 +133,7 @@ export const upsertLessonSchema = z.object({
   durationMinutes: z.number().int().positive().optional(),
   isFreePreview: z.boolean().optional(),
   isCourseStarter: z.boolean().optional(),
+  formativeQuiz: formativeQuizSchema.optional().nullable(),
 });
 export const updateLessonSchema = upsertLessonSchema.partial();
 
