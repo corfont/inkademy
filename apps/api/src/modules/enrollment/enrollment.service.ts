@@ -19,8 +19,18 @@ export class EnrollmentService {
     @InjectQueue(QUEUE_NAMES.RECOMMENDATION) private readonly recommendationQueue: Queue,
   ) {}
 
-  private async computeApprovalMissing(courseId: string, enrollmentId: string): Promise<string[]> {
-    const [rule, enrollment, bestAttempt, attendanceStats, assessmentCount] = await Promise.all([
+  /**
+   * `ratingRequired`/`readyForRatingPrompt` separados de `missing` (que sigue
+   * siendo la lista completa para mostrar) porque el modal visual de
+   * estrellas (ver CourseRatingPrompt en el frontend) solo debe aparecer
+   * cuando el curso YA está terminado en todo lo demás — no tiene sentido
+   * pedir la calificación de un curso a medias.
+   */
+  private async computeApprovalMissing(
+    courseId: string,
+    enrollmentId: string,
+  ): Promise<{ missing: string[]; ratingRequired: boolean; readyForRatingPrompt: boolean }> {
+    const [approvalRule, enrollment, bestAttempt, attendanceStats, assessmentCount, rating] = await Promise.all([
       this.prisma.approvalRule.findUnique({ where: { courseId } }),
       this.prisma.enrollment.findUnique({ where: { id: enrollmentId } }),
       this.prisma.assessmentAttempt.findFirst({
@@ -29,8 +39,14 @@ export class EnrollmentService {
       }),
       this.prisma.liveSession.count({ where: { courseId } }),
       this.prisma.assessment.count({ where: { courseId } }),
+      this.prisma.courseRating.findUnique({ where: { enrollmentId } }),
     ]);
-    if (!rule || !enrollment) return [];
+    if (!enrollment) return { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+    // Mismo default que CertificateService.checkAndIssueIfEligible — un
+    // curso sin ApprovalRule configurada (nunca hubo pantalla de admin para
+    // crearla) NO debe fingir que no falta nada; antes esta lista quedaba
+    // vacía siempre en ese caso, sin importar el avance real.
+    const rule = approvalRule ?? { minProgressPct: 100, minAttendancePct: null as number | null, minScore: 70, requiresAssignment: false };
 
     const missing: string[] = [];
     if (enrollment.progressPct < rule.minProgressPct) {
@@ -70,7 +86,13 @@ export class EnrollmentService {
       });
       if (!gradedAssignment) missing.push("Entrega y aprueba la tarea/asignación del curso");
     }
-    return missing;
+    // "Si no responde [las estrellas] el curso no se podrá dar por
+    // finalizado y el certificado no se podrá emitir" — se muestra como un
+    // requisito más, igual que el resto (ver CertificateService.checkAndIssueIfEligible).
+    const ratingRequired = !rating;
+    const readyForRatingPrompt = ratingRequired && missing.length === 0;
+    if (ratingRequired) missing.push("Califica el curso con estrellas y un comentario");
+    return { missing, ratingRequired, readyForRatingPrompt };
   }
 
   private async nextActionLabel(courseId: string, enrollmentId: string): Promise<string | null> {
@@ -103,10 +125,10 @@ export class EnrollmentService {
     return Promise.all(
       enrollments.map(async (e) => {
         const offering = e.course ?? e.program;
-        const approvalMissing =
+        const approval =
           e.offeringKind === "COURSE" && e.courseId
             ? await this.computeApprovalMissing(e.courseId, e.id)
-            : [];
+            : { missing: [], ratingRequired: false, readyForRatingPrompt: false };
         const nextActionLabel =
           e.offeringKind === "COURSE" && e.courseId
             ? await this.nextActionLabel(e.courseId, e.id)
@@ -125,7 +147,8 @@ export class EnrollmentService {
           accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,
           nextActionLabel,
           certificateAvailable: Boolean(e.certificate && !e.certificate.revoked),
-          approvalMissing,
+          approvalMissing: approval.missing,
+          readyForRatingPrompt: approval.readyForRatingPrompt,
         };
       }),
     );
@@ -189,10 +212,14 @@ export class EnrollmentService {
       url: m.kind === "link" ? m.externalUrl ?? null : m.assetId ? this.storage.getPublicUrl(m.assetId) : null,
     });
 
-    const approvalMissing =
+    const approval =
       enrollment.offeringKind === "COURSE" && enrollment.courseId && !accessBlocked
         ? await this.computeApprovalMissing(enrollment.courseId, enrollment.id)
-        : [];
+        : { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+    const myRating =
+      enrollment.offeringKind === "COURSE"
+        ? await this.prisma.courseRating.findUnique({ where: { enrollmentId: enrollment.id } })
+        : null;
 
     return {
       enrollmentId: enrollment.id,
@@ -216,7 +243,9 @@ export class EnrollmentService {
       // "El sistema no debe permitir que el usuario pueda descargar la
       // clase [principal]" — configurable por curso (Course.blockMainVideoDownload).
       blockMainVideoDownload: enrollment.course?.blockMainVideoDownload ?? true,
-      approvalMissing,
+      approvalMissing: approval.missing,
+      readyForRatingPrompt: approval.readyForRatingPrompt,
+      myRating: myRating ? { stars: myRating.stars, comment: myRating.comment } : null,
       // Con el acceso vencido no se manda ni un solo material/video al
       // frontend (no solo se "esconde" visualmente) — igual que un material
       // oculto por el admin, el bloqueo real vive en la API, no en la UI.
@@ -371,6 +400,30 @@ export class EnrollmentService {
 
     const cards = await this.catalogService.getCourseCardsByIds(fallbackCourses.map((c) => c.id));
     return cards.map((c) => ({ ...c, reason }));
+  }
+
+  /**
+   * "Una vez que el alumno termina el curso debería aparecerle un mensaje
+   * para marcar las estrellas... si no responde el curso no se podrá dar
+   * por finalizado y el certificado no se podrá emitir". Al guardar la
+   * calificación se reintenta la emisión del certificado por si era el
+   * único requisito pendiente (ver CertificateService.checkAndIssueIfEligible).
+   */
+  async submitRating(userId: string, enrollmentId: string, stars: number, comment?: string) {
+    const enrollment = await this.prisma.enrollment.findUnique({ where: { id: enrollmentId } });
+    if (!enrollment || enrollment.userId !== userId) {
+      throw new NotFoundException("Matrícula no encontrada");
+    }
+    if (enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
+      throw new ForbiddenException("Solo se puede calificar una matrícula de curso");
+    }
+    await this.prisma.courseRating.upsert({
+      where: { enrollmentId },
+      create: { enrollmentId, userId, courseId: enrollment.courseId, stars, comment: comment ?? null },
+      update: { stars, comment: comment ?? null },
+    });
+    await this.certificateService.checkAndIssueIfEligible(enrollmentId);
+    return { saved: true };
   }
 
   // --- Notas del alumno en el reproductor de clase ---

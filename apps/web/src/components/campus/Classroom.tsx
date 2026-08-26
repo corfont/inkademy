@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, PlayCircle, ShieldAlert } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial } from "@/lib/mock-data";
@@ -9,6 +10,7 @@ import { meApi } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { CourseRatingPrompt } from "./CourseRatingPrompt";
 import { cn } from "@/lib/cn";
 import { localize, formatDate } from "@/lib/format";
 
@@ -69,7 +71,15 @@ function MaterialList({ heading, materials }: { heading: string; materials: Clas
 export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const t = useTranslations("campus.classroom");
   const locale = useLocale();
+  const router = useRouter();
   const { user } = useAuth();
+  // "Si no responde [las estrellas] el curso no se podrá dar por finalizado
+  // y el certificado no se podrá emitir" — el modal aparece solo cuando el
+  // curso ya cumple todo lo demás (readyForRatingPrompt) y aún no calificó.
+  const [ratingOpen, setRatingOpen] = useState(false);
+  useEffect(() => {
+    setRatingOpen(Boolean(detail.readyForRatingPrompt) && !detail.myRating);
+  }, [detail.readyForRatingPrompt, detail.myRating]);
   const watermarkLabel = user?.email ?? "";
   const allLessons = useMemo(() => detail.modules.flatMap((m) => m.lessons), [detail]);
   // El bloqueo real ya lo aplicó la API (accessBlocked viene calculado, y
@@ -171,6 +181,15 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      <CourseRatingPrompt
+        enrollmentId={detail.enrollmentId}
+        open={ratingOpen}
+        onClose={() => setRatingOpen(false)}
+        onSubmitted={() => {
+          setRatingOpen(false);
+          router.refresh();
+        }}
+      />
       <div className="flex flex-col gap-6">
         {detail.accessExpiresAt && (
           <Callout variant="warning">Debes terminar este curso antes del {formatDate(detail.accessExpiresAt, locale)} para conservar el acceso y poder certificarte.</Callout>

@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS: PlatformSettingsDTO = {
   contactEmail: "hola@inkademy.com",
   contactPhone: "+51 1 234 5678",
   contactAddress: "Lima, Perú",
-  courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true },
+  courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true, showRating: false },
 };
 
 // Script inline (no next/script: debe correr antes del primer paint, sin

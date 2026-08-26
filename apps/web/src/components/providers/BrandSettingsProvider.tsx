@@ -31,7 +31,7 @@ export function useBrandSettings(): PlatformSettingsDTO {
       contactEmail: "hola@inkademy.com",
       contactPhone: "+51 1 234 5678",
       contactAddress: "Lima, Perú",
-      courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true },
+      courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true, showRating: false },
     };
   }
   return ctx;

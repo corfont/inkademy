@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BadgeCheck, Clock, Radio, User } from "lucide-react";
+import { BadgeCheck, Clock, Radio, User, Star } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { catalogApi, meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
@@ -75,6 +75,17 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
           <h1 className="font-serif text-3xl font-semibold text-ink-900 sm:text-4xl">{localize(course.title, locale)}</h1>
           {course.subtitle && <p className="mt-3 text-lg text-ash-600">{localize(course.subtitle, locale)}</p>}
 
+          {course.avgRating != null && (
+            <div className="mt-2 flex items-center gap-1" aria-label={`${course.avgRating} de 5 estrellas, ${course.ratingsCount} reseñas`}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star key={n} className={`h-4 w-4 ${n <= Math.round(course.avgRating!) ? "fill-warning text-warning" : "fill-none text-ash-300"}`} aria-hidden="true" />
+              ))}
+              <span className="text-sm font-medium text-ash-600">
+                {course.avgRating.toFixed(1)} ({course.ratingsCount})
+              </span>
+            </div>
+          )}
+
           <dl className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ash-600">
             {course.teacherName && (
               <div className="flex items-center gap-1.5">
@@ -130,6 +141,25 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
               ))}
             </div>
           </section>
+
+          {course.reviews && course.reviews.length > 0 && (
+            <section className="mt-10">
+              <h2 className="font-serif text-xl font-semibold text-ink-900">Reseñas de alumnos</h2>
+              <div className="mt-4 flex flex-col gap-4">
+                {course.reviews.slice(0, 10).map((r, i) => (
+                  <div key={i} className="rounded-lg border border-paper-border p-4">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <Star key={n} className={`h-3.5 w-3.5 ${n <= r.stars ? "fill-warning text-warning" : "fill-none text-ash-300"}`} aria-hidden="true" />
+                      ))}
+                    </div>
+                    <p className="mt-2 text-sm text-ash-700">{r.comment}</p>
+                    <p className="mt-2 text-xs font-medium text-ash-500">{r.authorName}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {related.length > 0 && (
             <section className="mt-10">

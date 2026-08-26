@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { EnrollmentStatus } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { updateLessonProgressSchema, upsertLessonNoteSchema } from "../../common/validation/local-schemas";
+import {
+  submitCourseRatingSchema,
+  updateLessonProgressSchema,
+  upsertLessonNoteSchema,
+} from "../../common/validation/local-schemas";
 import { EnrollmentService } from "./enrollment.service";
 
 @ApiTags("me")
@@ -50,6 +54,16 @@ export class EnrollmentController {
     @Body(new ZodValidationPipe(upsertLessonNoteSchema)) dto: { content: string },
   ) {
     return this.enrollmentService.upsertLessonNote(user.id, lessonId, dto.content);
+  }
+
+  @Post("enrollments/:id/rating")
+  @ApiOperation({ summary: "Califica el curso (1-5 estrellas + comentario) al terminarlo" })
+  submitRating(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(submitCourseRatingSchema)) dto: { stars: number; comment?: string },
+  ) {
+    return this.enrollmentService.submitRating(user.id, id, dto.stars, dto.comment);
   }
 
   @Get("recommendations")

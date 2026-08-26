@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { BookOpen, CalendarDays, Award, Sparkles } from "lucide-react";
+import { BookOpen, CalendarDays, Award, Sparkles, Star } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
@@ -26,6 +26,11 @@ export default async function CampusDashboardPage() {
 
   const inProgress = enrollments.filter((e) => e.status === "ACTIVE");
   const continueItem = inProgress[0];
+  // "El alumno deberá de ver notificaciones de lo que tiene pendiente por si
+  // no sabe" — un curso ya terminado que solo espera la calificación en
+  // estrellas se avisa acá también, no solo dentro del aula (ver
+  // CourseRatingPrompt en Classroom.tsx).
+  const pendingRating = enrollments.filter((e) => e.readyForRatingPrompt);
 
   const quickAccess = [
     { href: "/campus/cursos", label: "Mis cursos", icon: BookOpen },
@@ -41,6 +46,22 @@ export default async function CampusDashboardPage() {
       </h1>
 
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+
+      {pendingRating.length > 0 && (
+        <Card className="border-warning bg-warning-bg">
+          <CardContent className="flex items-center gap-4 p-5">
+            <Star className="h-8 w-8 flex-none fill-warning text-warning" aria-hidden="true" />
+            <div className="flex-1">
+              <p className="font-medium text-ink-900">
+                {pendingRating.length === 1 ? "Terminaste un curso — califícalo para recibir tu certificado" : `Terminaste ${pendingRating.length} cursos — califícalos para recibir tus certificados`}
+              </p>
+            </div>
+            <Link href={`/campus/cursos/${pendingRating[0].id}`}>
+              <Button size="sm">Calificar</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <section>
         <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("continueLearning")}</h2>

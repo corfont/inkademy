@@ -15,7 +15,16 @@ import { Card, CardContent } from "@/components/ui/Card";
  * router.refresh() para que el propio layout raíz (server component) vuelva
  * a leer /settings y aplique el cambio de inmediato en toda la plataforma.
  */
-const DEFAULT_COURSE_CARD_FIELDS = { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true };
+const DEFAULT_COURSE_CARD_FIELDS = {
+  showTeacher: true,
+  showDuration: true,
+  showNextLiveSession: true,
+  showCertificationBadge: true,
+  // "El administrador podrá decidir si eso se visualizará o no en la página
+  // de catálogo de cursos" — apagado por defecto hasta que haya suficientes
+  // calificaciones reales en el catálogo.
+  showRating: false,
+};
 
 export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) {
   const router = useRouter();
@@ -392,6 +401,7 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                 ["showDuration", "Duración"],
                 ["showNextLiveSession", "Próxima fecha en vivo"],
                 ["showCertificationBadge", "Insignia de certificación"],
+                ["showRating", "Calificación y reseñas"],
               ] as const
             ).map(([key, label]) => (
               <label key={key} className="flex items-center gap-2 text-sm text-ink-700">

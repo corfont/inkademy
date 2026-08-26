@@ -74,6 +74,19 @@ export interface CourseCardDTO {
   originalPriceAmount?: string | null;
   discountPercent?: number | null;
   discountExpiresAt?: string | null;
+  // Promedio de estrellas (1-5) y cantidad de reseñas — solo se envían
+  // valores reales cuando PlatformSettings.courseCardFields.showRating está
+  // activo (ver AppearanceForm); si el admin lo desactiva o no hay
+  // calificaciones aún, ambos vienen null/0.
+  avgRating?: number | null;
+  ratingsCount?: number;
+}
+
+export interface CourseReviewDTO {
+  stars: number;
+  comment: string | null;
+  createdAt: string;
+  authorName: string;
 }
 
 export interface CatalogFilters {
@@ -104,6 +117,7 @@ export interface CourseDetailDTO extends CourseCardDTO {
     lessons: { id: string; order: number; title: LocalizedText; durationMinutes?: number | null; isFreePreview: boolean }[];
   }[];
   liveSessions: { id: string; startsAt: string; endsAt: string; timezone: string }[];
+  reviews?: CourseReviewDTO[];
 }
 
 export interface ProgramDetailDTO {
@@ -155,6 +169,9 @@ export interface EnrollmentSummaryDTO {
   nextActionLabel?: string | null; // "Continúa en el Módulo 3" / "Próxima clase: ..."
   certificateAvailable: boolean;
   approvalMissing: string[]; // p.ej. ["Completa el módulo 5", "Alcanza 80% de asistencia"]
+  // El curso ya cumple todo lo demás y solo falta que el alumno califique
+  // con estrellas — dispara el modal visual CourseRatingPrompt en el campus.
+  readyForRatingPrompt: boolean;
 }
 
 export interface AssessmentAttemptSubmission {

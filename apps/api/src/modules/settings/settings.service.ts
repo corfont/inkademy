@@ -10,6 +10,7 @@ const DEFAULT_COURSE_CARD_FIELDS = {
   showDuration: true,
   showNextLiveSession: true,
   showCertificationBadge: true,
+  showRating: false,
 };
 
 const DEFAULTS = {

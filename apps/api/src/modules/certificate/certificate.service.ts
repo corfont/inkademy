@@ -52,6 +52,13 @@ export class CertificateService {
     if (!enrollment || enrollment.certificate || enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
       return;
     }
+    // "Si no responde [las estrellas] el curso no se podrá dar por
+    // finalizado y el certificado no se podrá emitir" — se exige una
+    // CourseRating para esta matrícula antes de emitir, igual que
+    // progreso/asistencia/nota. Ver también EnrollmentService.computeApprovalMissing,
+    // que le explica esto mismo al alumno en /campus/cursos y el aula.
+    const rating = await this.prisma.courseRating.findUnique({ where: { enrollmentId } });
+    if (!rating) return;
     if (!enrollment.course?.certificationIncluded) return;
     // Si el plazo de acceso del curso ya venció, no se emite certificado —
     // el alumno debía terminar antes de esa fecha (ver Course.accessDurationPolicy).

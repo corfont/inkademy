@@ -28,6 +28,11 @@ export const upsertLessonNoteSchema = z.object({
   content: z.string().max(20000),
 });
 
+export const submitCourseRatingSchema = z.object({
+  stars: z.number().int().min(1).max(5),
+  comment: z.string().max(2000).optional(),
+});
+
 export const catalogFiltersSchema = z.object({
   q: z.string().optional(),
   areaSlug: z.string().optional(),
@@ -636,6 +641,7 @@ export const upsertSettingsSchema = z.object({
       showDuration: z.boolean().optional(),
       showNextLiveSession: z.boolean().optional(),
       showCertificationBadge: z.boolean().optional(),
+      showRating: z.boolean().optional(),
     })
     .optional(),
   institutionSignatureAssetId: z.string().optional().nullable(),

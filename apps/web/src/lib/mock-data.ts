@@ -237,6 +237,7 @@ export const MOCK_ENROLLMENTS: EnrollmentSummaryDTO[] = [
     nextActionLabel: "Continúa en el Módulo 2 · Aplicación práctica",
     certificateAvailable: false,
     approvalMissing: ["Completa el Módulo 3", "Aprueba la evaluación final (mín. 70%)"],
+    readyForRatingPrompt: false,
   },
   {
     id: "e2",
@@ -250,6 +251,7 @@ export const MOCK_ENROLLMENTS: EnrollmentSummaryDTO[] = [
     nextActionLabel: null,
     certificateAvailable: true,
     approvalMissing: [],
+    readyForRatingPrompt: false,
   },
   {
     id: "e3",
@@ -263,6 +265,7 @@ export const MOCK_ENROLLMENTS: EnrollmentSummaryDTO[] = [
     nextActionLabel: "Próxima clase: Excel avanzado para finanzas · 2 sept.",
     certificateAvailable: false,
     approvalMissing: ["Completa Finanzas para no financieros", "Completa Excel avanzado para finanzas"],
+    readyForRatingPrompt: false,
   },
 ];
 
@@ -352,6 +355,10 @@ export interface ClassroomDetail {
   blockMainVideoDownload?: boolean;
   modules: ClassroomModule[];
   approvalMissing: string[];
+  // El curso ya cumple todo lo demás y solo falta calificar con estrellas —
+  // dispara el modal visual CourseRatingPrompt (ver Classroom.tsx).
+  readyForRatingPrompt?: boolean;
+  myRating?: { stars: number; comment: string | null } | null;
   certificateAvailable: boolean;
   // Plazo de acceso (solo aplica a cursos grabados con fecha de término) —
   // accessBlocked ya viene calculado desde la API (el corte real vive ahí,
@@ -375,6 +382,8 @@ export function buildMockClassroom(enrollmentId: string, courseSlug: string): Cl
     assessmentUnlocked: (enrollment?.progressPct ?? 0) >= 100,
     progressPct: enrollment?.progressPct ?? 0,
     approvalMissing: enrollment?.approvalMissing ?? [],
+    readyForRatingPrompt: enrollment?.readyForRatingPrompt ?? false,
+    myRating: null,
     certificateAvailable: enrollment?.certificateAvailable ?? false,
     modules: detail.modules.map((mod, mIdx) => ({
       id: mod.id,

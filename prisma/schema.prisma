@@ -96,6 +96,7 @@ model User {
   attendances           Attendance[]
   lessonProgress        LessonProgress[]
   lessonNotes           LessonNote[]
+  courseRatings         CourseRating[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
@@ -158,6 +159,7 @@ model Company {
   orders         Order[]
   supportTickets SupportTicket[]
   auditLogs      AuditLog[]
+  npsResponses   NpsSurveyResponse[]
 
   @@unique([country, taxIdType, taxId])
 }
@@ -317,6 +319,7 @@ model Course {
   staff                  CourseStaff[]
   programCourses         ProgramCourse[]
   certificates           Certificate[]
+  ratings                CourseRating[]
   seatPools              CompanySeatPool[]
   partnerships           CoursePartnership[]
   royalties              CourseRoyalty[]
@@ -568,11 +571,72 @@ model Enrollment {
   lessonProgress  LessonProgress[]
   attempts        AssessmentAttempt[]
   certificate     Certificate?
+  rating          CourseRating?
 
   @@index([userId])
   @@index([companyId])
   @@index([courseId])
   @@index([programId])
+}
+
+// "Una vez que el alumno termina el curso debería aparecerle un mensaje
+// para marcar las estrellas... si no responde el curso no se podrá dar
+// por finalizado y el certificado no se podrá emitir." Una calificación
+// por matrícula (no por curso — si el alumno vuelve a llevarlo, puede
+// calificarlo de nuevo). `stars` 1-5. El admin decide si el promedio y
+// los comentarios se muestran en el catálogo público (ver
+// PlatformSettings.courseCardFields.showRating, mismo patrón que
+// showTeacher/showDuration/etc.) — ver CertificateService.checkAndIssueIfEligible,
+// que exige esta fila antes de emitir el certificado.
+model CourseRating {
+  id           String     @id @default(uuid())
+  enrollmentId String     @unique
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId     String
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  stars        Int // 1-5
+  comment      String?    @db.Text
+  createdAt    DateTime   @default(now())
+
+  @@index([courseId])
+}
+
+// ---------------------------------------------------------------------------
+// Encuestas NPS (Fase 2, B2B) — "una encuesta tipo NPS con 1 pregunta...
+// se podrá mandar al correo registrado de la empresa para recibir su
+// feedback. La estructura de la pregunta la establece el administrador."
+// Un solo NpsSurvey activo a la vez (mismo patrón "id: default" que
+// SunatSettings/ChatbotSettings) con su pregunta editable; cada envío a
+// una empresa crea un NpsSurveyResponse con un token único para que el
+// contacto de la empresa responda SIN necesitar iniciar sesión (mismo
+// patrón que la verificación pública de certificados).
+// ---------------------------------------------------------------------------
+model NpsSurvey {
+  id        String   @id @default("default")
+  question  Json // { es, en } — la pregunta la redacta el admin
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  responses NpsSurveyResponse[]
+}
+
+model NpsSurveyResponse {
+  id          String    @id @default(uuid())
+  surveyId    String
+  survey      NpsSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  token       String    @unique @default(cuid())
+  sentAt      DateTime  @default(now())
+  sentToEmail String
+  // 0-10, escala NPS estándar — null hasta que el contacto responde.
+  score       Int?
+  comment     String?   @db.Text
+  respondedAt DateTime?
+
+  @@index([companyId])
 }
 
 model LessonProgress {

@@ -67,6 +67,24 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
           </h3>
         </Link>
 
+        {fields.showRating && course.avgRating != null && (
+          // "Para que las personas sepan qué cursos tienen más estrellas...
+          // bastante visual, evitar texto" — 5 estrellas (llenas hasta el
+          // promedio) + el número, sin ninguna otra explicación.
+          <div className="flex items-center gap-1" aria-label={`${course.avgRating} de 5 estrellas, ${course.ratingsCount} reseñas`}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Star
+                key={n}
+                className={`h-3.5 w-3.5 ${n <= Math.round(course.avgRating!) ? "fill-warning text-warning" : "fill-none text-ash-300"}`}
+                aria-hidden="true"
+              />
+            ))}
+            <span className="text-xs font-medium text-ash-600">
+              {course.avgRating.toFixed(1)} ({course.ratingsCount})
+            </span>
+          </div>
+        )}
+
         <dl className="flex flex-col gap-1.5 text-sm text-ash-600">
           {fields.showTeacher && course.teacherName && (
             <div className="flex items-center gap-1.5">

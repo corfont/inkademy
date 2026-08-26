@@ -174,6 +174,7 @@ export interface CourseCardFields {
   showDuration: boolean;
   showNextLiveSession: boolean;
   showCertificationBadge: boolean;
+  showRating: boolean;
 }
 
 export interface PlatformSettingsDTO {
@@ -320,6 +321,13 @@ export const meApi = {
   lessonNote: (lessonId: string) => apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`),
   saveLessonNote: (lessonId: string, content: string) =>
     apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`, { method: "PATCH", body: JSON.stringify({ content }) }),
+  // "Marcar las estrellas que considera del curso y poner un comentario
+  // debajo" — al terminar el curso, ver CourseRatingPrompt.
+  submitRating: (enrollmentId: string, stars: number, comment?: string) =>
+    apiFetch<{ saved: boolean }>(`/me/enrollments/${enrollmentId}/rating`, {
+      method: "POST",
+      body: JSON.stringify({ stars, comment }),
+    }),
   calendar: (from?: string, to?: string, accessToken?: string | null) =>
     apiFetch<any[]>("/me/calendar", { query: { from, to }, accessToken }),
   certificates: (accessToken?: string | null) => apiFetch<CertificateDTO[]>("/me/certificates", { accessToken }),

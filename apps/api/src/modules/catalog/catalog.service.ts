@@ -16,12 +16,14 @@ const courseCardInclude = {
   area: true,
   staff: { include: { user: true } },
   liveSessions: { where: { status: "SCHEDULED" as const }, orderBy: { startsAt: "asc" as const } },
+  ratings: { select: { stars: true } },
 } as const;
 
 type CourseWithRelations = Course & {
   area: { slug: string };
   staff: { role: string; user: { firstName: string; lastName: string } }[];
   liveSessions: { startsAt: Date }[];
+  ratings: { stars: number }[];
 };
 
 @Injectable()
@@ -74,6 +76,11 @@ export class CatalogService {
       originalPriceAmount: isOnSale ? decimalToString(originalPriceAmount) : null,
       discountPercent: isOnSale ? course.discountPercent : null,
       discountExpiresAt: isOnSale && course.discountExpiresAt ? course.discountExpiresAt.toISOString() : null,
+      // Se calcula siempre (igual que teacherName/nextLiveSessionAt) — es el
+      // admin quien decide en AppearanceForm si CourseCard lo muestra, no
+      // este servicio.
+      avgRating: course.ratings.length > 0 ? Math.round((course.ratings.reduce((sum, r) => sum + r.stars, 0) / course.ratings.length) * 10) / 10 : null,
+      ratingsCount: course.ratings.length,
     };
   }
 
@@ -176,6 +183,16 @@ export class CatalogService {
     });
     if (!course) throw new NotFoundException("Curso no encontrado");
 
+    // Reseñas con comentario visible en la ficha del curso — courseCardInclude
+    // solo trae `stars` (para el promedio, en todas las listas); acá se pide
+    // aparte el detalle con comentario + nombre del autor, solo para la ficha.
+    const reviewRows = await this.prisma.courseRating.findMany({
+      where: { courseId: course.id, comment: { not: null } },
+      include: { user: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
     const card = this.toCourseCard(course as unknown as CourseWithRelations);
     return {
       ...card,
@@ -201,6 +218,12 @@ export class CatalogService {
         startsAt: s.startsAt.toISOString(),
         endsAt: s.endsAt.toISOString(),
         timezone: s.timezone,
+      })),
+      reviews: reviewRows.map((r) => ({
+        stars: r.stars,
+        comment: r.comment,
+        createdAt: r.createdAt.toISOString(),
+        authorName: r.user.displayName ?? r.user.firstName,
       })),
     };
   }
