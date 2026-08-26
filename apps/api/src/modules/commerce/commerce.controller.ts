@@ -1,8 +1,8 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { cancelOrderSchema, checkoutSchema } from "@inkademy/shared";
-import type { CancelOrderInput, CheckoutInput } from "@inkademy/shared";
+import { cancelOrderSchema, checkoutSchema, createPayPalOrderSchema } from "@inkademy/shared";
+import type { CancelOrderInput, CheckoutInput, CreatePayPalOrderInput } from "@inkademy/shared";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Public } from "../../common/decorators/public.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -25,6 +25,12 @@ export class CommerceController {
     @Body(new ZodValidationPipe(checkoutSchema)) dto: CheckoutInput,
   ) {
     return this.commerceService.checkout(user.id, dto);
+  }
+
+  @Post("checkout/paypal-order")
+  @ApiOperation({ summary: "Crea (sin capturar) una orden de PayPal para que el frontend renderice el botón de aprobación" })
+  createPayPalOrder(@Body(new ZodValidationPipe(createPayPalOrderSchema)) dto: CreatePayPalOrderInput) {
+    return this.commerceService.createPayPalOrder(dto);
   }
 
   @Get("orders/:id")

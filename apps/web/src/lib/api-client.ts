@@ -332,6 +332,9 @@ export const meApi = {
 // ---------------------------------------------------------------------------
 export const commerceApi = {
   checkout: (input: CheckoutRequest) => apiFetch<CheckoutResult>("/checkout", { method: "POST", body: JSON.stringify(input) }),
+  // Paso previo del checkout con PayPal — ver lib/paypal.ts.
+  createPayPalOrder: (input: { items: CheckoutRequest["items"]; companyId?: string }) =>
+    apiFetch<{ orderId: string; amount: number; currency: string }>("/checkout/paypal-order", { method: "POST", body: JSON.stringify(input) }),
   order: (id: string, accessToken?: string) => apiFetch<any>(`/orders/${id}`, { accessToken }),
   // Reembolsa el cobro original y emite la nota de crédito SUNAT — solo ADMIN/SUPPORT.
   cancelOrder: (id: string, reasonDescription: string, accessToken?: string) =>

@@ -13,6 +13,8 @@ import { MOCK_COURSES, MOCK_PROGRAM } from "@/lib/mock-data";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { isCulqiConfigured, openCulqiCheckout } from "@/lib/culqi";
+import { isPayPalConfigured } from "@/lib/paypal";
+import { PayPalButton } from "@/components/checkout/PayPalButton";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -61,6 +63,8 @@ function CheckoutForm() {
   const [asCompany, setAsCompany] = useState(Boolean(companyIdParam));
   const [companyId, setCompanyId] = useState(companyIdParam ?? "");
   const [card, setCard] = useState({ number: "", expiry: "", cvc: "", name: "" });
+  // Solo aplica a compras en USD — PEN siempre va por Culqi (tarjeta/Yape/Plin).
+  const [usdPaymentMethod, setUsdPaymentMethod] = useState<"card" | "paypal">("card");
   const [buyer, setBuyer] = useState({
     documentType: "1" as "1" | "6" | "4" | "7" | "0",
     documentNumber: "",
@@ -110,8 +114,24 @@ function CheckoutForm() {
   // El widget real de Culqi (tarjeta + Yape) solo aplica a soles (PEN) y
   // solo si hay llave pública configurada — sin eso, se mantiene el
   // formulario simulado de antes para que el flujo siga siendo navegable
-  // en desarrollo. Stripe (USD) no cambia en este pedido.
+  // en desarrollo.
   const useCulqiWidget = currency === "PEN" && isCulqiConfigured();
+  // PayPal, igual que Culqi: solo se ofrece el botón real si hay
+  // credenciales de sandbox/producción configuradas — sin eso, aunque el
+  // comprador elija "PayPal", cae en el mismo formulario simulado que
+  // Stripe (con paymentProvider: "PAYPAL", así el checkout sigue siendo
+  // navegable en desarrollo sin depender de PayPal).
+  const usePayPalWidget = currency === "USD" && usdPaymentMethod === "paypal" && isPayPalConfigured();
+  const paymentProvider: "CULQI" | "STRIPE" | "PAYPAL" =
+    currency === "PEN" ? "CULQI" : usdPaymentMethod === "paypal" ? "PAYPAL" : "STRIPE";
+  const checkoutItems = [
+    {
+      offeringKind: (course ? "COURSE" : "PROGRAM") as "COURSE" | "PROGRAM",
+      courseId: course?.id,
+      programId: program?.id,
+      seatPoolQty: seatPoolQty ?? undefined,
+    },
+  ];
 
   // "El precio que ponemos ya incluye todos los tributos" — desglose
   // informativo para el comprador, no cambia ningún monto: si la
@@ -137,27 +157,18 @@ function CheckoutForm() {
     return fakeTokenize(card.number || "4111111111111111");
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // Compartido entre el submit normal (Culqi/Stripe simulado) y el
+  // onApprove del botón real de PayPal — este último no pasa por el
+  // formulario (el clic de "pagar" ocurre en el botón que renderiza el
+  // propio SDK de PayPal, no en nuestro <Button type="submit">).
+  async function finalizeCheckout(paymentMethodToken: string, provider: "CULQI" | "STRIPE" | "PAYPAL") {
     setStatus("processing");
     setErrorMessage(null);
     try {
-      const paymentMethodToken = await getPaymentToken();
       const result = await commerceApi.checkout({
-        items: [
-          {
-            offeringKind: course ? "COURSE" : "PROGRAM",
-            courseId: course?.id,
-            programId: program?.id,
-            seatPoolQty: seatPoolQty ?? undefined,
-          },
-        ],
+        items: checkoutItems,
         currency: currency as "PEN" | "USD",
-        // Antes siempre mandaba "CULQI" sin importar la moneda — Culqi es
-        // para rieles peruanos (PEN); un curso en USD (comprador
-        // internacional) debe ir por Stripe, que es el adapter pensado para
-        // eso (ver CommerceService / docs de arquitectura).
-        paymentProvider: currency === "USD" ? "STRIPE" : "CULQI",
+        paymentProvider: provider,
         companyId: asCompany && companyId ? companyId : undefined,
         paymentMethodToken,
         // Si compra a nombre de empresa, el backend usa el RUC de la
@@ -180,6 +191,17 @@ function CheckoutForm() {
       // vez de el genérico ayuda al comprador a entender qué pasó.
       setErrorMessage(err instanceof ApiError ? err.message : err instanceof Error ? err.message : t("error"));
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const paymentMethodToken = await getPaymentToken().catch((err) => {
+      setStatus("error");
+      setErrorMessage(err instanceof Error ? err.message : t("error"));
+      return null;
+    });
+    if (paymentMethodToken === null) return;
+    await finalizeCheckout(paymentMethodToken, paymentProvider);
   }
 
   if (!course && !program) {
@@ -322,11 +344,45 @@ function CheckoutForm() {
                     <Lock className="h-4 w-4 text-ash-400" aria-hidden="true" />
                     {t("paymentTitle")}
                   </h2>
+
+                  {currency === "USD" && (
+                    <div className="mt-3 flex gap-1 rounded-md border border-paper-border p-1">
+                      <button
+                        type="button"
+                        onClick={() => setUsdPaymentMethod("card")}
+                        className={`flex-1 rounded px-3 py-1.5 text-sm font-medium ${usdPaymentMethod === "card" ? "bg-ink-900 text-paper" : "text-ash-600 hover:bg-paper-muted"}`}
+                      >
+                        Tarjeta
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUsdPaymentMethod("paypal")}
+                        className={`flex-1 rounded px-3 py-1.5 text-sm font-medium ${usdPaymentMethod === "paypal" ? "bg-ink-900 text-paper" : "text-ash-600 hover:bg-paper-muted"}`}
+                      >
+                        PayPal
+                      </button>
+                    </div>
+                  )}
+
                   {useCulqiWidget ? (
                     <p className="mt-3 text-sm text-ash-600">
                       Al continuar se abrirá la ventana segura de Culqi — ahí puedes pagar con tarjeta, Yape o Plin, según lo que tengas
                       habilitado. Inkademy no ve ni guarda tu tarjeta.
                     </p>
+                  ) : usePayPalWidget ? (
+                    <div className="mt-4">
+                      <p className="mb-3 text-sm text-ash-600">Al continuar se abrirá la ventana segura de PayPal para que apruebes el pago.</p>
+                      <PayPalButton
+                        items={checkoutItems}
+                        companyId={asCompany && companyId ? companyId : undefined}
+                        disabled={status === "processing"}
+                        onApproved={(orderId) => finalizeCheckout(orderId, "PAYPAL")}
+                        onError={(message) => {
+                          setStatus("error");
+                          setErrorMessage(message);
+                        }}
+                      />
+                    </div>
                   ) : (
                     <>
                       <Callout variant="info" className="mt-3">
@@ -376,9 +432,11 @@ function CheckoutForm() {
                 </CardContent>
               </Card>
 
-              <Button type="submit" size="lg" disabled={status === "processing"}>
-                {status === "processing" ? t("processing") : `${t("pay")} ${formatPrice(amount, currency, locale)}`}
-              </Button>
+              {!usePayPalWidget && (
+                <Button type="submit" size="lg" disabled={status === "processing"}>
+                  {status === "processing" ? t("processing") : `${t("pay")} ${formatPrice(amount, currency, locale)}`}
+                </Button>
+              )}
             </form>
           )}
         </div>

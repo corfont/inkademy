@@ -121,6 +121,13 @@ export const checkoutSchema = z.object({
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
+// Paso previo del checkout con PayPal — ver CommerceService.createPayPalOrder.
+export const createPayPalOrderSchema = z.object({
+  items: z.array(checkoutItemSchema).min(1),
+  companyId: z.string().uuid().optional(),
+});
+export type CreatePayPalOrderInput = z.infer<typeof createPayPalOrderSchema>;
+
 export const cancelOrderSchema = z.object({
   // Catálogo 09 SUNAT (motivos de nota de crédito). "01" = Anulación de la
   // operación, el motivo por defecto cuando el comprador simplemente

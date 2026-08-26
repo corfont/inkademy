@@ -17,6 +17,7 @@ import { NotificationService } from "../notification/notification.service";
 import { CalendarService } from "../calendar/calendar.service";
 import { CulqiProvider } from "./providers/culqi.provider";
 import { StripeProvider } from "./providers/stripe.provider";
+import { PayPalProvider } from "./providers/paypal.provider";
 import type { PaymentProvider } from "./providers/payment-provider.interface";
 
 /** Datos de comprador ya resueltos para la boleta/factura electrónica. */
@@ -61,12 +62,14 @@ export class CommerceService {
     private readonly calendarService: CalendarService,
     private readonly culqiProvider: CulqiProvider,
     private readonly stripeProvider: StripeProvider,
+    private readonly paypalProvider: PayPalProvider,
     @InjectQueue(QUEUE_NAMES.INVOICE) private readonly invoiceQueue: Queue,
   ) {}
 
   private resolveProvider(type: CheckoutInput["paymentProvider"]): PaymentProvider {
     if (type === "CULQI") return this.culqiProvider;
     if (type === "STRIPE") return this.stripeProvider;
+    if (type === "PAYPAL") return this.paypalProvider;
     throw new BadRequestException("Proveedor de pago no soportado: " + type);
   }
 
@@ -106,18 +109,16 @@ export class CommerceService {
     };
   }
 
-  async checkout(userId: string, input: CheckoutInput): Promise<CheckoutResult> {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-
-    if (input.companyId) {
-      const membership = await this.prisma.companyMembership.findUnique({
-        where: { companyId_userId: { companyId: input.companyId, userId } },
-      });
-      if (!membership || membership.status !== "ACTIVE" || membership.role !== "COMPANY_ADMIN") {
-        throw new ForbiddenException("Solo un COMPANY_ADMIN puede comprar a nombre de la empresa");
-      }
-    }
-
+  /**
+   * Resuelve items del carrito a precios reales (con descuento vigente
+   * aplicado si corresponde) — extraído de `checkout()` para reutilizarlo
+   * en `createPayPalOrder()`: a diferencia de Culqi/Stripe (donde el monto
+   * se fija y se cobra en la MISMA llamada), el flujo de PayPal necesita
+   * crear la orden con el monto ANTES de que el comprador la apruebe, en
+   * un paso separado — pero el precio tiene que salir de la misma fuente
+   * de verdad (nunca confiar en un monto que mande el cliente).
+   */
+  private async resolveCheckoutItems(items: CheckoutInput["items"], companyId?: string) {
     type ResolvedItem = {
       offeringKind: "COURSE" | "PROGRAM";
       courseId?: string;
@@ -138,14 +139,14 @@ export class CommerceService {
     };
     const resolved: ResolvedItem[] = [];
 
-    for (const item of input.items) {
+    for (const item of items) {
       if (item.offeringKind === "COURSE") {
         if (!item.courseId) throw new BadRequestException("courseId requerido para items de tipo COURSE");
         const course = await this.prisma.course.findUnique({ where: { id: item.courseId } });
         if (!course || course.status !== "PUBLISHED") {
           throw new NotFoundException(`Curso ${item.courseId} no disponible`);
         }
-        const usesB2bPrice = Boolean(input.companyId) && course.b2bAvailable && course.b2bPriceAmount;
+        const usesB2bPrice = Boolean(companyId) && course.b2bAvailable && course.b2bPriceAmount;
         const listUnitPrice = Number(usesB2bPrice ? course.b2bPriceAmount : course.priceAmount);
         // El descuento solo aplica a la venta B2C pública — un precio B2B ya
         // es una tarifa negociada aparte, no se le suma otro descuento encima.
@@ -186,6 +187,38 @@ export class CommerceService {
     const subtotal = resolved.reduce((sum, i) => sum + i.listUnitPrice * i.quantity, 0);
     const total = resolved.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
     const discount = Math.round((subtotal - total) * 100) / 100; // sin impuestos por ahora (ver IMPLEMENTATION-NOTES.md)
+    return { resolved, subtotal, total, discount };
+  }
+
+  /**
+   * Crea la orden de PayPal (paso previo obligatorio: PayPal necesita que el
+   * comprador APRUEBE un monto ya fijado antes de poder capturarlo). El
+   * frontend usa el `orderId` devuelto para renderizar el botón de PayPal;
+   * al aprobar, se llama a POST /checkout con `paymentProvider: "PAYPAL"` y
+   * `paymentMethodToken: orderId` — PayPalProvider.charge() solo CAPTURA
+   * esa orden ya aprobada, nunca crea una nueva ni confía en un monto que
+   * mande el cliente en ese segundo paso.
+   */
+  async createPayPalOrder(input: { items: CheckoutInput["items"]; companyId?: string }): Promise<{ orderId: string; amount: number; currency: string }> {
+    const { total } = await this.resolveCheckoutItems(input.items, input.companyId);
+    if (total <= 0) throw new BadRequestException("El monto a cobrar debe ser mayor a cero");
+    const orderId = await this.paypalProvider.createOrder({ amountInMinorUnits: Math.round(total * 100), currency: "USD" });
+    return { orderId, amount: total, currency: "USD" };
+  }
+
+  async checkout(userId: string, input: CheckoutInput): Promise<CheckoutResult> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (input.companyId) {
+      const membership = await this.prisma.companyMembership.findUnique({
+        where: { companyId_userId: { companyId: input.companyId, userId } },
+      });
+      if (!membership || membership.status !== "ACTIVE" || membership.role !== "COMPANY_ADMIN") {
+        throw new ForbiddenException("Solo un COMPANY_ADMIN puede comprar a nombre de la empresa");
+      }
+    }
+
+    const { resolved, subtotal, total, discount } = await this.resolveCheckoutItems(input.items, input.companyId);
     const buyerInfo = await this.resolveBuyerInfo(input);
 
     const order = await this.prisma.order.create({
