@@ -38,12 +38,15 @@ export function ReportsCenter({ catalog }: { catalog: { key: string; label: stri
       {error && <Callout variant="danger">{error}</Callout>}
       <div className="grid gap-4 sm:grid-cols-2">
         {catalog.map((r) => (
-          <Card key={r.key}>
+          <Card key={r.key} className="transition-shadow hover:shadow-raised">
             <CardContent className="flex flex-col gap-3 p-5">
-              <div>
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                  <FileDown className="h-4 w-4" aria-hidden="true" />
+                </span>
                 <h3 className="font-serif text-base font-semibold text-ink-900">{r.label}</h3>
-                <p className="mt-1 text-xs text-ash-500">{r.description}</p>
               </div>
+              <p className="-mt-1 text-xs text-ash-500">{r.description}</p>
               <Button size="sm" variant="outline" disabled={downloadingKey === r.key} onClick={() => download(r.key)} className="self-start">
                 <FileDown className="mr-1.5 h-4 w-4" aria-hidden="true" />
                 {downloadingKey === r.key ? "Generando…" : "Descargar PDF"}

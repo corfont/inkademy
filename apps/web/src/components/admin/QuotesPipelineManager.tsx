@@ -94,7 +94,7 @@ function QuoteCard({ quote, courses, programs, busy, run }: { quote: any; course
   const [internalNotes, setInternalNotes] = useState("");
 
   return (
-    <Card>
+    <Card className="transition-shadow hover:shadow-raised">
       <CardContent className="flex flex-col gap-3 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -662,7 +662,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
   }
 
   return (
-    <tr>
+    <tr className="transition-colors hover:bg-paper-muted">
       <td className="p-3">
         <div className="flex items-center gap-2">
           <Avatar name={`${user.firstName} ${user.lastName}`} size="sm" src={user.avatarUrl} />

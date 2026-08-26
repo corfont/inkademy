@@ -32,31 +32,31 @@ export default async function TeacherDashboardPage() {
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="flex flex-col gap-1 p-5">
-            <div className="flex items-center gap-2 text-ash-500">
-              <LibraryBig className="h-4 w-4" aria-hidden="true" />
-              <span className="text-sm">Cursos asignados</span>
-            </div>
-            <p className="font-serif text-3xl font-semibold text-ink-900">{data.courses.length}</p>
+        <Card className="transition-shadow hover:shadow-raised">
+          <CardContent className="p-5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+              <LibraryBig className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <p className="mt-3 font-serif text-2xl font-semibold text-ink-900">{data.courses.length}</p>
+            <p className="text-sm text-ash-500">Cursos asignados</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="flex flex-col gap-1 p-5">
-            <div className="flex items-center gap-2 text-ash-500">
-              <Radio className="h-4 w-4" aria-hidden="true" />
-              <span className="text-sm">Próximas clases en vivo</span>
-            </div>
-            <p className="font-serif text-3xl font-semibold text-ink-900">{data.upcomingLiveSessions.length}</p>
+        <Card className="transition-shadow hover:shadow-raised">
+          <CardContent className="p-5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-bg text-success">
+              <Radio className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <p className="mt-3 font-serif text-2xl font-semibold text-ink-900">{data.upcomingLiveSessions.length}</p>
+            <p className="text-sm text-ash-500">Próximas clases en vivo</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="flex flex-col gap-1 p-5">
-            <div className="flex items-center gap-2 text-ash-500">
-              <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
-              <span className="text-sm">Evaluaciones por calificar</span>
-            </div>
-            <p className="font-serif text-3xl font-semibold text-ink-900">{data.pendingReviewCount}</p>
+        <Card className="transition-shadow hover:shadow-raised">
+          <CardContent className="p-5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold-100 text-gold-700">
+              <ClipboardCheck className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <p className="mt-3 font-serif text-2xl font-semibold text-ink-900">{data.pendingReviewCount}</p>
+            <p className="text-sm text-ash-500">Evaluaciones por calificar</p>
           </CardContent>
         </Card>
       </div>

@@ -33,10 +33,10 @@ export default async function CampusDashboardPage() {
   const pendingRating = enrollments.filter((e) => e.readyForRatingPrompt);
 
   const quickAccess = [
-    { href: "/campus/cursos", label: "Mis cursos", icon: BookOpen },
-    { href: "/campus/agenda", label: "Agenda", icon: CalendarDays },
-    { href: "/campus/certificados", label: "Certificados", icon: Award },
-    { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles },
+    { href: "/campus/cursos", label: "Mis cursos", icon: BookOpen, accent: "bg-indigo-50 text-indigo-600" },
+    { href: "/campus/agenda", label: "Agenda", icon: CalendarDays, accent: "bg-success-bg text-success" },
+    { href: "/campus/certificados", label: "Certificados", icon: Award, accent: "bg-gold-100 text-gold-700" },
+    { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles, accent: "bg-indigo-50 text-indigo-600" },
   ];
 
   return (
@@ -97,9 +97,11 @@ export default async function CampusDashboardPage() {
             <Link
               key={q.href}
               href={q.href}
-              className="flex flex-col items-center gap-2 rounded-lg border border-paper-border bg-paper p-5 text-center shadow-card transition-shadow hover:shadow-raised"
+              className="flex flex-col items-center gap-2.5 rounded-lg border border-paper-border bg-paper p-5 text-center shadow-card transition-shadow hover:shadow-raised"
             >
-              <q.icon className="h-6 w-6 text-ink-700" aria-hidden="true" />
+              <span className={`flex h-11 w-11 items-center justify-center rounded-full ${q.accent}`}>
+                <q.icon className="h-5 w-5" aria-hidden="true" />
+              </span>
               <span className="text-sm font-medium text-ink-900">{q.label}</span>
             </Link>
           ))}
