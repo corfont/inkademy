@@ -116,6 +116,21 @@ export const updateQuoteStatusSchema = z.object({
 });
 export type UpdateQuoteStatusInput = z.infer<typeof updateQuoteStatusSchema>;
 
+// Encuesta NPS B2B (Fase 2) — "la estructura de la pregunta la establece
+// el administrador" — una sola pregunta, localizada como el resto del
+// contenido (título de curso, etc.).
+export const updateNpsQuestionSchema = z.object({
+  question: z.object({ es: z.string().min(1), en: z.string().optional() }),
+});
+export type UpdateNpsQuestionInput = z.infer<typeof updateNpsQuestionSchema>;
+
+// Escala NPS estándar 0-10 (no 1-5 como CourseRating) + comentario opcional.
+export const submitNpsResponseSchema = z.object({
+  score: z.number().int().min(0).max(10),
+  comment: z.string().max(2000).optional(),
+});
+export type SubmitNpsResponseInput = z.infer<typeof submitNpsResponseSchema>;
+
 export const checkoutItemSchema = z.object({
   offeringKind: z.enum(["COURSE", "PROGRAM"]),
   courseId: z.string().uuid().optional(),

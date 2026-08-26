@@ -239,6 +239,20 @@ export class NotificationService {
     );
   }
 
+  /** Encuesta NPS enviada al administrador de la empresa (B2B, Fase 2) — ver NpsService.sendToCompany. */
+  sendNpsSurveyInvite(to: string, companyName: string, question: string, surveyUrl: string, userId: string) {
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: `Tu opinión nos importa — ${companyName}`,
+        html: `<p>${question}</p><p><a href="${surveyUrl}">Responder encuesta</a> (toma menos de un minuto).</p>`,
+        meta: { surveyUrl },
+      },
+      userId,
+    );
+  }
+
   /** Ventas ya fijó un monto real para la cotización que pidió la empresa (pipeline comercial, Fase 2). */
   sendQuoteResponded(to: string, amount: number, currency: string, userId: string) {
     const formatted = `${currency === "USD" ? "US$" : "S/"} ${amount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;

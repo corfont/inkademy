@@ -29,6 +29,7 @@ import {
   BookOpen,
   Sparkles,
   User,
+  Smile,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
@@ -70,6 +71,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users },
     { href: "/admin/empresas", label: t("companies"), icon: Building2 },
     { href: "/admin/cotizaciones", label: "Cotizaciones", icon: FileText },
+    { href: "/admin/encuestas-nps", label: "Encuestas NPS", icon: Smile },
     { href: "/admin/ordenes", label: "Órdenes", icon: Receipt },
     { href: "/admin/finanzas", label: "Finanzas", icon: Wallet },
     { href: "/admin/matriculas", label: "Casos extemporáneos", icon: CalendarClock },

@@ -872,3 +872,41 @@ export const adminApi = {
   previewEmailAudience: (filter: EmailAudienceFilter, accessToken?: string | null) =>
     apiFetch<{ count: number }>("/admin/email-campaigns/audience-preview", { method: "POST", body: JSON.stringify(filter), accessToken }),
 };
+
+// ---------------------------------------------------------------------------
+// Encuesta NPS B2B (Fase 2) — pregunta única, envío por empresa, respuesta
+// pública vía token (sin login, ver /encuesta/[token]).
+// ---------------------------------------------------------------------------
+export interface NpsCompanyRow {
+  id: string;
+  legalName: string;
+  lastSentAt: string | null;
+  lastRespondedAt: string | null;
+  lastScore: number | null;
+}
+export interface NpsResultsDTO {
+  npsScore: number | null;
+  totalResponses: number;
+  promoters: number;
+  passives: number;
+  detractors: number;
+  responses: { id: string; companyId: string; companyName: string; score: number | null; comment: string | null; respondedAt: string | null }[];
+}
+
+export const npsAdminApi = {
+  question: (accessToken?: string | null) =>
+    apiFetch<{ question: Record<string, string>; active: boolean; updatedAt: string | null }>("/admin/nps/question", { accessToken, cache: "no-store" }),
+  updateQuestion: (question: Record<string, string>, accessToken?: string | null) =>
+    apiFetch<{ question: Record<string, string>; active: boolean }>("/admin/nps/question", { method: "PUT", body: JSON.stringify({ question }), accessToken }),
+  companies: (accessToken?: string | null) => apiFetch<NpsCompanyRow[]>("/admin/nps/companies", { accessToken, cache: "no-store" }),
+  send: (companyId: string, accessToken?: string | null) =>
+    apiFetch<{ sent: boolean; sentToEmail: string }>(`/admin/nps/send/${companyId}`, { method: "POST", accessToken }),
+  results: (companyId?: string, accessToken?: string | null) =>
+    apiFetch<NpsResultsDTO>("/admin/nps/responses", { accessToken, query: companyId ? { companyId } : undefined, cache: "no-store" }),
+};
+
+export const npsPublicApi = {
+  get: (token: string) => apiFetch<{ companyName: string; question: Record<string, string>; alreadyResponded: boolean }>(`/nps/${token}`),
+  submit: (token: string, score: number, comment?: string) =>
+    apiFetch<{ saved: boolean }>(`/nps/${token}`, { method: "POST", body: JSON.stringify({ score, comment }) }),
+};

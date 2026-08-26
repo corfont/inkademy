@@ -26,6 +26,7 @@ import { AdminModule } from "./modules/admin/admin.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
 import { ChatbotModule } from "./modules/chatbot/chatbot.module";
+import { NpsModule } from "./modules/nps/nps.module";
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { ChatbotModule } from "./modules/chatbot/chatbot.module";
     SettingsModule,
     SuggestionsModule,
     ChatbotModule,
+    NpsModule,
   ],
   providers: [
     // Orden importa: ThrottlerGuard corre primero (limita por IP sin
