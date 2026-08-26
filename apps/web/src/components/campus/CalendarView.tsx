@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, List, LayoutGrid, Radio, PlayCircle } from "lucide-react";
-import { JoinClassButton } from "@/components/campus/JoinClassButton";
+import { JoinClassButton, useJoinLiveSession } from "@/components/campus/JoinClassButton";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/format";
 
@@ -43,13 +43,33 @@ function LiveClassAction({ event }: { event: CalendarEventLike }) {
 // (si el evento tiene enrollmentId); el botón "Unirme" (para LIVE_CLASS)
 // sigue aparte para ir directo a Teams, sin anidar un <button> dentro de un
 // <a> (mismo criterio que ya usa CourseCard con título y CTA separados).
+//
+// "Tengo una zoom a las 6:30, la veo en mi calendario pero al dar clic no
+// pasa nada" — en la agenda del DOCENTE (getTeacherAgenda) los eventos
+// nunca traen enrollmentId (no hay matrícula del propio docente al curso
+// que dicta), así que este título caía siempre en el primer `return` y
+// quedaba texto plano sin ninguna acción, aunque más abajo sí existiera un
+// botón "Unirme" aparte. Ahora, cuando no hay a dónde llevar por
+// enrollmentId pero SÍ hay una clase en vivo asociada, el título también
+// une (mismo liveSessionApi.join() que usa JoinClassButton, vía el hook
+// compartido) en vez de quedar inerte.
 function EventTitle({ event, children }: { event: CalendarEventLike; children: React.ReactNode }) {
-  if (!event.enrollmentId) return <>{children}</>;
-  return (
-    <Link href={`/campus/cursos/${event.enrollmentId}`} className="hover:underline">
-      {children}
-    </Link>
-  );
+  const { handleClick, loading } = useJoinLiveSession(event.liveSessionId ?? "");
+  if (event.enrollmentId) {
+    return (
+      <Link href={`/campus/cursos/${event.enrollmentId}`} className="hover:underline">
+        {children}
+      </Link>
+    );
+  }
+  if (!event.recordingUrl && event.liveSessionId) {
+    return (
+      <button type="button" onClick={handleClick} disabled={loading} className="text-left hover:underline disabled:opacity-60">
+        {children}
+      </button>
+    );
+  }
+  return <>{children}</>;
 }
 
 const WEEKDAY_LABELS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
