@@ -3,7 +3,7 @@
 import type { AuthUser } from "@inkademy/shared";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { authApi, tryRefresh } from "@/lib/api-client";
+import { authApi, tryRefresh, ApiError } from "@/lib/api-client";
 import { clearClientAccessToken, persistSession, readSessionCookie, updateSessionUser, SESSION_COOKIE } from "@/lib/auth";
 
 interface AuthContextValue {
@@ -67,8 +67,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(fresh);
           updateSessionUser(fresh);
         }
-      } catch {
-        // token inválido o sin red: el próximo ciclo reintenta
+      } catch (err) {
+        // "Al iniciar sesión, generar un session_uuid único; si el del
+        // token no coincide con el de la base de datos, destruir la
+        // sesión actual" — un 401 acá (a diferencia de sin conexión, que
+        // reintenta el próximo ciclo sin más) significa justamente eso:
+        // alguien inició sesión en otro dispositivo y la API ya rechazó
+        // tanto el refresh como este access token. Sin este chequeo la
+        // pestaña seguía mostrándose "conectada" hasta la próxima
+        // navegación (recién ahí el middleware la hubiera sacado).
+        if (!cancelled && err instanceof ApiError && err.statusCode === 401) {
+          clearClientAccessToken();
+          setUser(null);
+          router.push("/login?session=other-device");
+        }
       }
     }
     void resync();

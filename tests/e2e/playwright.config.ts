@@ -17,6 +17,14 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,
+  // Varios specs comparten las mismas cuentas demo (alumno@demo.inkademy.com,
+  // etc.) para iniciar sesión. Ahora que solo se permite una sesión activa
+  // por cuenta a la vez (login nuevo cierra la anterior — pedido explícito
+  // de seguridad), dos specs corriendo en paralelo y logueándose con la
+  // misma cuenta se pisan entre sí y uno queda desautenticado a mitad de
+  // prueba. Un solo worker evita esa colisión sin tener que darle a cada
+  // spec su propia cuenta dedicada.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: {

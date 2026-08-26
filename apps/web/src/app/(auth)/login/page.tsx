@@ -29,6 +29,12 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
+  // "Al iniciar sesión, generar un session_uuid único; si el del token no
+  // coincide con el de la base, destruir la sesión actual" — cuando eso
+  // pasa, AuthProvider redirige acá con este parámetro para explicar POR
+  // QUÉ se cerró la sesión (no solo dejarla en blanco, como si hubiera
+  // expirado sin motivo).
+  const closedByOtherDevice = searchParams.get("session") === "other-device";
 
   const {
     register,
@@ -79,6 +85,9 @@ function LoginForm() {
         <p className="mt-1 text-sm text-ash-600">{t("subtitle")}</p>
 
         <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+          {closedByOtherDevice && !serverError && (
+            <Callout variant="info">Tu sesión se cerró porque se inició sesión con esta cuenta en otro dispositivo.</Callout>
+          )}
           {serverError && <Callout variant="danger">{serverError}</Callout>}
           <div>
             <Label htmlFor="email">{t("email")}</Label>

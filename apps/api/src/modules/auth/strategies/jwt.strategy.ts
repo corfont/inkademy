@@ -24,6 +24,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     if (payload.typ !== "access") throw new UnauthorizedException("Token inválido");
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || user.status !== "active") throw new UnauthorizedException("Usuario inválido");
+    // "Contrastar el session_uuid del token con el de la base de datos; si
+    // no coinciden, destruir la sesión actual" — payload.sid ausente o
+    // currentSessionId null = token/cuenta de antes de este cambio, no se
+    // exige (evita invalidar de golpe todas las sesiones ya abiertas al
+    // desplegar esto).
+    if (payload.sid && user.currentSessionId && payload.sid !== user.currentSessionId) {
+      throw new UnauthorizedException("Tu sesión se cerró porque iniciaste sesión en otro dispositivo");
+    }
     // Se recalcula en cada request (no se guarda en el JWT) para que un
     // cambio de rol hecho por un admin tenga efecto inmediato, sin esperar
     // a que el usuario vuelva a iniciar sesión.

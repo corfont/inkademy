@@ -20,6 +20,10 @@ export interface AccessTokenPayload {
   email: string;
   globalRole: string;
   typ: "access";
+  // "Contrastar el session_uuid del token con el de la base de datos; si no
+  // coinciden, destruir la sesión actual" — ver JwtStrategy.validate.
+  // Ausente = token emitido antes de este cambio, no se exige el chequeo.
+  sid?: string;
 }
 
 interface OAuthProfile {
@@ -43,12 +47,24 @@ export class AuthService {
     return toAuthUser(user);
   }
 
+  /**
+   * "Al iniciar sesión exitosamente, generar un session_uuid único y
+   * guardarlo en el registro del usuario" — se llama en cada evento que
+   * arranca una sesión nueva de verdad (registro, login, callback OAuth) y
+   * también al cambiar la contraseña (buena práctica: forzar el
+   * cierre de sesión en cualquier otro dispositivo). Un simple refresh de
+   * token NO pasa por acá — reutiliza el sid vigente, ver refresh().
+   */
+  private async startNewSession(user: User): Promise<User> {
+    return this.prisma.user.update({ where: { id: user.id }, data: { currentSessionId: randomUUID() } });
+  }
+
   async register(input: RegisterInput) {
     const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
     if (existing) throw new ConflictException("Ya existe una cuenta con ese correo");
 
     const passwordHash = await argon2.hash(input.password);
-    const user = await this.prisma.user.create({
+    let user = await this.prisma.user.create({
       data: {
         email: input.email,
         passwordHash,
@@ -58,13 +74,14 @@ export class AuthService {
         marketingConsentEmail: input.marketingConsentEmail ?? false,
       },
     });
+    user = await this.startNewSession(user);
 
     const verifyToken = this.signPurposeToken(user.id, "verify_email", "1d");
     await this.notifications.sendWelcome(user.email, user.firstName, user.id);
     await this.notifications.sendVerifyEmail(user.email, verifyToken, user.id);
 
     const accessToken = this.signAccessToken(user);
-    return { user: this.toAuthUser(user), accessToken };
+    return { user: this.toAuthUser(user), accessToken, rawUser: user };
   }
 
   async validateLocalUser(email: string, password: string): Promise<User> {
@@ -78,8 +95,10 @@ export class AuthService {
     return user;
   }
 
-  login(user: User) {
-    return { user: this.toAuthUser(user), accessToken: this.signAccessToken(user) };
+  /** Entrypoint único para "arrancar sesión" — lo usan tanto /auth/login como el callback OAuth. */
+  async login(user: User) {
+    const updated = await this.startNewSession(user);
+    return { user: this.toAuthUser(updated), accessToken: this.signAccessToken(updated), rawUser: updated };
   }
 
   signAccessToken(user: User): string {
@@ -88,6 +107,7 @@ export class AuthService {
       email: user.email,
       globalRole: user.globalRole,
       typ: "access",
+      sid: user.currentSessionId ?? undefined,
     };
     return this.jwt.sign(payload, {
       secret: this.config.get<string>("JWT_ACCESS_SECRET"),
@@ -97,7 +117,7 @@ export class AuthService {
 
   signRefreshToken(user: User): string {
     return this.jwt.sign(
-      { sub: user.id, typ: "refresh", jti: randomUUID() },
+      { sub: user.id, typ: "refresh", jti: randomUUID(), sid: user.currentSessionId ?? undefined },
       {
         secret: this.config.get<string>("JWT_REFRESH_SECRET"),
         expiresIn: this.config.get<string>("JWT_REFRESH_TTL", "30d"),
@@ -108,12 +128,19 @@ export class AuthService {
   async refresh(refreshToken: string | undefined) {
     if (!refreshToken) throw new UnauthorizedException("Falta refresh token");
     try {
-      const payload = this.jwt.verify<{ sub: string; typ: string }>(refreshToken, {
+      const payload = this.jwt.verify<{ sub: string; typ: string; sid?: string }>(refreshToken, {
         secret: this.config.get<string>("JWT_REFRESH_SECRET"),
       });
       if (payload.typ !== "refresh") throw new Error("token type inválido");
       const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
       if (!user || user.status !== "active") throw new Error("usuario inválido");
+      // "Contrastar el session_uuid del token con el de la base de datos" —
+      // un refresh NO arranca sesión nueva (no llama startNewSession), solo
+      // reutiliza la vigente; si no coincide, alguien inició sesión después
+      // en otro dispositivo y esta sesión debe morir acá.
+      if (payload.sid && user.currentSessionId && payload.sid !== user.currentSessionId) {
+        throw new Error("sesión cerrada por inicio de sesión en otro dispositivo");
+      }
       return { accessToken: this.signAccessToken(user), user };
     } catch {
       throw new UnauthorizedException("Refresh token inválido o expirado");

@@ -69,9 +69,8 @@ export class AuthController {
     @Body(new ZodValidationPipe(registerSchema)) dto: RegisterInput,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, accessToken } = await this.authService.register(dto);
-    const fullUser = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    this.setRefreshCookie(res, this.authService.signRefreshToken(fullUser));
+    const { user, accessToken, rawUser } = await this.authService.register(dto);
+    this.setRefreshCookie(res, this.authService.signRefreshToken(rawUser));
     return { user, accessToken };
   }
 
@@ -93,8 +92,8 @@ export class AuthController {
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const user = req.user as any;
-    const result = this.authService.login(user);
-    this.setRefreshCookie(res, this.authService.signRefreshToken(user));
+    const { rawUser, ...result } = await this.authService.login(user);
+    this.setRefreshCookie(res, this.authService.signRefreshToken(rawUser));
     return result;
   }
 
@@ -199,9 +198,9 @@ export class AuthController {
   private async handleOAuthCallback(req: Request, res: Response) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const profile = req.user as any;
-    const user = await this.authService.findOrCreateFromOAuth(profile);
-    const accessToken = this.authService.signAccessToken(user);
-    this.setRefreshCookie(res, this.authService.signRefreshToken(user));
+    const oauthUser = await this.authService.findOrCreateFromOAuth(profile);
+    const { accessToken, rawUser } = await this.authService.login(oauthUser);
+    this.setRefreshCookie(res, this.authService.signRefreshToken(rawUser));
     const appUrl = this.config.get<string>("APP_URL", "http://localhost:3000");
     return res.redirect(`${appUrl}/auth/callback?token=${accessToken}`);
   }

@@ -69,6 +69,14 @@ model User {
   timezone              String   @default("America/Lima")
   emailVerifiedAt       DateTime?
   status                String   @default("active") // active | disabled
+  // "Al iniciar sesión, generar un session_uuid único y guardarlo; en cada
+  // petición contrastar el del token con el de la base — si no coinciden,
+  // destruir la sesión actual (inicio de sesión concurrente en otro
+  // dispositivo)." null = cuenta que nunca inició sesión desde que existe
+  // este campo (o token emitido antes de este cambio, sin `sid`) — en ese
+  // caso NO se exige el chequeo, para no invalidar de golpe todas las
+  // sesiones activas al desplegar esto. Ver JwtStrategy/AuthService.
+  currentSessionId      String?
 
   // Perfil progresivo (persona natural) — se completa antes de pago/certificado.
   documentType          String? // DNI, CE, PASSPORT, RUC... (según país)
