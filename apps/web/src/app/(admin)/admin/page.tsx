@@ -78,14 +78,19 @@ export default async function AdminDashboardPage() {
       ? "warn"
       : "good";
 
-  const kpiCards: Array<{ label: string; value: string | number; icon: typeof TrendingUp; health?: Health }> = [
-    { label: t("sales"), value: formatPrice(kpis.sales.last30dTotal, "PEN", locale), icon: TrendingUp },
-    { label: t("enrollments"), value: kpis.enrollments.total, icon: Users },
-    { label: t("activeStudents"), value: kpis.students.active, icon: Users },
-    { label: t("atRiskStudents"), value: kpis.students.atRisk, icon: UserX, health: atRiskHealth },
-    { label: t("certificatesIssued"), value: kpis.certificatesIssued, icon: Award },
-    { label: t("openTickets"), value: openTickets, icon: LifeBuoy, health: ticketsHealth },
+  const kpiCards: Array<{ label: string; value: string | number; icon: typeof TrendingUp; health?: Health; accent: string }> = [
+    { label: t("sales"), value: formatPrice(kpis.sales.last30dTotal, "PEN", locale), icon: TrendingUp, accent: "indigo" },
+    { label: t("enrollments"), value: kpis.enrollments.total, icon: Users, accent: "gold" },
+    { label: t("activeStudents"), value: kpis.students.active, icon: Users, accent: "indigo" },
+    { label: t("atRiskStudents"), value: kpis.students.atRisk, icon: UserX, health: atRiskHealth, accent: "danger" },
+    { label: t("certificatesIssued"), value: kpis.certificatesIssued, icon: Award, accent: "gold" },
+    { label: t("openTickets"), value: openTickets, icon: LifeBuoy, health: ticketsHealth, accent: "indigo" },
   ];
+  const ACCENT_STYLE: Record<string, string> = {
+    indigo: "bg-indigo-50 text-indigo-600",
+    gold: "bg-gold-100 text-gold-700",
+    danger: "bg-danger-bg text-danger",
+  };
 
   const OVERALL_COPY: Record<Health, string> = {
     good: "Todo en orden — sin excepciones críticas abiertas",
@@ -99,17 +104,24 @@ export default async function AdminDashboardPage() {
 
       {/* Semáforo general: la primera cosa que el admin debe poder leer sin
           hacer ningún esfuerzo — "¿tengo que actuar hoy o no?" */}
-      <section
-        className={`flex items-center gap-4 rounded-lg border-2 p-5 ${
-          overallHealth === "good" ? "border-success bg-success-bg" : overallHealth === "warn" ? "border-warning bg-warning-bg" : "border-danger bg-danger-bg"
-        }`}
-      >
-        <span className={`flex h-4 w-4 flex-none rounded-full ${HEALTH_DOT[overallHealth]} ${overallHealth !== "good" ? "animate-pulse" : ""}`} aria-hidden="true" />
-        <div>
-          <p className="font-serif text-lg font-semibold text-ink-900">
-            {overallHealth === "good" ? "Estado general: saludable" : overallHealth === "warn" ? "Estado general: atención" : "Estado general: crítico"}
-          </p>
-          <p className="text-sm text-ash-600">{OVERALL_COPY[overallHealth]}</p>
+      <section className="relative overflow-hidden rounded-xl border border-paper-border bg-ink-950 p-6">
+        <div
+          className={`absolute inset-0 bg-gradient-to-br opacity-90 ${
+            overallHealth === "good"
+              ? "from-success/90 via-ink-950 to-ink-950"
+              : overallHealth === "warn"
+                ? "from-warning/80 via-ink-950 to-ink-950"
+                : "from-danger/80 via-ink-950 to-ink-950"
+          }`}
+        />
+        <div className="relative flex items-center gap-4">
+          <span className={`flex h-4 w-4 flex-none rounded-full ${HEALTH_DOT[overallHealth]} ${overallHealth !== "good" ? "animate-pulse" : ""}`} aria-hidden="true" />
+          <div>
+            <p className="font-serif text-lg font-semibold text-white">
+              {overallHealth === "good" ? "Estado general: saludable" : overallHealth === "warn" ? "Estado general: atención" : "Estado general: crítico"}
+            </p>
+            <p className="text-sm text-white/70">{OVERALL_COPY[overallHealth]}</p>
+          </div>
         </div>
       </section>
 
@@ -117,10 +129,12 @@ export default async function AdminDashboardPage() {
         <h1 className="mb-4 font-serif text-2xl font-semibold text-ink-900">{t("kpisTitle")}</h1>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {kpiCards.map((kpi) => (
-            <Card key={kpi.label}>
+            <Card key={kpi.label} className="transition-shadow hover:shadow-raised">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <kpi.icon className="h-5 w-5 text-ink-700" aria-hidden="true" />
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-full ${ACCENT_STYLE[kpi.accent]}`}>
+                    <kpi.icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
                   {kpi.health && (
                     <span className="flex items-center gap-1.5" title={`Semáforo: ${kpi.health}`}>
                       <span className={`h-2.5 w-2.5 rounded-full ${HEALTH_DOT[kpi.health]}`} aria-hidden="true" />
