@@ -40,7 +40,35 @@ export class CompaniesService {
         },
       },
     });
+
+    // "Debe existir el rol Empresa" — quien crea una empresa sin tener ya
+    // un rol más específico (TEACHER/ADMIN/SUPPORT) pasa a entrar
+    // directamente a /empresa al iniciar sesión, en vez de caer siempre en
+    // el panel de alumno aunque nunca le haya interesado tomar cursos. Si
+    // ya tenía otro rol, se le agrega COMPANY como rol secundario (mismo
+    // patrón multi-rol que TEACHER/STUDENT en el sidebar) para no perder
+    // acceso a lo que ya tenía.
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user && user.globalRole === "STUDENT") {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { globalRole: "COMPANY", secondaryRoles: { push: "STUDENT" } },
+      });
+    } else if (user && !user.secondaryRoles.includes("COMPANY") && user.globalRole !== "COMPANY") {
+      await this.prisma.user.update({ where: { id: userId }, data: { secondaryRoles: { push: "COMPANY" } } });
+    }
+
     return company;
+  }
+
+  /** Empresas a las que pertenece el usuario — usadas para resolver a dónde entrar tras iniciar sesión (ver /empresa). */
+  async listMine(userId: string) {
+    const memberships = await this.prisma.companyMembership.findMany({
+      where: { userId, status: "ACTIVE" },
+      include: { company: true },
+      orderBy: { joinedAt: "asc" },
+    });
+    return memberships.map((m) => ({ companyId: m.companyId, legalName: m.company.legalName, role: m.role }));
   }
 
   async getDashboard(companyId: string): Promise<CompanyDashboardSummaryDTO> {

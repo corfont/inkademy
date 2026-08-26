@@ -17,8 +17,8 @@ export default async function RoyaltyRecipientsPage() {
       <div>
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Regalías</h1>
         <p className="mt-1 text-sm text-ash-500">
-          Cursos que pagan un % o monto por alumno matriculado, por alumno que termina, o por referido — a alguien que no es usuario de la
-          plataforma.
+          Cursos que pagan un % o monto por alumno matriculado, por alumno que termina, o por referido — a un docente, alumno, personal externo
+          o cualquier otra persona (con cuenta en Inkademy o no).
         </p>
       </div>
       {!live && <Callout variant="info">No pudimos conectar con la API — no se muestran destinatarios reales por ahora.</Callout>}

@@ -43,7 +43,14 @@ function LoginForm() {
       const next = searchParams.get("next");
       // Cada rol cae en su propio panel — antes ADMIN y TEACHER también
       // aterrizaban en /campus por defecto.
-      const home = user.globalRole === "ADMIN" || user.globalRole === "SUPPORT" ? "/admin" : user.globalRole === "TEACHER" ? "/docente" : "/campus";
+      const home =
+        user.globalRole === "ADMIN" || user.globalRole === "SUPPORT"
+          ? "/admin"
+          : user.globalRole === "TEACHER"
+            ? "/docente"
+            : user.globalRole === "COMPANY"
+              ? "/empresa"
+              : "/campus";
       if (!user.profileCompletedAt) {
         router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
       } else if (next && !belongsToOtherRoleArea(next, home)) {

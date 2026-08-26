@@ -115,6 +115,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/campus/perfil", label: "Perfil", icon: User, section: "Alumno" },
     );
   }
+  if (roles.includes("COMPANY") && user?.globalRole !== "COMPANY") {
+    navItems.push({ href: "/empresa", label: "Mi empresa", icon: Building2, section: "Empresa" });
+  }
 
   return (
     <SidebarShell

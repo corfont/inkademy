@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut, Banknote, BookOpen, Award, Sparkles, Users, Wallet, Handshake, Percent } from "lucide-react";
+import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut, Banknote, BookOpen, Award, Sparkles, Users, Wallet, Handshake, Percent, Building2 } from "lucide-react";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -44,6 +44,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake, section: "Administración" },
       { href: "/admin/regalias", label: "Regalías", icon: Percent, section: "Administración" },
     );
+  }
+  if (roles.includes("COMPANY") && user?.globalRole !== "COMPANY") {
+    navItems.push({ href: "/empresa", label: "Mi empresa", icon: Building2, section: "Empresa" });
   }
 
   return (

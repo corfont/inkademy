@@ -528,7 +528,16 @@ export class AdminService {
 
   async createMaterial(
     lessonId: string,
-    input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: string; visible?: boolean },
+    input: {
+      title: string;
+      assetId?: string;
+      externalUrl?: string;
+      kind: string;
+      category?: string;
+      visible?: boolean;
+      allowDownload?: boolean;
+      allowView?: boolean;
+    },
     teacherUserId?: string,
   ) {
     if (teacherUserId) await this.assertTeacherOwnsLesson(lessonId, teacherUserId);
@@ -539,7 +548,16 @@ export class AdminService {
   /** Lectura/documento a nivel de módulo entero (no de una lección puntual) — ver Material.moduleId. */
   async createModuleMaterial(
     moduleId: string,
-    input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: string; visible?: boolean },
+    input: {
+      title: string;
+      assetId?: string;
+      externalUrl?: string;
+      kind: string;
+      category?: string;
+      visible?: boolean;
+      allowDownload?: boolean;
+      allowView?: boolean;
+    },
     teacherUserId?: string,
   ) {
     if (teacherUserId) await this.assertTeacherOwnsModule(moduleId, teacherUserId);
@@ -993,13 +1011,20 @@ export class AdminService {
 
   async listRoyaltyRecipients() {
     const rows = await this.prisma.royaltyRecipient.findMany({
-      include: { courses: { include: { course: { select: { id: true, slug: true, title: true } } } } },
+      include: {
+        courses: { include: { course: { select: { id: true, slug: true, title: true } } } },
+        // "Puede ser un docente, un personal externo, inclusive un alumno"
+        // — se muestra el rol de la cuenta vinculada (si hay una) para que
+        // el admin vea de un vistazo de qué tipo de persona se trata.
+        user: { select: { id: true, firstName: true, lastName: true, email: true, globalRole: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
     return rows;
   }
 
   createRoyaltyRecipient(input: {
+    userId?: string | null;
     name: string;
     contactEmail?: string;
     billingType?: "PER_ENROLLMENT" | "PER_COMPLETION" | "PER_REFERRAL";

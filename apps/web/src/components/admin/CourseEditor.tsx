@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown } from "lucide-react";
+import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown, Download, Eye } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -598,6 +598,27 @@ function MaterialItem({
           onClick={() => run(() => adminApi.updateMaterial(material.id, { visible: !material.visible }))}
         >
           {material.visible ? "Visible" : "Oculto"}
+        </button>
+        {/* "Marcar si el material puede descargarse, visualizarse, o ambos"
+            — se exige que al menos uno quede activo (el botón se
+            deshabilita si apagarlo dejaría los dos en false). */}
+        <button
+          type="button"
+          className={material.allowDownload !== false ? "text-ink-700" : "text-ash-300"}
+          title={material.allowDownload !== false ? "Descarga permitida — click para bloquearla" : "Descarga bloqueada — click para permitirla"}
+          disabled={busy || (material.allowDownload !== false && material.allowView === false)}
+          onClick={() => run(() => adminApi.updateMaterial(material.id, { allowDownload: !(material.allowDownload !== false) }))}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={material.allowView !== false ? "text-ink-700" : "text-ash-300"}
+          title={material.allowView !== false ? "Vista previa permitida — click para bloquearla" : "Vista previa bloqueada — click para permitirla"}
+          disabled={busy || (material.allowView !== false && material.allowDownload === false)}
+          onClick={() => run(() => adminApi.updateMaterial(material.id, { allowView: !(material.allowView !== false) }))}
+        >
+          <Eye className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"

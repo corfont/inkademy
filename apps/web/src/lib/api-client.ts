@@ -459,6 +459,9 @@ export const liveSessionApi = {
 export const companyApi = {
   create: (input: unknown, accessToken?: string | null) =>
     apiFetch<any>("/companies", { method: "POST", body: JSON.stringify(input), accessToken }),
+  // A qué empresa(s) pertenece el usuario — usado por /empresa (rol Empresa) para resolver a dónde entrar.
+  mine: (accessToken?: string | null) =>
+    apiFetch<{ companyId: string; legalName: string; role: string }[]>("/companies/mine", { accessToken, cache: "no-store" }),
   dashboard: (id: string, accessToken?: string | null) =>
     apiFetch<CompanyDashboardSummaryDTO>(`/companies/${id}/dashboard`, { accessToken }),
   members: (id: string, query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
@@ -749,7 +752,7 @@ export const adminApi = {
   ) => apiFetch<any>(`/admin/modules/${moduleId}/materials`, { method: "POST", body: JSON.stringify(input), accessToken }),
   updateMaterial: (
     id: string,
-    input: Partial<{ title: string; category: "MAIN" | "SUPPLEMENTARY"; visible: boolean }>,
+    input: Partial<{ title: string; category: "MAIN" | "SUPPLEMENTARY"; visible: boolean; allowDownload: boolean; allowView: boolean }>,
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/materials/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteMaterial: (id: string, accessToken?: string | null) =>

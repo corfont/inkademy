@@ -29,6 +29,12 @@ export class CompaniesController {
     return this.companiesService.create(user.id, dto);
   }
 
+  @Get("mine")
+  @ApiOperation({ summary: "Empresas a las que pertenezco — para resolver a dónde entrar tras iniciar sesión" })
+  listMine(@CurrentUser() user: RequestUser) {
+    return this.companiesService.listMine(user.id);
+  }
+
   @Get(":companyId/dashboard")
   @UseGuards(CompanyGuard)
   @ApiOperation({ summary: "Resumen ejecutivo B2B: participantes, cupos, progreso, riesgo" })

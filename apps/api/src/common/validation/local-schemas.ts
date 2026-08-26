@@ -133,15 +133,28 @@ export const upsertMaterialSchema = z
     kind: z.string().min(1),
     category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
     visible: z.boolean().optional(),
+    // "El docente/admin dueño de su curso podrá marcar si el material puede
+    // descargarse, visualizarse, o ambos" — ambos true por defecto (comportamiento anterior).
+    allowDownload: z.boolean().optional(),
+    allowView: z.boolean().optional(),
   })
   .refine((v) => (v.kind === "link" ? Boolean(v.externalUrl) : Boolean(v.assetId)), {
     message: "Un material de tipo link necesita externalUrl; cualquier otro tipo necesita assetId",
+  })
+  .refine((v) => v.allowDownload !== false || v.allowView !== false, {
+    message: "El material debe permitir al menos descarga o visualización",
   });
-export const updateMaterialSchema = z.object({
-  title: z.string().min(1).optional(),
-  category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
-  visible: z.boolean().optional(),
-});
+export const updateMaterialSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    category: z.enum(["MAIN", "SUPPLEMENTARY"]).optional(),
+    visible: z.boolean().optional(),
+    allowDownload: z.boolean().optional(),
+    allowView: z.boolean().optional(),
+  })
+  .refine((v) => v.allowDownload !== false || v.allowView !== false, {
+    message: "El material debe permitir al menos descarga o visualización",
+  });
 
 export const upsertProgramSchema = z.object({
   slug: z.string().min(1),
@@ -271,6 +284,10 @@ export const waiveLiquidationSchema = z.object({
 });
 
 export const upsertRoyaltyRecipientSchema = z.object({
+  // "Puede ser un docente, un personal externo, inclusive un alumno" — si
+  // se vincula a una cuenta real (userId), name/contactEmail se rellenan
+  // desde ese User; si no, sigue siendo un contacto externo en texto libre.
+  userId: z.string().uuid().optional().nullable(),
   name: z.string().min(1),
   contactEmail: z.string().email().optional().nullable(),
   billingType: z.enum(["PER_ENROLLMENT", "PER_COMPLETION", "PER_REFERRAL"]).optional(),

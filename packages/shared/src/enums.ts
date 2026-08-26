@@ -2,7 +2,7 @@
 // Mantener sincronizado manualmente: es la fuente de verdad para el frontend
 // (que no puede importar @prisma/client directamente).
 
-export const GLOBAL_ROLES = ["STUDENT", "TEACHER", "SUPPORT", "ADMIN"] as const;
+export const GLOBAL_ROLES = ["STUDENT", "TEACHER", "SUPPORT", "ADMIN", "COMPANY", "EXTERNAL"] as const;
 export type GlobalRole = (typeof GLOBAL_ROLES)[number];
 
 export const OFFERING_MODALITIES = ["RECORDED", "LIVE", "HYBRID"] as const;

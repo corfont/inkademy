@@ -44,7 +44,14 @@ function CompleteProfileForm() {
   // completaba su perfil terminaba viendo el campus de alumno, aunque su
   // globalRole en la base de datos fuera el correcto (ADMIN/TEACHER). Mismo
   // criterio que usa /login para decidir el "home" de cada rol.
-  const roleHome = user?.globalRole === "ADMIN" || user?.globalRole === "SUPPORT" ? "/admin" : user?.globalRole === "TEACHER" ? "/docente" : "/campus";
+  const roleHome =
+    user?.globalRole === "ADMIN" || user?.globalRole === "SUPPORT"
+      ? "/admin"
+      : user?.globalRole === "TEACHER"
+        ? "/docente"
+        : user?.globalRole === "COMPANY"
+          ? "/empresa"
+          : "/campus";
   // "next" se respeta salvo que apunte al área protegida de OTRO rol (p.ej.
   // ?next=/campus para un admin recién creado) — antes un admin/soporte/
   // docente que llegaba con ese "next" terminaba viendo el campus de

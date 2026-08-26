@@ -55,14 +55,29 @@ function MaterialList({ heading, materials }: { heading: string; materials: Clas
     <div>
       <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ash-500">{heading}</p>
       <ul className="flex flex-col gap-2">
-        {materials.map((mat) => (
-          <li key={mat.id}>
-            <a href={mat.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
-              <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
-              {mat.title}
-            </a>
-          </li>
-        ))}
+        {materials.map((mat) => {
+          // "Marcar si el material puede descargarse, visualizarse, o
+          // ambos" — sin permiso de descarga se fuerza `download` (nunca
+          // abre una vista previa que el alumno pueda guardar con un clic
+          // extra); sin permiso de vista se omite `target="_blank"` para
+          // que el navegador guarde el archivo en vez de previsualizarlo.
+          // No es DRM real (mismo límite honesto que blockMainVideoDownload),
+          // solo el mejor esfuerzo sin construir un visor propio.
+          const allowDownload = mat.allowDownload !== false;
+          const allowView = mat.allowView !== false;
+          const linkProps = allowView
+            ? { target: "_blank", rel: "noreferrer" }
+            : { download: true }; // solo descarga: fuerza guardar en vez de previsualizar
+          return (
+            <li key={mat.id}>
+              <a href={mat.url} {...linkProps} className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
+                <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
+                {mat.title}
+                {!allowDownload && <span className="text-xs text-ash-400">(solo vista)</span>}
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

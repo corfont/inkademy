@@ -313,6 +313,10 @@ export interface ClassroomMaterial {
   kind: string;
   category?: "MAIN" | "SUPPLEMENTARY";
   url: string;
+  // "El admin/docente podrá marcar si el material puede descargarse,
+  // visualizarse, o ambos" — ambos true por defecto.
+  allowDownload?: boolean;
+  allowView?: boolean;
 }
 export interface ClassroomLesson {
   id: string;

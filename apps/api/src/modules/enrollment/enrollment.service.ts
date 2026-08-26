@@ -209,12 +209,23 @@ export class EnrollmentService {
     // "Cuando agrego un link no se muestra... el usuario que tiene ese curso
     // no lo ve" — un material kind="link" no tiene assetId (nunca se subió
     // un archivo), así que su url viene de externalUrl tal cual.
-    const materialDTO = (m: { id: string; title: string; assetId: string | null; externalUrl?: string | null; kind: string; category: string }) => ({
+    const materialDTO = (m: {
+      id: string;
+      title: string;
+      assetId: string | null;
+      externalUrl?: string | null;
+      kind: string;
+      category: string;
+      allowDownload: boolean;
+      allowView: boolean;
+    }) => ({
       id: m.id,
       title: m.title,
       kind: m.kind,
       category: m.category,
       url: m.kind === "link" ? m.externalUrl ?? null : m.assetId ? this.storage.getPublicUrl(m.assetId) : null,
+      allowDownload: m.allowDownload,
+      allowView: m.allowView,
     });
 
     const approval =

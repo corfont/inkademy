@@ -22,6 +22,19 @@ enum GlobalRole {
   TEACHER
   SUPPORT
   ADMIN
+  // "Debe existir el rol Empresa" — quien crea una empresa (y no tenía ya
+  // un rol más específico como TEACHER/ADMIN/SUPPORT) pasa a tener este
+  // como rol principal, con acceso directo a /empresa al iniciar sesión en
+  // vez de caer siempre en el panel de alumno (ver CompaniesService.create
+  // y (auth)/login/page.tsx). El control de acceso real a cada empresa
+  // sigue siendo CompanyMembership (CompanyGuard), no este rol — este solo
+  // decide a qué panel entra por defecto.
+  COMPANY
+  // "Personal externo que solo busca regalías" — sin acceso a ningún panel
+  // (ni admin ni campus), solo existe para que RoyaltyRecipient.userId
+  // pueda apuntar a una cuenta real en vez de quedar como contacto sin
+  // cuenta (ver RoyaltyRecipient en el modelo de regalías).
+  EXTERNAL
 }
 
 enum OAuthProviderType {
@@ -97,6 +110,7 @@ model User {
   lessonProgress        LessonProgress[]
   lessonNotes           LessonNote[]
   courseRatings         CourseRating[]
+  royaltyRecipient      RoyaltyRecipient[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
@@ -439,6 +453,15 @@ model Material {
   // Si es false, el material queda cargado pero oculto para el alumno (el
   // admin/docente lo sigue viendo) — por defecto todo se ve.
   visible     Boolean           @default(true)
+  // "El admin/docente dueño de su curso podrá marcar si quiere que el
+  // material pueda descargarse, visualizarse, o ambos" — mismo criterio
+  // honesto que Course.blockMainVideoDownload: sin descarga significa sin
+  // botón/atributo de descarga (fuerza vista previa), sin visualización
+  // significa que el enlace siempre descarga en vez de abrir una vista
+  // previa; ninguno de los dos es DRM real, solo lo que el navegador
+  // permite sin descargar el archivo primero.
+  allowDownload Boolean         @default(true)
+  allowView     Boolean         @default(true)
   createdAt   DateTime          @default(now())
 }
 
@@ -1748,6 +1771,14 @@ enum RoyaltyBillingType {
 
 model RoyaltyRecipient {
   id           String             @id @default(uuid())
+  // "El que recibe regalías puede ser un docente, un personal externo,
+  // inclusive un alumno... depende de lo que la empresa quiera ofrecer" —
+  // opcionalmente vinculado a una cuenta real de la plataforma (de
+  // cualquier rol: docente/alumno/soporte/externo). Si es null, sigue
+  // siendo un contacto externo sin cuenta (comportamiento anterior, solo
+  // name/contactEmail) — no se exige tener cuenta para cobrar regalías.
+  userId       String?
+  user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   name         String
   contactEmail String?
   billingType  RoyaltyBillingType @default(PER_ENROLLMENT)
