@@ -1972,6 +1972,53 @@ export class AdminService {
     };
   }
 
+  /**
+   * "Un botón de detalle para ver esas cifras que se encuentran generales
+   * en el detalle de los ingresos y egresos separados por categoría, ya
+   * sea diario, semanal, mensual, anual, o en las fechas que se estime" —
+   * getFinancialSummary da UN total por el rango completo; esto lo parte
+   * en cubos de tiempo (día/semana/mes/año) para poder ver la evolución,
+   * más un desglose de "otros gastos" por categoría real (antes solo
+   * salía como un total ciego por moneda).
+   */
+  async getFinancialDetail(params: { from?: string; to?: string; groupBy: "day" | "week" | "month" | "year" }) {
+    const to = params.to ? new Date(params.to) : new Date();
+    const from = params.from ? new Date(params.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const bucketExpr = { day: "day", week: "week", month: "month", year: "year" }[params.groupBy];
+
+    const [incomeBuckets, expenseBuckets, expensesByCategory] = await Promise.all([
+      this.prisma.$queryRawUnsafe<Array<{ bucket: Date; currency: string; total: string }>>(
+        `SELECT date_trunc('${bucketExpr}', "createdAt") as bucket, currency, SUM(total)::text as total
+         FROM "Order" WHERE status = 'PAID' AND "createdAt" >= $1 AND "createdAt" <= $2
+         GROUP BY bucket, currency ORDER BY bucket ASC`,
+        from,
+        to,
+      ),
+      this.prisma.$queryRawUnsafe<Array<{ bucket: Date; currency: string; total: string }>>(
+        `SELECT date_trunc('${bucketExpr}', "incurredAt") as bucket, currency, SUM(amount)::text as total
+         FROM "PlatformExpense" WHERE "incurredAt" >= $1 AND "incurredAt" <= $2
+         GROUP BY bucket, currency ORDER BY bucket ASC`,
+        from,
+        to,
+      ),
+      this.prisma.platformExpense.groupBy({
+        by: ["category", "currency"],
+        where: { incurredAt: { gte: from, lte: to } },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      groupBy: params.groupBy,
+      income: incomeBuckets.map((b) => ({ bucket: b.bucket.toISOString(), currency: b.currency, amount: Number(b.total) })),
+      expenses: expenseBuckets.map((b) => ({ bucket: b.bucket.toISOString(), currency: b.currency, amount: Number(b.total) })),
+      expensesByCategory: expensesByCategory.map((e) => ({ category: e.category, currency: e.currency, amount: Number(e._sum.amount ?? 0) })),
+    };
+  }
+
   async updateFeeSettings(
     input: {
       culqiFeePercent?: number;

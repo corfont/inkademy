@@ -769,6 +769,14 @@ export class AdminController {
     return this.adminService.getFinancialSummary({ from, to, period, year: year ? Number(year) : undefined });
   }
 
+  @Get("finance/detail")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Ingresos/egresos en el tiempo (día/semana/mes/año) + gastos manuales por categoría, para el botón 'Ver detalle'" })
+  getFinancialDetail(@Query("from") from?: string, @Query("to") to?: string, @Query("groupBy") groupBy?: string) {
+    const validGroupBy = (["day", "week", "month", "year"] as const).includes(groupBy as never) ? (groupBy as "day" | "week" | "month" | "year") : "month";
+    return this.adminService.getFinancialDetail({ from, to, groupBy: validGroupBy });
+  }
+
   @Patch("finance/fee-settings")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Configura comisiones de pasarela y las reglas de detracción por tipo de comprador" })

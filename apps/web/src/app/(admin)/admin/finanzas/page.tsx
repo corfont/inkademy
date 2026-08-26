@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
-import { TrendingUp, Receipt, CreditCard, Wallet, Scale } from "lucide-react";
+import Link from "next/link";
+import { TrendingUp, Receipt, CreditCard, Wallet, Scale, SlidersHorizontal } from "lucide-react";
 import { getLocale } from "next-intl/server";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Callout } from "@/components/ui/Callout";
+import { Button } from "@/components/ui/Button";
 import { ExpenseManager } from "@/components/admin/ExpenseManager";
 import { OtherExpensesDetail } from "@/components/admin/OtherExpensesDetail";
 import { FeeSettingsForm } from "@/components/admin/FeeSettingsForm";
@@ -62,11 +64,20 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8">
-      <div>
-        <h1 className="font-serif text-2xl font-semibold text-ink-900">Finanzas</h1>
-        <p className="mt-1 text-sm text-ash-500">
-          {PERIOD_LABEL[period] ?? "Últimos 30 días"} · {summary.taxAffectation === "GRAVADO" ? `Plataforma afecta a IGV (${summary.igvPercent}%)` : "Plataforma exonerada de IGV"}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-2xl font-semibold text-ink-900">Finanzas</h1>
+          <p className="mt-1 text-sm text-ash-500">
+            {PERIOD_LABEL[period] ?? "Últimos 30 días"} · {summary.taxAffectation === "GRAVADO" ? `Plataforma afecta a IGV (${summary.igvPercent}%)` : "Plataforma exonerada de IGV"}
+          </p>
+        </div>
+        {/* "Un botón de detalle para ver esas cifras... por categoría, diario/semanal/mensual/anual" */}
+        <Link href="/admin/finanzas/detalle">
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            Ver detalle
+          </Button>
+        </Link>
       </div>
       {(!liveSummary || !liveExpenses || !livePnl) && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
 

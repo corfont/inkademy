@@ -578,6 +578,11 @@ export const adminApi = {
     params: { from?: string; to?: string; period?: "last30d" | "lastYear" | "allTime" | "year"; year?: number } = {},
     accessToken?: string | null,
   ) => apiFetch<any>("/admin/finance/summary", { accessToken, query: params, cache: "no-store" }),
+  // "Un botón de detalle para ver esas cifras... por categoría, diario/semanal/mensual/anual, o en fechas que se estime".
+  financialDetail: (
+    params: { from?: string; to?: string; groupBy: "day" | "week" | "month" | "year" },
+    accessToken?: string | null,
+  ) => apiFetch<any>("/admin/finance/detail", { accessToken, query: params, cache: "no-store" }),
   updateFeeSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>("/admin/finance/fee-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
   expenses: (params: { from?: string; to?: string } = {}, accessToken?: string | null) =>
