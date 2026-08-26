@@ -184,6 +184,13 @@ export interface EnrollmentSummaryDTO {
   // El curso ya cumple todo lo demás y solo falta que el alumno califique
   // con estrellas — dispara el modal visual CourseRatingPrompt en el campus.
   readyForRatingPrompt: boolean;
+  // "El curso aparece en ambas pestañas" — no es un bug de filtro (una
+  // matrícula nunca aparece en las dos a la vez): al volver a llevar un
+  // curso se crea una SEGUNDA matrícula independiente, con su propio id,
+  // mientras la original (ya aprobada) sigue en Finalizados. Ambas
+  // tarjetas mostraban el mismo título sin ninguna forma de distinguirlas
+  // — se agrega la fecha de esta matrícula puntual para diferenciarlas.
+  enrolledAt: string;
 }
 
 export interface AssessmentAttemptSubmission {

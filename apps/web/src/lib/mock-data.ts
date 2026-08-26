@@ -238,6 +238,7 @@ export const MOCK_ENROLLMENTS: EnrollmentSummaryDTO[] = [
     certificateAvailable: false,
     approvalMissing: ["Completa el Módulo 3", "Aprueba la evaluación final (mín. 70%)"],
     readyForRatingPrompt: false,
+    enrolledAt: "2026-01-15T00:00:00.000Z",
   },
   {
     id: "e2",
@@ -252,6 +253,7 @@ export const MOCK_ENROLLMENTS: EnrollmentSummaryDTO[] = [
     certificateAvailable: true,
     approvalMissing: [],
     readyForRatingPrompt: false,
+    enrolledAt: "2026-01-15T00:00:00.000Z",
   },
   {
     id: "e3",
@@ -266,6 +268,7 @@ export const MOCK_ENROLLMENTS: EnrollmentSummaryDTO[] = [
     certificateAvailable: false,
     approvalMissing: ["Completa Finanzas para no financieros", "Completa Excel avanzado para finanzas"],
     readyForRatingPrompt: false,
+    enrolledAt: "2026-01-15T00:00:00.000Z",
   },
 ];
 
@@ -367,15 +370,28 @@ export interface ClassroomModule {
   materials: ClassroomMaterial[];
   lessons: ClassroomLesson[];
 }
+export interface ClassroomAssessmentSummary {
+  id: string;
+  title: LocalizedText;
+  weightPercent: number | null;
+  minScore: number;
+  maxAttempts: number;
+  bestScore: number | null;
+  attemptsUsed: number;
+}
 export interface ClassroomDetail {
   enrollmentId: string;
   offeringKind: "COURSE" | "PROGRAM";
   title: LocalizedText;
   courseId: string;
   syllabusUrl?: string | null;
-  assessmentId?: string;
+  // "No puedo entrar al curso... para completar lo que me falta" — un curso
+  // puede tener VARIAS evaluaciones ponderadas (diplomado); antes solo se
+  // exponía la primera (assessmentId singular) y el resto quedaba
+  // inalcanzable desde el aula por más que pesaran la mayoría de la nota.
+  assessments: ClassroomAssessmentSummary[];
   // "El examen solo lo visualizará el alumno una vez completado el curso".
-  assessmentUnlocked?: boolean;
+  assessmentsUnlocked?: boolean;
   progressPct?: number;
   blockMainVideoDownload?: boolean;
   modules: ClassroomModule[];
@@ -403,8 +419,10 @@ export function buildMockClassroom(enrollmentId: string, courseSlug: string): Cl
     title: detail.title,
     courseId: detail.id,
     syllabusUrl: "#",
-    assessmentId: `${detail.id}-assess1`,
-    assessmentUnlocked: (enrollment?.progressPct ?? 0) >= 100,
+    assessments: [
+      { id: `${detail.id}-assess1`, title: { es: "Evaluación final" }, weightPercent: null, minScore: 70, maxAttempts: 3, bestScore: null, attemptsUsed: 0 },
+    ],
+    assessmentsUnlocked: (enrollment?.progressPct ?? 0) >= 100,
     progressPct: enrollment?.progressPct ?? 0,
     approvalMissing: enrollment?.approvalMissing ?? [],
     readyForRatingPrompt: enrollment?.readyForRatingPrompt ?? false,

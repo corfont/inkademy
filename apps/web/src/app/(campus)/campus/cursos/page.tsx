@@ -19,7 +19,24 @@ import type { EnrollmentSummaryDTO } from "@inkademy/shared";
 
 export const metadata: Metadata = { title: "Mis cursos" };
 
-function EnrollmentCard({ enrollment, locale, t }: { enrollment: EnrollmentSummaryDTO; locale: string; t: any }) {
+function EnrollmentCard({
+  enrollment,
+  locale,
+  t,
+  attemptLabel,
+}: {
+  enrollment: EnrollmentSummaryDTO;
+  locale: string;
+  t: any;
+  // "Por ejemplo he vuelto a hacer el curso... no debería seguir apareciendo
+  // en ambas pestañas" — no era un bug de filtro (cada matrícula sale en UNA
+  // sola pestaña, según su propio status), sino que dos tarjetas con el
+  // MISMO título (la original ya Finalizada + la nueva de "volver a
+  // llevar") no tenían ninguna forma de distinguirse entre sí. Cuando el
+  // alumno tiene más de una matrícula al mismo curso, se marca cada
+  // tarjeta con su intento y fecha.
+  attemptLabel?: string | null;
+}) {
   // "Debes terminar antes de..." — antes accessExpiresAt viajaba en el DTO
   // pero nada en pantalla se lo mostraba al alumno; el vencimiento era
   // invisible hasta que, sin aviso, dejaba de poder entrar al curso.
@@ -33,6 +50,7 @@ function EnrollmentCard({ enrollment, locale, t }: { enrollment: EnrollmentSumma
             <Badge variant="outline">{enrollment.offeringKind === "PROGRAM" ? "Programa" : "Curso"}</Badge>
             {isExpired && <Badge variant="danger">Acceso vencido</Badge>}
           </div>
+          {attemptLabel && <p className="mt-0.5 text-xs text-ash-500">{attemptLabel}</p>}
           {enrollment.accessExpiresAt && !isExpired && (
             <p className="mt-1 text-xs font-medium text-warning">Debes terminar antes del {formatDate(enrollment.accessExpiresAt, locale)}</p>
           )}
@@ -98,6 +116,24 @@ export default async function MyCoursesPage() {
   const inProgress = enrollments.filter((e) => e.status === "ACTIVE");
   const completed = enrollments.filter((e) => e.status === "COMPLETED");
 
+  // Cuenta cuántas matrículas activas+completadas tiene el alumno para un
+  // mismo curso (offeringKind COURSE) — si hay más de una, cada tarjeta se
+  // etiqueta con su número de intento y su fecha de matrícula.
+  const attemptCounts = new Map<string, number>();
+  for (const e of [...inProgress, ...completed]) {
+    if (e.offeringKind !== "COURSE" || !e.courseId) continue;
+    attemptCounts.set(e.courseId, (attemptCounts.get(e.courseId) ?? 0) + 1);
+  }
+  function attemptLabelFor(e: EnrollmentSummaryDTO): string | null {
+    if (e.offeringKind !== "COURSE" || !e.courseId) return null;
+    if ((attemptCounts.get(e.courseId) ?? 0) < 2) return null;
+    const sameCourse = [...inProgress, ...completed]
+      .filter((x) => x.courseId === e.courseId)
+      .sort((a, b) => new Date(a.enrolledAt).getTime() - new Date(b.enrolledAt).getTime());
+    const attemptNumber = sameCourse.findIndex((x) => x.id === e.id) + 1;
+    return `Intento ${attemptNumber} · Matriculado el ${formatDate(e.enrolledAt, locale)}`;
+  }
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("title")}</h1>
@@ -112,12 +148,20 @@ export default async function MyCoursesPage() {
 
         <TabsContent value="inProgress">
           <div className="flex flex-col gap-4">
-            {inProgress.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : inProgress.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
+            {inProgress.length === 0 ? (
+              <p className="text-ash-500">{t("empty")}</p>
+            ) : (
+              inProgress.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} attemptLabel={attemptLabelFor(e)} />)
+            )}
           </div>
         </TabsContent>
         <TabsContent value="completed">
           <div className="flex flex-col gap-4">
-            {completed.length === 0 ? <p className="text-ash-500">{t("empty")}</p> : completed.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} />)}
+            {completed.length === 0 ? (
+              <p className="text-ash-500">{t("empty")}</p>
+            ) : (
+              completed.map((e) => <EnrollmentCard key={e.id} enrollment={e} locale={locale} t={t} attemptLabel={attemptLabelFor(e)} />)
+            )}
           </div>
         </TabsContent>
         <TabsContent value="saved">

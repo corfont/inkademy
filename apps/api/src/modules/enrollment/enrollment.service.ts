@@ -178,6 +178,7 @@ export class EnrollmentService {
           certificateAvailable: Boolean(e.certificate && !e.certificate.revoked),
           approvalMissing: approval.missing,
           readyForRatingPrompt: approval.readyForRatingPrompt,
+          enrolledAt: e.enrolledAt.toISOString(),
         };
       }),
     );
@@ -254,10 +255,18 @@ export class EnrollmentService {
                 materials: { where: { visible: true }, orderBy: { order: "asc" } },
               },
             },
-            // Un solo "assessmentId" para el botón "Ir a la evaluación" del
-            // aula — si el curso llega a tener más de una evaluación, se usa
-            // la primera (mismo criterio simple que ya asumía el frontend).
-            assessments: { take: 1 },
+            // "No puedo entrar al curso... para completar lo que me falta" —
+            // el bug real: un diplomado/curso con VARIOS exámenes ponderados
+            // (ver weightPercent) solo exponía uno solo acá (`take: 1`), así
+            // que el resto (p.ej. un segundo examen que pesa 90% de la nota)
+            // quedaba con nota 0 en la ponderación PARA SIEMPRE — no había
+            // ningún link en el aula para siquiera rendirlo. Ahora se listan
+            // todas las evaluaciones reales (no archivadas) del curso.
+            assessments: {
+              where: { archived: false, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
+              orderBy: { id: "asc" },
+              include: { attempts: { where: { enrollmentId, score: { not: null } }, orderBy: { score: "desc" }, take: 1 } },
+            },
           },
         },
         program: true,
@@ -312,6 +321,32 @@ export class EnrollmentService {
         ? await this.prisma.courseRating.findUnique({ where: { enrollmentId: enrollment.id } })
         : null;
 
+    // "No puedo entrar al curso... para completar lo que me falta" — lista
+    // completa de evaluaciones (no solo la primera, ver comentario arriba
+    // en el include), cada una con su propio candado y la mejor nota que ya
+    // tiene el alumno, para poder navegar directo a la que le falta rendir
+    // sin adivinar. Mismo criterio de conteo por ciclo que
+    // AssessmentService.getForStudent (attemptCycleWhere).
+    const assessments = accessBlocked
+      ? []
+      : await Promise.all(
+          (enrollment.course?.assessments ?? []).map(async (a) => ({
+            id: a.id,
+            title: a.title as Record<string, string>,
+            weightPercent: a.weightPercent ?? null,
+            minScore: a.minScore,
+            maxAttempts: a.maxAttempts,
+            bestScore: a.attempts[0]?.score ?? null,
+            attemptsUsed: await this.prisma.assessmentAttempt.count({
+              where: {
+                assessmentId: a.id,
+                enrollmentId: enrollment.id,
+                ...(enrollment.materialResetAt ? { startedAt: { gte: enrollment.materialResetAt } } : {}),
+              },
+            }),
+          })),
+        );
+
     return {
       enrollmentId: enrollment.id,
       offeringKind: enrollment.offeringKind,
@@ -324,13 +359,12 @@ export class EnrollmentService {
       courseId: enrollment.course?.id ?? enrollment.program?.id ?? null,
       title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
       syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
-      assessmentId: enrollment.course?.assessments?.[0]?.id,
+      assessments,
       // "El examen solo lo visualizará el alumno una vez completado el
       // curso" — antes se mostraba el botón apenas existía una Assessment,
-      // sin importar el avance. Se sigue devolviendo assessmentId (para
-      // poder mostrar un mensaje explicando cuándo se desbloquea) pero el
-      // frontend solo habilita el acceso real si assessmentUnlocked=true.
-      assessmentUnlocked: enrollment.progressPct >= 100,
+      // sin importar el avance. El frontend solo habilita el acceso real a
+      // CUALQUIER evaluación de la lista si assessmentsUnlocked=true.
+      assessmentsUnlocked: enrollment.progressPct >= 100,
       // "El sistema no debe permitir que el usuario pueda descargar la
       // clase [principal]" — configurable por curso (Course.blockMainVideoDownload).
       blockMainVideoDownload: enrollment.course?.blockMainVideoDownload ?? true,
@@ -504,7 +538,17 @@ export class EnrollmentService {
       { removeOnComplete: true, removeOnFail: 50 },
     );
 
-    return { progressPct: updated.progressPct, status: updated.status };
+    // "Le he puesto que he leído el material obligatorio y no me ha
+    // aparecido la pantalla para calificar" — el bug real no estaba acá
+    // (readyForRatingPrompt ya se calculaba bien en el server), sino en que
+    // el frontend (Classroom.tsx) nunca se enteraba: markMaterialRead solo
+    // actualizaba progressPct en estado local, sin refrescar el `detail`
+    // completo de donde sale el modal de calificación. Ahora esta misma
+    // respuesta también lleva readyForRatingPrompt, para que el cliente
+    // pueda abrir el modal sin necesitar un refetch de toda la página.
+    const approval = updated.offeringKind === "COURSE" && updated.courseId ? await this.computeApprovalMissing(updated.courseId, updated.id) : null;
+
+    return { progressPct: updated.progressPct, status: updated.status, readyForRatingPrompt: approval?.readyForRatingPrompt ?? false };
   }
 
   /**

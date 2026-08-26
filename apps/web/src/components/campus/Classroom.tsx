@@ -390,10 +390,23 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     setActiveCheckpoint(null);
   }, [current?.id]);
 
+  // "Le he puesto que he leído el material obligatorio y no me ha aparecido
+  // la pantalla para calificar" — persistProgress/markMaterialRead solo
+  // actualizaban progressPct en estado local; `detail` (de donde sale
+  // ratingOpen) se fetchea una sola vez al cargar la página y nunca se
+  // volvía a leer, así que aunque el servidor ya marcara
+  // readyForRatingPrompt=true el modal nunca se disparaba. Ahora ambas
+  // llamadas también abren el modal directamente con la respuesta fresca,
+  // sin depender de un refetch completo de la página.
+  function maybeOpenRatingPrompt(readyForRatingPrompt: boolean | undefined) {
+    if (readyForRatingPrompt && !detail.myRating) setRatingOpen(true);
+  }
+
   async function persistProgress(lessonId: string, patch: { completed?: boolean; lastPositionSeconds?: number }) {
     try {
       const result = await meApi.updateLessonProgress(lessonId, patch);
       if (result?.progressPct !== undefined) setProgressPct(result.progressPct);
+      maybeOpenRatingPrompt(result?.readyForRatingPrompt);
     } catch {
       // best-effort: si la API no está disponible, el estado local sigue reflejando el intento del alumno
     }
@@ -409,6 +422,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     try {
       const result = await meApi.markMaterialRead(materialId);
       if (result?.progressPct !== undefined) setProgressPct(result.progressPct);
+      maybeOpenRatingPrompt(result?.readyForRatingPrompt);
     } catch {
       setReadMap((m) => ({ ...m, [materialId]: false })); // revierte si la API falló
     }
@@ -574,16 +588,11 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
               <div className="flex flex-col items-center gap-4 rounded-lg border border-paper-border bg-paper p-10 text-center">
                 <FileText className="h-10 w-10 text-ink-700" aria-hidden="true" />
                 <p className="font-medium text-ink-900">{localize(current?.title, locale)}</p>
-                {detail.assessmentId &&
-                  (detail.assessmentUnlocked ? (
-                    <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${detail.assessmentId}`}>
-                      <Button>{t("goToAssessment")}</Button>
-                    </Link>
-                  ) : (
-                    <p className="text-sm text-ash-500">
-                      La evaluación se habilita al completar el 100% del curso (llevas {Math.round(progressPct)}%).
-                    </p>
-                  ))}
+                {/* El o los enlaces a las evaluaciones ahora viven en una
+                    sección propia y siempre visible más abajo — ver
+                    "Evaluaciones" (no depende de qué lección esté abierta,
+                    ni se pierden las evaluaciones adicionales de un curso
+                    con más de un examen ponderado). */}
               </div>
             )}
             <div className="mt-3 flex items-center justify-between">
@@ -629,6 +638,41 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             <MaterialList heading="De esta lección" materials={lessonMain} readMap={readMap} onMarkRead={markMaterialRead} />
             <MaterialList heading="Lecturas principales del módulo" materials={moduleMain} readMap={readMap} onMarkRead={markMaterialRead} />
             <MaterialList heading="Lecturas complementarias" materials={[...lessonSupplementary, ...moduleSupplementary]} />
+          </section>
+        )}
+
+        {/* "No puedo entrar al curso... para completar lo que me falta" —
+            antes solo se enlazaba UNA evaluación (la primera), y solo
+            aparecía si la lección abierta no tenía video/link/SCORM. Ahora
+            se listan TODAS las evaluaciones reales del curso, siempre
+            visibles, cada una con su propio candado, peso y mejor nota. */}
+        {detail.assessments.length > 0 && (
+          <section aria-labelledby="assessments-heading" className="rounded-lg border border-paper-border bg-paper p-5">
+            <h2 id="assessments-heading" className="font-serif text-lg font-semibold text-ink-900">
+              Evaluaciones
+            </h2>
+            <ul className="mt-3 flex flex-col gap-3">
+              {detail.assessments.map((a) => (
+                <li key={a.id} className="flex flex-col gap-1 rounded-md border border-paper-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-ink-900">{localize(a.title, locale)}</p>
+                    <p className="text-xs text-ash-500">
+                      {a.weightPercent ? `Pesa ${a.weightPercent}% de la nota final · ` : ""}
+                      Nota mínima {a.minScore}/100
+                      {a.bestScore !== null && ` · Tu mejor nota: ${a.bestScore}/100`}
+                      {a.attemptsUsed > 0 && ` · Intentos usados: ${a.attemptsUsed}/${a.maxAttempts}`}
+                    </p>
+                  </div>
+                  {detail.assessmentsUnlocked ? (
+                    <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${a.id}`}>
+                      <Button size="sm">{a.bestScore !== null ? "Ver / reintentar" : t("goToAssessment")}</Button>
+                    </Link>
+                  ) : (
+                    <p className="text-xs text-ash-500">Se habilita al completar el 100% del curso (llevas {Math.round(progressPct)}%).</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 

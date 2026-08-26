@@ -321,10 +321,13 @@ export const meApi = {
     apiFetch<EnrollmentSummaryDTO[]>("/me/enrollments", { query: { status }, accessToken }),
   enrollment: (id: string, accessToken?: string | null) => apiFetch<any>(`/me/enrollments/${id}`, { accessToken }),
   updateLessonProgress: (lessonId: string, input: { completed?: boolean; lastPositionSeconds?: number }) =>
-    apiFetch<{ progressPct: number; status: string }>(`/me/lessons/${lessonId}/progress`, { method: "PATCH", body: JSON.stringify(input) }),
+    apiFetch<{ progressPct: number; status: string; readyForRatingPrompt: boolean }>(`/me/lessons/${lessonId}/progress`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
   // "El alumno deberá marcar como leído" (solo lecturas principales) — recalcula progressPct igual que una lección.
   markMaterialRead: (materialId: string) =>
-    apiFetch<{ progressPct: number; status: string }>(`/me/materials/${materialId}/read`, { method: "PATCH" }),
+    apiFetch<{ progressPct: number; status: string; readyForRatingPrompt: boolean }>(`/me/materials/${materialId}/read`, { method: "PATCH" }),
   // "Las notas del alumno se guardaban solo en localStorage" — ahora sincronizan entre dispositivos.
   lessonNote: (lessonId: string) => apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`),
   saveLessonNote: (lessonId: string, content: string) =>
