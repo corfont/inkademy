@@ -35,6 +35,16 @@ const SUSPICIOUS_SCORE_THRESHOLD = 90;
 // el viaje de esa request, no para dar tiempo extra real de examen).
 const TIME_LIMIT_GRACE_SECONDS = 30;
 
+// "Si no lo pasa después de los intentos tendrá que volver a repasar todo
+// el material de nuevo" — una vez que EnrollmentService.resetMaterialForRetry
+// marca materialResetAt, los intentos de ANTES de ese momento ya no cuentan
+// para el tope de maxAttempts (repasar todo de nuevo desbloquea intentos
+// frescos) — ver createAttempt y los conteos de attemptsUsed devueltos al
+// alumno.
+function attemptCycleWhere(materialResetAt: Date | null) {
+  return materialResetAt ? { startedAt: { gte: materialResetAt } } : {};
+}
+
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -115,7 +125,9 @@ export class AssessmentService {
     // examen si los personalizó, si no la plantilla del curso), datos de la
     // oferta y cuántos intentos ya usó. Común a ambas modalidades (archivo/preguntas).
     const attemptsUsed = enrollment
-      ? await this.prisma.assessmentAttempt.count({ where: { assessmentId, userId, enrollmentId: enrollment.id } })
+      ? await this.prisma.assessmentAttempt.count({
+          where: { assessmentId, userId, enrollmentId: enrollment.id, ...attemptCycleWhere(enrollment.materialResetAt) },
+        })
       : 0;
     const common = {
       courseTitle: assessment.course.title,
@@ -221,9 +233,11 @@ export class AssessmentService {
     // examen) — "si vuelves a llevar el curso es gratis" crea una
     // matrícula nueva; sin este acotado, un alumno que retoma el curso
     // seguiría topado por los intentos ya gastados en la matrícula
-    // anterior, aunque esté "empezando de cero".
+    // anterior, aunque esté "empezando de cero". También acotado al ciclo
+    // actual (desde el último materialResetAt) — ver
+    // handleAttemptFailedIfExhausted/EnrollmentService.resetMaterialForRetry.
     const attemptsCount = await this.prisma.assessmentAttempt.count({
-      where: { assessmentId, userId, enrollmentId: enrollment.id },
+      where: { assessmentId, userId, enrollmentId: enrollment.id, ...attemptCycleWhere(enrollment.materialResetAt) },
     });
     if (attemptsCount >= assessment.maxAttempts) {
       throw new ForbiddenException("Alcanzaste el número máximo de intentos");
@@ -373,9 +387,12 @@ export class AssessmentService {
       await this.enrollmentService.refreshCompletionStatus(attempt.enrollmentId);
     }
 
-    const attemptsUsed = await this.prisma.assessmentAttempt.count({
-      where: { assessmentId: attempt.assessmentId, userId, enrollmentId: attempt.enrollmentId },
-    });
+    const { attemptsUsed, materialReset } = await this.handleAttemptResolved(
+      { assessmentId: attempt.assessmentId, enrollmentId: attempt.enrollmentId, userId },
+      attempt.assessment.courseId,
+      attempt.assessment.maxAttempts,
+      status,
+    );
 
     return {
       attemptId: updated.id,
@@ -385,6 +402,7 @@ export class AssessmentService {
       attemptsUsed,
       maxAttempts: attempt.assessment.maxAttempts,
       timedOut,
+      materialReset,
     };
   }
 
@@ -433,8 +451,17 @@ export class AssessmentService {
       },
     });
 
+    const enrollmentForCycle = await this.prisma.enrollment.findUnique({
+      where: { id: attempt.enrollmentId },
+      select: { materialResetAt: true },
+    });
     const attemptsUsed = await this.prisma.assessmentAttempt.count({
-      where: { assessmentId: attempt.assessmentId, userId, enrollmentId: attempt.enrollmentId },
+      where: {
+        assessmentId: attempt.assessmentId,
+        userId,
+        enrollmentId: attempt.enrollmentId,
+        ...attemptCycleWhere(enrollmentForCycle?.materialResetAt ?? null),
+      },
     });
 
     return {
@@ -445,6 +472,7 @@ export class AssessmentService {
       attemptsUsed,
       maxAttempts: attempt.assessment.maxAttempts,
       timedOut,
+      materialReset: false,
     };
   }
 
@@ -481,7 +509,13 @@ export class AssessmentService {
       // recomputeProgress).
       await this.enrollmentService.refreshCompletionStatus(attempt.enrollmentId);
     }
-    return { graded: true };
+    const { materialReset } = await this.handleAttemptResolved(
+      { assessmentId: attempt.assessmentId, enrollmentId: attempt.enrollmentId, userId: attempt.userId },
+      attempt.assessment.courseId,
+      attempt.assessment.maxAttempts,
+      input.passed ? "PASSED" : "FAILED",
+    );
+    return { graded: true, materialReset };
   }
 
   /**
@@ -701,9 +735,50 @@ export class AssessmentService {
       // marque alguna lección/lectura (que puede no existir, ver
       // recomputeProgress).
       await this.enrollmentService.refreshCompletionStatus(attempt.enrollmentId);
+      await this.handleAttemptResolved(
+        { assessmentId: attempt.assessmentId, enrollmentId: attempt.enrollmentId, userId: attempt.userId },
+        attempt.assessment.courseId,
+        attempt.assessment.maxAttempts,
+        status,
+      );
     }
 
     return { graded: true };
+  }
+
+  /**
+   * Cuenta los intentos usados en el ciclo actual (desde el último
+   * materialResetAt, si lo hay) y, si el intento que acaba de resolverse
+   * quedó FAILED y con eso se agotó el tope, dispara
+   * EnrollmentService.resetMaterialForRetry — "si no lo pasa después de
+   * los intentos, tendrá que volver a repasar todo el material de nuevo".
+   * Compartido por submitAttempt, gradeFileAttempt y gradeAnswer (las 3
+   * formas en que un intento puede terminar en FAILED).
+   */
+  private async handleAttemptResolved(
+    attempt: { assessmentId: string; enrollmentId: string; userId: string },
+    courseId: string,
+    maxAttempts: number,
+    status: "PASSED" | "FAILED" | "PENDING_REVIEW",
+  ): Promise<{ attemptsUsed: number; materialReset: boolean }> {
+    const enrollment = await this.prisma.enrollment.findUnique({
+      where: { id: attempt.enrollmentId },
+      select: { materialResetAt: true },
+    });
+    const attemptsUsed = await this.prisma.assessmentAttempt.count({
+      where: {
+        assessmentId: attempt.assessmentId,
+        userId: attempt.userId,
+        enrollmentId: attempt.enrollmentId,
+        ...attemptCycleWhere(enrollment?.materialResetAt ?? null),
+      },
+    });
+    let materialReset = false;
+    if (status === "FAILED" && attemptsUsed >= maxAttempts) {
+      await this.enrollmentService.resetMaterialForRetry(attempt.enrollmentId, courseId, attempt.userId);
+      materialReset = true;
+    }
+    return { attemptsUsed, materialReset };
   }
 
   // ==========================================================================

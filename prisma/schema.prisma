@@ -684,6 +684,15 @@ model Enrollment {
   progressPct     Float            @default(0)
   enrolledAt      DateTime         @default(now())
   completedAt     DateTime?
+  // "En un curso asincrónico, si no lo pasa después de los intentos tendrá
+  // que volver a repasar todo el material de nuevo" — al agotar los
+  // intentos de un examen sin aprobar, EnrollmentService.resetMaterialForRetry
+  // borra el avance de lecciones/lecturas y marca este momento; los
+  // intentos de examen se vuelven a contar desde acá en adelante (ver
+  // AssessmentService.createAttempt/handleAttemptFailedIfExhausted), así
+  // que agotar attempts otra vez exige repasar todo de nuevo, no solo abre
+  // la puerta indefinidamente.
+  materialResetAt DateTime?
 
   lessonProgress   LessonProgress[]
   materialProgress MaterialProgress[]

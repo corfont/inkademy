@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { Clock } from "lucide-react";
 import { assessmentApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
@@ -359,10 +361,12 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
     attemptsUsed?: number;
     maxAttempts?: number;
     timedOut?: boolean;
+    materialReset?: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const attemptIdRef = useRef<string>(`mock-attempt-${assessment.id}`);
+  const params = useParams<{ enrollmentId?: string }>();
 
   const totalSeconds = (assessment.timeLimitMinutes ?? 0) * 60;
   const [remaining, setRemaining] = useState(totalSeconds);
@@ -454,6 +458,15 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
               <Button variant="outline" className="mt-3" onClick={() => window.location.reload()}>
                 Reintentar examen ({attemptsRemaining} restante{attemptsRemaining === 1 ? "" : "s"})
               </Button>
+            ) : result.materialReset ? (
+              <Callout variant="warning" className="mt-3 text-left">
+                Usaste todos tus intentos sin aprobar — para volver a intentarlo tienes que repasar todo el material del curso de nuevo.{" "}
+                {params?.enrollmentId && (
+                  <Link href={`/campus/cursos/${params.enrollmentId}`} className="font-medium underline">
+                    Volver al curso
+                  </Link>
+                )}
+              </Callout>
             ) : (
               <p className="mt-2 text-xs text-ash-400">Usaste todos tus intentos disponibles.</p>
             )}

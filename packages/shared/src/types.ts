@@ -206,6 +206,14 @@ export interface AssessmentResultDTO {
   // respuestas" — true si el tiempo real (server-side) superó el límite
   // del examen; en ese caso el intento nunca queda PASSED.
   timedOut: boolean;
+  // "Si no lo pasa después de los intentos, tendrá que volver a repasar
+  // todo el material de nuevo" — true cuando ESTE intento agotó
+  // maxAttempts sin aprobar: el avance de lecciones/lecturas de la
+  // matrícula se acaba de resetear (ver EnrollmentService.
+  // resetMaterialForRetry). attemptsUsed de arriba todavía muestra el
+  // conteo del ciclo que se acaba de agotar (p.ej. "3 de 3") — la próxima
+  // vez que el alumno consulte el examen, ya verá 0 usados del ciclo nuevo.
+  materialReset: boolean;
 }
 
 export interface CertificateDTO {

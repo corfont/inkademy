@@ -534,6 +534,34 @@ export class EnrollmentService {
   }
 
   /**
+   * "En un curso asincrónico, si no lo pasa después de los intentos tendrá
+   * que volver a repasar todo el material de nuevo" — se llama cuando un
+   * alumno agota los intentos de un examen sin aprobar (ver
+   * AssessmentService.handleAttemptFailedIfExhausted). Borra el avance de
+   * lecciones/lecturas de ESTA matrícula (no las respuestas/intentos ya
+   * dados, que quedan como historial) y marca `materialResetAt` — de ahí
+   * en adelante, el conteo de intentos usados solo mira attempts
+   * posteriores a este momento (ver createAttempt), así que agotarlos otra
+   * vez exige repasar todo de nuevo en vez de quedar bloqueado para
+   * siempre o poder reintentar sin límite.
+   *
+   * Los exámenes no están ligados a un módulo específico (Assessment.
+   * courseId, no moduleId) — hoy "repasar todo el material" es siempre a
+   * nivel de CURSO completo; si en el futuro se agregan exámenes por
+   * módulo, este método debería acotarse a las lecciones/lecturas de ese
+   * módulo únicamente.
+   */
+  async resetMaterialForRetry(enrollmentId: string, courseId: string, userId: string): Promise<void> {
+    await this.prisma.lessonProgress.updateMany({ where: { enrollmentId }, data: { completed: false } });
+    await this.prisma.materialProgress.deleteMany({ where: { enrollmentId } });
+    await this.prisma.enrollment.update({ where: { id: enrollmentId }, data: { materialResetAt: new Date() } });
+    // Recalcula progressPct con la misma lógica de siempre (incluido el
+    // caso "curso sin ningún módulo/lección cuenta como 100% de una vez" —
+    // ver recomputeProgress) — no lo pisamos a mano acá.
+    await this.recomputeProgress(enrollmentId, courseId, userId);
+  }
+
+  /**
    * Lee recomendaciones ya generadas (tabla Recommendation, poblada por el
    * worker al procesar la cola "recommendation"). Si aún no hay ninguna
    * (worker no ha corrido / usuario nuevo), genera un fallback simple en
