@@ -384,6 +384,12 @@ model CourseStaff {
   userId   String
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   role     CourseStaffRole
+  // "Por defecto el docente que tiene un curso asignado puede editar el
+  // contenido; el administrador podría también bloquearle esos accesos" —
+  // true por defecto (comportamiento de siempre); el admin lo puede apagar
+  // sin desasignar al docente del curso (sigue viéndolo, solo no puede
+  // modificarlo). Ver assertTeacherCanEditCourse.
+  canEdit  Boolean         @default(true)
 
   @@unique([courseId, userId, role])
 }

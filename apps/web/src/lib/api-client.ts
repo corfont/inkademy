@@ -577,6 +577,8 @@ export const adminApi = {
     apiFetch<any[]>(`/admin/courses${opts?.mine ? "?mine=true" : ""}`, { accessToken, cache: "no-store" }),
   // Panel de docente: cursos asignados, próximas clases a dictar, cola de calificación — ver AdminService.getTeacherDashboard.
   teacherDashboard: (accessToken?: string | null) => apiFetch<any>("/admin/my-courses", { accessToken }),
+  // "El docente también tiene que tener una agenda interactiva" — todas sus sesiones en vivo, mismo shape que /me/calendar.
+  teacherAgenda: (accessToken?: string | null) => apiFetch<any[]>("/admin/my-agenda", { accessToken, cache: "no-store" }),
   programs: (accessToken?: string | null) => apiFetch<any[]>("/admin/programs", { accessToken }),
   areas: (accessToken?: string | null) => apiFetch<any[]>("/admin/areas", { accessToken }),
   createArea: (input: { slug: string; name: Record<string, string>; icon?: string; order?: number }, accessToken?: string | null) =>
@@ -885,6 +887,9 @@ export const adminApi = {
     apiFetch<any>(`/admin/courses/${courseId}/staff`, { method: "POST", body: JSON.stringify(input), accessToken }),
   removeCourseStaff: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/course-staff/${id}`, { method: "DELETE", accessToken }),
+  // "El administrador podría también bloquearle esos accesos [de edición]" — sin desasignar al docente del curso.
+  setCourseStaffCanEdit: (id: string, canEdit: boolean) =>
+    apiFetch<any>(`/admin/course-staff/${id}/can-edit`, { method: "PATCH", body: JSON.stringify({ canEdit }) }),
 
   // --- Apariencia de la plataforma ---
   updateSettings: (input: Partial<Omit<PlatformSettingsDTO, "id">>, accessToken?: string | null) =>

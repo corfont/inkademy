@@ -20,7 +20,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     { href: "/docente/cursos", label: "Mis cursos", icon: LibraryBig },
     { href: "/docente/evaluaciones-pendientes", label: "Evaluaciones pendientes", icon: ClipboardCheck },
     { href: "/docente/liquidaciones", label: "Mis liquidaciones", icon: Banknote },
-    { href: "/campus/agenda", label: "Agenda", icon: CalendarDays },
+    { href: "/docente/agenda", label: "Agenda", icon: CalendarDays },
+    { href: "/docente/soporte", label: "Soporte", icon: LifeBuoy },
     { href: "/campus/perfil", label: "Perfil", icon: User },
   ];
 

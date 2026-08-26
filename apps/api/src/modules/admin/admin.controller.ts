@@ -137,6 +137,13 @@ export class AdminController {
     return this.adminService.getTeacherDashboard(user.id);
   }
 
+  @Get("my-agenda")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Agenda completa del docente: todas las sesiones en vivo de sus cursos asignados" })
+  myAgenda(@CurrentUser() user: RequestUser) {
+    return this.adminService.getTeacherAgenda(user.id);
+  }
+
   @Post("courses")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Crea un curso" })
@@ -963,5 +970,12 @@ export class AdminController {
   @ApiOperation({ summary: "Quita a un docente/moderador de un curso" })
   removeCourseStaff(@Param("id") id: string) {
     return this.adminService.removeCourseStaff(id);
+  }
+
+  @Patch("course-staff/:id/can-edit")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Bloquea/restaura el permiso de edición de un docente sobre este curso, sin desasignarlo" })
+  setCourseStaffCanEdit(@Param("id") id: string, @Body() dto: { canEdit: boolean }) {
+    return this.adminService.setCourseStaffCanEdit(id, dto.canEdit);
   }
 }

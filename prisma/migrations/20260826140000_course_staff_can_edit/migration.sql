@@ -1,0 +1,1 @@
+ALTER TABLE "CourseStaff" ADD COLUMN "canEdit" BOOLEAN NOT NULL DEFAULT true;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown, Download, Eye } from "lucide-react";
+import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -2187,6 +2187,21 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
     }
   }
 
+  // "Por defecto el docente que tiene un curso asignado puede editar el
+  // contenido; el administrador podría también bloquearle esos accesos" —
+  // apaga/prende canEdit sin desasignarlo (sigue viendo el curso).
+  async function handleToggleCanEdit(s: { id: string; canEdit: boolean }) {
+    setBusy(true);
+    try {
+      await adminApi.setCourseStaffCanEdit(s.id, !s.canEdit);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos cambiar el permiso de edición.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
@@ -2206,13 +2221,25 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
                     <p className="font-medium text-ink-900">{s.userName}</p>
                     <p className="text-xs text-ash-500">
                       {s.userEmail} · {STAFF_ROLE_LABEL[s.role] ?? s.role}
+                      {!s.canEdit && <span className="ml-1.5 font-medium text-danger">· Edición bloqueada</span>}
                     </p>
                   </div>
                 </div>
                 {isAdmin && (
-                  <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleRemove(s.id)}>
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title={s.canEdit ? "Bloquear su edición de este curso" : "Restaurar su edición de este curso"}
+                      disabled={busy}
+                      onClick={() => handleToggleCanEdit(s)}
+                    >
+                      {s.canEdit ? <LockOpen className="h-4 w-4" aria-hidden="true" /> : <Lock className="h-4 w-4 text-danger" aria-hidden="true" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleRemove(s.id)}>
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
                 )}
               </li>
             ))}

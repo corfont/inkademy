@@ -301,6 +301,30 @@ export class AdminService {
     }));
   }
 
+  /**
+   * "El docente también tiene que tener una agenda interactiva para saber
+   * cuándo tiene que dictar y a qué hora" — a diferencia del widget del
+   * dashboard (getTeacherDashboard, acotado a las próximas 10), esto trae
+   * TODAS las sesiones (pasadas y futuras) de sus cursos asignados, en el
+   * mismo shape que CalendarView (ver /campus/agenda) para reusar ese
+   * mismo componente de calendario mensual/lista.
+   */
+  async getTeacherAgenda(teacherUserId: string) {
+    const sessions = await this.prisma.liveSession.findMany({
+      where: { course: { staff: { some: { userId: teacherUserId } } } },
+      include: { course: true },
+      orderBy: { startsAt: "asc" },
+    });
+    return sessions.map((s) => ({
+      id: s.id,
+      type: "LIVE_CLASS" as const,
+      title: `Clase en vivo: ${(s.course.title as Record<string, string>)?.es ?? "Curso"}`,
+      startsAt: s.startsAt.toISOString(),
+      endsAt: s.endsAt.toISOString(),
+      liveSessionId: s.id,
+    }));
+  }
+
   /** Resumen para /docente: cursos asignados, próximas sesiones a dictar, cola de calificación pendiente. */
   async getTeacherDashboard(teacherUserId: string) {
     const [courses, upcomingLiveSessions, pendingReviewCount] = await Promise.all([
@@ -358,6 +382,21 @@ export class AdminService {
   }
 
   /**
+   * "Por defecto el docente que tiene un curso asignado puede editar el
+   * contenido; el administrador podría también bloquearle esos accesos" —
+   * a diferencia de assertTeacherOwnsCourse (solo pertenencia, usado para
+   * poder VER el curso), esto además exige canEdit=true. Se usa en todas
+   * las escrituras de contenido (curso/módulos/lecciones/materiales), no
+   * en getCourseDetail — un docente con edición bloqueada sigue pudiendo
+   * ver su curso, solo no modificarlo.
+   */
+  private async assertTeacherCanEditCourse(courseId: string, teacherUserId: string) {
+    const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
+    if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+    if (!membership.canEdit) throw new ForbiddenException("El administrador restringió tu acceso de edición a este curso");
+  }
+
+  /**
    * Antes createModule/updateModule/deleteModule/createLesson/updateLesson/
    * deleteLesson/createMaterial/updateMaterial/deleteMaterial no recibían
    * `teacherUserId` en absoluto — un TEACHER podía editar/borrar el
@@ -371,14 +410,14 @@ export class AdminService {
   private async assertTeacherOwnsModule(moduleId: string, teacherUserId: string) {
     const mod = await this.prisma.courseModule.findUnique({ where: { id: moduleId }, select: { courseId: true } });
     if (!mod) throw new NotFoundException("Módulo no encontrado");
-    await this.assertTeacherOwnsCourse(mod.courseId, teacherUserId);
+    await this.assertTeacherCanEditCourse(mod.courseId, teacherUserId);
     return mod;
   }
 
   private async assertTeacherOwnsLesson(lessonId: string, teacherUserId: string) {
     const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
     if (!lesson) throw new NotFoundException("Lección no encontrada");
-    await this.assertTeacherOwnsCourse(lesson.module.courseId, teacherUserId);
+    await this.assertTeacherCanEditCourse(lesson.module.courseId, teacherUserId);
     return lesson;
   }
 
@@ -390,7 +429,7 @@ export class AdminService {
     if (!material) throw new NotFoundException("Material no encontrado");
     const courseId = material.lesson?.module.courseId ?? material.module?.courseId;
     if (!courseId) throw new NotFoundException("Material sin curso asociado");
-    await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+    await this.assertTeacherCanEditCourse(courseId, teacherUserId);
     return material;
   }
 
@@ -399,7 +438,7 @@ export class AdminService {
   }
 
   async updateCourse(id: string, input: Record<string, unknown>, teacherUserId?: string) {
-    if (teacherUserId) await this.assertTeacherOwnsCourse(id, teacherUserId);
+    if (teacherUserId) await this.assertTeacherCanEditCourse(id, teacherUserId);
     return this.prisma.course.update({ where: { id }, data: input as never });
   }
 
@@ -453,7 +492,7 @@ export class AdminService {
   // --- Contenido: módulos / lecciones / materiales ---
 
   async createModule(courseId: string, input: { title: object; order?: number }, teacherUserId?: string) {
-    if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+    if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
     return this.prisma.courseModule.create({ data: { courseId, title: input.title, order: input.order ?? 0 } });
   }
 
@@ -2633,7 +2672,13 @@ export class AdminService {
       userId: s.userId,
       userEmail: s.user.email,
       userName: `${s.user.firstName} ${s.user.lastName}`,
+      canEdit: s.canEdit,
     }));
+  }
+
+  /** "El administrador podría bloquearle esos accesos [de edición]" — no desasigna al docente, solo apaga/prende su permiso de escritura en este curso. */
+  async setCourseStaffCanEdit(id: string, canEdit: boolean) {
+    return this.prisma.courseStaff.update({ where: { id }, data: { canEdit } });
   }
 
   /** Busca por correo en vez de pedir el id — el admin no tiene por qué saber el uuid de memoria. */

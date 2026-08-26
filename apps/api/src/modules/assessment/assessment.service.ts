@@ -581,10 +581,21 @@ export class AssessmentService {
     if (!membership) throw new ForbiddenException("No tienes asignado este curso");
   }
 
+  // "El administrador podría también bloquearle esos accesos" — mismo
+  // criterio que AdminService.assertTeacherCanEditCourse, aplicado acá a
+  // exámenes/preguntas: un docente con edición bloqueada sigue pudiendo
+  // ver las evaluaciones de su curso (listForCourse), solo no crearlas/
+  // modificarlas/borrarlas.
+  private async assertTeacherCanEditCourse(courseId: string, teacherUserId: string) {
+    const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
+    if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+    if (!membership.canEdit) throw new ForbiddenException("El administrador restringió tu acceso de edición a este curso");
+  }
+
   private async assertTeacherOwnsAssessment(assessmentId: string, teacherUserId: string) {
     const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId }, select: { courseId: true } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
-    await this.assertTeacherOwnsCourse(assessment.courseId, teacherUserId);
+    await this.assertTeacherCanEditCourse(assessment.courseId, teacherUserId);
   }
 
   async listForCourse(courseId: string, teacherUserId?: string) {
@@ -597,7 +608,7 @@ export class AssessmentService {
   }
 
   async createAssessment(courseId: string, input: Record<string, unknown>, teacherUserId?: string) {
-    if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
+    if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
     return this.prisma.assessment.create({ data: { courseId, ...input } as never });
   }
 
