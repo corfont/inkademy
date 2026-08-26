@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { BRAND_FONT_OPTIONS } from "@/lib/brand-fonts";
 import { ExamHeaderCard } from "@/components/campus/ExamHeaderCard";
+import { cn } from "@/lib/cn";
 
 const QUESTION_TYPE_LABEL: Record<string, string> = {
   SINGLE_CHOICE: "Opción única",
@@ -346,6 +347,17 @@ export function ExamBuilder({
   const weightNum = weightPercent.trim() === "" ? 0 : Number(weightPercent);
   const weightOverLimit = weightNum > maxWeight + 0.01;
 
+  // "Si al grabar las preguntas el puntaje excede la nota máxima debe
+  // aparecer una alerta para que el docente lo actualice, sino no va a
+  // poder usar ese examen en una evaluación" — la nota final SIEMPRE se
+  // normaliza sobre 100 (ver submitAttempt/gradeFileAttempt: earned/maxPoints
+  // *100), así que matemáticamente el examen funciona igual aunque los
+  // puntos sumen 137 — pero es justamente esa mezcla la que puede confundir
+  // al docente sobre cuánto vale cada pregunta. Se avisa acá Y se bloquea
+  // en el backend (createAttempt) hasta que la suma sea ≤100.
+  const totalPoints = questions.reduce((sum, q) => sum + (q.points ?? 0), 0);
+  const pointsOverLimit = totalPoints > 100.01;
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   async function handleSaveRules() {
@@ -541,7 +553,18 @@ export function ExamBuilder({
           </p>
         ) : (
           <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
-            <h3 className="text-sm font-semibold text-ink-900">Preguntas ({questions.length})</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ink-900">Preguntas ({questions.length})</h3>
+              <span className={cn("text-xs font-medium", pointsOverLimit ? "text-danger" : "text-ash-500")}>
+                Puntaje total: {totalPoints} / 100
+              </span>
+            </div>
+            {pointsOverLimit && (
+              <Callout variant="danger">
+                La suma de puntos de las preguntas ({totalPoints}) supera 100. Ajusta el puntaje de alguna pregunta — mientras exceda 100, este
+                examen no podrá usarse en una evaluación (los alumnos no podrán empezar un intento).
+              </Callout>
+            )}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={questions.map((q) => q.id)} strategy={verticalListSortingStrategy}>
                 <div className="flex flex-col gap-2">

@@ -192,9 +192,21 @@ export class AssessmentService {
   }
 
   async createAttempt(assessmentId: string, userId: string) {
-    const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId } });
+    const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId }, include: { questions: true } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
     if (assessment.archived) throw new ForbiddenException("Esta evaluación ya no está disponible");
+
+    // "Si al grabar las preguntas el puntaje excede la nota máxima debe
+    // aparecer una alerta... sino no va a poder usar ese examen en una
+    // evaluación" — defensa en profundidad: el builder ya avisa y marca el
+    // examen como "no usable" en la lista, pero esto bloquea de verdad que
+    // un alumno empiece un intento mientras la suma de puntos siga > 100.
+    if (!assessment.sourceFileAssetId) {
+      const totalPoints = assessment.questions.reduce((sum, q) => sum + q.points, 0);
+      if (totalPoints > 100.01) {
+        throw new ForbiddenException("Este examen no está disponible todavía: el docente debe ajustar el puntaje de las preguntas.");
+      }
+    }
 
     const now = new Date();
     if (assessment.availableFrom && now < assessment.availableFrom) {
@@ -823,7 +835,18 @@ export class AssessmentService {
 
   async createAssessment(courseId: string, input: Record<string, unknown>, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
-    return this.prisma.assessment.create({ data: { courseId, ...input } as never });
+    // "Si ya hay una regla de nota mínima para el certificado, no debería
+    // repetirse cada vez que hago un examen" — un examen nuevo hereda por
+    // defecto la nota mínima ya configurada a nivel curso (ApprovalRule),
+    // en vez del 70 fijo del schema; sigue siendo un campo propio del
+    // examen (Assessment.minScore) así que el docente puede cambiarlo para
+    // ESE examen puntual sin afectar la regla del curso ni a los demás.
+    let minScore = input.minScore;
+    if (minScore === undefined) {
+      const approvalRule = await this.prisma.approvalRule.findUnique({ where: { courseId }, select: { minScore: true } });
+      if (approvalRule) minScore = approvalRule.minScore;
+    }
+    return this.prisma.assessment.create({ data: { courseId, ...input, ...(minScore !== undefined ? { minScore } : {}) } as never });
   }
 
   /**

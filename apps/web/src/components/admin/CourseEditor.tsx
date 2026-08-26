@@ -1896,12 +1896,18 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
               <WeightFormulaCard assessments={activeAssessments} />
               {assessments.map((a) => {
                 const hasAttempts = (a._count?.attempts ?? 0) > 0;
+                // "Si el puntaje excede la nota máxima debe aparecer una
+                // alerta... sino no va a poder usar ese examen" — visible
+                // acá también, sin tener que abrir cada examen para verlo.
+                const totalPoints = (a.questions ?? []).reduce((sum: number, q: any) => sum + (q.points ?? 0), 0);
+                const pointsOverLimit = totalPoints > 100.01;
                 return (
                   <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-paper-border p-4">
                     <div>
                       <p className="font-medium text-ink-900">
                         {a.title?.es} {a.archived && <Badge variant="outline">Archivado</Badge>}{" "}
                         {a.sourceFileAssetId && <Badge variant="outline">Examen de archivo</Badge>}
+                        {pointsOverLimit && <Badge variant="danger">Puntaje excede 100 — no usable</Badge>}
                       </p>
                       <p className="text-xs text-ash-500">
                         {a.sourceFileAssetId
