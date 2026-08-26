@@ -60,6 +60,7 @@ export interface CourseCardDTO {
   areaSlug: string;
   durationHours: number;
   durationUnit?: "HOURS" | "WEEKS" | "MONTHS";
+  language?: string;
   coverImageUrl?: string | null;
   teacherName?: string | null;
   nextLiveSessionAt?: string | null;
@@ -87,6 +88,16 @@ export interface CourseReviewDTO {
   comment: string | null;
   createdAt: string;
   authorName: string;
+}
+
+// "El administrador podría crear secciones en la página — tal vez un curso
+// diga a quién va dirigido, tal vez no" — secciones libres, opcionales,
+// ordenables, que el admin arma por curso (a diferencia de "description",
+// que es fija). Null/vacío = el curso no muestra ninguna sección extra.
+export interface CourseDetailSection {
+  id: string;
+  title: LocalizedText;
+  body: LocalizedText;
 }
 
 export interface CatalogFilters {
@@ -118,6 +129,7 @@ export interface CourseDetailDTO extends CourseCardDTO {
   }[];
   liveSessions: { id: string; startsAt: string; endsAt: string; timezone: string }[];
   reviews?: CourseReviewDTO[];
+  detailSections?: CourseDetailSection[];
 }
 
 export interface ProgramDetailDTO {

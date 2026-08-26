@@ -749,7 +749,12 @@ export const adminApi = {
     apiFetch<any>("/admin/courses", { method: "POST", body: JSON.stringify(input), accessToken }),
   updateCourse: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/courses/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
-  courseDetail: (id: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${id}`, { accessToken }),
+  // "Secciones adicionales de la ficha" y otros cambios recién guardados no
+  // aparecían al recargar /admin/catalogo/:id — Next.js cachea GET por
+  // defecto en Server Components salvo que se pida explícitamente lo
+  // contrario (como sí hace el resto de este archivo); a este endpoint se
+  // le había quedado sin `cache: "no-store"`.
+  courseDetail: (id: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${id}`, { accessToken, cache: "no-store" }),
   approvalRule: (courseId: string, accessToken?: string | null) => apiFetch<any>(`/admin/courses/${courseId}/approval-rule`, { accessToken }),
   updateApprovalRule: (courseId: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/courses/${courseId}/approval-rule`, { method: "PATCH", body: JSON.stringify(input), accessToken }),

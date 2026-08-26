@@ -99,6 +99,14 @@ export const upsertCourseSchema = z.object({
   nextRecommendedCourseIds: z.array(z.string()).optional(),
   certificateTemplateId: z.string().uuid().nullable().optional(),
   blockMainVideoDownload: z.boolean().optional(),
+  // "El administrador podría crear secciones en la página" — libres,
+  // opcionales, ordenables (p.ej. "A quién va dirigido", "Requisitos
+  // mínimos") — ver CourseDetailSection en @inkademy/shared.
+  detailSections: z
+    .array(z.object({ id: z.string().min(1), title: localizedTextSchema, body: localizedTextSchema }))
+    .max(12)
+    .optional()
+    .nullable(),
 });
 export const updateCourseSchema = upsertCourseSchema.partial();
 

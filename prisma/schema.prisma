@@ -339,6 +339,13 @@ model Course {
   prerequisiteCourseIds  String[]              @default([])
   nextRecommendedCourseIds String[]            @default([])
 
+  // "El administrador podría crear secciones en la página — tal vez un
+  // curso diga a quién va dirigido, tal vez no" — secciones libres y
+  // opcionales que el admin arma por curso (a diferencia de `description`,
+  // que es un solo bloque fijo). Shape: [{ id, title: {es,en?}, body: {es,en?} }].
+  // Null/[] = el curso no muestra ninguna sección extra en su ficha pública.
+  detailSections         Json?
+
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 

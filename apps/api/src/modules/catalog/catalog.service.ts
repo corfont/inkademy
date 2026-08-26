@@ -59,6 +59,7 @@ export class CatalogService {
       areaSlug: course.area.slug,
       durationHours: course.durationHours,
       durationUnit: course.durationUnit,
+      language: course.language,
       coverImageUrl: course.coverImageAssetId
         ? this.storage.getPublicUrl(course.coverImageAssetId)
         : null,
@@ -197,6 +198,7 @@ export class CatalogService {
     return {
       ...card,
       description: (course.description as Record<string, string> | null) ?? null,
+      detailSections: (course.detailSections as unknown as CourseDetailDTO["detailSections"]) ?? [],
       accessDurationPolicy: course.accessDurationPolicy,
       subtitleLanguages: course.subtitleLanguages,
       prerequisiteCourseIds: course.prerequisiteCourseIds,

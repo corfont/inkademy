@@ -55,6 +55,8 @@ export function CourseEditor({ course }: { course: any }) {
 
       <MetadataSection course={course} busy={busy} onSave={(patch) => run(() => adminApi.updateCourse(course.id, patch))} />
 
+      <DetailSectionsManager course={course} />
+
       <CourseStaffSection courseId={course.id} />
 
       <ContentSection course={course} busy={busy} run={run} />
@@ -1999,6 +2001,109 @@ function NewQuestionForm({ assessmentId, onChange }: { assessmentId: string; onC
         </Button>
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// Secciones libres de la ficha pública del curso ("a quién va dirigido",
+// "requisitos mínimos", o lo que el admin quiera) — "el administrador
+// podría crear secciones en la página... tal vez un curso las tenga, tal
+// vez no". Se guardan en Course.detailSections y se renderizan en
+// /cursos/:slug solo si existen (ver CourseDetailPage).
+// ============================================================================
+
+function DetailSectionsManager({ course }: { course: any }) {
+  const router = useRouter();
+  const [sections, setSections] = useState<any[]>(course.detailSections ?? []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function addSection() {
+    setSections((s) => [...s, { id: `sec${Date.now()}${Math.random().toString(36).slice(2, 6)}`, title: { es: "" }, body: { es: "" } }]);
+  }
+  function updateSection(id: string, patch: Partial<any>) {
+    setSections((s) => s.map((sec) => (sec.id === id ? { ...sec, ...patch } : sec)));
+  }
+  function removeSection(id: string) {
+    setSections((s) => s.filter((sec) => sec.id !== id));
+  }
+  function move(index: number, direction: "up" | "down") {
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= sections.length) return;
+    setSections((s) => {
+      const next = [...s];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const cleaned = sections
+        .map((s) => ({ ...s, title: { es: (s.title?.es ?? "").trim() }, body: { es: (s.body?.es ?? "").trim() } }))
+        .filter((s) => s.title.es && s.body.es);
+      await adminApi.updateCourse(course.id, { detailSections: cleaned });
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar las secciones.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <div>
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Secciones adicionales de la ficha</h2>
+          <p className="mt-1 text-sm text-ash-500">
+            Bloques opcionales que se muestran en la página pública del curso — por ejemplo "A quién va dirigido" o "Requisitos mínimos". Un curso
+            sin secciones simplemente no las muestra.
+          </p>
+        </div>
+        {error && <Callout variant="danger">{error}</Callout>}
+        {sections.map((sec, i) => (
+          <div key={sec.id} className="rounded-lg border border-paper-border p-4">
+            <div className="flex items-start gap-2">
+              <div className="flex flex-col">
+                <button type="button" className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, "up")} aria-label="Mover arriba">
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <button type="button" className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30" disabled={i === sections.length - 1} onClick={() => move(i, "down")} aria-label="Mover abajo">
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <Input
+                  placeholder='Título — p.ej. "A quién va dirigido"'
+                  value={sec.title?.es ?? ""}
+                  onChange={(e) => updateSection(sec.id, { title: { es: e.target.value } })}
+                />
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-paper-border bg-paper px-3 py-2 text-sm text-ink-800 focus:border-ink-400 focus:outline-none"
+                  placeholder="Contenido del bloque…"
+                  value={sec.body?.es ?? ""}
+                  onChange={(e) => updateSection(sec.id, { body: { es: e.target.value } })}
+                />
+              </div>
+              <button type="button" className="text-ash-400 hover:text-danger" onClick={() => removeSection(sec.id)} aria-label="Eliminar sección">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={addSection}>
+            + Agregar sección
+          </Button>
+          <Button size="sm" disabled={saving} onClick={handleSave}>
+            {saving ? "Guardando…" : "Guardar secciones"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
