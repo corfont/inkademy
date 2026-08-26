@@ -1269,8 +1269,8 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
                     {new Date(session.startsAt).toLocaleString("es-PE")} — {new Date(session.endsAt).toLocaleTimeString("es-PE")}
                   </p>
                   <p className="text-xs text-ash-500">
-                    {session.status} · Teams: {session.joinUrl ? "listo" : "sin generar"}
-                    {session.providerMeetingId?.startsWith("simulated-") && " (simulado, sin credenciales reales de Graph)"}
+                    {session.status} · {session.provider === "TEAMS" ? "Teams" : "Zoom"}: {session.joinUrl ? "listo" : "sin generar"}
+                    {session.providerMeetingId?.startsWith("simulated-") && " (simulado, sin credenciales reales)"}
                     {session.teacherId && teachers.find((t) => t.userId === session.teacherId) && (
                       <> · {teachers.find((t) => t.userId === session.teacherId)?.userName}</>
                     )}
@@ -1384,7 +1384,7 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
               refreshSummary();
             }}
           >
-            {form.recurrence === "WEEKLY" ? "Programar serie semanal (crea las reuniones de Teams)" : "Programar sesión (crea la reunión de Teams)"}
+            {form.recurrence === "WEEKLY" ? "Programar serie semanal (crea las reuniones de Zoom)" : "Programar sesión (crea la reunión de Zoom)"}
           </Button>
         </div>
       </CardContent>

@@ -25,7 +25,7 @@ export class LiveSessionController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Programa una sesión en vivo y crea la reunión de Teams — TEACHER solo si es CourseStaff de ese curso" })
+  @ApiOperation({ summary: "Programa una sesión en vivo y crea la reunión (Zoom por defecto, Teams como alternativa) — TEACHER solo si es CourseStaff de ese curso" })
   create(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(createLiveSessionSchema)) dto: any) {
     return this.liveSessionService.create(dto, teacherScopeId(user));
   }
@@ -67,7 +67,7 @@ export class LiveSessionController {
   }
 
   @Get(":id/join")
-  @ApiOperation({ summary: "Valida matrícula + ventana horaria y devuelve el joinUrl de Teams" })
+  @ApiOperation({ summary: "Valida matrícula + ventana horaria y devuelve el joinUrl de la reunión (Zoom o Teams, según cómo se creó)" })
   join(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.liveSessionService.join(id, user.id);
   }

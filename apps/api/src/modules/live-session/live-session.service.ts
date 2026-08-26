@@ -2,12 +2,14 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { InjectQueue } from "@nestjs/bullmq";
 import { ConfigService } from "@nestjs/config";
 import type { Queue } from "bullmq";
-import type { PrismaClient } from "@inkademy/db";
+import type { PrismaClient, VirtualClassroomProviderType } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { ATTENDANCE_SYNC_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
 import { CalendarService } from "../calendar/calendar.service";
 import { NotificationService } from "../notification/notification.service";
 import { TeamsProvider } from "./providers/teams.provider";
+import { ZoomProvider } from "./providers/zoom.provider";
+import type { VirtualClassroomProvider } from "./providers/virtual-classroom-provider.interface";
 
 const JOIN_WINDOW_BEFORE_MIN = 15;
 
@@ -18,11 +20,34 @@ export class LiveSessionService {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly teamsProvider: TeamsProvider,
+    private readonly zoomProvider: ZoomProvider,
     private readonly config: ConfigService,
     private readonly calendarService: CalendarService,
     private readonly notifications: NotificationService,
     @InjectQueue(QUEUE_NAMES.ATTENDANCE_SYNC) private readonly attendanceSyncQueue: Queue,
   ) {}
+
+  /**
+   * "Zoom por defecto, Teams como segunda opción" — VIRTUAL_CLASSROOM_DEFAULT_PROVIDER
+   * decide con qué proveedor se crean las sesiones NUEVAS (default ZOOM si
+   * no está configurado). Para sesiones YA creadas, updateMeeting/
+   * getAttendanceReport siempre usan el proveedor que esa sesión tiene
+   * guardado (LiveSession.provider) — cambiar este default no debe romper
+   * la gestión de reuniones que ya existen en el otro proveedor.
+   */
+  private get defaultProviderType(): VirtualClassroomProviderType {
+    return this.config.get<string>("VIRTUAL_CLASSROOM_DEFAULT_PROVIDER") === "TEAMS" ? "TEAMS" : "ZOOM";
+  }
+
+  private resolveProvider(type: VirtualClassroomProviderType): VirtualClassroomProvider {
+    return type === "ZOOM" ? this.zoomProvider : this.teamsProvider;
+  }
+
+  private organizerFor(providerType: VirtualClassroomProviderType, explicit?: string): string {
+    if (explicit) return explicit;
+    if (providerType === "ZOOM") return "me"; // S2S OAuth: "me" resuelve al dueño de la cuenta, ver ZoomProvider.
+    return this.config.get<string>("MS_TEAMS_ORGANIZER_UPN") ?? "docente@inkademy.com";
+  }
 
   /**
    * Horas ya programadas (sesiones no canceladas) vs. duración total del
@@ -106,11 +131,11 @@ export class LiveSessionService {
     const { scheduledHours } = await this.getScheduleSummary(input.courseId);
     this.assertWithinCourseDuration(scheduledHours, (input.endsAt.getTime() - input.startsAt.getTime()) / 3_600_000, course.durationHours);
 
-    const organizerUpn =
-      input.organizerUpn ?? this.config.get<string>("MS_TEAMS_ORGANIZER_UPN") ?? "docente@inkademy.com";
+    const providerType = this.defaultProviderType;
+    const organizerUpn = this.organizerFor(providerType, input.organizerUpn);
     const subject = ((input.title as Record<string, string>)?.es ?? (course.title as Record<string, string>).es) ?? course.slug;
 
-    const meeting = await this.teamsProvider.createMeeting({
+    const meeting = await this.resolveProvider(providerType).createMeeting({
       subject,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
@@ -127,6 +152,7 @@ export class LiveSessionService {
         capacity: input.capacity,
         organizerUpn,
         teacherId: input.teacherId,
+        provider: providerType,
         providerMeetingId: meeting.providerMeetingId,
         joinUrl: meeting.joinUrl,
       },
@@ -182,13 +208,14 @@ export class LiveSessionService {
       await this.assertNoTeacherConflict(input.teacherId, occ.startsAt, occ.endsAt);
     }
 
-    const organizerUpn = input.organizerUpn ?? this.config.get<string>("MS_TEAMS_ORGANIZER_UPN") ?? "docente@inkademy.com";
+    const providerType = this.defaultProviderType;
+    const organizerUpn = this.organizerFor(providerType, input.organizerUpn);
     const subject = ((input.title as Record<string, string>)?.es ?? (course.title as Record<string, string>).es) ?? course.slug;
     const seriesId = `series-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
 
     const created = [];
     for (const occ of occurrences) {
-      const meeting = await this.teamsProvider.createMeeting({ subject, startsAt: occ.startsAt, endsAt: occ.endsAt, organizerUpn });
+      const meeting = await this.resolveProvider(providerType).createMeeting({ subject, startsAt: occ.startsAt, endsAt: occ.endsAt, organizerUpn });
       created.push(
         await this.prisma.liveSession.create({
           data: {
@@ -199,6 +226,7 @@ export class LiveSessionService {
             timezone: input.timezone ?? "America/Lima",
             capacity: input.capacity,
             organizerUpn,
+            provider: providerType,
             teacherId: input.teacherId,
             seriesId,
             providerMeetingId: meeting.providerMeetingId,
@@ -287,13 +315,13 @@ export class LiveSessionService {
 
     if (session.providerMeetingId && session.organizerUpn) {
       try {
-        await this.teamsProvider.updateMeeting(session.providerMeetingId, session.organizerUpn, {
+        await this.resolveProvider(session.provider).updateMeeting(session.providerMeetingId, session.organizerUpn, {
           startsAt: input.startsAt,
           endsAt: input.endsAt,
         });
       } catch (err) {
         this.logger.warn(
-          `No se pudo reprogramar la reunión de Teams de la sesión ${liveSessionId} (se continúa igual, la BD es la fuente de verdad): ${String(err)}`,
+          `No se pudo reprogramar la reunión de ${session.provider} de la sesión ${liveSessionId} (se continúa igual, la BD es la fuente de verdad): ${String(err)}`,
         );
       }
     }
@@ -345,10 +373,10 @@ export class LiveSessionService {
     const session = await this.prisma.liveSession.findUnique({ where: { id: liveSessionId } });
     if (!session) throw new NotFoundException("Sesión en vivo no encontrada");
     if (!session.providerMeetingId) {
-      throw new NotFoundException("Esta sesión no tiene una reunión de Teams asociada");
+      throw new NotFoundException("Esta sesión no tiene una reunión en vivo asociada");
     }
 
-    const records = await this.teamsProvider.getAttendanceReport(
+    const records = await this.resolveProvider(session.provider).getAttendanceReport(
       session.providerMeetingId,
       session.organizerUpn ?? "",
     );
@@ -365,6 +393,7 @@ export class LiveSessionService {
           joinedAt: record.joinedAt,
           leftAt: record.leftAt,
           durationMin: record.durationMin,
+          source: session.provider === "ZOOM" ? "zoom_report" : "teams_graph_report",
         },
         update: { joinedAt: record.joinedAt, leftAt: record.leftAt, durationMin: record.durationMin },
       });
