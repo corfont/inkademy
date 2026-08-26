@@ -332,7 +332,7 @@ export interface ClassroomLesson {
   id: string;
   order: number;
   title: LocalizedText;
-  contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "ASSIGNMENT";
+  contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "ASSIGNMENT" | "SCORM";
   durationMinutes?: number;
   // "El administrador debe indicar si ese video inicia el curso" — la
   // lección iniciadora se abre de una vez al entrar al curso.

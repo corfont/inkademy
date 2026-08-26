@@ -40,12 +40,18 @@ export class AuthController {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
   ) {}
 
+  // path="/auth" (antes "/"): la cookie de refresh es sameSite=lax, así que
+  // viaja en cualquier request al mismo origen — incluido, potencialmente,
+  // contenido de terceros que corra en ese mismo origen (p.ej. un paquete
+  // SCORM subido por un docente, que ejecuta JS arbitrario por diseño — ver
+  // ScormController). Acotar el path a donde realmente se lee (solo
+  // /auth/refresh) cierra ese vector sin necesitar un dominio separado.
   private setRefreshCookie(res: Response, token: string) {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
       secure: this.config.get("NODE_ENV") === "production",
       sameSite: "lax",
-      path: "/",
+      path: "/auth",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
   }
@@ -106,7 +112,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Cierra sesión (limpia la cookie de refresh)" })
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(REFRESH_COOKIE, { path: "/" });
+    res.clearCookie(REFRESH_COOKIE, { path: "/auth" });
   }
 
   @ApiBearerAuth()

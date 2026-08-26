@@ -506,6 +506,7 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
           <option value="PDF">PDF</option>
           <option value="LINK">Link</option>
           <option value="TEXT">Texto</option>
+          <option value="SCORM">SCORM</option>
         </Select>
         <Button
           size="sm"
@@ -781,6 +782,19 @@ function LessonRow({
   const [subtitlesRequesting, setSubtitlesRequesting] = useState(false);
   const [linkUrl, setLinkUrl] = useState(lesson.externalUrl ?? "");
   const [savingLink, setSavingLink] = useState(false);
+  const [scormUploading, setScormUploading] = useState(false);
+
+  async function handleScormUpload(file: File) {
+    setScormUploading(true);
+    try {
+      await adminApi.uploadScormPackage(lesson.id, file);
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos procesar el paquete SCORM.");
+    } finally {
+      setScormUploading(false);
+    }
+  }
 
   async function handleSaveLink() {
     setSavingLink(true);
@@ -906,6 +920,18 @@ function LessonRow({
               Abrir ↗
             </a>
           )}
+        </div>
+      )}
+      {lesson.contentType === "SCORM" && (
+        <div className="mt-2 flex flex-col gap-1.5 text-xs text-ash-600">
+          {lesson.scormEntryPath ? (
+            <span>
+              Paquete SCORM {lesson.scormVersion ?? ""} cargado (entrada: {lesson.scormEntryPath})
+            </span>
+          ) : (
+            <span>Sin paquete SCORM todavía — sube un .zip exportado de tu autor de contenido (Articulate, iSpring, etc.)</span>
+          )}
+          <DropLabel accept=".zip" busy={scormUploading} label={lesson.scormEntryPath ? "Reemplazar paquete (.zip)" : "Subir paquete SCORM (.zip)"} small onFile={handleScormUpload} />
         </div>
       )}
       {lesson.contentType === "VIDEO" && lesson.videoAssetId && (

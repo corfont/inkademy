@@ -332,6 +332,10 @@ export const meApi = {
       method: "POST",
       body: JSON.stringify({ stars, comment }),
     }),
+  // Token de sesión de reproducción SCORM (alcance acotado, 6h) — ver
+  // ScormService.createSession. playerUrl es relativo a API_URL.
+  scormSession: (enrollmentId: string, lessonId: string) =>
+    apiFetch<{ token: string; playerUrl: string }>(`/me/enrollments/${enrollmentId}/lessons/${lessonId}/scorm-session`, { method: "POST" }),
   calendar: (from?: string, to?: string, accessToken?: string | null) =>
     apiFetch<any[]>("/me/calendar", { query: { from, to }, accessToken }),
   certificates: (accessToken?: string | null) => apiFetch<CertificateDTO[]>("/me/certificates", { accessToken }),
@@ -761,6 +765,11 @@ export const adminApi = {
     apiFetch<any>(`/admin/lessons/${id}`, { method: "DELETE", accessToken }),
   generateSubtitles: (id: string, accessToken?: string | null) =>
     apiFetch<{ queued: boolean }>(`/admin/lessons/${id}/generate-subtitles`, { method: "POST", accessToken }),
+  uploadScormPackage: (lessonId: string, file: File, accessToken?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<any>(`/admin/lessons/${lessonId}/scorm-upload`, { method: "POST", body: form, accessToken });
+  },
   createMaterial: (
     lessonId: string,
     input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },

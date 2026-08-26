@@ -126,7 +126,7 @@ export const formativeQuizSchema = z.object({ questions: z.array(formativeQuizQu
 export const upsertLessonSchema = z.object({
   title: localizedTextSchema,
   order: z.number().int().nonnegative().optional(),
-  contentType: z.enum(["VIDEO", "PDF", "LINK", "TEXT"]),
+  contentType: z.enum(["VIDEO", "PDF", "LINK", "TEXT", "SCORM"]),
   videoAssetId: z.string().optional(),
   // Solo tiene sentido para contentType=LINK — a qué URL apunta la lección.
   externalUrl: z.string().url().optional().nullable(),

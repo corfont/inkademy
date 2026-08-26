@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz } from "@/lib/mock-data";
-import { meApi } from "@/lib/api-client";
+import { meApi, API_URL } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -121,6 +121,54 @@ function FormativeQuizWidget({ quiz }: { quiz: FormativeQuiz }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * "Me gustaría implementar módulos SCORM" — el paquete se reproduce en un
+ * iframe apuntando a la página envoltorio del backend (ver ScormController/
+ * scorm-shim.ts), que expone la API SCORM que el paquete necesita para
+ * reportar avance/nota. El token de sesión se pide recién al abrir la
+ * lección (no viaja en el HTML de esta página) y es de alcance acotado —
+ * solo sirve para reproducir ESTA lección durante unas horas.
+ *
+ * `sandbox`: allow-scripts + allow-same-origin es la combinación mínima
+ * necesaria para que el contenido encuentre `window.parent.API` (sin
+ * allow-same-origin el iframe queda forzado a un origen único aleatorio,
+ * rompiendo el descubrimiento de la API aunque la URL sea la misma) — no se
+ * agrega allow-top-navigation ni allow-popups-to-escape-sandbox, así que el
+ * paquete no puede navegar ni redirigir la pestaña del alumno.
+ */
+function ScormPlayer({ enrollmentId, lessonId }: { enrollmentId: string; lessonId: string }) {
+  const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPlayerUrl(null);
+    setError(null);
+    meApi
+      .scormSession(enrollmentId, lessonId)
+      .then((session) => {
+        if (!cancelled) setPlayerUrl(`${API_URL}${session.playerUrl}`);
+      })
+      .catch(() => {
+        if (!cancelled) setError("No pudimos iniciar el contenido SCORM. Intenta recargar la página.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enrollmentId, lessonId]);
+
+  if (error) return <Callout variant="danger">{error}</Callout>;
+  if (!playerUrl) return <div className="flex h-[32rem] items-center justify-center rounded-lg border border-paper-border bg-paper text-sm text-ash-500">Cargando contenido…</div>;
+  return (
+    <iframe
+      src={playerUrl}
+      title="Contenido SCORM"
+      className="h-[32rem] w-full rounded-lg border border-paper-border bg-ink-950"
+      sandbox="allow-scripts allow-same-origin allow-forms"
+    />
   );
 }
 
@@ -339,6 +387,8 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                   <Button>Abrir enlace</Button>
                 </a>
               </div>
+            ) : current?.contentType === "SCORM" ? (
+              <ScormPlayer key={current.id} enrollmentId={detail.enrollmentId} lessonId={current.id} />
             ) : officeViewerUrl ? (
               <iframe title={officeMaterial?.title} src={officeViewerUrl} className="h-[32rem] w-full rounded-lg border border-paper-border" />
             ) : (

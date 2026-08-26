@@ -388,6 +388,7 @@ enum LessonContentType {
   LINK
   TEXT
   ASSIGNMENT
+  SCORM
 }
 
 model Lesson {
@@ -420,6 +421,19 @@ model Lesson {
   subtitlesAssetId String?
   subtitlesStatus  String             @default("NONE")
   subtitlesError   String?
+
+  // "Me gustaría implementar módulos SCORM" — contentType="SCORM". El .zip
+  // subido se desempaqueta y cada archivo se sube a S3/MinIO bajo el prefijo
+  // scormPackagePrefix (p.ej. "scorm/{lessonId}/"), preservando su
+  // estructura de carpetas relativa (el paquete referencia sus propios
+  // assets — imágenes/css/js/otras páginas — por ruta relativa). El punto de
+  // entrada real (leído de imsmanifest.xml) es scormEntryPath, relativo a
+  // ese prefijo. scormVersion viene del schemaversion del manifest ("1.2" o
+  // "2004"), usado para saber qué shim de API exponer (window.API vs
+  // window.API_1484_11) — ver ScormService.
+  scormPackagePrefix String?
+  scormEntryPath     String?
+  scormVersion       String?
 
   // "Cursos e-learning interactivos con evaluación formativa integrada" —
   // preguntas de autoevaluación DENTRO de la lección (feedback inmediato con
@@ -688,6 +702,13 @@ model LessonProgress {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   completed    Boolean    @default(false)
   lastPositionSeconds Int @default(0)
+  // Reportado por el shim SCORM (cmi.core.lesson_status / cmi.completion_status
+  // según la versión del paquete) — completed/passed marca `completed=true`
+  // arriba también, para que el resto del sistema (avance del curso, etc.)
+  // no tenga que saber nada de SCORM. scormScoreRaw es informativo (cmi.core.score.raw
+  // / cmi.score.raw); no alimenta el certificado en esta fase.
+  scormCompletionStatus String?
+  scormScoreRaw         Float?
   updatedAt    DateTime   @updatedAt
 
   @@unique([enrollmentId, lessonId])

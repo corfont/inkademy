@@ -9,6 +9,7 @@ import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { teacherScopeId } from "../../common/utils/scope";
 import { fileMimeFilter, COURSE_ASSET_MIME_PREFIXES } from "../../common/utils/file-filter";
+import { ScormService } from "../scorm/scorm.service";
 import {
   addCoursePartnershipSchema,
   updateCoursePartnershipSchema,
@@ -66,6 +67,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly assessmentService: AssessmentService,
     private readonly companiesService: CompaniesService,
+    private readonly scormService: ScormService,
   ) {}
 
   @Get("dashboard/kpis")
@@ -202,6 +204,24 @@ export class AdminController {
   @ApiOperation({ summary: "Elimina una lección (y sus materiales en cascada) — TEACHER solo si es CourseStaff del curso dueño" })
   deleteLesson(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.adminService.deleteLesson(id, teacherScopeId(user));
+  }
+
+  @Post("lessons/:id/scorm-upload")
+  @Roles("ADMIN", "TEACHER")
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: "Sube un paquete SCORM (.zip) para esta lección — TEACHER solo si es CourseStaff del curso dueño" })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: 200 * 1024 * 1024 },
+      fileFilter: fileMimeFilter(["application/zip", "application/x-zip-compressed", "application/octet-stream"]),
+    }),
+  )
+  uploadScormPackage(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string },
+  ) {
+    return this.scormService.ingestPackage(id, file.buffer, teacherScopeId(user));
   }
 
   @Post("lessons/:id/generate-subtitles")
