@@ -129,9 +129,12 @@ export const updateNpsQuestionSchema = z.object({
 });
 export type UpdateNpsQuestionInput = z.infer<typeof updateNpsQuestionSchema>;
 
-// Escala NPS estándar 0-10 (no 1-5 como CourseRating) + comentario opcional.
+// "Solo con el mouse marque la estrella correspondiente acumulada" — 1-5
+// estrellas (no la escala NPS clásica 0-10), + comentario de la segunda
+// pregunta. El agregado en NpsService.listResponses adapta la fórmula NPS
+// a esta escala (5★=promotor, 4★=pasivo, 1-3★=detractor).
 export const submitNpsResponseSchema = z.object({
-  score: z.number().int().min(0).max(10),
+  score: z.number().int().min(1).max(5),
   comment: z.string().max(2000).optional(),
 });
 export type SubmitNpsResponseInput = z.infer<typeof submitNpsResponseSchema>;

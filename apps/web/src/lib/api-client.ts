@@ -918,6 +918,8 @@ export const npsAdminApi = {
   updateQuestion: (question: Record<string, string>, accessToken?: string | null) =>
     apiFetch<{ question: Record<string, string>; active: boolean }>("/admin/nps/question", { method: "PUT", body: JSON.stringify({ question }), accessToken }),
   companies: (accessToken?: string | null) => apiFetch<NpsCompanyRow[]>("/admin/nps/companies", { accessToken, cache: "no-store" }),
+  // "La opción de previsualizar cómo será el correo" — arma el HTML real sin enviarlo.
+  emailPreview: (accessToken?: string | null) => apiFetch<{ html: string }>("/admin/nps/email-preview", { accessToken, cache: "no-store" }),
   send: (companyId: string, accessToken?: string | null) =>
     apiFetch<{ sent: boolean; sentToEmail: string }>(`/admin/nps/send/${companyId}`, { method: "POST", accessToken }),
   results: (companyId?: string, accessToken?: string | null) =>
@@ -925,7 +927,10 @@ export const npsAdminApi = {
 };
 
 export const npsPublicApi = {
-  get: (token: string) => apiFetch<{ companyName: string; question: Record<string, string>; alreadyResponded: boolean }>(`/nps/${token}`),
+  get: (token: string) =>
+    apiFetch<{ companyName: string; question: Record<string, string>; commentPrompt: Record<string, string>; alreadyResponded: boolean }>(
+      `/nps/${token}`,
+    ),
   submit: (token: string, score: number, comment?: string) =>
     apiFetch<{ saved: boolean }>(`/nps/${token}`, { method: "POST", body: JSON.stringify({ score, comment }) }),
 };

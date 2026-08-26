@@ -240,13 +240,13 @@ export class NotificationService {
   }
 
   /** Encuesta NPS enviada al administrador de la empresa (B2B, Fase 2) — ver NpsService.sendToCompany. */
-  sendNpsSurveyInvite(to: string, companyName: string, question: string, surveyUrl: string, userId: string) {
+  sendNpsSurveyInvite(to: string, companyName: string, html: string, surveyUrl: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.GENERIC,
       {
         to,
         subject: `Tu opinión nos importa — ${companyName}`,
-        html: `<p>${question}</p><p><a href="${surveyUrl}">Responder encuesta</a> (toma menos de un minuto).</p>`,
+        html,
         meta: { surveyUrl },
       },
       userId,

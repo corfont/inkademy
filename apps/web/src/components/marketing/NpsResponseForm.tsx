@@ -1,36 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Star } from "lucide-react";
 import { npsPublicApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
-// 0-6 rojo (detractor), 7-8 ámbar (pasivo), 9-10 verde (promotor) — mismo
-// criterio de la fórmula NPS estándar que usa NpsService.listResponses,
-// para que el color que ve la empresa sea consistente con cómo se calcula.
-function scoreColor(n: number, selected: boolean) {
-  if (!selected) return "border-paper-border text-ash-500 hover:border-ink-300";
-  if (n <= 6) return "border-danger bg-danger text-white";
-  if (n <= 8) return "border-warning bg-warning text-white";
-  return "border-success bg-success text-white";
-}
-
 /**
- * "Esta encuesta debe ser bastante visual, evitar texto" — una fila de
- * números 0-10 (escala NPS estándar), sin escalas de estrellas ni texto
- * explicativo adicional; el comentario queda como único campo de texto.
+ * "Esta encuesta tiene que ser gráficamente bonita para que cuando le
+ * llegue al usuario solo con el mouse marque la estrella correspondiente
+ * acumulada y haya otra pregunta más abajo... donde la empresa podrá
+ * poner sus comentarios" — 5 estrellas (mismo widget visual que
+ * CourseRatingPrompt, para que toda la plataforma use un solo lenguaje de
+ * calificación) + una segunda pregunta fija para el comentario, en vez de
+ * un textarea genérico sin rotular.
  */
-export function NpsResponseForm({ token, question }: { token: string; question: string }) {
-  const [score, setScore] = useState<number | null>(null);
+export function NpsResponseForm({ token, question, commentPrompt }: { token: string; question: string; commentPrompt: string }) {
+  const [score, setScore] = useState(0);
+  const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit() {
-    if (score === null) {
-      setError("Elige un número del 0 al 10");
+    if (score === 0) {
+      setError("Elige de 1 a 5 estrellas");
       return;
     }
     setSaving(true);
@@ -54,41 +49,43 @@ export function NpsResponseForm({ token, question }: { token: string; question: 
     );
   }
 
+  const shown = hovered || score;
+
   return (
     <div className="flex flex-col items-center gap-6 py-4 text-center">
       <p className="font-serif text-xl font-semibold text-ink-900">{question}</p>
-      <div className="flex flex-wrap justify-center gap-2">
-        {Array.from({ length: 11 }, (_, n) => n).map((n) => (
+      <div className="flex gap-1.5" role="radiogroup" aria-label="Calificación en estrellas">
+        {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
             type="button"
             role="radio"
             aria-checked={score === n}
-            aria-label={`${n}`}
+            aria-label={`${n} estrella${n > 1 ? "s" : ""}`}
+            onMouseEnter={() => setHovered(n)}
+            onMouseLeave={() => setHovered(0)}
             onClick={() => {
               setScore(n);
               setError(null);
             }}
-            className={cn(
-              "flex h-11 w-11 items-center justify-center rounded-full border-2 text-sm font-semibold transition-colors",
-              scoreColor(n, score === n),
-            )}
+            className="p-0.5 transition-transform hover:scale-110"
           >
-            {n}
+            <Star className={cn("h-10 w-10", n <= shown ? "fill-warning text-warning" : "fill-none text-ash-300")} strokeWidth={1.5} />
           </button>
         ))}
       </div>
-      <div className="flex w-full max-w-xs justify-between text-xs text-ash-500">
-        <span>Nada probable</span>
-        <span>Muy probable</span>
+
+      <div className="w-full border-t border-paper-border pt-5">
+        <p className="mb-2 text-sm font-medium text-ink-800">{commentPrompt}</p>
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Escribe aquí (opcional)"
+          rows={3}
+          className="w-full resize-none rounded-lg border border-paper-border bg-paper p-3 text-sm"
+        />
       </div>
-      <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="¿Algo que quieras contarnos? (opcional)"
-        rows={3}
-        className="w-full resize-none rounded-lg border border-paper-border bg-paper p-3 text-sm"
-      />
+
       {error && <p className="text-sm text-danger">{error}</p>}
       <Button onClick={handleSubmit} disabled={saving} className="w-full">
         {saving ? "Enviando…" : "Enviar"}

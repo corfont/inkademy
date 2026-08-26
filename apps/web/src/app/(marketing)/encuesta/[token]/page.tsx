@@ -22,7 +22,7 @@ export default async function NpsSurveyPage({ params }: { params: { token: strin
             <p className="text-sm text-ash-500">Gracias por tu tiempo.</p>
           </div>
         ) : (
-          <NpsResponseForm token={params.token} question={survey.question.es ?? ""} />
+          <NpsResponseForm token={params.token} question={survey.question.es ?? ""} commentPrompt={survey.commentPrompt?.es ?? "¿Algo que quieras contarnos?"} />
         )}
       </div>
     </div>

@@ -2,20 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, MessageCircle } from "lucide-react";
+import { Send, MessageCircle, Star, Eye } from "lucide-react";
 import { npsAdminApi, ApiError, type NpsCompanyRow, type NpsResultsDTO } from "@/lib/api-client";
 import { Textarea, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Dialog } from "@/components/ui/Dialog";
 import { formatDate } from "@/lib/format";
 
-function scoreBadgeVariant(score: number | null): "success" | "warning" | "danger" | "neutral" {
-  if (score === null) return "neutral";
-  if (score >= 9) return "success";
-  if (score >= 7) return "warning";
-  return "danger";
+function StarRow({ score }: { score: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label={`${score} de 5 estrellas`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star key={n} className={`h-3.5 w-3.5 ${n <= score ? "fill-warning text-warning" : "fill-none text-ash-300"}`} aria-hidden="true" />
+      ))}
+    </span>
+  );
 }
 
 /**
@@ -39,6 +43,21 @@ export function NpsSurveyManager({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  async function handlePreview() {
+    setLoadingPreview(true);
+    setError(null);
+    try {
+      const { html } = await npsAdminApi.emailPreview();
+      setPreviewHtml(html);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos generar la vista previa.");
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
 
   async function run(key: string, action: () => Promise<unknown>, successMessage?: string) {
     setBusy(key);
@@ -65,7 +84,7 @@ export function NpsSurveyManager({
           <h2 className="font-serif text-lg font-semibold text-ink-900">Pregunta de la encuesta</h2>
           <Label htmlFor="nps-question">Se envía tal cual — una sola pregunta, sin más texto alrededor.</Label>
           <Textarea id="nps-question" value={questionText} onChange={(e) => setQuestionText(e.target.value)} rows={2} />
-          <div>
+          <div className="flex gap-2">
             <Button
               size="sm"
               disabled={busy === "question" || !questionText.trim()}
@@ -73,9 +92,20 @@ export function NpsSurveyManager({
             >
               Guardar pregunta
             </Button>
+            {/* "La opción de previsualizar cómo será el correo" */}
+            <Button size="sm" variant="outline" disabled={loadingPreview} onClick={handlePreview} className="gap-1.5">
+              <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+              {loadingPreview ? "Cargando…" : "Vista previa del correo"}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(previewHtml)} onClose={() => setPreviewHtml(null)} title="Vista previa del correo" className="max-w-2xl">
+        {previewHtml && (
+          <iframe title="Vista previa del correo NPS" srcDoc={previewHtml} sandbox="" className="h-[32rem] w-full rounded-md border border-paper-border" />
+        )}
+      </Dialog>
 
       {initialResults.totalResponses > 0 && (
         <Card>
@@ -106,8 +136,8 @@ export function NpsSurveyManager({
                     <MessageCircle className="mt-0.5 h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
                     <div>
                       <p className="text-sm text-ink-800">{r.comment}</p>
-                      <p className="mt-1 text-xs text-ash-500">
-                        {r.companyName} · nota {r.score}/10 · {r.respondedAt ? formatDate(r.respondedAt, "es") : ""}
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-ash-500">
+                        {r.companyName} · {r.score != null && <StarRow score={r.score} />} · {r.respondedAt ? formatDate(r.respondedAt, "es") : ""}
                       </p>
                     </div>
                   </div>
@@ -137,9 +167,7 @@ export function NpsSurveyManager({
                     <td className="py-2.5 pr-4 font-medium text-ink-900">{c.legalName}</td>
                     <td className="py-2.5 pr-4 text-ash-600">{c.lastSentAt ? formatDate(c.lastSentAt, "es") : "Nunca"}</td>
                     <td className="py-2.5 pr-4 text-ash-600">{c.lastRespondedAt ? formatDate(c.lastRespondedAt, "es") : "—"}</td>
-                    <td className="py-2.5 pr-4">
-                      {c.lastScore !== null ? <Badge variant={scoreBadgeVariant(c.lastScore)}>{c.lastScore}/10</Badge> : "—"}
-                    </td>
+                    <td className="py-2.5 pr-4">{c.lastScore !== null ? <StarRow score={c.lastScore} /> : "—"}</td>
                     <td className="py-2.5 text-right">
                       <Button
                         size="sm"

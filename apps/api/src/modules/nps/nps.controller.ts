@@ -34,6 +34,12 @@ export class NpsAdminController {
     return this.nps.listCompaniesWithLastSend();
   }
 
+  @Get("email-preview")
+  @ApiOperation({ summary: "Vista previa del correo de invitación, sin enviarlo" })
+  previewEmail() {
+    return this.nps.previewEmail();
+  }
+
   @Post("send/:companyId")
   @ApiOperation({ summary: "Envía la encuesta NPS al administrador de esa empresa" })
   send(@Param("companyId") companyId: string) {

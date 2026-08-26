@@ -6,8 +6,31 @@ import { NotificationService } from "../notification/notification.service";
 
 const SURVEY_ID = "default";
 const DEFAULT_QUESTION = {
-  es: "Del 0 al 10, ¿qué tan probable es que recomiendes Inkademy a otra empresa?",
+  es: "¿Qué tan probable es que recomiendes Inkademy a otra empresa?",
 };
+// "Otra pregunta más abajo en la encuesta, donde la empresa podrá poner
+// sus comentarios" — fija, no configurable por el admin (a diferencia de
+// la pregunta principal), igual que en CourseRatingPrompt.
+const COMMENT_PROMPT = { es: "¿Algo que quieras contarnos?" };
+
+/** HTML del correo de invitación — reutilizado tanto para el envío real como para la vista previa del admin. */
+function buildInviteEmailHtml(companyName: string, question: string, surveyUrl: string) {
+  return `
+  <div style="font-family: 'Work Sans', Arial, sans-serif; background: #f5f1ea; padding: 32px 16px;">
+    <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 8px rgba(13,15,28,0.08);">
+      <div style="background: #489bf4; padding: 24px 32px;">
+        <span style="font-family: Outfit, Arial, sans-serif; font-weight: 700; font-size: 20px; color: #ffffff;">inkademy</span>
+      </div>
+      <div style="padding: 32px; text-align: center;">
+        <p style="margin: 0 0 4px; font-size: 13px; color: #9497ab; text-transform: uppercase; letter-spacing: 0.05em;">${companyName}</p>
+        <p style="margin: 0 0 24px; font-size: 19px; line-height: 1.4; color: #1c2038; font-weight: 600;">${question}</p>
+        <p style="margin: 0 0 24px; font-size: 32px; letter-spacing: 6px; color: #d8b26c;">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
+        <a href="${surveyUrl}" style="display: inline-block; background: #489bf4; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 15px; padding: 14px 32px; border-radius: 999px;">Responder encuesta</a>
+        <p style="margin: 20px 0 0; font-size: 13px; color: #9497ab;">Toma menos de un minuto.</p>
+      </div>
+    </div>
+  </div>`;
+}
 
 /**
  * Encuesta NPS de una sola pregunta para empresas B2B (Fase 2). "La
@@ -99,12 +122,26 @@ export class NpsService {
     const appUrl = this.config.get<string>("APP_URL", "http://localhost:3000");
     const surveyUrl = `${appUrl}/encuesta/${response.token}`;
     const question = (survey.question as Record<string, string>).es ?? DEFAULT_QUESTION.es;
-    await this.notifications.sendNpsSurveyInvite(admin.user.email, company.legalName, question, surveyUrl, admin.user.id);
+    const html = buildInviteEmailHtml(company.legalName, question, surveyUrl);
+    await this.notifications.sendNpsSurveyInvite(admin.user.email, company.legalName, html, surveyUrl, admin.user.id);
 
     return { sent: true, sentToEmail: admin.user.email };
   }
 
-  /** Resultados agregados (fórmula NPS estándar) + detalle de comentarios. */
+  /**
+   * "La opción de previsualizar cómo será el correo" — arma el MISMO HTML
+   * que se manda de verdad (buildInviteEmailHtml), con la pregunta
+   * guardada y un nombre de empresa de ejemplo, sin encolar ningún envío
+   * ni tocar la base de datos.
+   */
+  async previewEmail() {
+    const survey = await this.getQuestion();
+    const question = survey.question.es ?? DEFAULT_QUESTION.es;
+    const appUrl = this.config.get<string>("APP_URL", "http://localhost:3000");
+    return { html: buildInviteEmailHtml("Empresa de ejemplo S.A.C.", question, `${appUrl}/encuesta/ejemplo-token`) };
+  }
+
+  /** Resultados agregados + detalle de comentarios. "Score" = estrellas 1-5 (no NPS 0-10 clásico, ver submitResponse). */
   async listResponses(companyId?: string) {
     const responses = await this.prisma.npsSurveyResponse.findMany({
       where: { respondedAt: { not: null }, ...(companyId ? { companyId } : {}) },
@@ -112,8 +149,11 @@ export class NpsService {
       orderBy: { respondedAt: "desc" },
     });
     const total = responses.length;
-    const promoters = responses.filter((r) => (r.score ?? 0) >= 9).length;
-    const detractors = responses.filter((r) => (r.score ?? 0) <= 6).length;
+    // Mismo criterio que la fórmula NPS estándar, adaptado a una escala de
+    // 1-5 estrellas (el pedido explícito fue "estrellas", no números 0-10):
+    // 5★ = promotor, 4★ = pasivo, 1-3★ = detractor.
+    const promoters = responses.filter((r) => (r.score ?? 0) >= 5).length;
+    const detractors = responses.filter((r) => (r.score ?? 0) <= 3).length;
     const npsScore = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : null;
 
     return {
@@ -144,6 +184,7 @@ export class NpsService {
     return {
       companyName: response.company.legalName,
       question: (response.survey.question as Record<string, string>) ?? DEFAULT_QUESTION,
+      commentPrompt: COMMENT_PROMPT,
       alreadyResponded: Boolean(response.respondedAt),
     };
   }
