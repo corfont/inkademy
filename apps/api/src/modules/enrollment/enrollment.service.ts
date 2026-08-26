@@ -224,6 +224,7 @@ export class EnrollmentService {
       },
     });
     await this.calendarService.scheduleForEnrollment(userId, enrollment.course, accessExpiresAt);
+    await this.recomputeProgress(retake.id, enrollment.courseId!, userId);
 
     return { enrollmentId: retake.id };
   }
@@ -462,8 +463,18 @@ export class EnrollmentService {
    * lecturas obligatorias podía llegar a 100% sin que el alumno las hubiera
    * abierto nunca. Compartido por updateLessonProgress y markMaterialRead
    * para que ambos caminos usen el mismo denominador.
+   *
+   * Público (no solo privado de esta clase) porque también hay que
+   * llamarlo justo al CREAR una matrícula nueva de curso (checkout, cupo
+   * B2B, otorgado gratis, "volver a llevar") — ver CommerceService/
+   * CompaniesService. Sin eso, un curso sin ningún módulo/lección (armado
+   * solo con examen, p.ej.) se queda con progressPct=0 (el default del
+   * esquema) PARA SIEMPRE, porque este método de otro modo solo se dispara
+   * al marcar una lección/lectura, y ese curso no tiene ninguna que marcar
+   * — el examen (que exige progressPct>=100 para desbloquearse) nunca le
+   * aparecía al alumno.
    */
-  private async recomputeProgress(enrollmentId: string, courseId: string, userId: string) {
+  async recomputeProgress(enrollmentId: string, courseId: string, userId: string) {
     const [totalLessons, completedLessons, totalMainMaterials, readMainMaterials] = await Promise.all([
       this.prisma.lesson.count({ where: { module: { courseId } } }),
       this.prisma.lessonProgress.count({ where: { enrollmentId, completed: true } }),
@@ -474,15 +485,17 @@ export class EnrollmentService {
     ]);
     const totalUnits = totalLessons + totalMainMaterials;
     const completedUnits = completedLessons + readMainMaterials;
-    const progressPct = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 10000) / 100 : 0;
+    // "Revisar el material" es una condición vacía si el curso no tiene
+    // ningún módulo/lección (p.ej. un curso armado solo con examen) — antes
+    // el avance quedaba trabado en 0% para siempre en ese caso, y como el
+    // examen exige progressPct>=100 para desbloquearse (ver
+    // getMineDetail.assessmentUnlocked), el examen nunca llegaba a
+    // aparecerle al alumno.
+    const progressPct = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 10000) / 100 : 100;
 
-    const updated = await this.prisma.enrollment.update({
-      where: { id: enrollmentId },
-      data: {
-        progressPct,
-        ...(progressPct >= 100 ? { status: "COMPLETED", completedAt: new Date() } : {}),
-      },
-    });
+    await this.prisma.enrollment.update({ where: { id: enrollmentId }, data: { progressPct } });
+    await this.refreshCompletionStatus(enrollmentId);
+    const updated = await this.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollmentId } });
 
     await this.certificateService.checkAndIssueIfEligible(updated.id);
     await this.recommendationQueue.add(
@@ -492,6 +505,32 @@ export class EnrollmentService {
     );
 
     return { progressPct: updated.progressPct, status: updated.status };
+  }
+
+  /**
+   * "El % de avance no puede ser 100% [la matrícula no puede darse por
+   * Completada] si el curso tiene exámenes y no han sido aprobados, por más
+   * que ya se haya terminado de revisar el material" — antes COMPLETED solo
+   * exigía progressPct>=100, ignorando examen/asistencia/calificación por
+   * completo. Ahora exige TODO lo que ya exige el certificado (mismo
+   * check, computeApprovalMissing): si falta algo, la matrícula sigue
+   * ACTIVE aunque el material ya esté 100% visto.
+   *
+   * Público y separado de recomputeProgress porque también hay que
+   * volver a evaluarlo cuando se califica un intento de examen — eso NO
+   * cambia progressPct (que es solo material/lecciones), pero sí puede
+   * ser lo último que faltaba para dar la matrícula por completada. Ver
+   * AssessmentService.submitAttempt/submitFileAttempt/gradeAnswer.
+   */
+  async refreshCompletionStatus(enrollmentId: string): Promise<void> {
+    const enrollment = await this.prisma.enrollment.findUnique({ where: { id: enrollmentId } });
+    if (!enrollment || enrollment.status === "COMPLETED" || enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
+      return;
+    }
+    const approval = await this.computeApprovalMissing(enrollment.courseId, enrollmentId);
+    if (approval.missing.length === 0) {
+      await this.prisma.enrollment.update({ where: { id: enrollmentId }, data: { status: "COMPLETED", completedAt: new Date() } });
+    }
   }
 
   /**
@@ -570,6 +609,11 @@ export class EnrollmentService {
       update: { stars, comment: comment ?? null },
     });
     await this.certificateService.checkAndIssueIfEligible(enrollmentId);
+    // La calificación suele ser lo ÚLTIMO que falta (material y examen ya
+    // aprobados) — sin esto, la matrícula se quedaba ACTIVE para siempre
+    // aunque ya cumpliera todo, porque nada más vuelve a evaluar el estado
+    // después de calificar.
+    await this.refreshCompletionStatus(enrollmentId);
     return { saved: true };
   }
 

@@ -14,6 +14,7 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { QUEUE_NAMES, ASSESSMENT_EXPIRY_JOBS } from "../../common/queues/queue.constants";
 import { CertificateService } from "../certificate/certificate.service";
 import { StorageService } from "../../storage/storage.service";
+import { EnrollmentService } from "../enrollment/enrollment.service";
 
 // Margen sobre timeLimitMinutes antes de dar por abandonado un intento
 // nunca enviado — mismo criterio que TIME_LIMIT_GRACE_SECONDS en
@@ -73,6 +74,7 @@ export class AssessmentService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly certificateService: CertificateService,
     private readonly storageService: StorageService,
+    private readonly enrollmentService: EnrollmentService,
     @InjectQueue(QUEUE_NAMES.ASSESSMENT_EXPIRY) private readonly assessmentExpiryQueue: Queue,
   ) {}
 
@@ -330,6 +332,14 @@ export class AssessmentService {
 
     if (!stillPending) {
       await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
+      // "Los exámenes solo deben poderse dar una vez revisado el material...
+      // el % de avance no puede ser 100% si hay exámenes sin completar" —
+      // esto es lo que ahora hace que aprobar un examen (o que un docente
+      // califique uno) pueda ser lo último que faltaba para que la
+      // matrícula pase a COMPLETED, sin depender de que el alumno además
+      // marque alguna lección/lectura (que puede no existir, ver
+      // recomputeProgress).
+      await this.enrollmentService.refreshCompletionStatus(attempt.enrollmentId);
     }
 
     const attemptsUsed = await this.prisma.assessmentAttempt.count({
@@ -431,6 +441,14 @@ export class AssessmentService {
 
     if (input.passed) {
       await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
+      // "Los exámenes solo deben poderse dar una vez revisado el material...
+      // el % de avance no puede ser 100% si hay exámenes sin completar" —
+      // esto es lo que ahora hace que aprobar un examen (o que un docente
+      // califique uno) pueda ser lo último que faltaba para que la
+      // matrícula pase a COMPLETED, sin depender de que el alumno además
+      // marque alguna lección/lectura (que puede no existir, ver
+      // recomputeProgress).
+      await this.enrollmentService.refreshCompletionStatus(attempt.enrollmentId);
     }
     return { graded: true };
   }
@@ -644,6 +662,14 @@ export class AssessmentService {
         data: { score: finalScore, status },
       });
       await this.certificateService.checkAndIssueIfEligible(attempt.enrollmentId);
+      // "Los exámenes solo deben poderse dar una vez revisado el material...
+      // el % de avance no puede ser 100% si hay exámenes sin completar" —
+      // esto es lo que ahora hace que aprobar un examen (o que un docente
+      // califique uno) pueda ser lo último que faltaba para que la
+      // matrícula pase a COMPLETED, sin depender de que el alumno además
+      // marque alguna lección/lectura (que puede no existir, ver
+      // recomputeProgress).
+      await this.enrollmentService.refreshCompletionStatus(attempt.enrollmentId);
     }
 
     return { graded: true };

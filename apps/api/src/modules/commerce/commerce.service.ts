@@ -15,6 +15,7 @@ import { decimalToString } from "../../common/utils/money";
 import { INVOICE_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
 import { NotificationService } from "../notification/notification.service";
 import { CalendarService } from "../calendar/calendar.service";
+import { EnrollmentService } from "../enrollment/enrollment.service";
 import { CulqiProvider } from "./providers/culqi.provider";
 import { StripeProvider } from "./providers/stripe.provider";
 import { PayPalProvider } from "./providers/paypal.provider";
@@ -60,6 +61,7 @@ export class CommerceService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly notifications: NotificationService,
     private readonly calendarService: CalendarService,
+    private readonly enrollmentService: EnrollmentService,
     private readonly culqiProvider: CulqiProvider,
     private readonly stripeProvider: StripeProvider,
     private readonly paypalProvider: PayPalProvider,
@@ -363,6 +365,7 @@ export class CommerceService {
             await this.prisma.enrollment.update({ where: { id: enrollment.id }, data: { accessExpiresAt } });
           }
           await this.calendarService.scheduleForEnrollment(order.userId, course, accessExpiresAt);
+          await this.enrollmentService.recomputeProgress(enrollment.id, item.courseId, order.userId);
         }
       }
     }
@@ -678,7 +681,10 @@ export class CommerceService {
 
     if (input.offeringKind === "COURSE" && courseId) {
       const course = await this.prisma.course.findUnique({ where: { id: courseId } });
-      if (course) await this.calendarService.scheduleForEnrollment(userId, course, accessExpiresAt);
+      if (course) {
+        await this.calendarService.scheduleForEnrollment(userId, course, accessExpiresAt);
+        await this.enrollmentService.recomputeProgress(enrollment.id, courseId, userId);
+      }
     }
 
     await this.prisma.auditLog.create({

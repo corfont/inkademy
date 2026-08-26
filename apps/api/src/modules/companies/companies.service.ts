@@ -11,6 +11,7 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { CalendarService } from "../calendar/calendar.service";
 import { NotificationService } from "../notification/notification.service";
+import { EnrollmentService } from "../enrollment/enrollment.service";
 
 @Injectable()
 export class CompaniesService {
@@ -18,6 +19,7 @@ export class CompaniesService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly calendarService: CalendarService,
     private readonly notifications: NotificationService,
+    private readonly enrollmentService: EnrollmentService,
   ) {}
 
   async create(userId: string, input: CreateCompanyInput) {
@@ -255,7 +257,10 @@ export class CompaniesService {
 
     if (pool.courseId) {
       const course = await this.prisma.course.findUnique({ where: { id: pool.courseId } });
-      if (course) await this.calendarService.scheduleForEnrollment(userId, course, pool.expiresAt ?? null);
+      if (course) {
+        await this.calendarService.scheduleForEnrollment(userId, course, pool.expiresAt ?? null);
+        await this.enrollmentService.recomputeProgress(enrollment.id, pool.courseId, userId);
+      }
     }
 
     return enrollment;
