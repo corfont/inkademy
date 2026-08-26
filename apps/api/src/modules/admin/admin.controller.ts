@@ -43,6 +43,7 @@ import {
   updateProgramSchema,
   updateQuestionSchema,
   updateUserSchema,
+  reorderQuestionsSchema,
   upsertAreaSchema,
   upsertAssessmentSchema,
   upsertCertificateTemplateSchema,
@@ -293,8 +294,12 @@ export class AdminController {
   @Get("courses/:courseId/assessments")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Lista las evaluaciones de un curso, con sus preguntas" })
-  listAssessments(@CurrentUser() user: RequestUser, @Param("courseId") courseId: string) {
-    return this.assessmentService.listForCourse(courseId, teacherScopeId(user));
+  listAssessments(
+    @CurrentUser() user: RequestUser,
+    @Param("courseId") courseId: string,
+    @Query("includeArchived") includeArchived?: string,
+  ) {
+    return this.assessmentService.listForCourse(courseId, teacherScopeId(user), includeArchived === "true");
   }
 
   @Post("courses/:courseId/assessments")
@@ -335,6 +340,17 @@ export class AdminController {
     @Body(new ZodValidationPipe(upsertQuestionSchema)) dto: any,
   ) {
     return this.assessmentService.createQuestion(assessmentId, dto, teacherScopeId(user));
+  }
+
+  @Patch("assessments/:assessmentId/questions/reorder")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Reordena las preguntas de una evaluación (drag-and-drop del builder)" })
+  reorderQuestions(
+    @CurrentUser() user: RequestUser,
+    @Param("assessmentId") assessmentId: string,
+    @Body(new ZodValidationPipe(reorderQuestionsSchema)) dto: { orderedQuestionIds: string[] },
+  ) {
+    return this.assessmentService.reorderQuestions(assessmentId, dto.orderedQuestionIds, teacherScopeId(user));
   }
 
   @Patch("questions/:id")

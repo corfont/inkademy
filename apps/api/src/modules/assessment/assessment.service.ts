@@ -90,17 +90,44 @@ export class AssessmentService {
   async getForStudent(assessmentId: string, userId: string, isPrivileged: boolean) {
     const assessment = await this.prisma.assessment.findUnique({
       where: { id: assessmentId },
-      include: { questions: true },
+      include: {
+        questions: { orderBy: { order: "asc" } },
+        course: { select: { title: true, examHeaderText: true, examFooterText: true, examInstructionsText: true } },
+      },
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+    // Archivado = oculto a los alumnos, igual que si no existiera — el
+    // staff privilegiado SÍ puede seguir viéndolo (p.ej. para restaurarlo).
+    if (assessment.archived && !isPrivileged) throw new NotFoundException("Evaluación no encontrada");
 
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { userId, courseId: assessment.courseId, offeringKind: "COURSE" },
+    });
     if (!isPrivileged) {
-      const [enrollment, isStaff] = await Promise.all([
-        this.prisma.enrollment.findFirst({ where: { userId, courseId: assessment.courseId, offeringKind: "COURSE" } }),
-        this.prisma.courseStaff.findFirst({ where: { courseId: assessment.courseId, userId } }),
-      ]);
+      const isStaff = await this.prisma.courseStaff.findFirst({ where: { courseId: assessment.courseId, userId } });
       if (!enrollment && !isStaff) throw new ForbiddenException("No estás matriculado en el curso de esta evaluación");
     }
+
+    // "Pantalla previa con todo lo que necesita saber el alumno antes de
+    // rendir el examen" — cabecera/pie/instrucciones resueltos (propios del
+    // examen si los personalizó, si no la plantilla del curso), datos de la
+    // oferta y cuántos intentos ya usó. Común a ambas modalidades (archivo/preguntas).
+    const attemptsUsed = enrollment
+      ? await this.prisma.assessmentAttempt.count({ where: { assessmentId, userId, enrollmentId: enrollment.id } })
+      : 0;
+    const common = {
+      courseTitle: assessment.course.title,
+      timeLimitMinutes: assessment.timeLimitMinutes,
+      maxAttempts: assessment.maxAttempts,
+      attemptsUsed,
+      minScore: assessment.minScore,
+      availableFrom: assessment.availableFrom,
+      availableUntil: assessment.availableUntil,
+      titleFontFamily: assessment.titleFontFamily,
+      headerText: assessment.headerTextOverride ?? assessment.course.examHeaderText ?? null,
+      footerText: assessment.footerTextOverride ?? assessment.course.examFooterText ?? null,
+      instructionsText: assessment.instructionsOverride ?? assessment.course.examInstructionsText ?? null,
+    };
 
     // Examen "cualitativo" — el alumno no ve preguntas, descarga el archivo
     // que subió el docente y luego sube su propia respuesta como archivo
@@ -113,11 +140,9 @@ export class AssessmentService {
         isFileUpload: true as const,
         sourceFileUrl: this.storageService.getPublicUrl(assessment.sourceFileAssetId),
         sourceFileMimeType: assessment.sourceFileMimeType,
-        timeLimitMinutes: assessment.timeLimitMinutes,
-        maxAttempts: assessment.maxAttempts,
-        minScore: assessment.minScore,
         displayMode: assessment.displayMode,
         questions: [] as never[],
+        ...common,
       };
     }
 
@@ -146,17 +171,16 @@ export class AssessmentService {
       title: assessment.title,
       type: assessment.type,
       isFileUpload: false as const,
-      timeLimitMinutes: assessment.timeLimitMinutes,
-      maxAttempts: assessment.maxAttempts,
-      minScore: assessment.minScore,
       displayMode: assessment.displayMode,
       questions,
+      ...common,
     };
   }
 
   async createAttempt(assessmentId: string, userId: string) {
     const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+    if (assessment.archived) throw new ForbiddenException("Esta evaluación ya no está disponible");
 
     const now = new Date();
     if (assessment.availableFrom && now < assessment.availableFrom) {
@@ -656,11 +680,11 @@ export class AssessmentService {
     await this.assertTeacherCanEditCourse(assessment.courseId, teacherUserId);
   }
 
-  async listForCourse(courseId: string, teacherUserId?: string) {
+  async listForCourse(courseId: string, teacherUserId?: string, includeArchived = false) {
     if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
     return this.prisma.assessment.findMany({
-      where: { courseId },
-      include: { questions: true, _count: { select: { attempts: true } } },
+      where: { courseId, ...(includeArchived ? {} : { archived: false }) },
+      include: { questions: { orderBy: { order: "asc" } }, _count: { select: { attempts: true } } },
       orderBy: { id: "asc" },
     });
   }
@@ -670,8 +694,31 @@ export class AssessmentService {
     return this.prisma.assessment.create({ data: { courseId, ...input } as never });
   }
 
+  /**
+   * "En% debe dar 100% o 1. No puede excederse" — si el guardado toca
+   * weightPercent, se valida que la suma de TODOS los pesos del curso (sin
+   * contar archivados, incluyendo el nuevo valor de este examen) no supere
+   * 100. Que falte ponderar (<100) SÍ se permite — se arma un examen a la
+   * vez; course-score.ts ya normaliza por el total real de todos modos, así
+   * que esto es una validación de autoría, no un requisito del cálculo.
+   */
   async updateAssessment(id: string, input: Record<string, unknown>, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherOwnsAssessment(id, teacherUserId);
+    if (Object.prototype.hasOwnProperty.call(input, "weightPercent")) {
+      const current = await this.prisma.assessment.findUnique({ where: { id }, select: { courseId: true } });
+      if (!current) throw new NotFoundException("Evaluación no encontrada");
+      const others = await this.prisma.assessment.findMany({
+        where: { courseId: current.courseId, archived: false, id: { not: id } },
+        select: { weightPercent: true },
+      });
+      const othersSum = others.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0);
+      const newWeight = (input.weightPercent as number | null | undefined) ?? 0;
+      if (othersSum + newWeight > 100.01) {
+        throw new BadRequestException(
+          `La suma de los pesos del curso superaría 100% (los demás exámenes ya suman ${othersSum}%, quedan ${Math.max(0, 100 - othersSum)}% disponibles).`,
+        );
+      }
+    }
     return this.prisma.assessment.update({ where: { id }, data: input as never });
   }
 
@@ -687,7 +734,10 @@ export class AssessmentService {
 
   async createQuestion(assessmentId: string, input: Record<string, unknown>, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherOwnsAssessment(assessmentId, teacherUserId);
-    return this.prisma.question.create({ data: { assessmentId, ...input } as never });
+    // Se agrega al final por defecto — el orden real después lo controla el
+    // drag-and-drop del builder (ver reorderQuestions).
+    const last = await this.prisma.question.findFirst({ where: { assessmentId }, orderBy: { order: "desc" } });
+    return this.prisma.question.create({ data: { assessmentId, order: (last?.order ?? -1) + 1, ...input } as never });
   }
 
   async updateQuestion(id: string, input: Record<string, unknown>, teacherUserId?: string) {
@@ -695,6 +745,20 @@ export class AssessmentService {
     if (!question) throw new NotFoundException("Pregunta no encontrada");
     if (teacherUserId && question.assessmentId) await this.assertTeacherOwnsAssessment(question.assessmentId, teacherUserId);
     return this.prisma.question.update({ where: { id }, data: input as never });
+  }
+
+  /** Drag-and-drop del builder — reemplaza el orden de TODAS las preguntas del examen según el array recibido. */
+  async reorderQuestions(assessmentId: string, orderedQuestionIds: string[], teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(assessmentId, teacherUserId);
+    const existing = await this.prisma.question.findMany({ where: { assessmentId }, select: { id: true } });
+    const existingIds = new Set(existing.map((q) => q.id));
+    if (orderedQuestionIds.length !== existingIds.size || orderedQuestionIds.some((id) => !existingIds.has(id))) {
+      throw new BadRequestException("La lista de preguntas no coincide con las preguntas reales de este examen");
+    }
+    await this.prisma.$transaction(
+      orderedQuestionIds.map((id, index) => this.prisma.question.update({ where: { id }, data: { order: index } })),
+    );
+    return { reordered: true };
   }
 
   async deleteQuestion(id: string, teacherUserId?: string) {

@@ -107,6 +107,11 @@ export const upsertCourseSchema = z.object({
     .max(12)
     .optional()
     .nullable(),
+  // Plantilla de cabecera/pie/instrucciones que heredan todos los exámenes
+  // de este curso salvo que tengan su propio override — ver upsertAssessmentSchema.
+  examHeaderText: localizedTextSchema.optional().nullable(),
+  examFooterText: localizedTextSchema.optional().nullable(),
+  examInstructionsText: localizedTextSchema.optional().nullable(),
 });
 export const updateCourseSchema = upsertCourseSchema.partial();
 
@@ -444,8 +449,23 @@ export const upsertAssessmentSchema = z.object({
   // ApprovalRule.scoreMode="WEIGHTED_AVERAGE" (diplomados con varios
   // exámenes ponderados). Ver computeCourseScore.
   weightPercent: z.number().min(0).max(100).optional().nullable(),
+  // "Se debe poder archivar" — oculta el examen a los alumnos sin borrarlo.
+  archived: z.boolean().optional(),
+  // Tipografía curada del título (ver BRAND_FONT_OPTIONS en el frontend) —
+  // no se restringe a un enum acá porque la lista curada vive en el
+  // frontend; el Select ya limita las opciones que llegan a mandarse.
+  titleFontFamily: z.string().max(60).optional().nullable(),
+  // Cabecera/pie/instrucciones propias de este examen — null hereda la
+  // plantilla del curso (Course.examHeaderText/examFooterText/examInstructionsText).
+  headerTextOverride: localizedTextSchema.optional().nullable(),
+  footerTextOverride: localizedTextSchema.optional().nullable(),
+  instructionsOverride: localizedTextSchema.optional().nullable(),
 });
 export const updateAssessmentSchema = upsertAssessmentSchema.partial();
+
+export const reorderQuestionsSchema = z.object({
+  orderedQuestionIds: z.array(z.string().min(1)).min(1),
+});
 
 export const submitFileAttemptSchema = z.object({
   submissionAssetId: z.string().min(1),
@@ -458,7 +478,10 @@ export const gradeFileAttemptSchema = z.object({
 });
 
 export const upsertQuestionSchema = z.object({
-  type: z.enum(["SINGLE_CHOICE", "MULTI_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "OPEN"]),
+  // "ORDERING" faltaba acá pese a estar soportado en el enum de Prisma, la
+  // UI y la corrección (assessment.service.ts) — crear una pregunta de
+  // ordenar fallaba la validación del backend. Bug real, corregido de paso.
+  type: z.enum(["SINGLE_CHOICE", "MULTI_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "OPEN", "ORDERING"]),
   text: localizedTextSchema,
   // [{ id, text }] para SINGLE_CHOICE/MULTI_CHOICE/TRUE_FALSE; vacío para SHORT_ANSWER/OPEN.
   options: z.array(z.object({ id: z.string(), text: z.string() })).optional(),

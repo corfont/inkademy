@@ -356,6 +356,15 @@ model Course {
   // Null/[] = el curso no muestra ninguna sección extra en su ficha pública.
   detailSections         Json?
 
+  // Plantilla de cabecera/pie/instrucciones para TODOS los exámenes de este
+  // curso — "voy a hacer 10 exámenes para un curso, sería ilógico copiar la
+  // cabecera cada vez". Cada Assessment puede personalizar la suya con sus
+  // propios *Override (null = hereda esto); ver Assessment más abajo y
+  // AssessmentService.getForStudent, que resuelve override ?? este valor.
+  examHeaderText         Json?
+  examFooterText         Json?
+  examInstructionsText   Json?
+
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
@@ -856,6 +865,11 @@ model Question {
   correctAnswer  Json? // string | string[] según tipo (null para OPEN)
   points         Float         @default(1)
   tags           String[]      @default([])
+  // Orden de autoría dentro del examen (controlado por drag-and-drop en el
+  // builder) — no existía hasta ahora, así que las preguntas creadas antes
+  // de esto reciben un orden estable pero arbitrario en la migración de
+  // backfill (no hay createdAt del que derivar el orden real de creación).
+  order          Int           @default(0)
 
   answers        Answer[]
 }
@@ -899,10 +913,30 @@ model Assessment {
   // posiblemente haya una fórmula de ponderación" — % que este examen aporta
   // a la nota final del curso cuando ApprovalRule.scoreMode="WEIGHTED_AVERAGE"
   // (ver AssessmentService/course-score.ts). null/0 = no participa en la
-  // fórmula. No se valida que la suma de todos los pesos del curso dé 100 a
-  // nivel de esquema — se avisa en el editor si no cuadra, pero no bloquea
-  // guardar mientras se arma la fórmula.
+  // fórmula. No se valida a nivel de esquema, pero AssessmentService.
+  // updateAssessment SÍ rechaza guardar si la suma de los pesos del curso
+  // (sin contar archivados) superaría 100 — "no puede exceder"; que falte
+  // ponderar (<100) sí se permite, se avisa en el editor mientras se arma.
   weightPercent     Float?
+
+  // "Se debe de poder grabar para editarlo, eliminarlo, archivarlo" —
+  // eliminar (hard delete) sigue bloqueado para siempre una vez que hay
+  // intentos de alumnos (ver AssessmentService.deleteAssessment); archivar
+  // es la salida real para ese caso: oculta el examen a los alumnos
+  // (getForStudent/createAttempt lo rechazan) sin borrar el historial.
+  archived          Boolean                 @default(false)
+
+  // Tipografía del título del examen (curada, ver BRAND_FONT_OPTIONS en el
+  // frontend) — null usa la tipografía de encabezados de PlatformSettings.
+  titleFontFamily   String?
+
+  // Cabecera/pie/instrucciones propias de ESTE examen — null hereda la
+  // plantilla del curso (Course.examHeaderText/examFooterText/
+  // examInstructionsText). Ver AssessmentService.getForStudent, que resuelve
+  // override ?? valor del curso.
+  headerTextOverride       Json?
+  footerTextOverride       Json?
+  instructionsOverride     Json?
 
   questions         Question[]
   attempts          AssessmentAttempt[]
