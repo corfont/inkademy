@@ -37,7 +37,18 @@ interface UserRow {
   address?: string | null;
   jobTitle?: string | null;
   companyFreeText?: string | null;
+  avatarUrl?: string | null;
+  enrollmentStats?: { total: number; active: number; completed: number; group: "EN_CURSO" | "COMPLETADO" | "SIN_CURSOS" };
 }
+
+// "Semaforización": verde = completados, ámbar = en curso (pendientes de
+// terminar), gris = sin ninguna matrícula todavía. Mismo dato que agrupa
+// la vista "por progreso de cursos", solo que acá va por usuario.
+const ENROLLMENT_GROUP_LABEL: Record<string, string> = {
+  EN_CURSO: "Llevando un curso o más",
+  COMPLETADO: "Culminó todo, nada pendiente",
+  SIN_CURSOS: "Todavía sin cursos",
+};
 
 // "01. Admins en una sección, 02. Docentes en otra, 03. Soporte en otra,
 // 04. Empresa (con sus trabajadores) en otra, 05. Público independiente en
@@ -91,7 +102,7 @@ export function UsersManager() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [q, setQ] = useState("");
-  const [groupByDomain, setGroupByDomain] = useState(false);
+  const [groupMode, setGroupMode] = useState<"type" | "domain" | "progress">("type");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -137,22 +148,35 @@ export function UsersManager() {
   // ANTES de asignarlos a una empresa real, algo que la vista por rol no
   // puede mostrar (todavía no tienen `companies`, así que caen en "Público
   // independiente" mezclados con alumnos sueltos).
-  const groups: Array<{ domain: string; label: string; rows: UserRow[] }> = groupByDomain
-    ? Object.entries(
-        users.reduce<Record<string, UserRow[]>>((acc, u) => {
-          const key = emailDomain(u.email);
-          (acc[key] ??= []).push(u);
-          return acc;
-        }, {}),
-      )
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([domain, rows]) => {
-          const linkedCompanyId = rows.find((r) => r.companies && r.companies.length > 0)?.companies?.[0]?.companyId;
-          const company = linkedCompanyId ? companies.find((c) => c.id === linkedCompanyId) : null;
-          const label = company ? `${company.legalName} (RUC ${company.taxId}) — @${domain}` : `@${domain}`;
-          return { domain, label, rows };
-        })
-    : SECTION_ORDER.flatMap((section) => {
+  // Vista alternativa (progreso de cursos): "los que están llevando un
+  // curso o más, los que ya culminaron y no están llevando nada, los que
+  // aún no han llevado ninguno" — mismo dato que el semáforo de cada
+  // recuadro, agrupado esta vez a nivel de toda la lista.
+  const PROGRESS_ORDER = ["EN_CURSO", "COMPLETADO", "SIN_CURSOS"] as const;
+
+  const groups: Array<{ domain: string; label: string; rows: UserRow[] }> =
+    groupMode === "domain"
+      ? Object.entries(
+          users.reduce<Record<string, UserRow[]>>((acc, u) => {
+            const key = emailDomain(u.email);
+            (acc[key] ??= []).push(u);
+            return acc;
+          }, {}),
+        )
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([domain, rows]) => {
+            const linkedCompanyId = rows.find((r) => r.companies && r.companies.length > 0)?.companies?.[0]?.companyId;
+            const company = linkedCompanyId ? companies.find((c) => c.id === linkedCompanyId) : null;
+            const label = company ? `${company.legalName} (RUC ${company.taxId}) — @${domain}` : `@${domain}`;
+            return { domain, label, rows };
+          })
+      : groupMode === "progress"
+        ? PROGRESS_ORDER.flatMap((g) => {
+            const rows = users.filter((u) => (u.enrollmentStats?.group ?? "SIN_CURSOS") === g);
+            if (rows.length === 0) return [];
+            return [{ domain: g, label: ENROLLMENT_GROUP_LABEL[g], rows }];
+          })
+        : SECTION_ORDER.flatMap((section) => {
         const rows = users.filter((u) => sectionFor(u) === section);
         if (rows.length === 0) return [];
         if (section !== "COMPANY") return [{ domain: section, label: SECTION_LABEL[section], rows }];
@@ -187,9 +211,13 @@ export function UsersManager() {
                 Buscar
               </Button>
             </form>
-            <label className="flex items-center gap-2 text-sm text-ash-600" title="Por defecto se agrupa por tipo de cuenta (admin/docente/soporte/empresa/independiente) — esta vista alterna agrupa a todos por dominio de correo, útil para ubicar cuentas de una misma empresa antes de asignarlas.">
-              <input type="checkbox" checked={groupByDomain} onChange={(e) => setGroupByDomain(e.target.checked)} />
-              Agrupar por dominio de correo (en vez de por tipo)
+            <label className="flex items-center gap-2 text-sm text-ash-600">
+              Agrupar por
+              <Select className="h-8 w-56 text-xs" value={groupMode} onChange={(e) => setGroupMode(e.target.value as typeof groupMode)}>
+                <option value="type">Tipo de cuenta</option>
+                <option value="domain">Dominio de correo</option>
+                <option value="progress">Progreso de cursos</option>
+              </Select>
             </label>
             <div className="flex overflow-hidden rounded-md border border-paper-border">
               <button
@@ -238,6 +266,7 @@ export function UsersManager() {
                             <th className="p-3 font-medium">Nombre</th>
                             <th className="p-3 font-medium">Roles</th>
                             <th className="p-3 font-medium">Empresa</th>
+                            <th className="p-3 font-medium">Cursos</th>
                             <th className="p-3 font-medium">Estado</th>
                             <th className="p-3 font-medium">Acciones</th>
                           </tr>
@@ -285,6 +314,35 @@ function RoleChips({ user, busy, onToggle }: { user: UserRow; busy: boolean; onT
         );
       })}
     </>
+  );
+}
+
+/**
+ * "En cada recuadro podría haber un indicador del total de cursos
+ * matriculados vs completados vs pendientes de finalizar, como si fuera
+ * una semaforización... que se vea profesional y bello." Tres números con
+ * un punto de color cada uno: gris (total), verde (completados), ámbar
+ * (en curso/pendientes de terminar) — de un vistazo, sin entrar al detalle.
+ */
+function EnrollmentSemaphore({ stats }: { stats?: { total: number; active: number; completed: number } }) {
+  if (!stats || stats.total === 0) {
+    return <span className="text-xs text-ash-400">Sin cursos matriculados todavía</span>;
+  }
+  return (
+    <div className="flex items-center gap-3 text-xs text-ash-600" title="Cursos matriculados · completados · en curso (pendientes de terminar)">
+      <span className="flex items-center gap-1">
+        <span className="h-2 w-2 rounded-full bg-ash-400" aria-hidden="true" />
+        {stats.total} matriculado{stats.total === 1 ? "" : "s"}
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+        {stats.completed} completado{stats.completed === 1 ? "" : "s"}
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-2 w-2 rounded-full bg-warning" aria-hidden="true" />
+        {stats.active} en curso
+      </span>
+    </div>
   );
 }
 
@@ -413,7 +471,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
       <CardContent className="flex flex-col gap-3 p-5">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <Avatar name={`${user.firstName} ${user.lastName}`} />
+            <Avatar name={`${user.firstName} ${user.lastName}`} src={user.avatarUrl} />
             <div>
               <p className="font-serif font-semibold leading-tight text-ink-900">
                 {user.firstName} {user.lastName}
@@ -488,6 +546,8 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
             </div>
           </div>
         )}
+
+        <EnrollmentSemaphore stats={user.enrollmentStats} />
 
         {isTeacher && (
           <div className="flex items-center gap-2 rounded-md bg-paper-muted p-2.5">
@@ -605,7 +665,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
     <tr>
       <td className="p-3">
         <div className="flex items-center gap-2">
-          <Avatar name={`${user.firstName} ${user.lastName}`} size="sm" />
+          <Avatar name={`${user.firstName} ${user.lastName}`} size="sm" src={user.avatarUrl} />
           <div>
             <p className="font-medium text-ink-900">
               {user.firstName} {user.lastName}
@@ -621,6 +681,9 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
         </div>
       </td>
       <td className="p-3 text-xs text-ash-600">{user.companies?.map((c) => c.companyName).join(", ") || "—"}</td>
+      <td className="p-3">
+        <EnrollmentSemaphore stats={user.enrollmentStats} />
+      </td>
       <td className="p-3">
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.status === "active" ? "bg-success-bg text-success" : "bg-danger-bg text-danger"}`}>
           {user.status === "active" ? "Activa" : "Desactivada"}

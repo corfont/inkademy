@@ -45,7 +45,10 @@ export class CulqiProvider implements PaymentProvider {
       this.logger.warn(`Culqi rechazó el cargo: ${JSON.stringify(body)}`);
       return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Pago rechazado" };
     }
-    return { success: true, providerRef: body.id, receiptUrl: body?.receipt_url };
+    // Culqi devuelve `source.type` ("card", "yape", ...) en la respuesta del
+    // cargo — se guarda para poder diferenciar la comisión de Yape/Plin
+    // (PlatformSettings.yapePlinFeePercent) de la de tarjeta en los reportes.
+    return { success: true, providerRef: body.id, receiptUrl: body?.receipt_url, paymentMethod: body?.source?.type ?? null };
   }
 
   /**

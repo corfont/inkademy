@@ -2,14 +2,17 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { LayoutGrid, List as ListIcon } from "lucide-react";
+import type { AreaSummary, CourseCardDTO } from "@inkademy/shared";
+import { LayoutGrid, List as ListIcon, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
+import { SectionCarousel } from "@/components/catalog/SectionCarousel";
 import { MODALITY_STYLE, offeringStyle } from "@/lib/offering-style";
 
 type SortKey = "recent" | "title" | "area" | "modality" | "status";
 type ViewMode = "list" | "gallery";
+type Mode = "operativa" | "alumno";
 
 function areaLabel(course: any): string {
   return course.area?.name?.es ?? course.area?.slug ?? course.areaSlug ?? "—";
@@ -28,9 +31,27 @@ const STATUS_VARIANT: Record<string, "success" | "outline" | "neutral"> = { PUBL
  * estado" — antes /admin/catalogo era una única tabla sin imagen, fija en
  * orden de creación, sin forma de cambiar el orden ni la vista.
  */
-export function CatalogListClient({ courses }: { courses: any[] }) {
+export function CatalogListClient({
+  courses,
+  sections,
+  areas,
+  publicCourses,
+}: {
+  courses: any[];
+  sections?: { featured: CourseCardDTO[]; upcomingLive: CourseCardDTO[]; new: CourseCardDTO[]; recommendedPaths: CourseCardDTO[]; mostDemanded: CourseCardDTO[] };
+  areas?: AreaSummary[];
+  publicCourses?: CourseCardDTO[];
+}) {
+  const [mode, setMode] = useState<Mode>("operativa");
   const [view, setView] = useState<ViewMode>("list");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
+
+  const coursesByArea = useMemo(() => {
+    if (!areas || !publicCourses) return [];
+    return areas
+      .map((a) => ({ area: a, courses: publicCourses.filter((c) => c.areaSlug === a.slug) }))
+      .filter((g) => g.courses.length > 0);
+  }, [areas, publicCourses]);
 
   const sorted = useMemo(() => {
     const copy = [...courses];
@@ -51,6 +72,46 @@ export function CatalogListClient({ courses }: { courses: any[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* "El administrador debería ver el catálogo idénticamente a como lo
+          ve un usuario, agrupado por Destacados/Próximos en Vivo/Nuevos/Más
+          demandados, o también por área temática" — vista operativa (tabla
+          para editar/ordenar) vs. vista pública real (las mismas secciones
+          y el mismo CourseCard que ve cualquier visitante, reusando los
+          mismos endpoints públicos). */}
+      <div className="flex gap-1 self-start rounded-md border border-paper-border p-1">
+        <Button size="sm" variant={mode === "operativa" ? "primary" : "ghost"} onClick={() => setMode("operativa")} className="gap-1.5">
+          <ListIcon className="h-4 w-4" /> Vista operativa
+        </Button>
+        <Button size="sm" variant={mode === "alumno" ? "primary" : "ghost"} onClick={() => setMode("alumno")} className="gap-1.5">
+          <Eye className="h-4 w-4" /> Vista como alumno
+        </Button>
+      </div>
+
+      {mode === "alumno" ? (
+        <div className="-mx-6 flex flex-col gap-2">
+          {sections && (
+            <>
+              <SectionCarousel title="Destacados" courses={sections.featured} className="py-6" />
+              <SectionCarousel title="Próximos en vivo" courses={sections.upcomingLive} className="py-6" />
+              <SectionCarousel title="Nuevos" courses={sections.new} className="py-6" />
+              <SectionCarousel title="Rutas recomendadas" courses={sections.recommendedPaths} className="py-6" />
+              <SectionCarousel title="Más demandados" courses={sections.mostDemanded} className="py-6" />
+            </>
+          )}
+          {coursesByArea.length > 0 && (
+            <div>
+              <p className="container mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-ash-500">Por área temática</p>
+              {coursesByArea.map(({ area, courses: areaCourses }) => (
+                <SectionCarousel key={area.id} title={area.name?.es ?? area.slug} courses={areaCourses} className="py-6" />
+              ))}
+            </div>
+          )}
+          {!sections && coursesByArea.length === 0 && (
+            <p className="container py-6 text-sm text-ash-500">No pudimos cargar la vista pública del catálogo.</p>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-ash-500">Ordenar por</label>
@@ -158,6 +219,8 @@ export function CatalogListClient({ courses }: { courses: any[] }) {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

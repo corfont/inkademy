@@ -15,6 +15,8 @@ export interface ChargeResult {
   providerRef?: string;
   receiptUrl?: string;
   failureMessage?: string;
+  /** Método real dentro del proveedor (p.ej. "card" | "yape" para Culqi) — null si no se pudo determinar. */
+  paymentMethod?: string | null;
 }
 
 export interface RefundParams {

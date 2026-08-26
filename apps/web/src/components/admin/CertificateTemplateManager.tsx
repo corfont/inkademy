@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CERTIFICATE_TAGS, HTML_ONLY_TAGS, CUSTOM_TAG_PREFIX, type CertificateTagPosition } from "@inkademy/shared";
 import { adminApi, ApiError } from "@/lib/api-client";
@@ -441,17 +441,53 @@ function BackgroundTemplateEditor({
     setPlacingTag(null);
   }
 
-  // Drag-and-drop real de los tags ya colocados sobre la vista previa —
-  // "podría ser algo como drag and drop de tags". Se arrastra la etiqueta
-  // misma (no solo click-click); al soltar se recalcula xPercent/yPercent
-  // relativo al contenedor de la vista previa.
-  function handleTagDragEnd(tag: string, e: React.DragEvent<HTMLDivElement>) {
+  // "El drag me lleva arriba/abajo/derecha/izquierda pero no me deja
+  // posicionarlo donde quiero" — el drag-and-drop NATIVO de HTML5
+  // (draggable + onDragEnd) no compensa el punto exacto donde agarraste
+  // el tag: al soltar, saltaba a que SU ESQUINA quedara justo bajo el
+  // cursor, no donde realmente lo llevaste. Se reemplaza por un drag con
+  // Pointer Events propio: se guarda el offset entre el cursor y la
+  // posición actual del tag al agarrarlo, y se aplica ESE mismo offset en
+  // cada movimiento — el tag se mueve pegado al cursor 1:1, en tiempo
+  // real (no solo al soltar), igual que cualquier editor visual real.
+  const [draggingTag, setDraggingTag] = useState<string | null>(null);
+  const dragOffsetPercentRef = useRef({ dx: 0, dy: 0 });
+
+  function handleTagPointerDown(tag: string, e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
     const rect = previewRef.current?.getBoundingClientRect();
-    if (!rect || (e.clientX === 0 && e.clientY === 0)) return; // drop fuera de un target válido
-    const xPercent = Math.round(Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100)) * 10) / 10;
-    const yPercent = Math.round(Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100)) * 10) / 10;
-    updateTag(tag, { xPercent, yPercent });
+    const row = tagRows[tag];
+    if (!rect || !row) return;
+    const pointerXPercent = ((e.clientX - rect.left) / rect.width) * 100;
+    const pointerYPercent = ((e.clientY - rect.top) / rect.height) * 100;
+    dragOffsetPercentRef.current = { dx: row.xPercent - pointerXPercent, dy: row.yPercent - pointerYPercent };
+    setDraggingTag(tag);
   }
+
+  useEffect(() => {
+    if (!draggingTag) return;
+    const tag = draggingTag;
+    function onPointerMove(e: PointerEvent) {
+      const rect = previewRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pointerXPercent = ((e.clientX - rect.left) / rect.width) * 100;
+      const pointerYPercent = ((e.clientY - rect.top) / rect.height) * 100;
+      const xPercent = Math.round(Math.min(100, Math.max(0, pointerXPercent + dragOffsetPercentRef.current.dx)) * 10) / 10;
+      const yPercent = Math.round(Math.min(100, Math.max(0, pointerYPercent + dragOffsetPercentRef.current.dy)) * 10) / 10;
+      updateTag(tag, { xPercent, yPercent });
+    }
+    function onPointerUp() {
+      setDraggingTag(null);
+    }
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggingTag]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -513,9 +549,10 @@ function BackgroundTemplateEditor({
                 return (
                   <div
                     key={r.tag}
-                    draggable
-                    onDragEnd={(e) => handleTagDragEnd(r.tag, e)}
-                    className="absolute flex cursor-move items-center justify-center border border-dashed border-ink-500 bg-ink-500/10 text-[10px] text-ink-700"
+                    onPointerDown={(e) => handleTagPointerDown(r.tag, e)}
+                    className={`absolute flex cursor-move touch-none items-center justify-center border border-dashed bg-ink-500/10 text-[10px] text-ink-700 ${
+                      draggingTag === r.tag ? "border-primary-600 ring-2 ring-primary-300" : "border-ink-500"
+                    }`}
                     style={{
                       left: `${r.xPercent}%`,
                       top: `${r.yPercent}%`,
@@ -530,9 +567,10 @@ function BackgroundTemplateEditor({
               return (
                 <div
                   key={r.tag}
-                  draggable
-                  onDragEnd={(e) => handleTagDragEnd(r.tag, e)}
-                  className="absolute cursor-move whitespace-pre-line"
+                  onPointerDown={(e) => handleTagPointerDown(r.tag, e)}
+                  className={`absolute cursor-move touch-none whitespace-pre-line ${
+                    draggingTag === r.tag ? "outline outline-2 outline-primary-400" : ""
+                  }`}
                   style={{
                     left: `${r.xPercent}%`,
                     top: `${r.yPercent}%`,

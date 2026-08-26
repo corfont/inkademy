@@ -411,6 +411,13 @@ model Material {
   assetId     String?
   externalUrl String?
   kind        String // pdf | slide | doc | sheet | image | video | template | link
+  // "Si hay tres videos, ¿cómo sabe el sistema cuál es primero?" — antes
+  // los materiales solo se ordenaban por fecha de subida (createdAt), sin
+  // forma de reordenarlos después. Ahora tienen su propio orden explícito,
+  // independiente por categoría (MAIN se lee primero que SUPPLEMENTARY,
+  // y dentro de cada una manda este número) — ver botones de mover
+  // arriba/abajo en CourseEditor.tsx.
+  order       Int               @default(0)
   category    MaterialCategory  @default(MAIN)
   // Si es false, el material queda cargado pero oculto para el alumno (el
   // admin/docente lo sigue viendo) — por defecto todo se ve.
@@ -1033,6 +1040,12 @@ model Payment {
   status      PaymentStatus       @default(PENDING)
   amount      Decimal             @db.Decimal(10, 2)
   currency    String
+  // Método real dentro del proveedor — p.ej. Culqi devuelve `source.type`
+  // ("card", "yape", ...) en la respuesta del cargo. Permite diferenciar
+  // el % de comisión de Yape/Plin (PlatformSettings.yapePlinFeePercent)
+  // del de tarjeta dentro del mismo proveedor CULQI. Null si no se pudo
+  // determinar (p.ej. cargos simulados en modo dev sin secret key).
+  paymentMethod String?
   receiptUrl  String?
   paidAt      DateTime?
   createdAt   DateTime            @default(now())

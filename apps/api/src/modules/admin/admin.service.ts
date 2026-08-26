@@ -408,8 +408,8 @@ export class AdminService {
         modules: {
           orderBy: { order: "asc" },
           include: {
-            lessons: { orderBy: { order: "asc" }, include: { materials: { orderBy: { createdAt: "asc" } } } },
-            materials: { orderBy: { createdAt: "asc" } },
+            lessons: { orderBy: { order: "asc" }, include: { materials: { orderBy: { order: "asc" } } } },
+            materials: { orderBy: { order: "asc" } },
           },
         },
         liveSessions: { orderBy: { startsAt: "asc" } },
@@ -509,7 +509,8 @@ export class AdminService {
     teacherUserId?: string,
   ) {
     if (teacherUserId) await this.assertTeacherOwnsLesson(lessonId, teacherUserId);
-    return this.prisma.material.create({ data: { lessonId, ...input } as never });
+    const order = await this.prisma.material.count({ where: { lessonId } });
+    return this.prisma.material.create({ data: { lessonId, order, ...input } as never });
   }
 
   /** Lectura/documento a nivel de módulo entero (no de una lección puntual) — ver Material.moduleId. */
@@ -519,12 +520,38 @@ export class AdminService {
     teacherUserId?: string,
   ) {
     if (teacherUserId) await this.assertTeacherOwnsModule(moduleId, teacherUserId);
-    return this.prisma.material.create({ data: { moduleId, ...input } as never });
+    const order = await this.prisma.material.count({ where: { moduleId } });
+    return this.prisma.material.create({ data: { moduleId, order, ...input } as never });
   }
 
   async updateMaterial(id: string, input: Record<string, unknown>, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherOwnsMaterial(id, teacherUserId);
     return this.prisma.material.update({ where: { id }, data: input as never });
+  }
+
+  /**
+   * "¿Cómo sabe el sistema cuál va primero?" — intercambia el `order` de
+   * dos materiales HERMANOS (misma lección o mismo módulo) para moverlos
+   * arriba/abajo, en vez de reasignar toda la lista (más simple y sin
+   * riesgo de dejar huecos/duplicados si dos admins editan a la vez).
+   */
+  async reorderMaterial(id: string, direction: "up" | "down", teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherOwnsMaterial(id, teacherUserId);
+    const material = await this.prisma.material.findUnique({ where: { id } });
+    if (!material) throw new NotFoundException("Material no encontrado");
+    const siblings = await this.prisma.material.findMany({
+      where: material.lessonId ? { lessonId: material.lessonId } : { moduleId: material.moduleId },
+      orderBy: { order: "asc" },
+    });
+    const idx = siblings.findIndex((s) => s.id === id);
+    const swapWithIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapWithIdx < 0 || swapWithIdx >= siblings.length) return material; // ya está en el extremo, no hay nada que hacer
+    const swapWith = siblings[swapWithIdx];
+    await this.prisma.$transaction([
+      this.prisma.material.update({ where: { id: material.id }, data: { order: swapWith.order } }),
+      this.prisma.material.update({ where: { id: swapWith.id }, data: { order: material.order } }),
+    ]);
+    return { reordered: true };
   }
 
   async deleteMaterial(id: string, teacherUserId?: string) {
@@ -1567,7 +1594,7 @@ export class AdminService {
         select: { total: true, currency: true, buyerDocumentType: true, buyerDocumentNumber: true },
       }),
       this.prisma.payment.groupBy({
-        by: ["currency", "provider"],
+        by: ["currency", "provider", "paymentMethod"],
         where: { status: "SUCCEEDED", createdAt: { gte: from, lte: to } },
         _sum: { amount: true },
       }),
@@ -1593,9 +1620,23 @@ export class AdminService {
       detractionRucEmpresaPercent: platformSettings?.detractionRucEmpresaPercent ?? 12,
     };
 
+    // "Yape y Plin tienen comisiones diferentes, ¿aplica sobre la venta con
+    // IGV o sin IGV?" — ya se investigó esto antes (ver comentario en
+    // PlatformSettings.yapePlinFeePercent): Culqi/Izipay cobran UNA sola
+    // "comisión de descuento de comercio" que ya cubre tarjeta+Yape, sin un
+    // % adicional específico confirmado — por eso yapePlinFeePercent existe
+    // como un % ADICIONAL configurable (0 por defecto, subir solo si el
+    // admin confirma un cargo real en su contrato) que se suma SOLO sobre
+    // los pagos cuyo `paymentMethod` (capturado del `source.type` que
+    // devuelve Culqi al cobrar, ver CulqiProvider.charge) es Yape/Plin — no
+    // sobre tarjeta. Antes este % se guardaba pero nunca se aplicaba acá
+    // (quedaba "muerto"). La base SIEMPRE es el monto bruto efectivamente
+    // cobrado (`p._sum.amount`, que YA incluye IGV) — así cobran las
+    // pasarelas en realidad, nunca sobre el neto sin IGV.
     const feesByCurrency = new Map<string, number>();
     for (const p of paymentsByCurrencyProvider) {
-      const pct = p.provider === "CULQI" ? culqiFeePercent : p.provider === "STRIPE" ? stripeFeePercent : 0;
+      const isWallet = p.paymentMethod === "yape" || p.paymentMethod === "plin";
+      const pct = p.provider === "CULQI" ? culqiFeePercent + (isWallet ? yapePlinFeePercent : 0) : p.provider === "STRIPE" ? stripeFeePercent : 0;
       feesByCurrency.set(p.currency, (feesByCurrency.get(p.currency) ?? 0) + Number(p._sum.amount ?? 0) * (pct / 100));
     }
     const expensesMap = new Map(expensesByCurrency.map((e) => [e.currency, Number(e._sum.amount ?? 0)]));
@@ -1659,6 +1700,18 @@ export class AdminService {
       };
     });
 
+    // "En finanzas me figura 'otros gastos' pero no sé su detalle" — el
+    // desglose YA se calculaba (partnerCosts/royaltyCosts/teachingHoursCost
+    // arriba) pero solo tenía `courseId` crudo, nunca se mostraba en la
+    // pantalla. Se le agrega el título del curso acá (una sola consulta)
+    // para que /admin/finanzas pueda listarlo de forma legible.
+    const referencedCourseIds = Array.from(new Set([...partnerCosts.breakdown.map((b) => b.courseId), ...royaltyCosts.breakdown.map((b) => b.courseId)]));
+    const referencedCourses =
+      referencedCourseIds.length > 0
+        ? await this.prisma.course.findMany({ where: { id: { in: referencedCourseIds } }, select: { id: true, title: true } })
+        : [];
+    const courseTitleById = new Map(referencedCourses.map((c) => [c.id, c.title]));
+
     return {
       from: from.toISOString(),
       to: to.toISOString(),
@@ -1669,9 +1722,10 @@ export class AdminService {
       yapePlinFeePercent,
       ...detractionSettings,
       availableYears: availableYears.map((r) => r.year),
-      partnerCosts: partnerCosts.breakdown,
-      royaltyCosts: royaltyCosts.breakdown,
+      partnerCosts: partnerCosts.breakdown.map((b) => ({ ...b, courseTitle: courseTitleById.get(b.courseId) ?? null })),
+      royaltyCosts: royaltyCosts.breakdown.map((b) => ({ ...b, courseTitle: courseTitleById.get(b.courseId) ?? null })),
       teachingHoursCost: { hours: teachingCosts.totalHours, byCurrency: Object.fromEntries(teachingCosts.byCurrency) },
+      manualExpensesByCurrency: Object.fromEntries(expensesMap),
       rows,
     };
   }
@@ -1955,37 +2009,53 @@ export class AdminService {
       },
       // Antes no se veía a qué empresa pertenece cada cuenta desde
       // /admin/usuarios — había que entrar empresa por empresa a buscarlo.
-      include: { companyMemberships: { where: { status: { not: "REMOVED" } }, include: { company: true } } },
+      include: {
+        companyMemberships: { where: { status: { not: "REMOVED" } }, include: { company: true } },
+        // "Agruparlos por: los que están llevando un curso o más, los que ya
+        // culminaron y no están llevando nada, los que aún no han llevado
+        // ninguno... con un indicador tipo semáforo" — solo se trae el
+        // `status` de cada matrícula (no el curso completo) porque acá solo
+        // hace falta contar, no listar.
+        enrollments: { select: { status: true } },
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
-    return users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      displayName: u.displayName,
-      globalRole: u.globalRole,
-      secondaryRoles: u.secondaryRoles,
-      status: u.status,
-      createdAt: u.createdAt.toISOString(),
-      // Firma para certificados (solo tiene sentido para TEACHER, pero se
-      // devuelve para cualquier fila — la UI solo la ofrece para docentes).
-      signatureAssetId: u.signatureAssetId,
-      signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
-      companies: u.companyMemberships.map((m) => ({ companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
-      // "El admin debería poder editar a cualquier usuario" — se exponen acá
-      // los campos de perfil editables (ver updateUserSchema) para poder
-      // precargar el formulario de edición.
-      phone: u.phone,
-      documentType: u.documentType,
-      documentNumber: u.documentNumber,
-      country: u.country,
-      city: u.city,
-      address: u.address,
-      jobTitle: u.jobTitle,
-      companyFreeText: u.companyFreeText,
-    }));
+    return users.map((u) => {
+      const total = u.enrollments.length;
+      const active = u.enrollments.filter((e) => e.status === "ACTIVE").length;
+      const completed = u.enrollments.filter((e) => e.status === "COMPLETED").length;
+      const enrollmentGroup: "EN_CURSO" | "COMPLETADO" | "SIN_CURSOS" = active > 0 ? "EN_CURSO" : completed > 0 ? "COMPLETADO" : "SIN_CURSOS";
+      return {
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        displayName: u.displayName,
+        globalRole: u.globalRole,
+        secondaryRoles: u.secondaryRoles,
+        status: u.status,
+        createdAt: u.createdAt.toISOString(),
+        // Firma para certificados (solo tiene sentido para TEACHER, pero se
+        // devuelve para cualquier fila — la UI solo la ofrece para docentes).
+        signatureAssetId: u.signatureAssetId,
+        signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
+        companies: u.companyMemberships.map((m) => ({ companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
+        // "El admin debería poder editar a cualquier usuario" — se exponen acá
+        // los campos de perfil editables (ver updateUserSchema) para poder
+        // precargar el formulario de edición.
+        phone: u.phone,
+        documentType: u.documentType,
+        documentNumber: u.documentNumber,
+        country: u.country,
+        city: u.city,
+        address: u.address,
+        jobTitle: u.jobTitle,
+        companyFreeText: u.companyFreeText,
+        avatarUrl: u.avatarUrl,
+        enrollmentStats: { total, active, completed, group: enrollmentGroup },
+      };
+    });
   }
 
   /**
@@ -2054,6 +2124,7 @@ export class AdminService {
       address?: string | null;
       jobTitle?: string | null;
       companyFreeText?: string | null;
+      avatarUrl?: string | null;
     },
   ) {
     if (id === actorId) {

@@ -204,6 +204,29 @@ export class NotificationService {
    * (NEW/REVIEWED/PLANNED/DECLINED) y quien la envió nunca se enteraba de
    * nada.
    */
+  /**
+   * Aviso automático cuando una sugerencia pasa a PLANNED/DECLINED sin que
+   * el admin haya escrito una respuesta manual — le da utilidad real al
+   * cambio de estado en vez de ser solo una etiqueta interna que el
+   * usuario nunca se enteraría que cambió.
+   */
+  sendSuggestionStatusChanged(to: string, originalMessage: string, status: "PLANNED" | "DECLINED", userId: string) {
+    const isPlanned = status === "PLANNED";
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: isPlanned ? "¡Tu sugerencia fue planificada! — Inkademy" : "Actualización sobre tu sugerencia — Inkademy",
+        html: `<p>Tu sugerencia:</p><blockquote>${originalMessage}</blockquote><p>${
+          isPlanned
+            ? "Buenas noticias: la vamos a implementar. Te avisaremos cuando esté disponible."
+            : "Por ahora no la vamos a implementar — gracias de todas formas por tomarte el tiempo de escribirnos."
+        }</p>`,
+      },
+      userId,
+    );
+  }
+
   sendSuggestionResponse(to: string, originalMessage: string, response: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.GENERIC,

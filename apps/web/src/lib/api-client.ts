@@ -591,6 +591,23 @@ export const adminApi = {
     input: { recipientEmail: string; from?: string; to?: string; period?: string; year?: number; months?: number },
     accessToken?: string | null,
   ) => apiFetch<{ sent: boolean; to: string }>("/admin/finance/report/email", { method: "POST", body: JSON.stringify(input), accessToken }),
+  // --- Centro de reportes PDF (alumnos, cursos, empresas, EEFF, etc.) ---
+  reportsCatalog: (accessToken?: string | null) =>
+    apiFetch<{ key: string; label: string; description: string }[]>("/admin/reports", { accessToken, cache: "no-store" }),
+  downloadReportPdf: async (key: string, params: { from?: string; to?: string }, accessToken: string) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][]).toString();
+    const res = await fetch(`${API_URL}/admin/reports/${key}.pdf?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, "No pudimos generar el PDF.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `inkademy-${key}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
   profitAndLoss: (months: number | undefined, accessToken?: string | null) =>
     apiFetch<any>("/admin/finance/profit-and-loss", { accessToken, query: { months }, cache: "no-store" }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
@@ -716,6 +733,8 @@ export const adminApi = {
   ) => apiFetch<any>(`/admin/materials/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteMaterial: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/materials/${id}`, { method: "DELETE", accessToken }),
+  reorderMaterial: (id: string, direction: "up" | "down", accessToken?: string | null) =>
+    apiFetch<any>(`/admin/materials/${id}/reorder`, { method: "PATCH", body: JSON.stringify({ direction }), accessToken }),
   uploadAsset: (file: File, accessToken?: string | null) => {
     const form = new FormData();
     form.append("file", file);
@@ -763,6 +782,7 @@ export const adminApi = {
       address?: string | null;
       jobTitle?: string | null;
       companyFreeText?: string | null;
+      avatarUrl?: string | null;
     },
     accessToken?: string | null,
   ) => apiFetch<any>(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),

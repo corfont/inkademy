@@ -151,9 +151,9 @@ export class EnrollmentService {
               include: {
                 lessons: {
                   orderBy: { order: "asc" },
-                  include: { materials: { where: { visible: true }, orderBy: { createdAt: "asc" } } },
+                  include: { materials: { where: { visible: true }, orderBy: { order: "asc" } } },
                 },
-                materials: { where: { visible: true }, orderBy: { createdAt: "asc" } },
+                materials: { where: { visible: true }, orderBy: { order: "asc" } },
               },
             },
             // Un solo "assessmentId" para el botón "Ir a la evaluación" del

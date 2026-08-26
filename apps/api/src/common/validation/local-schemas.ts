@@ -440,6 +440,7 @@ export const updateUserSchema = z.object({
   address: z.string().optional().nullable(),
   jobTitle: z.string().optional().nullable(),
   companyFreeText: z.string().optional().nullable(),
+  avatarUrl: z.string().url().optional().nullable(),
 });
 
 export const assignCourseStaffSchema = z.object({

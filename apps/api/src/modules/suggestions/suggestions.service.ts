@@ -57,8 +57,24 @@ export class SuggestionsService {
     return this.prisma.courseSuggestion.count({ where: { adminResponse: null } });
   }
 
-  updateStatus(id: string, status: string) {
-    return this.prisma.courseSuggestion.update({ where: { id }, data: { status } });
+  /**
+   * "No entiendo para qué sirve el estado, ni si eso puede ser automático"
+   * — el estado en sí ya es útil para que el admin filtre/priorice (ver
+   * agrupación en /admin/sugerencias), pero además: al pasar a PLANNED o
+   * DECLINED (un desenlace real, no solo "la estoy mirando") se le avisa
+   * automáticamente al usuario por correo, sin que el admin tenga que
+   * escribir una respuesta manual para que se entere de que su sugerencia
+   * avanzó o se descartó. Si el admin YA escribió una respuesta manual
+   * (`respond()`), esa cubre el aviso — no se duplica el correo.
+   */
+  async updateStatus(id: string, status: string) {
+    const before = await this.findOrThrow(id);
+    const updated = await this.prisma.courseSuggestion.update({ where: { id }, data: { status } });
+    const isRealOutcome = (status === "PLANNED" || status === "DECLINED") && before.status !== status;
+    if (isRealOutcome && !before.adminResponse) {
+      await this.notifications.sendSuggestionStatusChanged(before.user.email, before.message, status, before.userId);
+    }
+    return updated;
   }
 
   private async findOrThrow(id: string) {

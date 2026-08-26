@@ -227,6 +227,13 @@ export class AdminController {
     return this.adminService.deleteMaterial(id, teacherScopeId(user));
   }
 
+  @Patch("materials/:id/reorder")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Mueve un material una posición arriba/abajo entre sus hermanos (misma lección o módulo) — TEACHER solo si es CourseStaff del curso dueño" })
+  reorderMaterial(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() dto: { direction: "up" | "down" }) {
+    return this.adminService.reorderMaterial(id, dto.direction, teacherScopeId(user));
+  }
+
   // --- Evaluaciones (exámenes/quizzes) y sus preguntas — TEACHER solo en cursos donde es CourseStaff ---
 
   @Get("courses/:courseId/assessments")

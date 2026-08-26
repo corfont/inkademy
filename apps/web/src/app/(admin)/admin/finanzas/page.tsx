@@ -7,6 +7,8 @@ import { getServerAccessToken } from "@/lib/server-auth";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Callout } from "@/components/ui/Callout";
 import { ExpenseManager } from "@/components/admin/ExpenseManager";
+import { OtherExpensesDetail } from "@/components/admin/OtherExpensesDetail";
+import { FeeSettingsForm } from "@/components/admin/FeeSettingsForm";
 import { FinanceExportControls } from "@/components/admin/FinanceExportControls";
 import { ProfitAndLossCharts } from "@/components/admin/ProfitAndLossCharts";
 import { formatPrice } from "@/lib/format";
@@ -134,13 +136,31 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
               </CardContent>
             </Card>
           </div>
+          <OtherExpensesDetail summary={summary} currency={row.currency} locale={locale} />
         </section>
       ))}
 
-      <Callout variant="info">
-        Comisiones de pasarela, IGV y detracción se configuran en <strong>/admin/configuracion</strong> — un módulo separado para que no se cambien
-        por equivocación desde esta pantalla.
-      </Callout>
+      {/* "Yape y Plin tienen comisiones diferentes... eso debe de estar en
+          la pestaña de finanzas" — antes esto solo vivía en /admin/configuracion
+          con un aviso acá apuntando allá; ahora el mismo formulario (un solo
+          componente, sin duplicar lógica) también se puede editar directo
+          desde Finanzas, que es donde el admin realmente lo está buscando. */}
+      <section>
+        <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Comisiones de pasarela y detracción SUNAT</h2>
+        <Card>
+          <CardContent className="p-6">
+            <FeeSettingsForm
+              culqiFeePercent={summary.culqiFeePercent}
+              stripeFeePercent={summary.stripeFeePercent}
+              yapePlinFeePercent={summary.yapePlinFeePercent}
+              detractionEnabled={summary.detractionEnabled}
+              detractionRucNaturalPercent={summary.detractionRucNaturalPercent}
+              detractionRucNaturalThreshold={summary.detractionRucNaturalThreshold}
+              detractionRucEmpresaPercent={summary.detractionRucEmpresaPercent}
+            />
+          </CardContent>
+        </Card>
+      </section>
 
       <section>
         <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Otros gastos</h2>

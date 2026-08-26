@@ -13,6 +13,7 @@ import {
   Receipt,
   Gift,
   FileSpreadsheet,
+  FileDown,
   Users,
   Bot,
   LogOut,
@@ -72,6 +73,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/matriculas", label: "Casos extemporáneos", icon: CalendarClock },
     { href: "/admin/cortesias", label: "Cortesías", icon: Gift },
     { href: "/admin/facturacion", label: "Facturación (SUNAT)", icon: FileSpreadsheet },
+    { href: "/admin/reportes", label: "Reportes", icon: FileDown },
     { href: "/admin/soporte", label: t("support"), icon: LifeBuoy, badgeCount: pendingSupport },
     { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus, badgeCount: pendingSuggestions },
     { href: "/admin/certificados", label: t("certificates"), icon: Award },
@@ -83,6 +85,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/regalias", label: "Regalías", icon: Percent },
     { href: "/admin/horas-docentes", label: "Horas dictadas por docente", icon: CalendarDays },
     { href: "/admin/liquidaciones", label: "Liquidación de docentes", icon: Banknote },
+    { href: "/admin/liquidaciones/tarifas", label: "Tarifas y adelantos (docentes)", icon: Wallet },
     ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock }] : []),
   ];
 

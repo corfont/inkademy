@@ -232,6 +232,7 @@ export class CommerceService {
         currency: input.currency,
         receiptUrl: chargeResult.receiptUrl,
         paidAt: chargeResult.success ? new Date() : null,
+        paymentMethod: chargeResult.paymentMethod ?? null,
       },
     });
 

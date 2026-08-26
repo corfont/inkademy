@@ -120,7 +120,9 @@ export function FeeSettingsForm({
         hay un cargo adicional específico por aceptar Yape/Plin encima de esa comisión (por eso el default de Comisión Culqi bajó de 3.99% a
         3.44%, que era en realidad la tarifa de tarjeta internacional). Sí existe una comisión de <strong>Yape Empresa (BCP) del 2.95%</strong>,
         pero esa aplica solo si un negocio recibe Yape directo a su propia cuenta/QR — no es el caso de Inkapitales, que cobra siempre a través de
-        Culqi como pasarela. Se deja en 0% por defecto; súbelo solo si tu contrato específico con Culqi confirma un cargo adicional real.
+        Culqi como pasarela. Se deja en 0% por defecto; súbelo solo si tu contrato específico con Culqi confirma un cargo adicional real. Si lo
+        subes, se aplica <strong>solo</strong> a los cobros que Culqi reporta como Yape/Plin (no a tarjeta) — y siempre sobre el monto{" "}
+        <strong>bruto efectivamente cobrado (con IGV incluido)</strong>, que es como realmente descuenta la pasarela, nunca sobre el neto.
       </p>
 
       <div className="rounded-md bg-paper-muted p-3">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, Trash2, Radio } from "lucide-react";
+import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -462,9 +462,31 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
 
       <ModuleMaterialsSection module={mod} busy={busy} run={run} />
 
+      <p className="mt-3 text-[11px] text-ash-400">
+        El alumno ve las lecciones (videos/PDF/texto) en el orden de esta lista — usa ↑/↓ para reordenarlas. Los materiales de cada lección se
+        muestran igual: primero todos los <strong>Principales</strong> (para leer en ese momento, junto al video) y después los{" "}
+        <strong>Complementarios</strong> (quedan disponibles pero no se resaltan) — dentro de cada grupo, en el orden que definas con sus propias
+        flechas ↑/↓.
+      </p>
+
       <ul className="mt-4 flex flex-col gap-2">
-        {mod.lessons.map((lesson: any) => (
-          <LessonRow key={lesson.id} lesson={lesson} busy={busy} run={run} />
+        {mod.lessons.map((lesson: any, i: number) => (
+          <LessonRow
+            key={lesson.id}
+            lesson={lesson}
+            busy={busy}
+            run={run}
+            isFirst={i === 0}
+            isLast={i === mod.lessons.length - 1}
+            onMove={(direction) => {
+              const swapWith = mod.lessons[direction === "up" ? i - 1 : i + 1];
+              if (!swapWith) return;
+              run(async () => {
+                await adminApi.updateLesson(lesson.id, { order: swapWith.order });
+                await adminApi.updateLesson(swapWith.id, { order: lesson.order });
+              });
+            }}
+          />
         ))}
       </ul>
 
@@ -508,14 +530,58 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
 
 const CATEGORY_LABEL: Record<string, string> = { MAIN: "Principal", SUPPLEMENTARY: "Complementario" };
 
-/** Fila de material reutilizada tanto para materiales de módulo como de lección — cambia categoría, visibilidad, o elimina. */
-function MaterialItem({ material, busy, run }: { material: any; busy: boolean; run: (a: () => Promise<unknown>) => void }) {
+/**
+ * Fila de material reutilizada tanto para materiales de módulo como de
+ * lección — cambia categoría, visibilidad, orden, o elimina.
+ *
+ * "¿Cómo sabe el sistema cuál va primero?" — antes se ordenaban solo por
+ * fecha de subida, sin forma de cambiarlo después. Las flechas ↑/↓ mueven
+ * el material un puesto entre sus hermanos (misma lección o módulo);
+ * Principal/Complementario es una agrupación aparte — todos los
+ * Principales se muestran antes que los Complementarios, y este orden
+ * decide la secuencia DENTRO de cada grupo.
+ */
+function MaterialItem({
+  material,
+  busy,
+  run,
+  isFirst,
+  isLast,
+}: {
+  material: any;
+  busy: boolean;
+  run: (a: () => Promise<unknown>) => void;
+  isFirst?: boolean;
+  isLast?: boolean;
+}) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 rounded bg-paper px-2 py-1 text-xs text-ash-600">
       <a href={material.assetUrl ?? "#"} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:underline">
         📎 {material.title}
       </a>
       <div className="flex items-center gap-2">
+        <div className="flex items-center">
+          <button
+            type="button"
+            className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+            disabled={busy || isFirst}
+            title="Mover arriba"
+            aria-label="Mover material arriba"
+            onClick={() => run(() => adminApi.reorderMaterial(material.id, "up"))}
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+            disabled={busy || isLast}
+            title="Mover abajo"
+            aria-label="Mover material abajo"
+            onClick={() => run(() => adminApi.reorderMaterial(material.id, "down"))}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <Select
           className="h-7 w-32 text-xs"
           value={material.category ?? "MAIN"}
@@ -633,8 +699,8 @@ function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy:
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ash-500">Lecturas y documentos del módulo</p>
       {materials.length > 0 && (
         <ul className="mb-2 flex flex-col gap-1">
-          {materials.map((m) => (
-            <MaterialItem key={m.id} material={m} busy={busy} run={run} />
+          {materials.map((m, i) => (
+            <MaterialItem key={m.id} material={m} busy={busy} run={run} isFirst={i === 0} isLast={i === materials.length - 1} />
           ))}
         </ul>
       )}
@@ -672,7 +738,21 @@ function kindFromFile(file: File): string {
   return "file";
 }
 
-function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any }) {
+function LessonRow({
+  lesson,
+  busy,
+  run,
+  isFirst,
+  isLast,
+  onMove,
+}: {
+  lesson: any;
+  busy: boolean;
+  run: any;
+  isFirst?: boolean;
+  isLast?: boolean;
+  onMove?: (direction: "up" | "down") => void;
+}) {
   const router = useRouter();
   const [newMaterialTitle, setNewMaterialTitle] = useState("");
   const [newMaterialCategory, setNewMaterialCategory] = useState<"MAIN" | "SUPPLEMENTARY">("MAIN");
@@ -715,6 +795,28 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
     <li className="rounded-md bg-paper-muted p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
+          <div className="flex items-center">
+            <button
+              type="button"
+              className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+              disabled={busy || isFirst}
+              title="Mover lección arriba"
+              aria-label="Mover lección arriba"
+              onClick={() => onMove?.("up")}
+            >
+              <ChevronUp className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+              disabled={busy || isLast}
+              title="Mover lección abajo"
+              aria-label="Mover lección abajo"
+              onClick={() => onMove?.("down")}
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+          </div>
           <Badge variant="outline">{lesson.contentType}</Badge>
           <span className="text-sm font-medium text-ink-900">{lesson.title?.es}</span>
           {lesson.isFreePreview && <Badge variant="gold">Vista previa gratis</Badge>}
@@ -754,8 +856,8 @@ function LessonRow({ lesson, busy, run }: { lesson: any; busy: boolean; run: any
 
       {lesson.materials?.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1">
-          {lesson.materials.map((mat: any) => (
-            <MaterialItem key={mat.id} material={mat} busy={busy} run={run} />
+          {lesson.materials.map((mat: any, i: number) => (
+            <MaterialItem key={mat.id} material={mat} busy={busy} run={run} isFirst={i === 0} isLast={i === lesson.materials.length - 1} />
           ))}
         </ul>
       )}

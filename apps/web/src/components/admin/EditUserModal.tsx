@@ -20,6 +20,7 @@ interface EditableUser {
   address?: string | null;
   jobTitle?: string | null;
   companyFreeText?: string | null;
+  avatarUrl?: string | null;
 }
 
 /**
@@ -42,8 +43,23 @@ export function EditUserModal({ user, open, onClose, onSaved }: { user: Editable
   const [address, setAddress] = useState(user.address ?? "");
   const [jobTitle, setJobTitle] = useState(user.jobTitle ?? "");
   const [companyFreeText, setCompanyFreeText] = useState(user.companyFreeText ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? "");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleAvatarUpload(file: File) {
+    setUploadingAvatar(true);
+    setError(null);
+    try {
+      const { url } = await adminApi.uploadAsset(file);
+      setAvatarUrl(url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos subir la foto.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   async function handleSave() {
     setBusy(true);
@@ -61,6 +77,7 @@ export function EditUserModal({ user, open, onClose, onSaved }: { user: Editable
         address: address || null,
         jobTitle: jobTitle || null,
         companyFreeText: companyFreeText || null,
+        avatarUrl: avatarUrl || null,
       });
       onSaved();
       onClose();
@@ -75,6 +92,35 @@ export function EditUserModal({ user, open, onClose, onSaved }: { user: Editable
     <Dialog open={open} onClose={onClose} title={`Editar a ${user.firstName} ${user.lastName}`} className="max-w-2xl">
       <div className="flex flex-col gap-4">
         {error && <Callout variant="danger">{error}</Callout>}
+
+        <div className="flex items-center gap-4">
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatarUrl} alt="" className="h-16 w-16 rounded-full object-cover ring-1 ring-paper-border" />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-paper-muted text-lg font-semibold text-ash-500 ring-1 ring-paper-border">
+              {firstName.charAt(0)}
+              {lastName.charAt(0)}
+            </div>
+          )}
+          <div>
+            <Label htmlFor="eu-avatar">Foto de perfil</Label>
+            <input
+              id="eu-avatar"
+              type="file"
+              accept="image/*"
+              disabled={uploadingAvatar}
+              className="block text-xs text-ash-600 file:mr-2 file:rounded-md file:border-0 file:bg-paper-muted file:px-2 file:py-1 file:text-xs file:font-medium"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleAvatarUpload(file);
+                e.target.value = "";
+              }}
+            />
+            {uploadingAvatar && <p className="mt-1 text-xs text-ash-400">Subiendo…</p>}
+          </div>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="eu-first">Nombres</Label>
