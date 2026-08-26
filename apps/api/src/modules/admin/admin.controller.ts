@@ -728,6 +728,13 @@ export class AdminController {
     return this.adminService.deleteCourtesyGrants(dto.ids);
   }
 
+  @Get("course-ratings")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Resultados de la encuesta de satisfacción (estrellas) — distribución + listado de comentarios, filtrable por curso" })
+  listCourseRatings(@Query("courseId") courseId?: string) {
+    return this.adminService.listCourseRatings({ courseId });
+  }
+
   @Get("quotes")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Pipeline comercial: todas las cotizaciones B2B, de todas las empresas" })

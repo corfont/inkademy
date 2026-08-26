@@ -672,6 +672,8 @@ export const adminApi = {
     }),
   deleteCourtesyGrants: (ids: string[], accessToken?: string | null) =>
     apiFetch<{ deleted: number }>("/admin/courtesy-grants", { method: "DELETE", body: JSON.stringify({ ids }), accessToken }),
+  courseRatings: (filters: { courseId?: string } = {}, accessToken?: string | null) =>
+    apiFetch<any>("/admin/course-ratings", { accessToken, cache: "no-store", query: { courseId: filters.courseId } }),
   // --- Convenios institucionales ---
   partnerInstitutions: (accessToken?: string | null) => apiFetch<any[]>("/admin/partner-institutions", { accessToken, cache: "no-store" }),
   createPartnerInstitution: (input: Record<string, unknown>, accessToken?: string | null) =>

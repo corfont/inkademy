@@ -30,6 +30,7 @@ import {
   Sparkles,
   User,
   Smile,
+  Star,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
@@ -72,6 +73,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/empresas", label: t("companies"), icon: Building2 },
     { href: "/admin/cotizaciones", label: "Cotizaciones", icon: FileText },
     { href: "/admin/encuestas-nps", label: "Encuestas NPS", icon: Smile },
+    { href: "/admin/calificaciones", label: "Calificaciones de cursos", icon: Star },
     { href: "/admin/ordenes", label: "Órdenes", icon: Receipt },
     { href: "/admin/finanzas", label: "Finanzas", icon: Wallet },
     { href: "/admin/matriculas", label: "Casos extemporáneos", icon: CalendarClock },

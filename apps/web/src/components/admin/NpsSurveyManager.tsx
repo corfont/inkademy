@@ -6,7 +6,6 @@ import { Send, MessageCircle, Star, Eye } from "lucide-react";
 import { npsAdminApi, ApiError, type NpsCompanyRow, type NpsResultsDTO } from "@/lib/api-client";
 import { Textarea, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
@@ -109,23 +108,42 @@ export function NpsSurveyManager({
 
       {initialResults.totalResponses > 0 && (
         <Card>
-          <CardContent className="flex flex-col gap-4 p-6">
+          <CardContent className="flex flex-col gap-6 p-6">
             <h2 className="font-serif text-lg font-semibold text-ink-900">Resultados</h2>
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <p className="font-serif text-4xl font-semibold text-ink-900">{initialResults.npsScore}</p>
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+              <div className="flex flex-col items-center gap-1 sm:border-r sm:border-paper-border sm:pr-6">
+                <p className={`font-serif text-4xl font-semibold ${(initialResults.npsScore ?? 0) >= 0 ? "text-success" : "text-danger"}`}>
+                  {initialResults.npsScore}
+                </p>
                 <p className="text-xs uppercase tracking-wide text-ash-500">Score NPS</p>
+                <p className="text-xs text-ash-500">{initialResults.totalResponses} respuesta{initialResults.totalResponses === 1 ? "" : "s"}</p>
               </div>
-              <div className="flex flex-1 gap-4 text-sm text-ash-600">
-                <span>
-                  <Badge variant="success">{initialResults.promoters}</Badge> Promotores
-                </span>
-                <span>
-                  <Badge variant="warning">{initialResults.passives}</Badge> Pasivos
-                </span>
-                <span>
-                  <Badge variant="danger">{initialResults.detractors}</Badge> Detractores
-                </span>
+              <div className="flex-1">
+                {/* Barra 100% apilada — el formato estándar para leer NPS de un
+                    vistazo: qué proporción de las respuestas es promotor,
+                    pasivo o detractor. */}
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-paper-muted">
+                  {initialResults.promoters > 0 && (
+                    <div className="h-full bg-success" style={{ width: `${(initialResults.promoters / initialResults.totalResponses) * 100}%` }} />
+                  )}
+                  {initialResults.passives > 0 && (
+                    <div className="h-full bg-warning" style={{ width: `${(initialResults.passives / initialResults.totalResponses) * 100}%` }} />
+                  )}
+                  {initialResults.detractors > 0 && (
+                    <div className="h-full bg-danger" style={{ width: `${(initialResults.detractors / initialResults.totalResponses) * 100}%` }} />
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-4 text-sm text-ash-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden="true" /> {initialResults.promoters} Promotores (5★)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden="true" /> {initialResults.passives} Pasivos (4★)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden="true" /> {initialResults.detractors} Detractores (1-3★)
+                  </span>
+                </div>
               </div>
             </div>
             <div className="flex flex-col divide-y divide-paper-border">

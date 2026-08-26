@@ -1684,6 +1684,51 @@ export class AdminService {
     return { deleted: ids.length };
   }
 
+  /**
+   * "El administrador podría ver los resultados de la encuesta de
+   * satisfacción como [estrellas con distribución] y un listado de
+   * comentarios" — antes CourseRating (las estrellas que el alumno deja al
+   * terminar un curso) se guardaba y se promediaba SOLO para mostrarse en
+   * la ficha pública del curso (avgRating/reviews); no existía ninguna
+   * vista agregada para el admin, a diferencia de la encuesta NPS (que sí
+   * tenía su propio panel — ver NpsService.listResponses, mismo criterio
+   * de distribución aplicado acá).
+   */
+  async listCourseRatings(filters: { courseId?: string } = {}) {
+    const ratings = await this.prisma.courseRating.findMany({
+      where: filters.courseId ? { courseId: filters.courseId } : {},
+      include: { user: true, course: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const total = ratings.length;
+    const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let sum = 0;
+    for (const r of ratings) {
+      distribution[r.stars] = (distribution[r.stars] ?? 0) + 1;
+      sum += r.stars;
+    }
+    const courses = await this.prisma.course.findMany({
+      where: { ratings: { some: {} } },
+      select: { id: true, title: true },
+      orderBy: { createdAt: "desc" },
+    });
+    return {
+      totalResponses: total,
+      avgStars: total > 0 ? sum / total : null,
+      distribution,
+      courses: courses.map((c) => ({ id: c.id, title: c.title })),
+      responses: ratings.map((r) => ({
+        id: r.id,
+        stars: r.stars,
+        comment: r.comment,
+        courseId: r.courseId,
+        courseTitle: r.course.title,
+        studentName: r.user.displayName ?? `${r.user.firstName} ${r.user.lastName}`,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  }
+
   // --- Empresas ---
 
   // Antes devolvía la fila `Company` cruda sin `seatsUsed` (el frontend de
