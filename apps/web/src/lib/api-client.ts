@@ -572,6 +572,7 @@ export const adminApi = {
     apiFetch<any>("/admin/programs", { method: "POST", body: JSON.stringify(input), accessToken }),
   orders: (q: string | undefined, accessToken?: string | null, sortBy?: string) =>
     apiFetch<any[]>("/admin/orders", { accessToken, query: { ...(q ? { q } : {}), ...(sortBy ? { sortBy } : {}) } }),
+  ordersSummary: (accessToken?: string | null) => apiFetch<any>("/admin/orders/summary", { accessToken, cache: "no-store" }),
   // --- Matrículas: ampliar plazo de acceso como caso especial ---
   enrollments: (q: string | undefined, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/enrollments", { accessToken, query: q ? { q } : undefined, cache: "no-store" }),

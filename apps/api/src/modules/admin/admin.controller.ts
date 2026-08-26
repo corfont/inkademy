@@ -763,6 +763,17 @@ export class AdminController {
     return this.adminService.listOrders(q, sortBy);
   }
 
+  // listOrders() limita a las últimas 200 (evita traer la tabla completa
+  // para una búsqueda) — un total/desglose por estado calculado sobre esa
+  // lista recortada mentiría en cuanto hubiera más de 200 órdenes. Este
+  // resumen corre su propio COUNT/SUM sobre la tabla completa.
+  @Get("orders/summary")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Total de órdenes por estado + monto pagado (para las tarjetas resumen de /admin/ordenes)" })
+  getOrdersSummary() {
+    return this.adminService.getOrdersSummary();
+  }
+
   // --- Matrículas (ampliar plazo de acceso como caso especial) ---
 
   @Get("enrollments")

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ClipboardList, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
+import { Card, CardContent } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { formatDate, formatPrice, localize } from "@/lib/format";
@@ -47,12 +49,37 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
   const accessToken = getServerAccessToken();
   const q = searchParams.q?.trim() || undefined;
   const sortBy = searchParams.sortBy || "date";
-  const { data: orders, live } = await withFallback(() => adminApi.orders(q, accessToken, sortBy), [] as OrderRow[]);
+  const [{ data: orders, live }, { data: summary }] = await Promise.all([
+    withFallback(() => adminApi.orders(q, accessToken, sortBy), [] as OrderRow[]),
+    withFallback(() => adminApi.ordersSummary(accessToken), { total: 0, paid: 0, pending: 0, failed: 0, paidTotalPen: "0" }),
+  ]);
+
+  const summaryCards = [
+    { label: "Total de órdenes", value: summary.total, icon: ClipboardList, accent: "bg-indigo-50 text-indigo-600" },
+    { label: "Pagadas", value: summary.paid, icon: CheckCircle2, accent: "bg-success-bg text-success" },
+    { label: "Pendientes", value: summary.pending, icon: Clock, accent: "bg-gold-100 text-gold-700" },
+    { label: "Fallidas", value: summary.failed, icon: XCircle, accent: "bg-danger-bg text-danger" },
+  ];
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <h1 className="font-serif text-2xl font-semibold text-ink-900">Órdenes</h1>
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {summaryCards.map((c) => (
+          <Card key={c.label} className="transition-shadow hover:shadow-raised">
+            <CardContent className="p-5">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-full ${c.accent}`}>
+                <c.icon className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <p className="mt-3 font-serif text-2xl font-semibold text-ink-900">{c.value}</p>
+              <p className="text-sm text-ash-500">{c.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <p className="-mt-2 text-xs text-ash-500">Total pagado en soles (PEN): {formatPrice(summary.paidTotalPen, "PEN", locale)}</p>
 
       <form className="flex flex-wrap items-end gap-2" action="/admin/ordenes">
         <Input name="q" defaultValue={q ?? ""} placeholder="Buscar por id de orden, email o razón social…" className="max-w-md" />

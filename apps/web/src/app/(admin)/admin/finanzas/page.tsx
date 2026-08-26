@@ -102,24 +102,30 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
             </Callout>
           )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-            <Card>
+            <Card className="transition-shadow hover:shadow-raised">
               <CardContent className="p-5">
-                <TrendingUp className="h-5 w-5 text-success" aria-hidden="true" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-bg text-success">
+                  <TrendingUp className="h-5 w-5" aria-hidden="true" />
+                </span>
                 <p className="mt-3 font-serif text-xl font-semibold text-ink-900">{formatPrice(row.income, row.currency, locale)}</p>
                 <p className="text-sm text-ash-500">Ingresos</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="transition-shadow hover:shadow-raised">
               <CardContent className="p-5">
-                <Receipt className="h-5 w-5 text-warning" aria-hidden="true" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold-100 text-gold-700">
+                  <Receipt className="h-5 w-5" aria-hidden="true" />
+                </span>
                 <p className="mt-3 font-serif text-xl font-semibold text-ink-900">{formatPrice(row.igv, row.currency, locale)}</p>
                 <p className="text-sm text-ash-500">IGV a pagar a SUNAT</p>
               </CardContent>
             </Card>
             {summary.detractionEnabled && (
-              <Card>
+              <Card className="transition-shadow hover:shadow-raised">
                 <CardContent className="p-5">
-                  <Receipt className="h-5 w-5 text-warning" aria-hidden="true" />
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold-100 text-gold-700">
+                    <Receipt className="h-5 w-5" aria-hidden="true" />
+                  </span>
                   <p className="mt-3 font-serif text-xl font-semibold text-ink-900">{formatPrice(row.detraction, row.currency, locale)}</p>
                   <p className="text-sm text-ash-500">Detracción SUNAT</p>
                   {row.currency !== "PEN" && row.detractionPenEquivalent > 0 && (
@@ -130,23 +136,29 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
                 </CardContent>
               </Card>
             )}
-            <Card>
+            <Card className="transition-shadow hover:shadow-raised">
               <CardContent className="p-5">
-                <CreditCard className="h-5 w-5 text-ink-700" aria-hidden="true" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                  <CreditCard className="h-5 w-5" aria-hidden="true" />
+                </span>
                 <p className="mt-3 font-serif text-xl font-semibold text-ink-900">{formatPrice(row.providerFees, row.currency, locale)}</p>
                 <p className="text-sm text-ash-500">Comisión {row.currency === "PEN" ? "Culqi" : "Stripe"}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="transition-shadow hover:shadow-raised">
               <CardContent className="p-5">
-                <Wallet className="h-5 w-5 text-ash-500" aria-hidden="true" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-ash-100 text-ash-600">
+                  <Wallet className="h-5 w-5" aria-hidden="true" />
+                </span>
                 <p className="mt-3 font-serif text-xl font-semibold text-ink-900">{formatPrice(row.otherExpenses, row.currency, locale)}</p>
                 <p className="text-sm text-ash-500">Otros gastos</p>
               </CardContent>
             </Card>
-            <Card className={row.balance >= 0 ? "border-success" : "border-danger"}>
+            <Card className={`transition-shadow hover:shadow-raised ${row.balance >= 0 ? "border-success" : "border-danger"}`}>
               <CardContent className="p-5">
-                <Scale className={`h-5 w-5 ${row.balance >= 0 ? "text-success" : "text-danger"}`} aria-hidden="true" />
+                <span className={`flex h-10 w-10 items-center justify-center rounded-full ${row.balance >= 0 ? "bg-success-bg text-success" : "bg-danger-bg text-danger"}`}>
+                  <Scale className="h-5 w-5" aria-hidden="true" />
+                </span>
                 <p className={`mt-3 font-serif text-xl font-semibold ${row.balance >= 0 ? "text-success" : "text-danger"}`}>
                   {formatPrice(row.balance, row.currency, locale)}
                 </p>

@@ -1816,6 +1816,27 @@ export class AdminService {
     return rows.slice(0, 50);
   }
 
+  /**
+   * Resumen para las tarjetas de /admin/ordenes — a diferencia de listOrders
+   * (recortado a 200 filas / 50 mostradas, pensado para buscar una orden
+   * puntual), este corre COUNT/SUM directo sobre toda la tabla, así que el
+   * total no miente aunque haya miles de órdenes.
+   */
+  async getOrdersSummary() {
+    const [byStatus, paidPen] = await Promise.all([
+      this.prisma.order.groupBy({ by: ["status"], _count: { status: true } }),
+      this.prisma.order.aggregate({ where: { status: "PAID", currency: "PEN" }, _sum: { total: true } }),
+    ]);
+    const countByStatus = Object.fromEntries(byStatus.map((r) => [r.status, r._count.status]));
+    return {
+      total: byStatus.reduce((sum, r) => sum + r._count.status, 0),
+      paid: countByStatus.PAID ?? 0,
+      pending: countByStatus.PENDING ?? 0,
+      failed: countByStatus.FAILED ?? 0,
+      paidTotalPen: decimalToString(paidPen._sum.total ?? 0),
+    };
+  }
+
   // ==========================================================================
   // Finanzas — antes no existía ningún lugar para ver cuánto entra, cuánto
   // se va en IGV/comisión de pasarela, y cuánto queda de saldo real. Todo
