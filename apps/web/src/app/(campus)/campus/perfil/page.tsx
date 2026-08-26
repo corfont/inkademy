@@ -7,6 +7,7 @@ import { UploadCloud } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { authApi, catalogApi, ApiError, type FullProfileDTO } from "@/lib/api-client";
 import { ChangePasswordCard } from "@/components/campus/ChangePasswordCard";
+import { MyCompanySection } from "@/components/campus/MyCompanySection";
 import { updateSessionUser } from "@/lib/auth";
 import { MOCK_AREAS } from "@/lib/mock-data";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -393,6 +394,10 @@ export default function ProfilePage() {
           {isSubmitting ? "…" : "Guardar"}
         </Button>
       </form>
+
+      <div className="mt-8 max-w-2xl">
+        <MyCompanySection />
+      </div>
 
       <ChangePasswordCard />
     </div>
