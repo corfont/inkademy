@@ -245,6 +245,12 @@ export const addCoursePartnershipSchema = z.object({
   endDate: z.string().optional(),
 });
 
+// "Los convenios se pueden renovar, extender su plazo" — null limpia esa fecha (convenio indefinido).
+export const updateCoursePartnershipSchema = z.object({
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+});
+
 // --- Liquidación de docentes ---
 export const upsertTeacherRateSchema = z.object({
   teacherId: z.string().uuid(),
@@ -277,6 +283,12 @@ export const generateTeacherLiquidationSchema = z.object({
   teacherId: z.string().uuid(),
   periodStart: z.string(),
   periodEnd: z.string(),
+});
+
+// "Poder eliminar si uno ya no lo quiere visualizar, uno a uno o en
+// bloque" — borra filas del historial de cortesías (AuditLog), no revoca accesos.
+export const deleteCourtesyGrantsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1),
 });
 
 export const waiveLiquidationSchema = z.object({

@@ -11,6 +11,7 @@ import { teacherScopeId } from "../../common/utils/scope";
 import { fileMimeFilter, COURSE_ASSET_MIME_PREFIXES } from "../../common/utils/file-filter";
 import {
   addCoursePartnershipSchema,
+  updateCoursePartnershipSchema,
   addCourseRoyaltySchema,
   assignCourseStaffSchema,
   adminResetPasswordSchema,
@@ -18,6 +19,7 @@ import {
   createTeacherActivityLogSchema,
   createTeacherAdvanceSchema,
   createUserSchema,
+  deleteCourtesyGrantsSchema,
   generateTeacherLiquidationSchema,
   gradeFileAttemptSchema,
   emailAudienceFilterSchema,
@@ -469,6 +471,16 @@ export class AdminController {
     return this.adminService.removeCoursePartnership(id);
   }
 
+  @Patch("partner-institutions/course-partnerships/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Renueva o extiende el plazo de un convenio ya asignado a un curso" })
+  updateCoursePartnership(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateCoursePartnershipSchema)) dto: { startDate?: string | null; endDate?: string | null },
+  ) {
+    return this.adminService.updateCoursePartnership(id, dto);
+  }
+
   // --- Reporte de horas dictadas (conexión/desconexión en clases en vivo) ---
 
   @Get("teacher-session-hours")
@@ -680,6 +692,20 @@ export class AdminController {
   @ApiOperation({ summary: "Lista todas las empresas" })
   listCompanies() {
     return this.adminService.listCompanies();
+  }
+
+  @Get("courtesy-grants")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Historial de accesos gratuitos otorgados (cortesías) — filtrable por año/curso/área" })
+  listCourtesyGrants(@Query("year") year?: string, @Query("courseId") courseId?: string, @Query("areaSlug") areaSlug?: string) {
+    return this.adminService.listCourtesyGrants({ year: year ? Number(year) : undefined, courseId, areaSlug });
+  }
+
+  @Delete("courtesy-grants")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina del historial una o varias cortesías (solo deja de listarlas, no revoca el acceso ya otorgado)" })
+  deleteCourtesyGrants(@Body(new ZodValidationPipe(deleteCourtesyGrantsSchema)) dto: { ids: string[] }) {
+    return this.adminService.deleteCourtesyGrants(dto.ids);
   }
 
   @Get("quotes")

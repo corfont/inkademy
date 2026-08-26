@@ -750,7 +750,11 @@ export class AdminService {
     });
     // Prisma.Decimal no serializa a JSON como número plano por defecto —
     // sin esto el frontend mostraba "S/ NaN" (mismo caso que Order/Course).
-    return rows.map((r) => ({ ...r, feeAmount: r.feeAmount ? decimalToString(r.feeAmount) : null }));
+    return rows.map((r) => ({
+      ...r,
+      feeAmount: r.feeAmount ? decimalToString(r.feeAmount) : null,
+      signatureUrl: r.signatureAssetId ? this.storageService.getPublicUrl(r.signatureAssetId) : null,
+    }));
   }
 
   createPartnerInstitution(input: {
@@ -790,6 +794,17 @@ export class AdminService {
   async removeCoursePartnership(id: string) {
     await this.prisma.coursePartnership.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /** "Los convenios se pueden renovar, extender su plazo" — actualiza el rango de fechas de un curso ya asignado a un convenio. */
+  updateCoursePartnership(id: string, input: { startDate?: string | null; endDate?: string | null }) {
+    return this.prisma.coursePartnership.update({
+      where: { id },
+      data: {
+        ...(input.startDate !== undefined ? { startDate: input.startDate ? new Date(input.startDate) : null } : {}),
+        ...(input.endDate !== undefined ? { endDate: input.endDate ? new Date(input.endDate) : null } : {}),
+      },
+    });
   }
 
   /**
@@ -1530,6 +1545,75 @@ export class AdminService {
       },
     });
     return updated;
+  }
+
+  // --- Cortesías (accesos gratuitos otorgados) ---
+
+  /**
+   * "Deberían aparecer más abajo todas las cortesías que se han realizado
+   * con fecha, el administrador que dio la autorización, la empresa/
+   * persona beneficiada, el curso" — GrantFreeAccessForm nunca guardó nada
+   * pensado para listarse después; se reconstruye desde AuditLog
+   * (action="GRANT_FREE_ACCESS", ya se registraba ahí desde
+   * CommerceService.grantFreeAccess, solo que sin ninguna pantalla que lo
+   * mostrara). `entity`/`entityId` es genérico (Course o Program), así que
+   * se resuelven aparte en vez de con un include directo.
+   */
+  async listCourtesyGrants(filters: { year?: number; courseId?: string; areaSlug?: string }) {
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        action: "GRANT_FREE_ACCESS",
+        ...(filters.year
+          ? { createdAt: { gte: new Date(`${filters.year}-01-01`), lt: new Date(`${filters.year + 1}-01-01`) } }
+          : {}),
+        ...(filters.courseId ? { entityId: filters.courseId } : {}),
+      },
+      include: { actor: true, company: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const courseIds = logs.filter((l) => l.entity === "Course" && l.entityId).map((l) => l.entityId!);
+    const programIds = logs.filter((l) => l.entity === "Program" && l.entityId).map((l) => l.entityId!);
+    const beneficiaryUserIds = logs
+      .map((l) => (l.after as Record<string, unknown> | null)?.userId)
+      .filter((id): id is string => typeof id === "string");
+
+    const [courses, programs, beneficiaries] = await Promise.all([
+      courseIds.length ? this.prisma.course.findMany({ where: { id: { in: courseIds } }, include: { area: true } }) : [],
+      programIds.length ? this.prisma.program.findMany({ where: { id: { in: programIds } } }) : [],
+      beneficiaryUserIds.length ? this.prisma.user.findMany({ where: { id: { in: beneficiaryUserIds } } }) : [],
+    ]);
+    const courseById = new Map(courses.map((c) => [c.id, c]));
+    const programById = new Map(programs.map((p) => [p.id, p]));
+    const userById = new Map(beneficiaries.map((u) => [u.id, u]));
+
+    const rows = logs.map((l) => {
+      const after = l.after as Record<string, unknown> | null;
+      const course = l.entity === "Course" && l.entityId ? courseById.get(l.entityId) : undefined;
+      const program = l.entity === "Program" && l.entityId ? programById.get(l.entityId) : undefined;
+      const beneficiaryUser = typeof after?.userId === "string" ? userById.get(after.userId as string) : undefined;
+      return {
+        id: l.id,
+        createdAt: l.createdAt.toISOString(),
+        authorizedBy: l.actor ? (l.actor.displayName ?? `${l.actor.firstName} ${l.actor.lastName}`) : "Desconocido",
+        offeringTitle: (course?.title ?? program?.title ?? {}) as Record<string, string>,
+        areaSlug: course?.area?.slug ?? null,
+        areaName: (course?.area?.name as Record<string, string> | undefined) ?? null,
+        beneficiaryType: l.company ? ("COMPANY" as const) : ("USER" as const),
+        beneficiaryName: l.company ? l.company.legalName : beneficiaryUser ? `${beneficiaryUser.firstName} ${beneficiaryUser.lastName}` : "—",
+        seatPoolQty: typeof after?.seatPoolQty === "number" ? after.seatPoolQty : null,
+        note: typeof after?.note === "string" ? after.note : null,
+      };
+    });
+
+    // areaSlug no se puede filtrar en la consulta SQL (requiere resolver
+    // Course primero) — se aplica acá, sobre las filas ya armadas.
+    return filters.areaSlug ? rows.filter((r) => r.areaSlug === filters.areaSlug) : rows;
+  }
+
+  async deleteCourtesyGrants(ids: string[]) {
+    await this.prisma.auditLog.deleteMany({ where: { id: { in: ids }, action: "GRANT_FREE_ACCESS" } });
+    return { deleted: ids.length };
   }
 
   // --- Empresas ---

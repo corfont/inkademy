@@ -646,6 +646,15 @@ export const adminApi = {
     apiFetch<any>(`/admin/certificate-templates/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteCertificateTemplate: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/certificate-templates/${id}`, { method: "DELETE", accessToken }),
+  // --- Cortesías (historial de accesos gratuitos otorgados) ---
+  courtesyGrants: (filters: { year?: number; courseId?: string; areaSlug?: string } = {}, accessToken?: string | null) =>
+    apiFetch<any[]>("/admin/courtesy-grants", {
+      accessToken,
+      cache: "no-store",
+      query: { year: filters.year?.toString(), courseId: filters.courseId, areaSlug: filters.areaSlug },
+    }),
+  deleteCourtesyGrants: (ids: string[], accessToken?: string | null) =>
+    apiFetch<{ deleted: number }>("/admin/courtesy-grants", { method: "DELETE", body: JSON.stringify({ ids }), accessToken }),
   // --- Convenios institucionales ---
   partnerInstitutions: (accessToken?: string | null) => apiFetch<any[]>("/admin/partner-institutions", { accessToken, cache: "no-store" }),
   createPartnerInstitution: (input: Record<string, unknown>, accessToken?: string | null) =>
@@ -661,6 +670,9 @@ export const adminApi = {
   ) => apiFetch<any>(`/admin/partner-institutions/${partnerInstitutionId}/courses`, { method: "POST", body: JSON.stringify(input), accessToken }),
   removeCoursePartnership: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/partner-institutions/course-partnerships/${id}`, { method: "DELETE", accessToken }),
+  // "Los convenios se pueden renovar, extender su plazo" — actualiza el rango de fechas ya asignado.
+  updateCoursePartnership: (id: string, input: { startDate?: string | null; endDate?: string | null }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/partner-institutions/course-partnerships/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   // --- Reporte de horas dictadas (conexión/desconexión en clases en vivo) ---
   teacherSessionHours: (
     params: { teacherId?: string; courseId?: string; from?: string; to?: string } = {},

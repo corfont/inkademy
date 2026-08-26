@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { adminApi, commerceApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +9,7 @@ import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 
 export function GrantFreeAccessForm() {
+  const router = useRouter();
   const [offeringKind, setOfferingKind] = useState<"COURSE" | "PROGRAM">("COURSE");
   const [slug, setSlug] = useState("");
   const [recipientKind, setRecipientKind] = useState<"PERSON" | "COMPANY">("PERSON");
@@ -96,6 +98,9 @@ export function GrantFreeAccessForm() {
       setUserQuery("");
       setCompanyId("");
       setNote("");
+      // Para que la cortesía recién otorgada aparezca de una en el
+      // historial de más abajo, sin tener que recargar la página a mano.
+      router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos otorgar el acceso.");
     } finally {
