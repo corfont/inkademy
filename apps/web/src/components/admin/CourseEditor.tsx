@@ -2276,7 +2276,10 @@ const STAFF_ROLE_LABEL: Record<string, string> = { TEACHER: "Docente", CO_TEACHE
 
 function CourseStaffSection({ courseId }: { courseId: string }) {
   const { user } = useAuth();
-  const isAdmin = user?.globalRole === "ADMIN";
+  // Antes solo miraba `globalRole` — un ADMIN por rol secundario (ver
+  // roles.includes("ADMIN") en los layouts de campus/docente) llegaba a
+  // esta pantalla pero no podía asignar a nadie, ni siquiera a sí mismo.
+  const isAdmin = Boolean(user && [user.globalRole, ...(user.secondaryRoles ?? [])].includes("ADMIN"));
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [teachers, setTeachers] = useState<any[]>([]);

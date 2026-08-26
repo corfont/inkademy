@@ -2481,16 +2481,27 @@ export class AdminService {
   async listUsers(params: { q?: string; role?: string }) {
     const users = await this.prisma.user.findMany({
       where: {
-        ...(params.role ? { globalRole: params.role as never } : {}),
-        ...(params.q
-          ? {
-              OR: [
-                { email: { contains: params.q, mode: "insensitive" as const } },
-                { firstName: { contains: params.q, mode: "insensitive" as const } },
-                { lastName: { contains: params.q, mode: "insensitive" as const } },
-              ],
-            }
-          : {}),
+        // "Cuando quiero asignarme un curso no aparece mi nombre" — antes
+        // solo miraba `globalRole`, así que alguien con TEACHER únicamente
+        // en `secondaryRoles` (un ADMIN que también da clases, por ejemplo)
+        // quedaba invisible en este listado, incluida la lista de docentes
+        // de CourseEditor. Acá también se usa AND en vez de anidar otro OR
+        // a nivel raíz junto al de `q` — dos claves "OR" en el mismo objeto
+        // se pisarían entre sí.
+        AND: [
+          params.role
+            ? { OR: [{ globalRole: params.role as never }, { secondaryRoles: { has: params.role as never } }] }
+            : {},
+          params.q
+            ? {
+                OR: [
+                  { email: { contains: params.q, mode: "insensitive" as const } },
+                  { firstName: { contains: params.q, mode: "insensitive" as const } },
+                  { lastName: { contains: params.q, mode: "insensitive" as const } },
+                ],
+              }
+            : {},
+        ],
       },
       // Antes no se veía a qué empresa pertenece cada cuenta desde
       // /admin/usuarios — había que entrar empresa por empresa a buscarlo.
