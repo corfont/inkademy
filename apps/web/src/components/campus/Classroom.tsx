@@ -647,23 +647,20 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             antes solo se enlazaba UNA evaluación (la primera), y solo
             aparecía si la lección abierta no tenía video/link/SCORM. Ahora
             se listan TODAS las evaluaciones reales del curso, siempre
-            visibles, cada una con su propio candado, peso y mejor nota. */}
+            visibles, cada una con su propio candado (por módulo si
+            corresponde, no un candado global), peso y mejor nota. */}
         {detail.assessments.length > 0 && (() => {
-          const allPassed = detail.assessments.every((a) => a.bestScore !== null && a.bestScore >= a.minScore);
+          const allDone = detail.assessments.every((a) => a.unlocked && a.bestScore !== null && a.bestScore >= a.minScore);
+          // "¿Cómo sabe cuál examen tomar en cada módulo?" — un examen
+          // vinculado a un módulo se explica por su propio nombre ("Se
+          // habilita al completar Módulo 2"), no con el % genérico del
+          // curso entero.
+          const moduleTitleById = new Map(detail.modules.map((m) => [m.id, localize(m.title, locale)]));
           return (
             <ActionSection
               icon={ClipboardCheck}
-              tone={detail.assessmentsUnlocked && allPassed ? "success" : "ink"}
-              instruction={
-                !detail.assessmentsUnlocked
-                  ? "Aprueba tus evaluaciones para avanzar"
-                  : allPassed
-                    ? "Ya aprobaste todas tus evaluaciones"
-                    : "Aprueba tus evaluaciones para avanzar"
-              }
-              lockedReason={
-                !detail.assessmentsUnlocked ? `Completes el 100% del curso (llevas ${Math.round(progressPct)}%).` : null
-              }
+              tone={allDone ? "success" : "ink"}
+              instruction={allDone ? "Ya aprobaste todas tus evaluaciones" : "Aprueba tus evaluaciones para avanzar"}
             >
               <ul className="flex flex-col gap-3">
                 {detail.assessments.map((a) => (
@@ -671,13 +668,19 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                     <div>
                       <p className="font-medium text-ink-900">{localize(a.title, locale)}</p>
                       <p className="text-xs text-ash-500">
+                        {a.moduleId && moduleTitleById.has(a.moduleId) ? `${moduleTitleById.get(a.moduleId)} · ` : "Examen final del curso · "}
                         {a.weightPercent ? `Pesa ${a.weightPercent}% de la nota final · ` : ""}
                         Nota mínima {a.minScore}/100
                         {a.bestScore !== null && ` · Tu mejor nota: ${a.bestScore}/100`}
                         {a.attemptsUsed > 0 && ` · Intentos usados: ${a.attemptsUsed}/${a.maxAttempts}`}
                       </p>
+                      {!a.unlocked && (
+                        <p className="mt-1 text-xs text-ash-500">
+                          Se habilita al completar {a.moduleId && moduleTitleById.has(a.moduleId) ? moduleTitleById.get(a.moduleId) : `el curso (llevas ${Math.round(progressPct)}%)`}.
+                        </p>
+                      )}
                     </div>
-                    {detail.assessmentsUnlocked && (
+                    {a.unlocked && (
                       <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${a.id}`}>
                         <Button size="sm">{a.bestScore !== null ? "Ver / reintentar" : t("goToAssessment")}</Button>
                       </Link>

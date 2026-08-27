@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -437,21 +440,72 @@ function MetadataSection({
   );
 }
 
+/** Fila de módulo arrastrable — mismo patrón que SortableAssessmentRow/SortableQuestionRow. */
+function SortableModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; module: any; busy: boolean; run: any }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: mod.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+      <button
+        type="button"
+        className="mt-4 cursor-grab touch-none text-ash-400 hover:text-ash-600"
+        aria-label="Arrastrar para reordenar módulo"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <div className="flex-1">
+        <ModuleBlock courseId={courseId} module={mod} busy={busy} run={run} />
+      </div>
+    </div>
+  );
+}
+
 function ContentSection({ course, busy, run }: { course: any; busy: boolean; run: (a: () => Promise<unknown>) => void }) {
   const [newModuleTitle, setNewModuleTitle] = useState("");
+  // "Es muy complicado... no drag and drop" — antes NO había ninguna forma
+  // de reordenar módulos (a diferencia de las lecciones, que sí tenían
+  // flechas). Estado local para poder mostrar el arrastre en vivo; se
+  // resincroniza cuando el padre trae `course` fresco tras cada mutación
+  // (mismo patrón que ExamBuilder.questions).
+  const [modules, setModules] = useState<any[]>(course.modules);
+  useEffect(() => {
+    setModules(course.modules);
+  }, [course.modules]);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = modules.findIndex((m) => m.id === active.id);
+    const newIndex = modules.findIndex((m) => m.id === over.id);
+    const next = arrayMove(modules, oldIndex, newIndex);
+    setModules(next);
+    try {
+      await adminApi.reorderModules(course.id, next.map((m) => m.id));
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
+      setModules(course.modules);
+    }
+  }
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-6 p-6">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Módulos y lecciones</h2>
 
-        {course.modules.length === 0 && <p className="text-sm text-ash-500">Este curso todavía no tiene módulos.</p>}
+        {modules.length === 0 && <p className="text-sm text-ash-500">Este curso todavía no tiene módulos.</p>}
 
-        <div className="flex flex-col gap-6">
-          {course.modules.map((mod: any) => (
-            <ModuleBlock key={mod.id} courseId={course.id} module={mod} busy={busy} run={run} />
-          ))}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={modules.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-6">
+              {modules.map((mod: any) => (
+                <SortableModuleBlock key={mod.id} courseId={course.id} module={mod} busy={busy} run={run} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         <div className="flex items-end gap-3 border-t border-paper-border pt-4">
           <div className="flex-1">
@@ -1796,12 +1850,89 @@ function ExamTemplateSection({ course, onSaved }: { course: any; onSaved: () => 
   );
 }
 
+/**
+ * Fila de examen arrastrable — mismo patrón que SortableQuestionRow en
+ * ExamBuilder.tsx (drag handle propio, el resto de la fila no arrastra).
+ */
+function SortableAssessmentRow({
+  assessment,
+  moduleTitle,
+  onEdit,
+  onDelete,
+}: {
+  assessment: any;
+  moduleTitle: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: assessment.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const hasAttempts = (assessment._count?.attempts ?? 0) > 0;
+  // "Si el puntaje excede la nota máxima debe aparecer una alerta... sino
+  // no va a poder usar ese examen" — visible acá también, sin tener que
+  // abrir cada examen para verlo.
+  const totalPoints = (assessment.questions ?? []).reduce((sum: number, q: any) => sum + (q.points ?? 0), 0);
+  const pointsOverLimit = totalPoints > 100.01;
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center justify-between gap-3 rounded-lg border border-paper-border p-4">
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          className="mt-0.5 cursor-grab touch-none text-ash-400 hover:text-ash-600"
+          aria-label="Arrastrar para reordenar"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <div>
+          <p className="font-medium text-ink-900">
+            {assessment.title?.es} {assessment.archived && <Badge variant="outline">Archivado</Badge>}{" "}
+            {assessment.sourceFileAssetId && <Badge variant="outline">Examen de archivo</Badge>}
+            {pointsOverLimit && <Badge variant="danger">Puntaje excede 100 — no usable</Badge>}
+          </p>
+          <p className="text-xs text-ash-500">
+            {/* "¿Cómo sabe cuál examen tomar en cada módulo?" — cada fila
+                dice a qué módulo pertenece (o que es el examen final), sin
+                tener que abrirla. */}
+            <span className="font-medium text-ash-600">{moduleTitle ?? "Examen final del curso"}</span> ·{" "}
+            {assessment.sourceFileAssetId
+              ? "Sin preguntas — se califica el archivo completo que sube el alumno"
+              : `${assessment.questions?.length ?? 0} pregunta${assessment.questions?.length === 1 ? "" : "s"}`}{" "}
+            · {assessment._count?.attempts ?? 0} intento(s) de alumnos
+            {assessment.weightPercent != null && ` · peso en fórmula: ${assessment.weightPercent}%`}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-none gap-2">
+        <Button size="sm" variant="outline" onClick={onEdit}>
+          Editar
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-danger hover:bg-danger-bg"
+          disabled={hasAttempts}
+          title={hasAttempts ? "No se puede eliminar: ya tiene intentos de alumnos. Archívala en su lugar (botón Editar)." : undefined}
+          onClick={onDelete}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseChange: () => void }) {
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  // "¿Cómo sabe cuál examen tomar en cada módulo?" — al crear, se elige a
+  // qué módulo pertenece (vacío = examen final del curso, exige el curso
+  // completo en vez de un módulo puntual).
+  const [newModuleId, setNewModuleId] = useState("");
   // "Módulo para crear evaluaciones O subir un archivo (Word/Excel/PPT/
   // imagen/PDF) como examen" — antes solo se podía crear evaluaciones por
   // preguntas; este toggle agrega la segunda modalidad, sin preguntas: el
@@ -1810,6 +1941,8 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
   const [isFileUpload, setIsFileUpload] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const moduleTitleById = new Map((course.modules ?? []).map((m: any) => [m.id, m.title?.es]));
 
   async function refresh() {
     try {
@@ -1831,7 +1964,7 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
     if (!newTitle.trim()) return;
     setCreating(true);
     try {
-      await adminApi.createAssessment(course.id, { title: { es: newTitle } });
+      await adminApi.createAssessment(course.id, { title: { es: newTitle }, moduleId: newModuleId || null });
       setNewTitle("");
       await refresh();
     } catch (err) {
@@ -1849,7 +1982,12 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
     setUploadingFile(true);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
-      await adminApi.createAssessment(course.id, { title: { es: newTitle }, sourceFileAssetId: assetId, sourceFileMimeType: file.type });
+      await adminApi.createAssessment(course.id, {
+        title: { es: newTitle },
+        sourceFileAssetId: assetId,
+        sourceFileMimeType: file.type,
+        moduleId: newModuleId || null,
+      });
       setNewTitle("");
       setIsFileUpload(false);
       await refresh();
@@ -1857,6 +1995,21 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
       alert(err instanceof ApiError ? err.message : "No pudimos crear el examen de archivo.");
     } finally {
       setUploadingFile(false);
+    }
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = assessments.findIndex((a) => a.id === active.id);
+    const newIndex = assessments.findIndex((a) => a.id === over.id);
+    const next = arrayMove(assessments, oldIndex, newIndex);
+    setAssessments(next);
+    try {
+      await adminApi.reorderAssessments(course.id, next.map((a) => a.id));
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
+      refresh();
     }
   }
 
@@ -1894,58 +2047,49 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
           ) : (
             <div className="flex flex-col gap-4">
               <WeightFormulaCard assessments={activeAssessments} />
-              {assessments.map((a) => {
-                const hasAttempts = (a._count?.attempts ?? 0) > 0;
-                // "Si el puntaje excede la nota máxima debe aparecer una
-                // alerta... sino no va a poder usar ese examen" — visible
-                // acá también, sin tener que abrir cada examen para verlo.
-                const totalPoints = (a.questions ?? []).reduce((sum: number, q: any) => sum + (q.points ?? 0), 0);
-                const pointsOverLimit = totalPoints > 100.01;
-                return (
-                  <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-paper-border p-4">
-                    <div>
-                      <p className="font-medium text-ink-900">
-                        {a.title?.es} {a.archived && <Badge variant="outline">Archivado</Badge>}{" "}
-                        {a.sourceFileAssetId && <Badge variant="outline">Examen de archivo</Badge>}
-                        {pointsOverLimit && <Badge variant="danger">Puntaje excede 100 — no usable</Badge>}
-                      </p>
-                      <p className="text-xs text-ash-500">
-                        {a.sourceFileAssetId
-                          ? "Sin preguntas — se califica el archivo completo que sube el alumno"
-                          : `${a.questions?.length ?? 0} pregunta${a.questions?.length === 1 ? "" : "s"}`}{" "}
-                        · {a._count?.attempts ?? 0} intento(s) de alumnos
-                        {a.weightPercent != null && ` · peso en fórmula: ${a.weightPercent}%`}
-                      </p>
-                    </div>
-                    <div className="flex flex-none gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setEditingId(a.id)}>
-                        Editar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-danger hover:bg-danger-bg"
-                        disabled={hasAttempts}
-                        title={hasAttempts ? "No se puede eliminar: ya tiene intentos de alumnos. Archívala en su lugar (botón Editar)." : undefined}
-                        onClick={() => handleDelete(a)}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
+              {/* "Es muy complicado... no drag and drop" — arrastra para
+                  reordenar (mismo patrón que las preguntas dentro de un
+                  examen); cada fila dice a qué módulo pertenece. */}
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={assessments.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-3">
+                    {assessments.map((a) => (
+                      <SortableAssessmentRow
+                        key={a.id}
+                        assessment={a}
+                        moduleTitle={a.moduleId ? (moduleTitleById.get(a.moduleId) as string | undefined) ?? null : null}
+                        onEdit={() => setEditingId(a.id)}
+                        onDelete={() => handleDelete(a)}
+                      />
+                    ))}
                   </div>
-                );
-              })}
+                </SortableContext>
+              </DndContext>
             </div>
           )}
           <div className="flex flex-col gap-2 border-t border-paper-border pt-4">
-            <div className="flex gap-2">
-              <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+            <div className="flex flex-wrap gap-2">
+              <Input placeholder="Título de la nueva evaluación" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="flex-1" />
+              <div className="min-w-[12rem]">
+                <Select value={newModuleId} onChange={(e) => setNewModuleId(e.target.value)} aria-label="¿A qué módulo pertenece?">
+                  <option value="">Examen final del curso</option>
+                  {(course.modules ?? []).map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.title?.es}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               {!isFileUpload && (
                 <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
                   + Nueva evaluación
                 </Button>
               )}
             </div>
+            <p className="text-xs text-ash-500">
+              &ldquo;Examen final del curso&rdquo; se habilita al terminar el 100% del curso; un examen de un módulo puntual se habilita apenas
+              ESE módulo se completa.
+            </p>
             <label className="flex items-center gap-2 text-xs text-ash-600">
               <input type="checkbox" checked={isFileUpload} onChange={(e) => setIsFileUpload(e.target.checked)} />
               Es un examen de archivo (el docente sube el examen en Word/Excel/PPT/imagen/PDF, en vez de escribir preguntas)

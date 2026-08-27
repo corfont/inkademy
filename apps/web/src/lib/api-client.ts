@@ -813,6 +813,9 @@ export const adminApi = {
     apiFetch<any>(`/admin/modules/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteModule: (id: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/modules/${id}`, { method: "DELETE", accessToken }),
+  // "No hay ninguna forma de reordenar módulos" — drag-and-drop, mismo patrón que reorderQuestions.
+  reorderModules: (courseId: string, orderedModuleIds: string[], accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/modules/reorder`, { method: "PATCH", body: JSON.stringify({ orderedModuleIds }), accessToken }),
   createLesson: (moduleId: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/modules/${moduleId}/lessons`, { method: "POST", body: JSON.stringify(input), accessToken }),
   updateLesson: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
@@ -899,6 +902,13 @@ export const adminApi = {
     apiFetch<any>(`/admin/assessments/${assessmentId}/questions/reorder`, {
       method: "PATCH",
       body: JSON.stringify({ orderedQuestionIds }),
+      accessToken,
+    }),
+  // "No drag and drop... más tedioso" — reordenar los exámenes de un curso.
+  reorderAssessments: (courseId: string, orderedAssessmentIds: string[], accessToken?: string | null) =>
+    apiFetch<any>(`/admin/courses/${courseId}/assessments/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ orderedAssessmentIds }),
       accessToken,
     }),
 

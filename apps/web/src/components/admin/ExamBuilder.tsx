@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Trash2, Pencil, Eye, Archive, ArchiveRestore, X } from "lucide-react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Dialog } from "@/components/ui/Dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -338,6 +339,10 @@ export function ExamBuilder({
   const [displayMode, setDisplayMode] = useState(assessment.displayMode ?? "ALL_AT_ONCE");
   const [weightPercent, setWeightPercent] = useState(assessment.weightPercent != null ? String(assessment.weightPercent) : "");
   const [titleFontFamily, setTitleFontFamily] = useState(assessment.titleFontFamily ?? "");
+  // "¿Cómo sabe cuál examen tomar en cada módulo?" — vacío = examen final
+  // del curso (exige el curso completo); con valor, se desbloquea apenas
+  // ESE módulo se completa.
+  const [moduleId, setModuleId] = useState(assessment.moduleId ?? "");
 
   const [useCourseHeader, setUseCourseHeader] = useState(assessment.headerTextOverride == null);
   const [headerText, setHeaderText] = useState(assessment.headerTextOverride?.es ?? "");
@@ -375,6 +380,7 @@ export function ExamBuilder({
         displayMode,
         weightPercent: weightPercent.trim() === "" ? null : Number(weightPercent),
         titleFontFamily: titleFontFamily || null,
+        moduleId: moduleId || null,
         headerTextOverride: useCourseHeader ? null : { es: headerText },
         footerTextOverride: useCourseFooter ? null : { es: footerText },
         instructionsOverride: useCourseInstructions ? null : { es: instructionsText },
@@ -458,215 +464,263 @@ export function ExamBuilder({
     instructionsText: useCourseInstructions ? course.examInstructionsText : { es: instructionsText },
   };
 
+  const saveButton = (
+    <Button size="sm" variant="outline" disabled={busy || weightOverLimit} onClick={handleSaveRules} className="self-start">
+      {busy ? "Guardando…" : "Guardar cambios"}
+    </Button>
+  );
+
   return (
     <Dialog open onClose={onClose} title={assessment.title?.es ?? "Examen"} className="max-h-[85vh] max-w-3xl overflow-y-auto">
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         {error && <Callout variant="danger">{error}</Callout>}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)}>
-            <Eye className="h-4 w-4" aria-hidden="true" /> Vista previa
-          </Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={handleArchiveToggle}>
-            {assessment.archived ? (
-              <>
-                <ArchiveRestore className="h-4 w-4" aria-hidden="true" /> Restaurar
-              </>
-            ) : (
-              <>
-                <Archive className="h-4 w-4" aria-hidden="true" /> Archivar
-              </>
-            )}
-          </Button>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <Label htmlFor="minScore">Nota mínima (%, sobre 100)</Label>
-            <Input id="minScore" type="number" min="0" max="100" value={minScore} onChange={(e) => setMinScore(e.target.value)} />
-            <p className="mt-1 text-xs text-ash-500">
-              No es la escala vigesimal (0-20) — el examen se corrige y se compara sobre 100 (ej.: 70 = necesitas 70% para aprobar).
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="weight">Peso en fórmula ponderada (%)</Label>
-            <Input
-              id="weight"
-              type="number"
-              min="0"
-              max={maxWeight}
-              placeholder="No participa"
-              value={weightPercent}
-              onChange={(e) => setWeightPercent(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-ash-500">Disponible: {maxWeight}% (los demás exámenes del curso ya suman {otherWeightsSum}%)</p>
-          </div>
-          <div>
-            <Label htmlFor="maxAttempts">Intentos máximos</Label>
-            <Input id="maxAttempts" type="number" min="1" value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="timeLimit">Límite de tiempo (min)</Label>
-            <Input id="timeLimit" type="number" min="1" value={timeLimitMinutes} onChange={(e) => setTimeLimitMinutes(e.target.value)} placeholder="Sin límite" />
-          </div>
-          <div>
-            <Label htmlFor="displayMode">Cómo se muestran las preguntas</Label>
-            <Select id="displayMode" value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
-              <option value="ALL_AT_ONCE">Todas juntas en una pantalla</option>
-              <option value="ONE_BY_ONE">Una por una (sin volver atrás)</option>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="titleFont">Tipografía del título</Label>
-            <Select id="titleFont" value={titleFontFamily} onChange={(e) => setTitleFontFamily(e.target.value)}>
-              <option value="">Usar la del curso</option>
-              {BRAND_FONT_OPTIONS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-        {weightOverLimit && <Callout variant="danger">El peso no puede superar el {maxWeight}% disponible.</Callout>}
-
-        <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
-          <h3 className="text-sm font-semibold text-ink-900">Cabecera, pie e instrucciones</h3>
-          {[
-            { label: "Cabecera", use: useCourseHeader, setUse: setUseCourseHeader, value: headerText, setValue: setHeaderText, id: "header", courseValue: course.examHeaderText?.es },
-            { label: "Instrucciones", use: useCourseInstructions, setUse: setUseCourseInstructions, value: instructionsText, setValue: setInstructionsText, id: "instructions", courseValue: course.examInstructionsText?.es },
-            { label: "Pie de página", use: useCourseFooter, setUse: setUseCourseFooter, value: footerText, setValue: setFooterText, id: "footer", courseValue: course.examFooterText?.es },
-          ].map((f) => (
-            <div key={f.id}>
-              <div className="flex items-center justify-between">
-                <Label htmlFor={f.id}>{f.label}</Label>
-                <label className="flex items-center gap-1.5 text-xs text-ash-600">
-                  <input type="checkbox" checked={f.use} onChange={(e) => f.setUse(e.target.checked)} />
-                  Usar la del curso
-                </label>
-              </div>
-              {f.use ? (
-                <p className="rounded-md bg-paper-muted p-2 text-xs text-ash-600">
-                  {f.courseValue || (
-                    <span className="italic">El curso todavía no tiene una plantilla definida — configúrala más abajo, en &ldquo;Evaluaciones&rdquo;.</span>
-                  )}
-                </p>
-              ) : (
-                <textarea
-                  id={f.id}
-                  className="min-h-[4rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
-                  value={f.value}
-                  onChange={(e) => f.setValue(e.target.value)}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        <Button size="sm" variant="outline" disabled={busy || weightOverLimit} onClick={handleSaveRules} className="self-start">
-          Guardar cambios
-        </Button>
-
-        {isFileUpload ? (
-          <p className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
-            Este examen no tiene preguntas — el alumno descarga el archivo que subiste, lo completa offline, y sube su respuesta como archivo
-            para que lo califiques a mano en /docente/evaluaciones-pendientes.
+        {/* "Es muy complicado... revísalo y mejóralo" — antes esto era UNA
+            sola columna larga (reglas + cabecera/pie + preguntas, todo
+            junto): había que bajar por ~6 campos antes de llegar a
+            "Preguntas", donde vive la plantilla Excel. Vista previa/
+            Archivar quedan siempre visibles arriba de las pestañas. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-paper-border pb-3">
+          <p className="text-xs text-ash-500">
+            {moduleId
+              ? `Examen de: ${(course.modules ?? []).find((m: any) => m.id === moduleId)?.title?.es ?? "módulo"}`
+              : "Examen final del curso"}
           </p>
-        ) : (
-          <div className="flex flex-col gap-3 border-t border-paper-border pt-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ink-900">Preguntas ({questions.length})</h3>
-              <span className={cn("text-xs font-medium", pointsOverLimit ? "text-danger" : "text-ash-500")}>
-                Puntaje total: {totalPoints} / 100
-              </span>
-            </div>
-            {pointsOverLimit && (
-              <Callout variant="danger">
-                La suma de puntos de las preguntas ({totalPoints}) supera 100. Ajusta el puntaje de alguna pregunta — mientras exceda 100, este
-                examen no podrá usarse en una evaluación (los alumnos no podrán empezar un intento).
-              </Callout>
-            )}
-
-            {/* "Es un poco pesado hacer pregunta por pregunta... ¿se puede
-                tener una plantilla en Excel?" — descarga la plantilla,
-                trabaja las preguntas en Excel, y sube el archivo acá para
-                crearlas todas de una vez (una fila con error no bloquea al
-                resto, se avisa cuál corregir). */}
-            <div className="flex flex-wrap items-center gap-2 rounded-md bg-paper-muted p-3">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => adminApi.downloadQuestionsTemplate(assessment.id).catch(() => alert("No pudimos generar la plantilla."))}
-              >
-                Descargar plantilla Excel
-              </Button>
-              <Button size="sm" variant="outline" disabled={importBusy} onClick={() => fileInputRef.current?.click()}>
-                {importBusy ? "Subiendo…" : "Subir preguntas"}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                onChange={handleImportFile}
-              />
-              <span className="text-xs text-ash-500">Preguntas creadas en lote desde un archivo Excel (ver plantilla).</span>
-            </div>
-            {importResult && (
-              <Callout variant={importResult.errors.length > 0 ? "warning" : "success"}>
-                <p className="font-medium">
-                  {importResult.created} pregunta{importResult.created === 1 ? "" : "s"} creada{importResult.created === 1 ? "" : "s"}
-                  {importResult.errors.length > 0 && ` · ${importResult.errors.length} fila(s) con error`}
-                </p>
-                {importResult.errors.length > 0 && (
-                  <ul className="mt-1 list-inside list-disc text-xs">
-                    {importResult.errors.map((e, i) => (
-                      <li key={i}>
-                        Fila {e.row}: {e.message}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Callout>
-            )}
-
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={questions.map((q) => q.id)} strategy={verticalListSortingStrategy}>
-                <div className="flex flex-col gap-2">
-                  {questions.map((q) => (
-                    <SortableQuestionRow
-                      key={q.id}
-                      question={q}
-                      editing={editingQuestionId === q.id}
-                      onEdit={() => setEditingQuestionId(q.id)}
-                      onCancelEdit={() => setEditingQuestionId(null)}
-                      onDelete={() => handleDeleteQuestion(q.id)}
-                      onSaved={() => {
-                        setEditingQuestionId(null);
-                        onChange();
-                      }}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-
-            {addingQuestion ? (
-              <QuestionForm
-                assessmentId={assessment.id}
-                onDone={() => {
-                  setAddingQuestion(false);
-                  onChange();
-                }}
-                onCancel={() => setAddingQuestion(false)}
-              />
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => setAddingQuestion(true)} className="self-start">
-                + Agregar pregunta
-              </Button>
-            )}
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)}>
+              <Eye className="h-4 w-4" aria-hidden="true" /> Vista previa
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={handleArchiveToggle}>
+              {assessment.archived ? (
+                <>
+                  <ArchiveRestore className="h-4 w-4" aria-hidden="true" /> Restaurar
+                </>
+              ) : (
+                <>
+                  <Archive className="h-4 w-4" aria-hidden="true" /> Archivar
+                </>
+              )}
+            </Button>
           </div>
-        )}
+        </div>
+
+        <Tabs defaultValue="questions">
+          <TabsList aria-label="Secciones del examen">
+            <TabsTrigger value="questions">Preguntas</TabsTrigger>
+            <TabsTrigger value="details">Detalles</TabsTrigger>
+            <TabsTrigger value="appearance">Apariencia</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="questions">
+            {isFileUpload ? (
+              <p className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
+                Este examen no tiene preguntas — el alumno descarga el archivo que subiste, lo completa offline, y sube su respuesta como archivo
+                para que lo califiques a mano en /docente/evaluaciones-pendientes.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {/* "Es un poco pesado hacer pregunta por pregunta... ¿se
+                    puede tener una plantilla en Excel?" / "Sigo sin ver
+                    dónde descargar la plantilla" — es la tarea que más se
+                    repite: va PRIMERO, antes de cualquier otra cosa de esta
+                    pestaña, no enterrada después del contador de puntaje. */}
+                <div className="flex flex-wrap items-center gap-2 rounded-md bg-paper-muted p-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adminApi.downloadQuestionsTemplate(assessment.id).catch(() => alert("No pudimos generar la plantilla."))}
+                  >
+                    Descargar plantilla Excel
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={importBusy} onClick={() => fileInputRef.current?.click()}>
+                    {importBusy ? "Subiendo…" : "Subir preguntas"}
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={handleImportFile}
+                  />
+                  <span className="text-xs text-ash-500">Preguntas creadas en lote desde un archivo Excel (ver plantilla).</span>
+                </div>
+                {importResult && (
+                  <Callout variant={importResult.errors.length > 0 ? "warning" : "success"}>
+                    <p className="font-medium">
+                      {importResult.created} pregunta{importResult.created === 1 ? "" : "s"} creada{importResult.created === 1 ? "" : "s"}
+                      {importResult.errors.length > 0 && ` · ${importResult.errors.length} fila(s) con error`}
+                    </p>
+                    {importResult.errors.length > 0 && (
+                      <ul className="mt-1 list-inside list-disc text-xs">
+                        {importResult.errors.map((e, i) => (
+                          <li key={i}>
+                            Fila {e.row}: {e.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Callout>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-ink-900">Preguntas ({questions.length})</h3>
+                  <span className={cn("text-xs font-medium", pointsOverLimit ? "text-danger" : "text-ash-500")}>
+                    Puntaje total: {totalPoints} / 100
+                  </span>
+                </div>
+                {pointsOverLimit && (
+                  <Callout variant="danger">
+                    La suma de puntos de las preguntas ({totalPoints}) supera 100. Ajusta el puntaje de alguna pregunta — mientras exceda 100, este
+                    examen no podrá usarse en una evaluación (los alumnos no podrán empezar un intento).
+                  </Callout>
+                )}
+
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={questions.map((q) => q.id)} strategy={verticalListSortingStrategy}>
+                    <div className="flex flex-col gap-2">
+                      {questions.map((q) => (
+                        <SortableQuestionRow
+                          key={q.id}
+                          question={q}
+                          editing={editingQuestionId === q.id}
+                          onEdit={() => setEditingQuestionId(q.id)}
+                          onCancelEdit={() => setEditingQuestionId(null)}
+                          onDelete={() => handleDeleteQuestion(q.id)}
+                          onSaved={() => {
+                            setEditingQuestionId(null);
+                            onChange();
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+
+                {addingQuestion ? (
+                  <QuestionForm
+                    assessmentId={assessment.id}
+                    onDone={() => {
+                      setAddingQuestion(false);
+                      onChange();
+                    }}
+                    onCancel={() => setAddingQuestion(false)}
+                  />
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setAddingQuestion(true)} className="self-start">
+                    + Agregar pregunta
+                  </Button>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="details">
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="minScore">Nota mínima (%, sobre 100)</Label>
+                  <Input id="minScore" type="number" min="0" max="100" value={minScore} onChange={(e) => setMinScore(e.target.value)} />
+                  <p className="mt-1 text-xs text-ash-500">
+                    No es la escala vigesimal (0-20) — el examen se corrige y se compara sobre 100 (ej.: 70 = necesitas 70% para aprobar).
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="weight">Peso en fórmula ponderada (%)</Label>
+                  <Input
+                    id="weight"
+                    type="number"
+                    min="0"
+                    max={maxWeight}
+                    placeholder="No participa"
+                    value={weightPercent}
+                    onChange={(e) => setWeightPercent(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-ash-500">Disponible: {maxWeight}% (los demás exámenes del curso ya suman {otherWeightsSum}%)</p>
+                </div>
+                <div>
+                  <Label htmlFor="maxAttempts">Intentos máximos</Label>
+                  <Input id="maxAttempts" type="number" min="1" value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="timeLimit">Límite de tiempo (min)</Label>
+                  <Input id="timeLimit" type="number" min="1" value={timeLimitMinutes} onChange={(e) => setTimeLimitMinutes(e.target.value)} placeholder="Sin límite" />
+                </div>
+                <div>
+                  <Label htmlFor="displayMode">Cómo se muestran las preguntas</Label>
+                  <Select id="displayMode" value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
+                    <option value="ALL_AT_ONCE">Todas juntas en una pantalla</option>
+                    <option value="ONE_BY_ONE">Una por una (sin volver atrás)</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="titleFont">Tipografía del título</Label>
+                  <Select id="titleFont" value={titleFontFamily} onChange={(e) => setTitleFontFamily(e.target.value)}>
+                    <option value="">Usar la del curso</option>
+                    {BRAND_FONT_OPTIONS.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  {/* "¿Cómo sabe cuál examen tomar en cada módulo?" */}
+                  <Label htmlFor="moduleId">¿A qué módulo pertenece?</Label>
+                  <Select id="moduleId" value={moduleId} onChange={(e) => setModuleId(e.target.value)}>
+                    <option value="">Examen final del curso</option>
+                    {(course.modules ?? []).map((m: any) => (
+                      <option key={m.id} value={m.id}>
+                        {m.title?.es}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-ash-500">
+                    Con módulo: se habilita apenas ESE módulo se completa. Sin módulo: se habilita al terminar el curso completo.
+                  </p>
+                </div>
+              </div>
+              {weightOverLimit && <Callout variant="danger">El peso no puede superar el {maxWeight}% disponible.</Callout>}
+              {saveButton}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="appearance">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
+                {[
+                  { label: "Cabecera", use: useCourseHeader, setUse: setUseCourseHeader, value: headerText, setValue: setHeaderText, id: "header", courseValue: course.examHeaderText?.es },
+                  { label: "Instrucciones", use: useCourseInstructions, setUse: setUseCourseInstructions, value: instructionsText, setValue: setInstructionsText, id: "instructions", courseValue: course.examInstructionsText?.es },
+                  { label: "Pie de página", use: useCourseFooter, setUse: setUseCourseFooter, value: footerText, setValue: setFooterText, id: "footer", courseValue: course.examFooterText?.es },
+                ].map((f) => (
+                  <div key={f.id}>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor={f.id}>{f.label}</Label>
+                      <label className="flex items-center gap-1.5 text-xs text-ash-600">
+                        <input type="checkbox" checked={f.use} onChange={(e) => f.setUse(e.target.checked)} />
+                        Usar la del curso
+                      </label>
+                    </div>
+                    {f.use ? (
+                      <p className="rounded-md bg-paper-muted p-2 text-xs text-ash-600">
+                        {f.courseValue || (
+                          <span className="italic">El curso todavía no tiene una plantilla definida — configúrala más abajo, en &ldquo;Evaluaciones&rdquo;.</span>
+                        )}
+                      </p>
+                    ) : (
+                      <textarea
+                        id={f.id}
+                        className="min-h-[4rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+                        value={f.value}
+                        onChange={(e) => f.setValue(e.target.value)}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+              {saveButton}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       {previewOpen && (

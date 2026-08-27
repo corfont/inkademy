@@ -373,11 +373,19 @@ export interface ClassroomModule {
 export interface ClassroomAssessmentSummary {
   id: string;
   title: LocalizedText;
+  // "¿Cómo sabe cuál examen tomar en cada módulo?" — null = examen final
+  // del curso; con valor, pertenece a ESE módulo puntual (ver `unlocked`).
+  moduleId: string | null;
   weightPercent: number | null;
   minScore: number;
   maxAttempts: number;
   bestScore: number | null;
   attemptsUsed: number;
+  // Candado POR EXAMEN — antes era un solo booleano global
+  // (ClassroomDetail.assessmentsUnlocked) que exigía el curso completo
+  // para TODOS los exámenes; ahora uno con moduleId se desbloquea apenas
+  // ESE módulo está completo.
+  unlocked: boolean;
 }
 export interface ClassroomDetail {
   enrollmentId: string;
@@ -390,8 +398,6 @@ export interface ClassroomDetail {
   // exponía la primera (assessmentId singular) y el resto quedaba
   // inalcanzable desde el aula por más que pesaran la mayoría de la nota.
   assessments: ClassroomAssessmentSummary[];
-  // "El examen solo lo visualizará el alumno una vez completado el curso".
-  assessmentsUnlocked?: boolean;
   progressPct?: number;
   blockMainVideoDownload?: boolean;
   modules: ClassroomModule[];
@@ -431,9 +437,18 @@ export function buildMockClassroom(enrollmentId: string, courseSlug: string): Cl
     courseId: detail.id,
     syllabusUrl: "#",
     assessments: [
-      { id: `${detail.id}-assess1`, title: { es: "Evaluación final" }, weightPercent: null, minScore: 70, maxAttempts: 3, bestScore: null, attemptsUsed: 0 },
+      {
+        id: `${detail.id}-assess1`,
+        title: { es: "Evaluación final" },
+        moduleId: null,
+        weightPercent: null,
+        minScore: 70,
+        maxAttempts: 3,
+        bestScore: null,
+        attemptsUsed: 0,
+        unlocked: (enrollment?.progressPct ?? 0) >= 100,
+      },
     ],
-    assessmentsUnlocked: (enrollment?.progressPct ?? 0) >= 100,
     progressPct: enrollment?.progressPct ?? 0,
     approvalMissing: enrollment?.approvalMissing ?? [],
     approvalChecklist: (enrollment?.approvalMissing ?? []).map((label) => ({ label, done: false })),
