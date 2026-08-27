@@ -462,6 +462,10 @@ export const upsertAssessmentSchema = z.object({
   weightPercent: z.number().min(0).max(100).optional().nullable(),
   // "Se debe poder archivar" — oculta el examen a los alumnos sin borrarlo.
   archived: z.boolean().optional(),
+  // "¿Cómo sabe cuál examen tomar en cada módulo?" — null = examen final
+  // del curso (exige el curso completo); con valor, se desbloquea apenas
+  // ESE módulo se completa. Ver EnrollmentService.isModuleComplete.
+  moduleId: z.string().optional().nullable(),
   // Tipografía curada del título (ver BRAND_FONT_OPTIONS en el frontend) —
   // no se restringe a un enum acá porque la lista curada vive en el
   // frontend; el Select ya limita las opciones que llegan a mandarse.
@@ -476,6 +480,18 @@ export const updateAssessmentSchema = upsertAssessmentSchema.partial();
 
 export const reorderQuestionsSchema = z.object({
   orderedQuestionIds: z.array(z.string().min(1)).min(1),
+});
+
+// "Es muy complicado... no drag and drop" — reordenar los exámenes de un
+// curso (arrastre en AssessmentsSection), mismo patrón que reorderQuestionsSchema.
+export const reorderAssessmentsSchema = z.object({
+  orderedAssessmentIds: z.array(z.string().min(1)).min(1),
+});
+
+// Reordenar los módulos de un curso (arrastre en ContentSection) — antes no
+// existía NINGUNA forma de reordenar módulos, ni con flechas.
+export const reorderModulesSchema = z.object({
+  orderedModuleIds: z.array(z.string().min(1)).min(1),
 });
 
 export const submitFileAttemptSchema = z.object({

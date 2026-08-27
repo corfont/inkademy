@@ -222,10 +222,15 @@ export class AssessmentService {
       orderBy: { enrolledAt: "desc" },
     });
     if (!enrollment) throw new ForbiddenException("No estás matriculado en el curso de esta evaluación");
-    // "El examen solo lo visualizará el alumno una vez completado el curso"
-    // — defensa en profundidad: el frontend ya oculta el acceso, pero esto
+    // "¿Cómo sabe cuál examen tomar en cada módulo?" — un examen vinculado a
+    // un módulo se desbloquea apenas ESE módulo está completo, no el curso
+    // entero; sin módulo (examen final) sigue exigiendo el curso completo.
+    // Defensa en profundidad: el frontend ya oculta el acceso, pero esto
     // evita que alguien dispare el POST directo sin haber completado.
-    if (enrollment.progressPct < 100) {
+    if (assessment.moduleId) {
+      const moduleDone = await this.enrollmentService.isModuleComplete(assessment.moduleId, enrollment.id);
+      if (!moduleDone) throw new ForbiddenException("Completa el módulo de este examen para poder presentarlo");
+    } else if (enrollment.progressPct < 100) {
       throw new ForbiddenException("Completa el curso para poder presentar esta evaluación");
     }
 
@@ -830,7 +835,10 @@ export class AssessmentService {
     return this.prisma.assessment.findMany({
       where: { courseId, ...(includeArchived ? {} : { archived: false }) },
       include: { questions: { orderBy: { order: "asc" } }, _count: { select: { attempts: true } } },
-      orderBy: { id: "asc" },
+      // "No drag and drop" — reordenable por arrastre (AssessmentsSection,
+      // ver reorderAssessments); antes ordenaba por `id` (UUID, sin ningún
+      // significado), así que el arrastre parecía no persistir nunca.
+      orderBy: { order: "asc" },
     });
   }
 
@@ -847,7 +855,26 @@ export class AssessmentService {
       const approvalRule = await this.prisma.approvalRule.findUnique({ where: { courseId }, select: { minScore: true } });
       if (approvalRule) minScore = approvalRule.minScore;
     }
-    return this.prisma.assessment.create({ data: { courseId, ...input, ...(minScore !== undefined ? { minScore } : {}) } as never });
+    // Se agrega al final por defecto — el orden real después lo controla
+    // el drag-and-drop de AssessmentsSection (ver reorderAssessments).
+    const last = await this.prisma.assessment.findFirst({ where: { courseId }, orderBy: { order: "desc" } });
+    return this.prisma.assessment.create({
+      data: { courseId, order: (last?.order ?? -1) + 1, ...input, ...(minScore !== undefined ? { minScore } : {}) } as never,
+    });
+  }
+
+  /** Reordenar los exámenes de un curso por arrastre — mismo patrón que reorderQuestions. */
+  async reorderAssessments(courseId: string, orderedAssessmentIds: string[], teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
+    const existing = await this.prisma.assessment.findMany({ where: { courseId }, select: { id: true } });
+    const existingIds = new Set(existing.map((a) => a.id));
+    if (orderedAssessmentIds.length !== existingIds.size || orderedAssessmentIds.some((id) => !existingIds.has(id))) {
+      throw new BadRequestException("La lista de exámenes no coincide con los exámenes reales de este curso");
+    }
+    await this.prisma.$transaction(
+      orderedAssessmentIds.map((id, index) => this.prisma.assessment.update({ where: { id }, data: { order: index } })),
+    );
+    return { reordered: true };
   }
 
   /**

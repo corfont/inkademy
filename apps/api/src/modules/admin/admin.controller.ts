@@ -45,6 +45,8 @@ import {
   updateQuestionSchema,
   updateUserSchema,
   reorderQuestionsSchema,
+  reorderAssessmentsSchema,
+  reorderModulesSchema,
   upsertAreaSchema,
   upsertAssessmentSchema,
   upsertCertificateTemplateSchema,
@@ -209,6 +211,18 @@ export class AdminController {
   @ApiOperation({ summary: "Elimina un módulo (y sus lecciones/materiales en cascada) — TEACHER solo si es CourseStaff del curso dueño" })
   deleteModule(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.adminService.deleteModule(id, teacherScopeId(user));
+  }
+
+  // "Es muy complicado... no drag and drop" — antes no había ninguna forma de reordenar módulos.
+  @Patch("courses/:courseId/modules/reorder")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Reordena los módulos de un curso (drag-and-drop)" })
+  reorderModules(
+    @CurrentUser() user: RequestUser,
+    @Param("courseId") courseId: string,
+    @Body(new ZodValidationPipe(reorderModulesSchema)) dto: { orderedModuleIds: string[] },
+  ) {
+    return this.adminService.reorderModules(courseId, dto.orderedModuleIds, teacherScopeId(user));
   }
 
   @Post("modules/:moduleId/lessons")
@@ -382,6 +396,18 @@ export class AdminController {
     @Body(new ZodValidationPipe(reorderQuestionsSchema)) dto: { orderedQuestionIds: string[] },
   ) {
     return this.assessmentService.reorderQuestions(assessmentId, dto.orderedQuestionIds, teacherScopeId(user));
+  }
+
+  // "Es muy complicado... no drag and drop" — reordenar los exámenes de un curso.
+  @Patch("courses/:courseId/assessments/reorder")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Reordena los exámenes de un curso (drag-and-drop)" })
+  reorderAssessments(
+    @CurrentUser() user: RequestUser,
+    @Param("courseId") courseId: string,
+    @Body(new ZodValidationPipe(reorderAssessmentsSchema)) dto: { orderedAssessmentIds: string[] },
+  ) {
+    return this.assessmentService.reorderAssessments(courseId, dto.orderedAssessmentIds, teacherScopeId(user));
   }
 
   @Patch("questions/:id")

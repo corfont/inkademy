@@ -421,6 +421,9 @@ model CourseModule {
   // Lecturas/documentos del módulo (no de una lección puntual) — principales
   // o complementarias, ver Material.category.
   materials Material[]
+  // Exámenes vinculados a este módulo puntual (ver Assessment.moduleId) —
+  // se desbloquean apenas el módulo se completa, no con todo el curso.
+  assessments Assessment[]
 
   @@index([courseId])
 }
@@ -899,6 +902,18 @@ model Assessment {
   id                String                  @id @default(uuid())
   courseId          String
   course            Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  // "¿Cómo sabe cuál examen tomar en cada módulo?" — null = examen final del
+  // curso (exige el curso completo, ver AssessmentService.createAttempt);
+  // con valor = examen de ESE módulo puntual, se desbloquea apenas ese
+  // módulo se completa (EnrollmentService.isModuleComplete), no todo el
+  // curso. onDelete SetNull: borrar el módulo no borra el examen, solo lo
+  // deja como "sin módulo" (pasa a examen final) para no perder su historial.
+  moduleId          String?
+  module            CourseModule?           @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  // Orden real de autoría/presentación — antes no existía y getMineDetail
+  // ordenaba por `id` (UUID, sin ningún significado). Reordenable por
+  // arrastre en el admin (ver AssessmentService.reorderAssessments).
+  order             Int                     @default(0)
   title             Json
   type              String                  @default("quiz") // quiz | exam | assignment
   minScore          Float                   @default(70)
@@ -951,6 +966,7 @@ model Assessment {
   attempts          AssessmentAttempt[]
 
   @@index([courseId])
+  @@index([moduleId])
 }
 
 enum AttemptStatus {

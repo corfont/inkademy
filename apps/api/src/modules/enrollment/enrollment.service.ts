@@ -311,7 +311,10 @@ export class EnrollmentService {
             // todas las evaluaciones reales (no archivadas) del curso.
             assessments: {
               where: { archived: false, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
-              orderBy: { id: "asc" },
+              // "¿Cómo sabe el orden de los exámenes?" — antes ordenaba por
+              // `id` (UUID, sin ningún significado). Ahora usa el orden real
+              // de autoría, reordenable por arrastre (AssessmentService.reorderAssessments).
+              orderBy: { order: "asc" },
               include: { attempts: { where: { enrollmentId, score: { not: null } }, orderBy: { score: "desc" }, take: 1 } },
             },
           },
@@ -377,16 +380,24 @@ export class EnrollmentService {
     // tiene el alumno, para poder navegar directo a la que le falta rendir
     // sin adivinar. Mismo criterio de conteo por ciclo que
     // AssessmentService.getForStudent (attemptCycleWhere).
+    // "¿Cómo sabe cuál examen tomar en cada módulo?" — antes había un solo
+    // candado global (assessmentsUnlocked, 100% del curso) para TODOS los
+    // exámenes. Ahora cada examen trae su propio `unlocked`: si está
+    // vinculado a un módulo (moduleId), se desbloquea apenas ESE módulo
+    // está completo; si no (examen final del curso), sigue exigiendo el
+    // curso completo — mismo criterio que AssessmentService.createAttempt.
     const assessments = accessBlocked
       ? []
       : await Promise.all(
           (enrollment.course?.assessments ?? []).map(async (a) => ({
             id: a.id,
             title: a.title as Record<string, string>,
+            moduleId: a.moduleId,
             weightPercent: a.weightPercent ?? null,
             minScore: a.minScore,
             maxAttempts: a.maxAttempts,
             bestScore: a.attempts[0]?.score ?? null,
+            unlocked: a.moduleId ? await this.isModuleComplete(a.moduleId, enrollment.id) : enrollment.progressPct >= 100,
             attemptsUsed: await this.prisma.assessmentAttempt.count({
               where: {
                 assessmentId: a.id,
@@ -428,12 +439,9 @@ export class EnrollmentService {
       courseId: enrollment.course?.id ?? enrollment.program?.id ?? null,
       title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
       syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
+      // Cada examen trae su propio `unlocked` (ver arriba) — ya no hay un
+      // solo candado global para todos.
       assessments,
-      // "El examen solo lo visualizará el alumno una vez completado el
-      // curso" — antes se mostraba el botón apenas existía una Assessment,
-      // sin importar el avance. El frontend solo habilita el acceso real a
-      // CUALQUIER evaluación de la lista si assessmentsUnlocked=true.
-      assessmentsUnlocked: enrollment.progressPct >= 100,
       // "El sistema no debe permitir que el usuario pueda descargar la
       // clase [principal]" — configurable por curso (Course.blockMainVideoDownload).
       blockMainVideoDownload: enrollment.course?.blockMainVideoDownload ?? true,
@@ -581,6 +589,29 @@ export class EnrollmentService {
    * — el examen (que exige progressPct>=100 para desbloquearse) nunca le
    * aparecía al alumno.
    */
+  /**
+   * "¿Cómo sabe cuál examen tomar en cada módulo?" — un examen vinculado a
+   * un módulo (Assessment.moduleId) se desbloquea apenas ESE módulo está
+   * completo, no con el curso entero. Mismo criterio que recomputeProgress
+   * usa para el curso completo (lección completada + material MAIN leído),
+   * pero acotado a las lecciones/materiales de este módulo puntual — un
+   * módulo sin contenido cuenta como completo (mismo criterio "vacío es
+   * 100%" ya usado ahí).
+   */
+  async isModuleComplete(moduleId: string, enrollmentId: string): Promise<boolean> {
+    const [totalLessons, completedLessons, totalMainMaterials, readMainMaterials] = await Promise.all([
+      this.prisma.lesson.count({ where: { moduleId } }),
+      this.prisma.lessonProgress.count({ where: { enrollmentId, completed: true, lesson: { moduleId } } }),
+      this.prisma.material.count({ where: { category: "MAIN", visible: true, OR: [{ lessonId: { not: null }, lesson: { moduleId } }, { moduleId }] } }),
+      this.prisma.materialProgress.count({
+        where: { enrollmentId, material: { category: "MAIN", OR: [{ lessonId: { not: null }, lesson: { moduleId } }, { moduleId }] } },
+      }),
+    ]);
+    const totalUnits = totalLessons + totalMainMaterials;
+    const completedUnits = completedLessons + readMainMaterials;
+    return totalUnits === 0 || completedUnits >= totalUnits;
+  }
+
   async recomputeProgress(enrollmentId: string, courseId: string, userId: string) {
     const [totalLessons, completedLessons, totalMainMaterials, readMainMaterials] = await Promise.all([
       this.prisma.lesson.count({ where: { module: { courseId } } }),

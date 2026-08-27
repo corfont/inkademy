@@ -569,6 +569,25 @@ export class AdminService {
     return { deleted: true };
   }
 
+  /**
+   * "Es muy complicado... no drag and drop" — antes no existía NINGUNA
+   * forma de reordenar módulos (ni con flechas, a diferencia de las
+   * lecciones). Mismo patrón que AssessmentService.reorderQuestions/
+   * reorderAssessments.
+   */
+  async reorderModules(courseId: string, orderedModuleIds: string[], teacherUserId?: string) {
+    if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
+    const existing = await this.prisma.courseModule.findMany({ where: { courseId }, select: { id: true } });
+    const existingIds = new Set(existing.map((m) => m.id));
+    if (orderedModuleIds.length !== existingIds.size || orderedModuleIds.some((id) => !existingIds.has(id))) {
+      throw new BadRequestException("La lista de módulos no coincide con los módulos reales de este curso");
+    }
+    await this.prisma.$transaction(
+      orderedModuleIds.map((id, index) => this.prisma.courseModule.update({ where: { id }, data: { order: index } })),
+    );
+    return { reordered: true };
+  }
+
   async createLesson(
     moduleId: string,
     input: {
