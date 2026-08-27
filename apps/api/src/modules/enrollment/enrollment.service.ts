@@ -45,13 +45,13 @@ export class EnrollmentService {
   private async computeApprovalMissing(
     courseId: string,
     enrollmentId: string,
-  ): Promise<{ missing: string[]; ratingRequired: boolean; readyForRatingPrompt: boolean }> {
+  ): Promise<{ missing: string[]; checklist: { label: string; done: boolean }[]; ratingRequired: boolean; readyForRatingPrompt: boolean }> {
     const [approvalRule, enrollment, attendanceStats] = await Promise.all([
       this.prisma.approvalRule.findUnique({ where: { courseId } }),
       this.prisma.enrollment.findUnique({ where: { id: enrollmentId } }),
       this.prisma.liveSession.count({ where: { courseId } }),
     ]);
-    if (!enrollment) return { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+    if (!enrollment) return { missing: [], checklist: [], ratingRequired: false, readyForRatingPrompt: false };
     // "Si un alumno hace el curso varias veces, la calificación con
     // estrellas se da por hecha una sola vez, no de nuevo cada retake" —
     // antes se buscaba por ESTA matrícula (courseRating.enrollmentId es
@@ -77,12 +77,21 @@ export class EnrollmentService {
     // certificado" allá) nunca queden desincronizados.
     const { hasAssessments, finalScore: bestScore } = await computeCourseScore(this.prisma, enrollmentId, courseId, rule.scoreMode ?? "BEST_ATTEMPT");
 
-    const missing: string[] = [];
-    if (enrollment.progressPct < rule.minProgressPct) {
-      missing.push(
-        `Completa el ${rule.minProgressPct}% del curso (llevas ${Math.round(enrollment.progressPct)}%)`,
-      );
-    }
+    // "La referencia explica el bloqueo con precisión y muestra un
+    // checklist" — antes solo se armaba `missing[]` (lo que FALTA); ahora
+    // se arma un `checklist` con TODOS los requisitos reales del curso,
+    // cada uno con su `done`, para poder pintar en el Aula qué ya se
+    // cumplió (no solo qué falta). `missing` se sigue devolviendo tal
+    // cual (lo consume la tarjeta compacta de "Mis cursos"), derivado del
+    // mismo checklist para que nunca queden desincronizados.
+    const checklist: { label: string; done: boolean }[] = [];
+    const progressDone = enrollment.progressPct >= rule.minProgressPct;
+    checklist.push({
+      label: progressDone
+        ? `Completaste el ${rule.minProgressPct}% del curso`
+        : `Completa el ${rule.minProgressPct}% del curso (llevas ${Math.round(enrollment.progressPct)}%)`,
+      done: progressDone,
+    });
     if (rule.minAttendancePct !== null && attendanceStats > 0) {
       const attended = await this.prisma.attendance.count({
         where: {
@@ -94,22 +103,26 @@ export class EnrollmentService {
         },
       });
       const attendancePct = (attended / attendanceStats) * 100;
-      if (attendancePct < rule.minAttendancePct) {
-        missing.push(
-          `Alcanza ${rule.minAttendancePct}% de asistencia a clases en vivo (llevas ${Math.round(attendancePct)}%)`,
-        );
-      }
+      const attendanceDone = attendancePct >= rule.minAttendancePct;
+      checklist.push({
+        label: attendanceDone
+          ? `Alcanzaste ${rule.minAttendancePct}% de asistencia a clases en vivo`
+          : `Alcanza ${rule.minAttendancePct}% de asistencia a clases en vivo (llevas ${Math.round(attendancePct)}%)`,
+        done: attendanceDone,
+      });
     }
     // Solo exigir nota mínima si el curso tiene al menos una evaluación configurada
     // — de lo contrario un `minScore: 0` (curso sin examen) generaría un requisito
     // sin sentido ("aprueba una evaluación con nota mínima 0").
     if (hasAssessments) {
-      if (bestScore === null || bestScore < rule.minScore) {
-        const label = rule.scoreMode === "WEIGHTED_AVERAGE" ? "tu nota ponderada actual" : "tu mejor nota";
-        missing.push(
-          `Aprueba ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}/100${bestScore !== null ? ` (${label}: ${bestScore.toFixed(1)}/100)` : ""}`,
-        );
-      }
+      const scoreDone = bestScore !== null && bestScore >= rule.minScore;
+      const label = rule.scoreMode === "WEIGHTED_AVERAGE" ? "tu nota ponderada actual" : "tu mejor nota";
+      checklist.push({
+        label: scoreDone
+          ? `Aprobaste ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}/100 (${label}: ${bestScore!.toFixed(1)}/100)`
+          : `Aprueba ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}/100${bestScore !== null ? ` (${label}: ${bestScore.toFixed(1)}/100)` : ""}`,
+        done: scoreDone,
+      });
     }
     if (rule.requiresAssignment) {
       const gradedAssignment = await this.prisma.answer.findFirst({
@@ -119,15 +132,21 @@ export class EnrollmentService {
           isCorrect: true,
         },
       });
-      if (!gradedAssignment) missing.push("Entrega y aprueba la tarea/asignación del curso");
+      checklist.push({
+        label: gradedAssignment ? "Entregaste y aprobaste la tarea/asignación del curso" : "Entrega y aprueba la tarea/asignación del curso",
+        done: Boolean(gradedAssignment),
+      });
     }
     // "Si no responde [las estrellas] el curso no se podrá dar por
     // finalizado y el certificado no se podrá emitir" — se muestra como un
     // requisito más, igual que el resto (ver CertificateService.checkAndIssueIfEligible).
+    // Depende de que TODO lo demás ya esté cumplido — no tiene sentido
+    // pedir calificar un curso a medias.
     const ratingRequired = !rating;
-    const readyForRatingPrompt = ratingRequired && missing.length === 0;
-    if (ratingRequired) missing.push("Califica el curso con estrellas y un comentario");
-    return { missing, ratingRequired, readyForRatingPrompt };
+    const readyForRatingPrompt = ratingRequired && checklist.every((c) => c.done);
+    checklist.push({ label: "Califica el curso con estrellas y un comentario", done: !ratingRequired });
+    const missing = checklist.filter((c) => !c.done).map((c) => c.label);
+    return { missing, checklist, ratingRequired, readyForRatingPrompt };
   }
 
   private async nextActionLabel(courseId: string, enrollmentId: string): Promise<string | null> {
@@ -178,7 +197,7 @@ export class EnrollmentService {
         const approval =
           e.offeringKind === "COURSE" && e.courseId
             ? await this.computeApprovalMissing(e.courseId, e.id)
-            : { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+            : { missing: [], checklist: [], ratingRequired: false, readyForRatingPrompt: false };
         const nextActionLabel =
           e.offeringKind === "COURSE" && e.courseId
             ? await this.nextActionLabel(e.courseId, e.id)
@@ -343,7 +362,7 @@ export class EnrollmentService {
     const approval =
       enrollment.offeringKind === "COURSE" && enrollment.courseId && !accessBlocked
         ? await this.computeApprovalMissing(enrollment.courseId, enrollment.id)
-        : { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+        : { missing: [], checklist: [], ratingRequired: false, readyForRatingPrompt: false };
     // Mismo criterio cross-matrícula que computeApprovalMissing — si ya
     // calificó este curso en un intento anterior, se sigue mostrando esa
     // calificación acá (no hay una segunda que pedir).
@@ -378,6 +397,20 @@ export class EnrollmentService {
           })),
         );
 
+    // Cross-matrícula, mismo criterio que listMine — "solo un certificado
+    // por curso" significa que un retake sin certificado PROPIO igual debe
+    // mostrar "Ver certificado" si ya tiene uno de una matrícula anterior
+    // al mismo curso. Se resuelve UNA vez acá y se deriva certificateUrl
+    // del mismo registro — antes certificateAvailable hacía su propia
+    // consulta sin exponer a dónde descargar el PDF (el banner de
+    // "Certificado" del aula necesita el link directo, no solo el booleano).
+    const activeCertificate =
+      enrollment.certificate && !enrollment.certificate.revoked
+        ? enrollment.certificate
+        : enrollment.courseId
+          ? await this.prisma.certificate.findFirst({ where: { userId: enrollment.userId, courseId: enrollment.courseId, revoked: false } })
+          : null;
+
     return {
       enrollmentId: enrollment.id,
       offeringKind: enrollment.offeringKind,
@@ -386,15 +419,12 @@ export class EnrollmentService {
       progressPct: enrollment.progressPct,
       accessExpiresAt: enrollment.accessExpiresAt?.toISOString() ?? null,
       accessBlocked,
-      // Cross-matrícula, mismo criterio que listMine — "solo un certificado
-      // por curso" significa que un retake sin certificado PROPIO igual
-      // debe mostrar "Ver certificado" si ya tiene uno de una matrícula
-      // anterior al mismo curso.
-      certificateAvailable: Boolean(
-        (enrollment.certificate && !enrollment.certificate.revoked) ||
-          (enrollment.courseId &&
-            (await this.prisma.certificate.findFirst({ where: { userId: enrollment.userId, courseId: enrollment.courseId, revoked: false } }))),
-      ),
+      certificateAvailable: Boolean(activeCertificate),
+      certificateUrl: activeCertificate?.pdfAssetId ? this.storage.getPublicUrl(activeCertificate.pdfAssetId) : null,
+      // Un curso puede no incluir certificación (Course.certificationIncluded)
+      // — el banner "Certificado" del aula solo debe mostrarse si aplica,
+      // para no prometer un certificado que este curso nunca va a emitir.
+      certificationIncluded: enrollment.course?.certificationIncluded ?? false,
       courseId: enrollment.course?.id ?? enrollment.program?.id ?? null,
       title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
       syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
@@ -408,6 +438,10 @@ export class EnrollmentService {
       // clase [principal]" — configurable por curso (Course.blockMainVideoDownload).
       blockMainVideoDownload: enrollment.course?.blockMainVideoDownload ?? true,
       approvalMissing: approval.missing,
+      // "La página de curso organizada como secuencia de acción... cuando
+      // algo está bloqueado lo dice explícitamente" — checklist con TODOS
+      // los requisitos (cumplidos y pendientes), no solo lo que falta.
+      approvalChecklist: approval.checklist,
       readyForRatingPrompt: approval.readyForRatingPrompt,
       myRating: myRating ? { stars: myRating.stars, comment: myRating.comment } : null,
       // Con el acceso vencido no se manda ni un solo material/video al
