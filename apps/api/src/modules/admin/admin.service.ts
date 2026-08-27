@@ -2427,24 +2427,27 @@ export class AdminService {
   // Ampliar el plazo de acceso sigue siendo la acción especial del admin
   // sobre esa fila puntual (ver extendEnrollmentAccess).
 
+  // "El admin debería poder resetear un avance en casos extremos" — esta
+  // lista nació acotada a "casos extemporáneos" (acceso vencido, sin
+  // terminar) para el caso de ampliar plazo. Buscar un alumno puntual por
+  // nombre/correo (con `q`) ahora amplía la búsqueda a TODAS sus
+  // matrículas, no solo las de acceso vencido — el admin necesita poder
+  // encontrar la matrícula de un alumno para resetear su avance sin que
+  // esté necesariamente vencida.
   async listEnrollments(q?: string) {
     const now = new Date();
     const enrollments = await this.prisma.enrollment.findMany({
-      where: {
-        accessExpiresAt: { lt: now },
-        status: { not: "COMPLETED" },
-        ...(q
-          ? {
-              OR: [
-                { user: { email: { contains: q, mode: "insensitive" } } },
-                { user: { firstName: { contains: q, mode: "insensitive" } } },
-                { user: { lastName: { contains: q, mode: "insensitive" } } },
-              ],
-            }
-          : {}),
-      },
+      where: q
+        ? {
+            OR: [
+              { user: { email: { contains: q, mode: "insensitive" } } },
+              { user: { firstName: { contains: q, mode: "insensitive" } } },
+              { user: { lastName: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : { accessExpiresAt: { lt: now }, status: { not: "COMPLETED" } },
       include: { user: true, course: true, program: true },
-      orderBy: { accessExpiresAt: "desc" },
+      orderBy: q ? { enrolledAt: "desc" } : { accessExpiresAt: "desc" },
       take: 100,
     });
     return enrollments.map((e) => ({
@@ -2452,6 +2455,7 @@ export class AdminService {
       userName: `${e.user.firstName} ${e.user.lastName}`,
       userEmail: e.user.email,
       offeringTitle: (e.course?.title ?? e.program?.title ?? {}) as Record<string, string>,
+      offeringKind: e.offeringKind,
       status: e.status,
       progressPct: e.progressPct,
       accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,

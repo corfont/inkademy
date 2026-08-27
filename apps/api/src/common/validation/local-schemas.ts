@@ -709,6 +709,13 @@ export const extendEnrollmentAccessSchema = z.object({
   accessExpiresAt: z.coerce.date().nullable(),
 });
 
+// "El administrador debería tener la facultad de resetear un avance a 0%
+// o ponerlo como 100%... en casos extremos" — caso especial del admin,
+// mismo criterio que extendEnrollmentAccessSchema arriba.
+export const resetEnrollmentProgressSchema = z.object({
+  target: z.enum(["ZERO", "FULL"]),
+});
+
 // --- Finanzas: gastos manuales y % de comisión de pasarela ---
 export const createExpenseSchema = z.object({
   description: z.string().min(1).max(200),

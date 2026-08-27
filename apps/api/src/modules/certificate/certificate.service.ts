@@ -53,12 +53,23 @@ export class CertificateService {
     if (!enrollment || enrollment.certificate || enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
       return;
     }
+    // "Si un alumno hace el curso varias veces, no debería generarse tantos
+    // certificados — solo uno por curso, se crea una sola vez y ya se da
+    // por realizado" — si YA existe un certificado de este usuario para
+    // este curso (emitido desde una matrícula anterior, p.ej. antes de un
+    // retake), no se emite uno nuevo. La matrícula sigue completándose con
+    // normalidad (ver EnrollmentService.refreshCompletionStatus) — esto
+    // solo evita el segundo PDF/código duplicado.
+    const existingCertificate = await this.prisma.certificate.findFirst({
+      where: { userId: enrollment.userId, courseId: enrollment.courseId, revoked: false },
+    });
+    if (existingCertificate) return;
     // "Si no responde [las estrellas] el curso no se podrá dar por
-    // finalizado y el certificado no se podrá emitir" — se exige una
-    // CourseRating para esta matrícula antes de emitir, igual que
-    // progreso/asistencia/nota. Ver también EnrollmentService.computeApprovalMissing,
-    // que le explica esto mismo al alumno en /campus/cursos y el aula.
-    const rating = await this.prisma.courseRating.findUnique({ where: { enrollmentId } });
+    // finalizado y el certificado no se podrá emitir" — cross-matrícula
+    // (mismo criterio que EnrollmentService.computeApprovalMissing): si ya
+    // calificó este curso alguna vez, cuenta para cualquier matrícula al
+    // mismo curso, no solo para la que originó la calificación.
+    const rating = await this.prisma.courseRating.findFirst({ where: { userId: enrollment.userId, courseId: enrollment.courseId } });
     if (!rating) return;
     if (!enrollment.course?.certificationIncluded) return;
     // Si el plazo de acceso del curso ya venció, no se emite certificado —

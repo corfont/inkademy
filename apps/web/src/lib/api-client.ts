@@ -616,6 +616,13 @@ export const adminApi = {
       body: JSON.stringify({ accessExpiresAt }),
       accessToken,
     }),
+  // "El admin debería poder resetear un avance a 0% o 100%... en casos extremos".
+  resetEnrollmentProgress: (id: string, target: "ZERO" | "FULL", accessToken?: string | null) =>
+    apiFetch<{ progressPct: number; status: string }>(`/admin/enrollments/${id}/reset-progress`, {
+      method: "PATCH",
+      body: JSON.stringify({ target }),
+      accessToken,
+    }),
   // --- Finanzas ---
   financialSummary: (
     params: { from?: string; to?: string; period?: "last30d" | "lastYear" | "allTime" | "year"; year?: number } = {},

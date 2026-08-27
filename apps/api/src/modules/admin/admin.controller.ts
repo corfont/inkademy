@@ -31,6 +31,7 @@ import {
   upsertTeacherRateSchema,
   waiveLiquidationSchema,
   extendEnrollmentAccessSchema,
+  resetEnrollmentProgressSchema,
   gradeAnswerSchema,
   updateAssessmentSchema,
   updateCourseSchema,
@@ -56,6 +57,7 @@ import {
 } from "../../common/validation/local-schemas";
 import { respondToQuoteSchema } from "@inkademy/shared";
 import { AssessmentService } from "../assessment/assessment.service";
+import { EnrollmentService } from "../enrollment/enrollment.service";
 import { CompaniesService } from "../companies/companies.service";
 import { AdminService } from "./admin.service";
 
@@ -67,6 +69,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly assessmentService: AssessmentService,
+    private readonly enrollmentService: EnrollmentService,
     private readonly companiesService: CompaniesService,
     private readonly scormService: ScormService,
   ) {}
@@ -857,6 +860,19 @@ export class AdminController {
     @Body(new ZodValidationPipe(extendEnrollmentAccessSchema)) dto: { accessExpiresAt: Date | null },
   ) {
     return this.adminService.extendEnrollmentAccess(id, dto.accessExpiresAt);
+  }
+
+  // "El administrador debería tener la facultad de resetear un avance a 0%
+  // o ponerlo como 100%... en casos extremos" — mismo criterio de "caso
+  // especial" que extendEnrollmentAccess arriba.
+  @Patch("enrollments/:id/reset-progress")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Fuerza el avance de una matrícula a 0% o 100% (caso extremo)" })
+  resetEnrollmentProgress(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(resetEnrollmentProgressSchema)) dto: { target: "ZERO" | "FULL" },
+  ) {
+    return this.enrollmentService.adminSetProgress(id, dto.target);
   }
 
   // --- Finanzas ---

@@ -8,6 +8,7 @@ import { Callout } from "@/components/ui/Callout";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ExtendAccessControl } from "@/components/admin/ExtendAccessControl";
+import { ResetProgressControl } from "@/components/admin/ResetProgressControl";
 import { localize, formatDate } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Casos extemporáneos (admin)" };
@@ -17,6 +18,7 @@ type EnrollmentRow = {
   userName: string;
   userEmail: string;
   offeringTitle: Record<string, string>;
+  offeringKind: "COURSE" | "PROGRAM";
   status: string;
   progressPct: number;
   accessExpiresAt: string | null;
@@ -41,8 +43,9 @@ export default async function AdminEnrollmentsPage({ searchParams }: { searchPar
       <div>
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Casos extemporáneos</h1>
         <p className="mt-1 text-sm text-ash-500">
-          Solo alumnos cuyo plazo de acceso ya venció y no terminaron el curso — no la lista completa de matrículas. Desde acá puedes ampliar el
-          plazo de un caso puntual, como excepción.
+          Sin buscar, se muestra solo a los alumnos cuyo plazo de acceso ya venció y no terminaron el curso. Busca por nombre o correo para
+          encontrar la matrícula de un alumno puntual (venza o no su plazo) y ampliar su acceso o, en casos extremos, resetear su avance a 0% o
+          forzarlo a 100%.
         </p>
       </div>
       {!live && <Callout variant="info">Mostrando datos de referencia; no pudimos conectar con la API.</Callout>}
@@ -64,13 +67,14 @@ export default async function AdminEnrollmentsPage({ searchParams }: { searchPar
               <th className="p-4 font-medium">Estado</th>
               <th className="p-4 font-medium">Acceso vence</th>
               <th className="p-4 font-medium">Ampliar</th>
+              <th className="p-4 font-medium">Avance (caso extremo)</th>
             </tr>
           </thead>
           <tbody>
             {enrollments.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-ash-500">
-                  {q ? "No se encontraron casos extemporáneos para esa búsqueda." : "No hay casos extemporáneos — todos los alumnos con plazo vencido ya terminaron su curso."}
+                <td colSpan={7} className="p-6 text-center text-ash-500">
+                  {q ? "No se encontraron matrículas para esa búsqueda." : "No hay casos extemporáneos — todos los alumnos con plazo vencido ya terminaron su curso."}
                 </td>
               </tr>
             )}
@@ -89,6 +93,7 @@ export default async function AdminEnrollmentsPage({ searchParams }: { searchPar
                 <td className="p-4">
                   <ExtendAccessControl enrollmentId={e.id} accessExpiresAt={e.accessExpiresAt} />
                 </td>
+                <td className="p-4">{e.offeringKind === "COURSE" && <ResetProgressControl enrollmentId={e.id} />}</td>
               </tr>
             ))}
           </tbody>

@@ -46,13 +46,19 @@ export class EnrollmentService {
     courseId: string,
     enrollmentId: string,
   ): Promise<{ missing: string[]; ratingRequired: boolean; readyForRatingPrompt: boolean }> {
-    const [approvalRule, enrollment, attendanceStats, rating] = await Promise.all([
+    const [approvalRule, enrollment, attendanceStats] = await Promise.all([
       this.prisma.approvalRule.findUnique({ where: { courseId } }),
       this.prisma.enrollment.findUnique({ where: { id: enrollmentId } }),
       this.prisma.liveSession.count({ where: { courseId } }),
-      this.prisma.courseRating.findUnique({ where: { enrollmentId } }),
     ]);
     if (!enrollment) return { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+    // "Si un alumno hace el curso varias veces, la calificación con
+    // estrellas se da por hecha una sola vez, no de nuevo cada retake" —
+    // antes se buscaba por ESTA matrícula (courseRating.enrollmentId es
+    // único por matrícula), así que un retake SIEMPRE volvía a pedir
+    // calificar. Ahora se busca por (usuario, curso) sin importar en cuál
+    // de sus matrículas a ese curso calificó.
+    const rating = await this.prisma.courseRating.findFirst({ where: { enrollment: { userId: enrollment.userId, courseId } } });
     // Mismo default que CertificateService.checkAndIssueIfEligible — un
     // curso sin ApprovalRule configurada (nunca hubo pantalla de admin para
     // crearla) NO debe fingir que no falta nada; antes esta lista quedaba
@@ -151,6 +157,21 @@ export class EnrollmentService {
       orderBy: { enrolledAt: "desc" },
     });
 
+    // "Solo un certificado por curso, por más que lo lleve varias veces" —
+    // un retake no emite un certificado NUEVO (ver CertificateService.
+    // checkAndIssueIfEligible), así que `e.certificate` (la relación 1:1 de
+    // ESTA matrícula puntual) queda null ahí aunque el alumno SÍ tenga uno
+    // de una matrícula anterior al mismo curso — se resuelve por
+    // (usuario, curso) en vez de por matrícula.
+    const certifiedCourseIds = new Set(
+      (
+        await this.prisma.certificate.findMany({
+          where: { userId, revoked: false, courseId: { in: enrollments.map((e) => e.courseId).filter((id): id is string => Boolean(id)) } },
+          select: { courseId: true },
+        })
+      ).map((c) => c.courseId),
+    );
+
     return Promise.all(
       enrollments.map(async (e) => {
         const offering = e.course ?? e.program;
@@ -182,7 +203,7 @@ export class EnrollmentService {
           source: e.source,
           accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,
           nextActionLabel,
-          certificateAvailable: Boolean(e.certificate && !e.certificate.revoked),
+          certificateAvailable: Boolean((e.certificate && !e.certificate.revoked) || (e.courseId && certifiedCourseIds.has(e.courseId))),
           approvalMissing: approval.missing,
           readyForRatingPrompt: approval.readyForRatingPrompt,
           enrolledAt: e.enrolledAt.toISOString(),
@@ -323,9 +344,12 @@ export class EnrollmentService {
       enrollment.offeringKind === "COURSE" && enrollment.courseId && !accessBlocked
         ? await this.computeApprovalMissing(enrollment.courseId, enrollment.id)
         : { missing: [], ratingRequired: false, readyForRatingPrompt: false };
+    // Mismo criterio cross-matrícula que computeApprovalMissing — si ya
+    // calificó este curso en un intento anterior, se sigue mostrando esa
+    // calificación acá (no hay una segunda que pedir).
     const myRating =
-      enrollment.offeringKind === "COURSE"
-        ? await this.prisma.courseRating.findUnique({ where: { enrollmentId: enrollment.id } })
+      enrollment.offeringKind === "COURSE" && enrollment.courseId
+        ? await this.prisma.courseRating.findFirst({ where: { enrollment: { userId: enrollment.userId, courseId: enrollment.courseId } } })
         : null;
 
     // "No puedo entrar al curso... para completar lo que me falta" — lista
@@ -362,7 +386,15 @@ export class EnrollmentService {
       progressPct: enrollment.progressPct,
       accessExpiresAt: enrollment.accessExpiresAt?.toISOString() ?? null,
       accessBlocked,
-      certificateAvailable: Boolean(enrollment.certificate && !enrollment.certificate.revoked),
+      // Cross-matrícula, mismo criterio que listMine — "solo un certificado
+      // por curso" significa que un retake sin certificado PROPIO igual
+      // debe mostrar "Ver certificado" si ya tiene uno de una matrícula
+      // anterior al mismo curso.
+      certificateAvailable: Boolean(
+        (enrollment.certificate && !enrollment.certificate.revoked) ||
+          (enrollment.courseId &&
+            (await this.prisma.certificate.findFirst({ where: { userId: enrollment.userId, courseId: enrollment.courseId, revoked: false } }))),
+      ),
       courseId: enrollment.course?.id ?? enrollment.program?.id ?? null,
       title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
       syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
@@ -613,6 +645,56 @@ export class EnrollmentService {
   }
 
   /**
+   * "El administrador debería tener la facultad de resetear un avance a 0%
+   * o ponerlo como 100% por si hubiera algún error que tiene que
+   * solucionar con el alumno (en casos extremos)." — a propósito NO pisa
+   * `progressPct` directamente: ese valor se RECALCULA en cada interacción
+   * del alumno (recomputeProgress, a partir de LessonProgress/
+   * MaterialProgress reales), así que un simple `UPDATE progressPct=100`
+   * se revertiría solo apenas el alumno marcara cualquier lección — acá se
+   * marcan/desmarcan de verdad los registros de avance reales, para que el
+   * resultado sea estable. Esto NO fuerza notas de examen ni asistencia —
+   * solo el avance de material; si a la evaluación le sigue faltando algo,
+   * `computeApprovalMissing` lo sigue mostrando con normalidad.
+   */
+  async adminSetProgress(enrollmentId: string, target: "ZERO" | "FULL") {
+    const enrollment = await this.prisma.enrollment.findUnique({ where: { id: enrollmentId } });
+    if (!enrollment) throw new NotFoundException("Matrícula no encontrada");
+    if (enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
+      throw new ForbiddenException("Solo se puede reiniciar el avance de una matrícula de curso");
+    }
+    const courseId = enrollment.courseId;
+
+    if (target === "ZERO") {
+      await this.prisma.lessonProgress.updateMany({ where: { enrollmentId }, data: { completed: false } });
+      await this.prisma.materialProgress.deleteMany({ where: { enrollmentId } });
+    } else {
+      const lessons = await this.prisma.lesson.findMany({ where: { module: { courseId } }, select: { id: true } });
+      const mainMaterials = await this.prisma.material.findMany({
+        where: { category: "MAIN", visible: true, OR: [{ lesson: { module: { courseId } } }, { module: { courseId } }] },
+        select: { id: true },
+      });
+      await this.prisma.$transaction([
+        ...lessons.map((l) =>
+          this.prisma.lessonProgress.upsert({
+            where: { enrollmentId_lessonId: { enrollmentId, lessonId: l.id } },
+            create: { enrollmentId, lessonId: l.id, userId: enrollment.userId, completed: true },
+            update: { completed: true },
+          }),
+        ),
+        ...mainMaterials.map((m) =>
+          this.prisma.materialProgress.upsert({
+            where: { enrollmentId_materialId: { enrollmentId, materialId: m.id } },
+            create: { enrollmentId, materialId: m.id, userId: enrollment.userId },
+            update: {},
+          }),
+        ),
+      ]);
+    }
+    return this.recomputeProgress(enrollmentId, courseId, enrollment.userId);
+  }
+
+  /**
    * Lee recomendaciones ya generadas (tabla Recommendation, poblada por el
    * worker al procesar la cola "recommendation"). Si aún no hay ninguna
    * (worker no ha corrido / usuario nuevo), genera un fallback simple en
@@ -681,6 +763,17 @@ export class EnrollmentService {
     }
     if (enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
       throw new ForbiddenException("Solo se puede calificar una matrícula de curso");
+    }
+    // "La calificación con estrellas ya se da por realizada, no debería
+    // repetirse en cada retake" — defensa en profundidad: el frontend ya no
+    // debería mostrar el modal de nuevo (ver computeApprovalMissing/myRating
+    // cross-matrícula arriba), pero si de todos modos llega este POST para
+    // una matrícula que NO es donde vive la calificación original, no se
+    // crea una segunda fila — se deja la original tal cual.
+    const existingForCourse = await this.prisma.courseRating.findFirst({ where: { userId, courseId: enrollment.courseId } });
+    if (existingForCourse && existingForCourse.enrollmentId !== enrollmentId) {
+      await this.refreshCompletionStatus(enrollmentId);
+      return { saved: true };
     }
     await this.prisma.courseRating.upsert({
       where: { enrollmentId },
