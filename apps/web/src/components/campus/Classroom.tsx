@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { CheckCircle2, Circle, ExternalLink, FileDown, FileText, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
+import { Award, CheckCircle2, Circle, ClipboardCheck, ExternalLink, FileDown, FileText, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz, FormativeQuizQuestion } from "@/lib/mock-data";
 import { meApi, API_URL } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { RequirementChecklist } from "@/components/ui/RequirementChecklist";
+import { ActionSection } from "./ActionSection";
 import { CourseRatingPrompt } from "./CourseRatingPrompt";
 import { cn } from "@/lib/cn";
 import { localize, formatDate } from "@/lib/format";
@@ -646,34 +648,66 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             aparecía si la lección abierta no tenía video/link/SCORM. Ahora
             se listan TODAS las evaluaciones reales del curso, siempre
             visibles, cada una con su propio candado, peso y mejor nota. */}
-        {detail.assessments.length > 0 && (
-          <section aria-labelledby="assessments-heading" className="rounded-lg border border-paper-border bg-paper p-5">
-            <h2 id="assessments-heading" className="font-serif text-lg font-semibold text-ink-900">
-              Evaluaciones
-            </h2>
-            <ul className="mt-3 flex flex-col gap-3">
-              {detail.assessments.map((a) => (
-                <li key={a.id} className="flex flex-col gap-1 rounded-md border border-paper-border p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-medium text-ink-900">{localize(a.title, locale)}</p>
-                    <p className="text-xs text-ash-500">
-                      {a.weightPercent ? `Pesa ${a.weightPercent}% de la nota final · ` : ""}
-                      Nota mínima {a.minScore}/100
-                      {a.bestScore !== null && ` · Tu mejor nota: ${a.bestScore}/100`}
-                      {a.attemptsUsed > 0 && ` · Intentos usados: ${a.attemptsUsed}/${a.maxAttempts}`}
-                    </p>
-                  </div>
-                  {detail.assessmentsUnlocked ? (
-                    <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${a.id}`}>
-                      <Button size="sm">{a.bestScore !== null ? "Ver / reintentar" : t("goToAssessment")}</Button>
-                    </Link>
-                  ) : (
-                    <p className="text-xs text-ash-500">Se habilita al completar el 100% del curso (llevas {Math.round(progressPct)}%).</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
+        {detail.assessments.length > 0 && (() => {
+          const allPassed = detail.assessments.every((a) => a.bestScore !== null && a.bestScore >= a.minScore);
+          return (
+            <ActionSection
+              icon={ClipboardCheck}
+              tone={detail.assessmentsUnlocked && allPassed ? "success" : "ink"}
+              instruction={
+                !detail.assessmentsUnlocked
+                  ? "Aprueba tus evaluaciones para avanzar"
+                  : allPassed
+                    ? "Ya aprobaste todas tus evaluaciones"
+                    : "Aprueba tus evaluaciones para avanzar"
+              }
+              lockedReason={
+                !detail.assessmentsUnlocked ? `Completes el 100% del curso (llevas ${Math.round(progressPct)}%).` : null
+              }
+            >
+              <ul className="flex flex-col gap-3">
+                {detail.assessments.map((a) => (
+                  <li key={a.id} className="flex flex-col gap-1 rounded-md border border-paper-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-ink-900">{localize(a.title, locale)}</p>
+                      <p className="text-xs text-ash-500">
+                        {a.weightPercent ? `Pesa ${a.weightPercent}% de la nota final · ` : ""}
+                        Nota mínima {a.minScore}/100
+                        {a.bestScore !== null && ` · Tu mejor nota: ${a.bestScore}/100`}
+                        {a.attemptsUsed > 0 && ` · Intentos usados: ${a.attemptsUsed}/${a.maxAttempts}`}
+                      </p>
+                    </div>
+                    {detail.assessmentsUnlocked && (
+                      <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${a.id}`}>
+                        <Button size="sm">{a.bestScore !== null ? "Ver / reintentar" : t("goToAssessment")}</Button>
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </ActionSection>
+          );
+        })()}
+
+        {/* Banner "Certificado" — nuevo: antes la descarga solo vivía en
+            "Mis cursos" (fuera del aula); acá se explica, en la misma
+            secuencia de acción que Evaluaciones, exactamente qué falta
+            para desbloquearlo (o el botón de descarga directa si ya está listo). */}
+        {detail.certificationIncluded && (
+          <ActionSection
+            icon={Award}
+            tone={detail.certificateUrl ? "gold" : "ink"}
+            instruction={detail.certificateUrl ? "Descarga tu certificado" : "Obtén tu certificado completando el curso"}
+            lockedReason={!detail.certificateUrl ? (detail.approvalChecklist ?? []).find((c) => !c.done)?.label ?? null : null}
+          >
+            {detail.certificateUrl && (
+              <a href={detail.certificateUrl} target="_blank" rel="noopener noreferrer" download>
+                <Button size="sm">
+                  <FileDown className="h-4 w-4" aria-hidden="true" /> Descargar certificado
+                </Button>
+              </a>
+            )}
+          </ActionSection>
         )}
 
         <section aria-labelledby="missing-heading" className="rounded-lg border border-paper-border bg-paper p-5">
@@ -685,11 +719,9 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
               Cumples todos los requisitos de aprobación.
             </Callout>
           ) : (
-            <ul className="mt-3 list-inside list-disc text-sm text-ash-700">
-              {detail.approvalMissing.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
+            <div className="mt-3">
+              <RequirementChecklist items={detail.approvalChecklist ?? detail.approvalMissing.map((label) => ({ label, done: false }))} />
+            </div>
           )}
         </section>
       </div>

@@ -396,11 +396,22 @@ export interface ClassroomDetail {
   blockMainVideoDownload?: boolean;
   modules: ClassroomModule[];
   approvalMissing: string[];
+  // Mismos requisitos que approvalMissing pero CON los que ya se cumplen
+  // (done:true) — alimenta el checklist visual del aula (ver
+  // RequirementChecklist), en vez de solo listar lo pendiente.
+  approvalChecklist?: { label: string; done: boolean }[];
   // El curso ya cumple todo lo demás y solo falta calificar con estrellas —
   // dispara el modal visual CourseRatingPrompt (ver Classroom.tsx).
   readyForRatingPrompt?: boolean;
   myRating?: { stars: number; comment: string | null } | null;
   certificateAvailable: boolean;
+  // Link directo de descarga del PDF, cuando ya existe un certificado
+  // (de esta matrícula o de una anterior al mismo curso) — alimenta el
+  // banner "Certificado" del aula.
+  certificateUrl?: string | null;
+  // El banner "Certificado" del aula solo se muestra si el curso realmente
+  // emite uno — evita prometer un certificado que este curso nunca da.
+  certificationIncluded?: boolean;
   // Plazo de acceso (solo aplica a cursos grabados con fecha de término) —
   // accessBlocked ya viene calculado desde la API (el corte real vive ahí,
   // no en esta pantalla): si es true, `modules` llega vacío a propósito.
@@ -425,9 +436,12 @@ export function buildMockClassroom(enrollmentId: string, courseSlug: string): Cl
     assessmentsUnlocked: (enrollment?.progressPct ?? 0) >= 100,
     progressPct: enrollment?.progressPct ?? 0,
     approvalMissing: enrollment?.approvalMissing ?? [],
+    approvalChecklist: (enrollment?.approvalMissing ?? []).map((label) => ({ label, done: false })),
     readyForRatingPrompt: enrollment?.readyForRatingPrompt ?? false,
     myRating: null,
     certificateAvailable: enrollment?.certificateAvailable ?? false,
+    certificateUrl: null,
+    certificationIncluded: true,
     modules: detail.modules.map((mod, mIdx) => ({
       id: mod.id,
       order: mod.order,
