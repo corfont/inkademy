@@ -16,11 +16,29 @@ export const metadata: Metadata = { title: "Zona de pruebas (admin)" };
  * bulkDelete*) es el único que decide qué de verdad se puede borrar —
  * nunca borra algo con actividad real, aunque se seleccione.
  */
+/**
+ * listCourses() nunca devuelve más de 100 por página (tope del backend,
+ * pensado para el catálogo paginado) — "borrar... todos" exige ver el
+ * catálogo COMPLETO, así que se recorren las páginas hasta que una venga
+ * incompleta. Con menos de 100 cursos (el caso de hoy) es una sola llamada.
+ */
+async function fetchAllCourses(accessToken: string | null) {
+  const pageSize = 100;
+  const all: any[] = [];
+  for (let page = 1; ; page++) {
+    const batch = await adminApi.courses(accessToken, { page, pageSize });
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return all;
+}
+
 export default async function ZonaDePruebasPage() {
   const accessToken = getServerAccessToken();
   const [courses, users, areas, companies] = await Promise.all([
-    adminApi.courses(accessToken),
-    adminApi.users({}, accessToken),
+    fetchAllCourses(accessToken),
+    // listUsers() por defecto también recorta a 100 — mismo criterio.
+    adminApi.users({ pageSize: 2000 }, accessToken),
     adminApi.areas(accessToken),
     adminApi.companies(accessToken),
   ]);

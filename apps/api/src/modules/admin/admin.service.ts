@@ -2508,7 +2508,7 @@ export class AdminService {
   // prisma/seed.ts a mano.
   // ==========================================================================
 
-  async listUsers(params: { q?: string; role?: string }) {
+  async listUsers(params: { q?: string; role?: string; pageSize?: number }) {
     const users = await this.prisma.user.findMany({
       where: {
         // "Cuando quiero asignarme un curso no aparece mi nombre" — antes
@@ -2545,7 +2545,10 @@ export class AdminService {
         enrollments: { select: { status: true } },
       },
       orderBy: { createdAt: "desc" },
-      take: 100,
+      // "Borrar usuarios (uno, algunos, todos)" en la zona de pruebas
+      // necesita ver la lista COMPLETA, no solo los 100 más recientes (el
+      // límite por defecto que basta para /admin/usuarios de uso normal).
+      take: Math.min(2000, params.pageSize ?? 100),
     });
     return users.map((u) => {
       const total = u.enrollments.length;

@@ -605,8 +605,12 @@ export const adminApi = {
   // listCourses() trata cualquier ADMIN/SUPPORT como "sin restricción" (ver
   // teacherScopeId), que es lo correcto para /admin/catalogo pero vacía de
   // sentido a la pantalla "Mis cursos" del docente.
-  courses: (accessToken?: string | null, opts?: { mine?: boolean }) =>
-    apiFetch<any[]>(`/admin/courses${opts?.mine ? "?mine=true" : ""}`, { accessToken, cache: "no-store" }),
+  courses: (accessToken?: string | null, opts?: { mine?: boolean; page?: number; pageSize?: number }) =>
+    apiFetch<any[]>("/admin/courses", {
+      accessToken,
+      cache: "no-store",
+      query: { ...(opts?.mine ? { mine: "true" } : {}), ...(opts?.page ? { page: opts.page } : {}), ...(opts?.pageSize ? { pageSize: opts.pageSize } : {}) },
+    }),
   // Panel de docente: cursos asignados, próximas clases a dictar, cola de calificación — ver AdminService.getTeacherDashboard.
   teacherDashboard: (accessToken?: string | null) => apiFetch<any>("/admin/my-courses", { accessToken }),
   // "El docente también tiene que tener una agenda interactiva" — todas sus sesiones en vivo, mismo shape que /me/calendar.
@@ -930,7 +934,7 @@ export const adminApi = {
     }),
 
   // --- Usuarios y roles ---
-  users: (params: { q?: string; role?: string } = {}, accessToken?: string | null) =>
+  users: (params: { q?: string; role?: string; pageSize?: number } = {}, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/users", { query: params, accessToken, cache: "no-store" }),
   createUser: (
     input: { email: string; firstName: string; lastName: string; globalRole: string; password?: string },

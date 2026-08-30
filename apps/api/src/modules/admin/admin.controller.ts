@@ -1007,8 +1007,8 @@ export class AdminController {
   @Get("users")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Lista/busca cuentas de usuario (todas, sin importar el rol)" })
-  listUsers(@Query("q") q?: string, @Query("role") role?: string) {
-    return this.adminService.listUsers({ q, role });
+  listUsers(@Query("q") q?: string, @Query("role") role?: string, @Query("pageSize") pageSize?: string) {
+    return this.adminService.listUsers({ q, role, pageSize: pageSize ? Number(pageSize) : undefined });
   }
 
   @Post("users")
