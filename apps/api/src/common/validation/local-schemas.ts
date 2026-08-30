@@ -785,4 +785,10 @@ export const upsertSettingsSchema = z.object({
   menuFontFamily: z.string().optional().nullable(),
   menuFontSizePx: z.number().int().min(10).max(24).optional().nullable(),
   menuFontColor: z.string().optional().nullable(),
+  // "El texto que acompaña el link del certificado por correo debe ser
+  // editable (tipo de letra, justificado, color)".
+  certificateEmailText: localizedTextSchema.optional().nullable(),
+  certificateEmailFontFamily: z.string().optional().nullable(),
+  certificateEmailTextAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  certificateEmailTextColor: z.string().optional().nullable(),
 });

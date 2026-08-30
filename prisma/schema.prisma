@@ -1703,6 +1703,19 @@ model PlatformSettings {
   primaryColor String?
   accentColor  String?
 
+  // "El texto que acompaña el link del certificado por correo debe ser
+  // editable (tipo de letra, justificado, color)" — antes el párrafo de
+  // NotificationService.sendCertificateReady estaba escrito a mano en el
+  // código, sin ningún control desde el admin. Localizado {es,en} como el
+  // resto de textos de plataforma; admite los mismos placeholders
+  // {{courseTitle}}/{{verificationUrl}} que ya resuelve
+  // notification.service.ts al armar el correo. null = usa el texto por
+  // defecto de siempre.
+  certificateEmailText      Json?
+  certificateEmailFontFamily String?
+  certificateEmailTextAlign String? @default("left") // left | center | right | justify
+  certificateEmailTextColor String?
+
   updatedAt           DateTime @updatedAt
 }
 

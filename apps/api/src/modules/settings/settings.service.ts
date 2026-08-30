@@ -38,6 +38,10 @@ const DEFAULTS = {
   contactPhone: "+51 1 234 5678" as string | null,
   contactAddress: "Lima, Perú" as string | null,
   courseCardFields: DEFAULT_COURSE_CARD_FIELDS as Record<string, boolean>,
+  certificateEmailText: null as Record<string, string> | null,
+  certificateEmailFontFamily: null as string | null,
+  certificateEmailTextAlign: "left" as string,
+  certificateEmailTextColor: null as string | null,
 };
 
 @Injectable()
@@ -81,6 +85,10 @@ export class SettingsService {
         menuFontFamily: null,
         menuFontSizePx: null,
         menuFontColor: null,
+        certificateEmailText: null,
+        certificateEmailFontFamily: null,
+        certificateEmailTextAlign: "left",
+        certificateEmailTextColor: null,
         taxAffectation,
       };
     }
@@ -102,8 +110,12 @@ export class SettingsService {
   async update(input: Partial<Omit<typeof DEFAULTS, "id">>) {
     return this.prisma.platformSettings.upsert({
       where: { id: SETTINGS_ID },
-      create: { id: SETTINGS_ID, ...input },
-      update: input,
+      // `as never`: los campos Json (courseCardFields, certificateEmailText)
+      // aceptan `null` en runtime pero Prisma exige el sentinel especial
+      // `Prisma.JsonNull` en su tipo — mismo patrón ya usado en otros
+      // services de este proyecto para inputs de Prisma con Json anidado.
+      create: { id: SETTINGS_ID, ...input } as never,
+      update: input as never,
     });
   }
 }

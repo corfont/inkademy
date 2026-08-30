@@ -117,13 +117,40 @@ export class NotificationService {
     );
   }
 
-  sendCertificateReady(to: string, courseTitle: string, verificationUrl: string, userId: string) {
+  /**
+   * "El texto que acompaña el link del certificado por correo debe ser
+   * editable (tipo de letra, justificado, color)" — antes este párrafo
+   * estaba escrito a mano acá, sin ningún control desde el admin. Se
+   * resuelve desde PlatformSettings.certificateEmailText (localizado,
+   * con los mismos placeholders {{courseTitle}}/{{verificationUrl}} que ya
+   * usa certificate.processor.ts para la plantilla del PDF) — null/vacío
+   * cae al texto de siempre.
+   */
+  private async renderCertificateReadyBody(courseTitle: string, verificationUrl: string): Promise<string> {
+    const settings = await this.prisma.platformSettings.findUnique({ where: { id: "default" } });
+    const template =
+      (settings?.certificateEmailText as Record<string, string> | null)?.es ||
+      'Felicitaciones, tu certificado de "{{courseTitle}}" está disponible. Verifícalo en {{verificationUrl}}.';
+    const text = template
+      .replace(/\{\{\s*courseTitle\s*\}\}/g, courseTitle)
+      .replace(/\{\{\s*verificationUrl\s*\}\}/g, verificationUrl);
+    const styles = [
+      settings?.certificateEmailFontFamily ? `font-family:${settings.certificateEmailFontFamily}` : null,
+      `text-align:${settings?.certificateEmailTextAlign || "left"}`,
+      settings?.certificateEmailTextColor ? `color:${settings.certificateEmailTextColor}` : null,
+    ]
+      .filter(Boolean)
+      .join(";");
+    return `<p style="${styles}">${text}</p>`;
+  }
+
+  async sendCertificateReady(to: string, courseTitle: string, verificationUrl: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.CERTIFICATE_READY,
       {
         to,
         subject: "Tu certificado está listo",
-        html: `<p>Felicitaciones, tu certificado de "${courseTitle}" está disponible. Verifícalo en ${verificationUrl}.</p>`,
+        html: await this.renderCertificateReadyBody(courseTitle, verificationUrl),
       },
       userId,
     );

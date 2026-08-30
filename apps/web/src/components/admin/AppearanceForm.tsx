@@ -114,6 +114,10 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
         menuFontFamily: form.menuFontFamily,
         menuFontSizePx: form.menuFontSizePx,
         menuFontColor: form.menuFontColor,
+        certificateEmailText: form.certificateEmailText,
+        certificateEmailFontFamily: form.certificateEmailFontFamily,
+        certificateEmailTextAlign: form.certificateEmailTextAlign,
+        certificateEmailTextColor: form.certificateEmailTextColor,
       });
       setSaved(true);
       router.refresh();
@@ -553,6 +557,74 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                 onChange={(e) => setForm((f) => ({ ...f, menuFontSizePx: Number(e.target.value) }))}
                 className="w-full"
               />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Correo de certificado</h2>
+          <p className="text-sm text-ash-500">
+            Texto que acompaña el link cuando se avisa por correo que un certificado ya está listo. Usa{" "}
+            <code className="rounded bg-paper-muted px-1">{"{{courseTitle}}"}</code> y{" "}
+            <code className="rounded bg-paper-muted px-1">{"{{verificationUrl}}"}</code> donde corresponda — se reemplazan solos al enviar.
+          </p>
+          <div>
+            <Label htmlFor="certificate-email-text">Texto del correo</Label>
+            <textarea
+              id="certificate-email-text"
+              className="min-h-[6rem] w-full rounded-md border border-paper-border bg-paper p-2 text-sm"
+              value={form.certificateEmailText?.es ?? ""}
+              placeholder='Felicitaciones, tu certificado de "{{courseTitle}}" está disponible. Verifícalo en {{verificationUrl}}.'
+              onChange={(e) => setForm((f) => ({ ...f, certificateEmailText: { ...f.certificateEmailText, es: e.target.value } }))}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <Label htmlFor="certificate-email-font">Tipo de letra</Label>
+              <Select
+                id="certificate-email-font"
+                value={form.certificateEmailFontFamily ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, certificateEmailFontFamily: e.target.value || null }))}
+              >
+                <option value="">Por defecto</option>
+                {BRAND_FONT_OPTIONS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="certificate-email-align">Justificado</Label>
+              <Select
+                id="certificate-email-align"
+                value={form.certificateEmailTextAlign ?? "left"}
+                onChange={(e) => setForm((f) => ({ ...f, certificateEmailTextAlign: e.target.value as typeof f.certificateEmailTextAlign }))}
+              >
+                <option value="left">Izquierda</option>
+                <option value="center">Centrado</option>
+                <option value="right">Derecha</option>
+                <option value="justify">Justificado</option>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="certificate-email-color">Color del texto</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="certificate-email-color"
+                  type="color"
+                  value={form.certificateEmailTextColor || "#000000"}
+                  onChange={(e) => setForm((f) => ({ ...f, certificateEmailTextColor: e.target.value }))}
+                  className="h-11 w-14 rounded border border-paper-border"
+                />
+                <Input
+                  value={form.certificateEmailTextColor || ""}
+                  placeholder="Por defecto"
+                  onChange={(e) => setForm((f) => ({ ...f, certificateEmailTextColor: e.target.value || null }))}
+                />
+              </div>
             </div>
           </div>
         </CardContent>

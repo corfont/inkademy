@@ -210,6 +210,10 @@ export interface PlatformSettingsDTO {
   menuFontColor?: string | null;
   primaryColor?: string | null;
   accentColor?: string | null;
+  certificateEmailText?: Record<string, string> | null;
+  certificateEmailFontFamily?: string | null;
+  certificateEmailTextAlign?: "left" | "center" | "right" | "justify";
+  certificateEmailTextColor?: string | null;
 }
 
 /** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */
