@@ -61,6 +61,24 @@ export function readSessionCookie(cookieValue: string | undefined): AuthUser | n
   }
 }
 
+/**
+ * "Al tener más de un rol, cuando entro a un menú de otro rol y quiero
+ * volver a mi inicio, no vuelve — me lleva al inicio de ESE rol nomás." —
+ * antes cada layout (admin/campus/docente) le pasaba a SidebarShell un
+ * `brandHref` fijo (su propia área), así que el botón "Inicio" siempre
+ * llevaba al área de la página ACTUAL, no al home real del usuario. Esta
+ * es la MISMA regla que ya usaba /login para decidir a qué panel entrar
+ * (antes solo vivía ahí, duplicada como un ternario inline) — se extrae acá
+ * para que SidebarShell (vía cada layout) pueda calcular el home real del
+ * usuario sin importar en qué área esté parado.
+ */
+export function roleHomeHref(globalRole: string | undefined): string {
+  if (globalRole === "ADMIN" || globalRole === "SUPPORT") return "/admin";
+  if (globalRole === "TEACHER") return "/docente";
+  if (globalRole === "COMPANY") return "/empresa";
+  return "/campus";
+}
+
 /** Prefijos de área protegida por rol — usado por /login y /completar-perfil para decidir si "next" es seguro de seguir. */
 const ROLE_AREA_PREFIXES = ["/campus", "/admin", "/docente"];
 

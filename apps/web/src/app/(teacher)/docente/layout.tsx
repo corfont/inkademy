@@ -3,6 +3,7 @@
 import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut, Banknote, BookOpen, Award, Sparkles, Users, Wallet, Handshake, Percent, Building2, LifeBuoy, MessageSquarePlus } from "lucide-react";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { roleHomeHref } from "@/lib/auth";
 
 /**
  * Panel de docente — antes no existía ninguna pantalla que un TEACHER
@@ -26,10 +27,16 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   ];
 
   // "Si un usuario tiene más de un rol, debería ver en el menú todas las
-  // opciones de cada rol" — un docente que también es alumno o admin ve
-  // acá las opciones de esos otros roles, agrupadas con su propio encabezado.
+  // opciones de cada rol" — un docente que también es alumno/admin/soporte
+  // ve acá las opciones de esos otros roles. Antes cada chequeo excluía
+  // además `user?.globalRole !== "X"` — pensado para "no repetir mi propio
+  // rol principal", pero eso rompía el caso de "tengo varios roles y
+  // navegué a otra área" (ver el mismo comentario, más detallado, en
+  // campus/layout.tsx). Este bloque vive solo dentro de /docente — nunca
+  // hace falta excluir el rol nativo de esta área (docente) para evitar
+  // duplicados.
   const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
-  if (roles.includes("STUDENT") && user?.globalRole !== "STUDENT") {
+  if (roles.includes("STUDENT")) {
     navItems.push(
       { href: "/campus", label: "Mi campus", icon: LayoutDashboard, section: "Alumno" },
       { href: "/campus/cursos", label: "Mis cursos (alumno)", icon: BookOpen, section: "Alumno" },
@@ -37,29 +44,31 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles, section: "Alumno" },
     );
   }
-  if (roles.includes("ADMIN") && user?.globalRole !== "ADMIN") {
+  if (roles.includes("ADMIN") || roles.includes("SUPPORT")) {
+    navItems.push({ href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" });
+  }
+  if (roles.includes("ADMIN")) {
     navItems.push(
-      { href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" },
       { href: "/admin/usuarios", label: "Usuarios y roles", icon: Users, section: "Administración" },
       { href: "/admin/finanzas", label: "Finanzas", icon: Wallet, section: "Administración" },
       { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake, section: "Administración" },
       { href: "/admin/regalias", label: "Regalías", icon: Percent, section: "Administración" },
     );
-  } else if (roles.includes("SUPPORT") && user?.globalRole !== "SUPPORT") {
+  }
+  if (roles.includes("SUPPORT")) {
     navItems.push(
-      { href: "/admin", label: "Panel de administración", icon: LayoutDashboard, section: "Administración" },
       { href: "/admin/soporte", label: "Soporte (tickets)", icon: LifeBuoy, section: "Administración" },
       { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus, section: "Administración" },
     );
   }
-  if (roles.includes("COMPANY") && user?.globalRole !== "COMPANY") {
+  if (roles.includes("COMPANY")) {
     navItems.push({ href: "/empresa", label: "Mi empresa", icon: Building2, section: "Empresa" });
   }
 
   return (
     <SidebarShell
       navItems={navItems}
-      brandHref="/docente"
+      brandHref={roleHomeHref(user?.globalRole)}
       topRight={
         <div className="flex flex-col gap-2 border-t border-ink-800 pt-4 text-sm text-ink-100">
           <p className="truncate font-medium text-paper">{user?.displayName ?? `${user?.firstName ?? ""} ${user?.lastName ?? ""}`}</p>

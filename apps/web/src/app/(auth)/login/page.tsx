@@ -9,7 +9,7 @@ import { loginSchema, type LoginInput } from "@inkademy/shared";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ApiError, API_URL } from "@/lib/api-client";
-import { belongsToOtherRoleArea } from "@/lib/auth";
+import { belongsToOtherRoleArea, roleHomeHref } from "@/lib/auth";
 import { Input, Label, FieldError } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -49,14 +49,7 @@ function LoginForm() {
       const next = searchParams.get("next");
       // Cada rol cae en su propio panel — antes ADMIN y TEACHER también
       // aterrizaban en /campus por defecto.
-      const home =
-        user.globalRole === "ADMIN" || user.globalRole === "SUPPORT"
-          ? "/admin"
-          : user.globalRole === "TEACHER"
-            ? "/docente"
-            : user.globalRole === "COMPANY"
-              ? "/empresa"
-              : "/campus";
+      const home = roleHomeHref(user.globalRole);
       if (!user.profileCompletedAt) {
         router.push(next ? `/completar-perfil?next=${encodeURIComponent(next)}` : "/completar-perfil");
       } else if (next && !belongsToOtherRoleArea(next, home)) {

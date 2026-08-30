@@ -35,6 +35,7 @@ import {
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { roleHomeHref } from "@/lib/auth";
 import { supportApi, suggestionsApi } from "@/lib/api-client";
 
 // Cada cuánto se refresca el contador de pendientes en el menú — no hace
@@ -97,9 +98,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // "Si un usuario tiene más de un rol, debería ver en el menú todas las
   // opciones de cada rol" — se le agregan al sidebar de este panel las
-  // opciones de sus OTROS roles, agrupadas con su propio encabezado.
+  // opciones de sus OTROS roles, agrupadas con su propio encabezado. Antes
+  // cada chequeo excluía además `user?.globalRole !== "X"` — pensado para
+  // "no repetir mi propio rol principal", pero eso rompía el caso de
+  // "tengo varios roles y navegué a otra área" (ver el mismo comentario,
+  // más detallado, en campus/layout.tsx). Este bloque vive solo dentro de
+  // /admin — nunca hace falta excluir ADMIN/SUPPORT (el rol nativo de
+  // esta área) para evitar duplicados.
   const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
-  if (roles.includes("TEACHER") && user?.globalRole !== "TEACHER") {
+  if (roles.includes("TEACHER")) {
     navItems.push(
       { href: "/docente", label: "Panel de docente", icon: LayoutDashboard, section: "Docente" },
       { href: "/docente/cursos", label: "Mis cursos (docente)", icon: LibraryBig, section: "Docente" },
@@ -112,7 +119,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/docente/soporte", label: "Soporte (docente)", icon: LifeBuoy, section: "Docente" },
     );
   }
-  if (roles.includes("STUDENT") && user?.globalRole !== "STUDENT") {
+  if (roles.includes("STUDENT")) {
     navItems.push(
       { href: "/campus", label: "Mi campus", icon: LayoutDashboard, section: "Alumno" },
       { href: "/campus/cursos", label: "Mis cursos (alumno)", icon: BookOpen, section: "Alumno" },
@@ -122,14 +129,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/campus/perfil", label: "Perfil", icon: User, section: "Alumno" },
     );
   }
-  if (roles.includes("COMPANY") && user?.globalRole !== "COMPANY") {
+  if (roles.includes("COMPANY")) {
     navItems.push({ href: "/empresa", label: "Mi empresa", icon: Building2, section: "Empresa" });
   }
 
   return (
     <SidebarShell
       navItems={navItems}
-      brandHref="/admin"
+      // "Al tener más de un rol... el botón Inicio me lleva al inicio de
+      // ESE rol nomás" — antes cada layout pasaba su propia área fija
+      // ("/admin" acá); ahora resuelve el home REAL del usuario según su
+      // rol principal, sin importar en qué área esté parado la página
+      // actual (ver roleHomeHref, misma regla que ya usa /login).
+      brandHref={roleHomeHref(user?.globalRole)}
       topRight={
         <div className="flex flex-col gap-2 border-t border-ink-800 pt-4 text-sm text-ink-100">
           <p className="truncate font-medium text-paper">{user?.displayName ?? `${user?.firstName ?? ""} ${user?.lastName ?? ""}`}</p>

@@ -8,7 +8,7 @@ import { completeProfileSchema, type CompleteProfileInput } from "@inkademy/shar
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { authApi, catalogApi } from "@/lib/api-client";
-import { updateSessionUser, belongsToOtherRoleArea } from "@/lib/auth";
+import { updateSessionUser, belongsToOtherRoleArea, roleHomeHref } from "@/lib/auth";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -44,14 +44,7 @@ function CompleteProfileForm() {
   // completaba su perfil terminaba viendo el campus de alumno, aunque su
   // globalRole en la base de datos fuera el correcto (ADMIN/TEACHER). Mismo
   // criterio que usa /login para decidir el "home" de cada rol.
-  const roleHome =
-    user?.globalRole === "ADMIN" || user?.globalRole === "SUPPORT"
-      ? "/admin"
-      : user?.globalRole === "TEACHER"
-        ? "/docente"
-        : user?.globalRole === "COMPANY"
-          ? "/empresa"
-          : "/campus";
+  const roleHome = roleHomeHref(user?.globalRole);
   // "next" se respeta salvo que apunte al área protegida de OTRO rol (p.ej.
   // ?next=/campus para un admin recién creado) — antes un admin/soporte/
   // docente que llegaba con ese "next" terminaba viendo el campus de
