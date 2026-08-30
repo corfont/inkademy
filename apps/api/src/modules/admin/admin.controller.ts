@@ -16,6 +16,7 @@ import {
   addCourseRoyaltySchema,
   assignCourseStaffSchema,
   adminResetPasswordSchema,
+  bulkIdsSchema,
   createExpenseSchema,
   createTeacherActivityLogSchema,
   createTeacherAdvanceSchema,
@@ -1040,6 +1041,36 @@ export class AdminController {
   @ApiOperation({ summary: "Elimina una cuenta (rechaza si tiene órdenes/certificados/matrículas — desactívala en su lugar)" })
   deleteUser(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.adminService.deleteUser(id, user.id);
+  }
+
+  // --- Zona de pruebas: borrado en lote (solo ADMIN, nunca SUPPORT) ---
+
+  @Post("zona-de-pruebas/users/bulk-delete")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Borra en lote cuentas sin órdenes/certificados/matrículas — el resto se omite con el motivo" })
+  bulkDeleteUsers(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(bulkIdsSchema)) dto: { ids: string[] }) {
+    return this.adminService.bulkDeleteUsers(dto.ids, user.id);
+  }
+
+  @Post("zona-de-pruebas/courses/bulk-delete")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Borra en lote cursos sin matrículas/compras/certificados/cupos — el resto se omite con el motivo" })
+  bulkDeleteCourses(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(bulkIdsSchema)) dto: { ids: string[] }) {
+    return this.adminService.bulkDeleteCourses(dto.ids, user.id);
+  }
+
+  @Post("zona-de-pruebas/areas/bulk-delete")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Borra en lote áreas sin cursos asignados — el resto se omite con el motivo" })
+  bulkDeleteAreas(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(bulkIdsSchema)) dto: { ids: string[] }) {
+    return this.adminService.bulkDeleteAreas(dto.ids, user.id);
+  }
+
+  @Post("zona-de-pruebas/companies/bulk-delete")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Borra en lote empresas B2B sin órdenes/matrículas/cupos usados — el resto se omite con el motivo" })
+  bulkDeleteCompanies(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(bulkIdsSchema)) dto: { ids: string[] }) {
+    return this.adminService.bulkDeleteCompanies(dto.ids, user.id);
   }
 
   // --- Docentes asignados a un curso ---

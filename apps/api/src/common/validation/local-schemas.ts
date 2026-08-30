@@ -732,6 +732,13 @@ export const resetEnrollmentProgressSchema = z.object({
   target: z.enum(["ZERO", "FULL"]),
 });
 
+// "Quisiera tener algunos accesos... para borrar los cursos dados (uno,
+// algunos, todos), borrar usuarios" — zona de pruebas del admin, borrado en
+// lote de entidades sin actividad real (ver AdminService.bulkDelete*).
+export const bulkIdsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+});
+
 // --- Finanzas: gastos manuales y % de comisión de pasarela ---
 export const createExpenseSchema = z.object({
   description: z.string().min(1).max(200),

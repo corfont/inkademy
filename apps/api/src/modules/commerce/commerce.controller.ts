@@ -66,6 +66,17 @@ export class CommerceController {
   cancelOrder(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(cancelOrderSchema)) dto: CancelOrderInput) {
     return this.commerceService.cancelOrder(id, dto, user.id);
   }
+
+  @Post("orders/:id/cancel-test")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary:
+      "Zona de pruebas: deshace una orden de prueba sin comprobante SUNAT emitido (sin reembolso real) y cancela la matrícula que generó",
+  })
+  cancelTestOrder(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.commerceService.cancelTestOrder(id, user.id);
+  }
 }
 
 @ApiTags("webhooks")

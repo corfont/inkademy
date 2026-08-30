@@ -174,6 +174,13 @@ export const authApi = {
 // ---------------------------------------------------------------------------
 // Catálogo público
 // ---------------------------------------------------------------------------
+// Zona de pruebas del admin: resultado de un borrado en lote — lo que no
+// estaba "limpio" se omite (nunca se aborta el lote entero) con el motivo.
+export interface BulkDeleteResult {
+  deleted: string[];
+  skipped: { id: string; reason: string }[];
+}
+
 export interface CourseCardFields {
   showTeacher: boolean;
   showDuration: boolean;
@@ -392,6 +399,12 @@ export const commerceApi = {
     },
     accessToken?: string,
   ) => apiFetch<{ granted: string }>("/grants", { method: "POST", body: JSON.stringify(input), accessToken }),
+  // Zona de pruebas: deshace una orden sin comprobante SUNAT emitido (sin reembolso real) y cancela su matrícula — solo ADMIN.
+  cancelTestOrder: (id: string, accessToken?: string) =>
+    apiFetch<{ orderId: string; status: string; cancelledEnrollmentIds: string[] }>(`/orders/${id}/cancel-test`, {
+      method: "POST",
+      accessToken,
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -953,6 +966,16 @@ export const adminApi = {
     }),
   deleteUser: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/users/${id}`, { method: "DELETE", accessToken }),
+
+  // --- Zona de pruebas: borrado en lote (solo ADMIN) ---
+  bulkDeleteUsers: (ids: string[], accessToken?: string | null) =>
+    apiFetch<BulkDeleteResult>("/admin/zona-de-pruebas/users/bulk-delete", { method: "POST", body: JSON.stringify({ ids }), accessToken }),
+  bulkDeleteCourses: (ids: string[], accessToken?: string | null) =>
+    apiFetch<BulkDeleteResult>("/admin/zona-de-pruebas/courses/bulk-delete", { method: "POST", body: JSON.stringify({ ids }), accessToken }),
+  bulkDeleteAreas: (ids: string[], accessToken?: string | null) =>
+    apiFetch<BulkDeleteResult>("/admin/zona-de-pruebas/areas/bulk-delete", { method: "POST", body: JSON.stringify({ ids }), accessToken }),
+  bulkDeleteCompanies: (ids: string[], accessToken?: string | null) =>
+    apiFetch<BulkDeleteResult>("/admin/zona-de-pruebas/companies/bulk-delete", { method: "POST", body: JSON.stringify({ ids }), accessToken }),
 
   // --- Docentes asignados a un curso ---
   courseStaff: (courseId: string, accessToken?: string | null) =>

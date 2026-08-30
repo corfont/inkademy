@@ -602,6 +602,83 @@ export class CommerceService {
   }
 
   /**
+   * "Retrotraer... una orden/compra (deshacer un pago de prueba)" — zona de
+   * pruebas del admin. Deliberadamente DISTINTA de cancelOrder: no llama a
+   * la pasarela de pago ni emite nota de crédito SUNAT, así que solo
+   * procede si todavía no hay ningún papel fiscal de por medio (nunca se
+   * emitió comprobante electrónico) ni un certificado ya emitido desde las
+   * matrículas que generó — esas dos señales son las que de verdad
+   * importan; que el Payment haya quedado SUCCEEDED no lo es (hasta una
+   * compra a S/0 en modo de pruebas pasa por ahí, ver checkout()).
+   */
+  async cancelTestOrder(orderId: string, actorId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true, electronicInvoice: true },
+    });
+    if (!order) throw new NotFoundException("Orden no encontrada");
+    if (order.status === "CANCELLED" || order.status === "REFUNDED") {
+      throw new BadRequestException("Esta orden ya está cancelada o reembolsada");
+    }
+    if (order.electronicInvoice) {
+      throw new BadRequestException(
+        "Esta orden ya emitió un comprobante electrónico — usa Cancelar/Reembolsar en su lugar",
+      );
+    }
+
+    const courseIds = order.items.map((i) => i.courseId).filter((id): id is string => Boolean(id));
+    const programIds = order.items.map((i) => i.programId).filter((id): id is string => Boolean(id));
+    // Enrollment no guarda orderId (no existe ese FK) — mismo criterio
+    // heurístico que ya usa finalizeOrderPaid() para su fallback idempotente:
+    // matrículas de este comprador, para estos cursos/programas, creadas
+    // desde que se creó la orden.
+    const relatedEnrollments = await this.prisma.enrollment.findMany({
+      where: {
+        userId: order.userId,
+        enrolledAt: { gte: order.createdAt },
+        OR: [
+          ...(courseIds.length ? [{ courseId: { in: courseIds } }] : []),
+          ...(programIds.length ? [{ programId: { in: programIds } }] : []),
+        ],
+      },
+    });
+
+    if (relatedEnrollments.length > 0) {
+      const certificatesCount = await this.prisma.certificate.count({
+        where: { enrollmentId: { in: relatedEnrollments.map((e) => e.id) } },
+      });
+      if (certificatesCount > 0) {
+        throw new BadRequestException("Ya se emitió un certificado desde esta orden — no se puede deshacer");
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED" } }),
+      ...(relatedEnrollments.length
+        ? [
+            this.prisma.enrollment.updateMany({
+              where: { id: { in: relatedEnrollments.map((e) => e.id) } },
+              data: { status: "CANCELLED" },
+            }),
+          ]
+        : []),
+    ]);
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "ORDER_CANCEL_TEST",
+        entity: "Order",
+        entityId: order.id,
+        before: { status: order.status },
+        after: { status: "CANCELLED", cancelledEnrollmentIds: relatedEnrollments.map((e) => e.id) },
+      },
+    });
+
+    return { orderId: order.id, status: "CANCELLED" as const, cancelledEnrollmentIds: relatedEnrollments.map((e) => e.id) };
+  }
+
+  /**
    * Otorga acceso gratuito a un curso/programa que SÍ tiene precio (p.ej.
    * estrategia de marketing, cortesía a un cliente corporativo) — a
    * diferencia de un curso realmente gratuito (priceAmount = 0), esto es

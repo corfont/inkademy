@@ -31,6 +31,7 @@ import {
   User,
   Smile,
   Star,
+  AlertTriangle,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
@@ -94,6 +95,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/liquidaciones", label: "Liquidación de docentes", icon: Banknote },
     { href: "/admin/liquidaciones/tarifas", label: "Tarifas y adelantos (docentes)", icon: Wallet },
     ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock }] : []),
+    // "Los accesos a borrar todo... deberían estar en un módulo aparte" —
+    // solo ADMIN puro (nunca SUPPORT) ve esta pantalla, mismo criterio que
+    // "Configuración avanzada" arriba.
+    ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/zona-de-pruebas", label: "Zona de pruebas", icon: AlertTriangle }] : []),
   ];
 
   // "Si un usuario tiene más de un rol, debería ver en el menú todas las

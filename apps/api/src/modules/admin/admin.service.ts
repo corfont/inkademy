@@ -2743,18 +2743,27 @@ export class AdminService {
    */
   async deleteUser(id: string, actorId: string) {
     if (id === actorId) throw new BadRequestException("No puedes eliminar tu propia cuenta");
+    const reason = await this.userDeleteBlockReason(id);
+    if (reason) throw new BadRequestException(reason);
+    await this.deleteUserUnsafe(id, actorId);
+    return { deleted: true };
+  }
 
+  /** null = se puede borrar; si no, el motivo por el que está bloqueado. */
+  private async userDeleteBlockReason(id: string): Promise<string | null> {
     const [ordersCount, certificatesCount, enrollmentsCount] = await Promise.all([
       this.prisma.order.count({ where: { userId: id } }),
       this.prisma.certificate.count({ where: { userId: id } }),
       this.prisma.enrollment.count({ where: { userId: id } }),
     ]);
     if (ordersCount > 0 || certificatesCount > 0 || enrollmentsCount > 0) {
-      throw new BadRequestException(
-        "Esta cuenta tiene órdenes, certificados o matrículas — no se puede eliminar sin perder ese registro. Desactívala en su lugar.",
-      );
+      return "Tiene órdenes, certificados o matrículas — desactívala en su lugar.";
     }
+    return null;
+  }
 
+  /** Sin chequeos de seguridad — el llamador ya validó que se puede borrar. */
+  private async deleteUserUnsafe(id: string, actorId: string) {
     const deletedSnapshot = await this.prisma.user.findUnique({
       where: { id },
       select: { email: true, firstName: true, lastName: true, globalRole: true },
@@ -2763,7 +2772,123 @@ export class AdminService {
     await this.prisma.auditLog.create({
       data: { actorId, action: "USER_DELETE", entity: "User", entityId: id, before: deletedSnapshot as never },
     });
-    return { deleted: true };
+  }
+
+  /**
+   * "Borrar usuarios (uno, algunos, todos)" en la zona de pruebas del admin
+   * — mismo criterio de seguridad que deleteUser, pero por lote: lo que no
+   * está "limpio" se omite (con el motivo) en vez de abortar todo el lote.
+   */
+  async bulkDeleteUsers(ids: string[], actorId: string) {
+    const deleted: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of ids) {
+      if (id === actorId) {
+        skipped.push({ id, reason: "No puedes eliminar tu propia cuenta" });
+        continue;
+      }
+      const reason = await this.userDeleteBlockReason(id);
+      if (reason) {
+        skipped.push({ id, reason });
+        continue;
+      }
+      await this.deleteUserUnsafe(id, actorId);
+      deleted.push(id);
+    }
+    return { deleted, skipped };
+  }
+
+  /**
+   * "Borrar los cursos dados (uno, algunos, todos)" — a diferencia del
+   * archivado normal (Course.status → ARCHIVED, el único mecanismo hasta
+   * ahora), esto elimina la fila de verdad. Solo si nunca generó actividad
+   * real: sin matrículas, sin ítems de orden (aunque OrderItem.courseId no
+   * tiene FK, si hubiera alguno igual protege la facturación histórica),
+   * sin certificados, sin cupos B2B. La cascada del schema se encarga de
+   * módulos/lecciones/materiales/exámenes del curso.
+   */
+  async bulkDeleteCourses(ids: string[], actorId: string) {
+    const deleted: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of ids) {
+      const [enrollments, orderItems, certificates, seatPools, programCourses] = await Promise.all([
+        this.prisma.enrollment.count({ where: { courseId: id } }),
+        this.prisma.orderItem.count({ where: { courseId: id } }),
+        this.prisma.certificate.count({ where: { courseId: id } }),
+        this.prisma.companySeatPool.count({ where: { courseId: id } }),
+        // ProgramCourse_courseId_fkey es ON DELETE RESTRICT (único FK no-cascada
+        // de Course) — sin este chequeo, prisma.course.delete tiraría un P2003
+        // crudo en vez de un "skipped" legible.
+        this.prisma.programCourse.count({ where: { courseId: id } }),
+      ]);
+      if (enrollments > 0 || orderItems > 0 || certificates > 0 || seatPools > 0 || programCourses > 0) {
+        skipped.push({ id, reason: "Tiene matrículas, compras, certificados, cupos B2B o es parte de un programa — archívalo en su lugar" });
+        continue;
+      }
+      const snapshot = await this.prisma.course.findUnique({ where: { id }, select: { title: true, slug: true } });
+      if (!snapshot) {
+        skipped.push({ id, reason: "No existe" });
+        continue;
+      }
+      await this.prisma.course.delete({ where: { id } });
+      await this.prisma.auditLog.create({
+        data: { actorId, action: "COURSE_DELETE", entity: "Course", entityId: id, before: snapshot as never },
+      });
+      deleted.push(id);
+    }
+    return { deleted, skipped };
+  }
+
+  /** Igual criterio que bulkDeleteCourses: solo se borra un área si ningún curso la referencia. */
+  async bulkDeleteAreas(ids: string[], actorId: string) {
+    const deleted: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of ids) {
+      const coursesCount = await this.prisma.course.count({ where: { areaId: id } });
+      if (coursesCount > 0) {
+        skipped.push({ id, reason: "Tiene cursos asignados a esta área" });
+        continue;
+      }
+      const snapshot = await this.prisma.area.findUnique({ where: { id }, select: { slug: true, name: true } });
+      if (!snapshot) {
+        skipped.push({ id, reason: "No existe" });
+        continue;
+      }
+      await this.prisma.area.delete({ where: { id } });
+      await this.prisma.auditLog.create({
+        data: { actorId, action: "AREA_DELETE", entity: "Area", entityId: id, before: snapshot as never },
+      });
+      deleted.push(id);
+    }
+    return { deleted, skipped };
+  }
+
+  /** Empresas B2B de prueba: solo se borran sin órdenes/matrículas reales ni cupos ya usados. */
+  async bulkDeleteCompanies(ids: string[], actorId: string) {
+    const deleted: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of ids) {
+      const [orders, enrollments, seatPoolsUsed] = await Promise.all([
+        this.prisma.order.count({ where: { companyId: id } }),
+        this.prisma.enrollment.count({ where: { companyId: id } }),
+        this.prisma.companySeatPool.count({ where: { companyId: id, seatsUsed: { gt: 0 } } }),
+      ]);
+      if (orders > 0 || enrollments > 0 || seatPoolsUsed > 0) {
+        skipped.push({ id, reason: "Tiene órdenes, matrículas o cupos B2B ya usados" });
+        continue;
+      }
+      const snapshot = await this.prisma.company.findUnique({ where: { id }, select: { legalName: true, taxId: true } });
+      if (!snapshot) {
+        skipped.push({ id, reason: "No existe" });
+        continue;
+      }
+      await this.prisma.company.delete({ where: { id } });
+      await this.prisma.auditLog.create({
+        data: { actorId, action: "COMPANY_DELETE", entity: "Company", entityId: id, before: snapshot as never },
+      });
+      deleted.push(id);
+    }
+    return { deleted, skipped };
   }
 
   // --- Docentes asignados a un curso (CourseStaff) ---
