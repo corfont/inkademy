@@ -17,6 +17,7 @@ import {
   assignCourseStaffSchema,
   adminResetPasswordSchema,
   bulkIdsSchema,
+  scormAuthoredContentSchema,
   createExpenseSchema,
   createTeacherActivityLogSchema,
   createTeacherAdvanceSchema,
@@ -263,6 +264,37 @@ export class AdminController {
     @UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string },
   ) {
     return this.scormService.ingestPackage(id, file.buffer, teacherScopeId(user));
+  }
+
+  @Post("lessons/:id/scorm/build")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Genera un paquete SCORM real a partir de diapositivas armadas con el editor de autoría (sin subir ningún .zip)" })
+  buildScormPackage(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(scormAuthoredContentSchema)) dto: any,
+  ) {
+    return this.scormService.buildFromAuthoredContent(id, dto, teacherScopeId(user));
+  }
+
+  @Post("lessons/:id/scorm/preview-session")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Sesión de prueba para reproducir el paquete SCORM sin matricularse (no guarda ningún progreso)" })
+  async createScormPreviewSession(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    const { token } = await this.scormService.createPreviewSession(user.id, id, teacherScopeId(user));
+    return { token, playerUrl: `/scorm/player/${encodeURIComponent(token)}` };
+  }
+
+  @Get("lessons/:id/scorm/export")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Descarga el paquete SCORM (.zip real, reutilizable en cualquier otro LMS)" })
+  async exportScormPackage(@CurrentUser() user: RequestUser, @Param("id") id: string, @Res() res: Response) {
+    const buffer = await this.scormService.exportPackageZip(id, teacherScopeId(user));
+    res.set({
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="scorm-${id}.zip"`,
+    });
+    res.send(buffer);
   }
 
   @Post("lessons/:id/generate-subtitles")

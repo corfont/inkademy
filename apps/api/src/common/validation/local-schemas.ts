@@ -157,6 +157,28 @@ export const upsertLessonSchema = z.object({
 });
 export const updateLessonSchema = upsertLessonSchema.partial();
 
+// --- Editor de autoría SCORM (armar el paquete DESDE Inkademy) ---
+const scormContentSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("content"),
+  title: z.string().min(1).max(200),
+  body: z.string().max(5000),
+  imageUrl: z.string().url().optional().nullable(),
+});
+const scormQuestionSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("question"),
+  question: z.string().min(1).max(1000),
+  options: z.array(z.string().min(1).max(300)).min(2).max(6),
+  correctIndex: z.number().int().min(0),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+export const scormSlideSchema = z.discriminatedUnion("type", [scormContentSlideSchema, scormQuestionSlideSchema]);
+export const scormAuthoredContentSchema = z.object({
+  slides: z.array(scormSlideSchema).min(1).max(50),
+  passingScore: z.number().min(0).max(100).default(70),
+});
+
 export const upsertMaterialSchema = z
   .object({
     title: z.string().min(1),

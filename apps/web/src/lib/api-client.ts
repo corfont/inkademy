@@ -850,6 +850,25 @@ export const adminApi = {
     form.append("file", file);
     return apiFetch<any>(`/admin/lessons/${lessonId}/scorm-upload`, { method: "POST", body: form, accessToken });
   },
+  // Editor de autoría SCORM (armar el paquete desde Inkademy, sin subir ningún .zip) — ver ScormBuilder.tsx.
+  buildScormPackage: (lessonId: string, content: { slides: unknown[]; passingScore: number }, accessToken?: string | null) =>
+    apiFetch<{ entryPath: string; version: string }>(`/admin/lessons/${lessonId}/scorm/build`, { method: "POST", body: JSON.stringify(content), accessToken }),
+  scormPreviewSession: (lessonId: string, accessToken?: string | null) =>
+    apiFetch<{ token: string; playerUrl: string }>(`/admin/lessons/${lessonId}/scorm/preview-session`, { method: "POST", accessToken }),
+  // Descarga binaria — no pasa por apiFetch (mismo criterio que downloadReportPdf).
+  downloadScormPackage: async (lessonId: string, accessToken: string) => {
+    const res = await fetch(`${API_URL}/admin/lessons/${lessonId}/scorm/export`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, "No pudimos generar el paquete SCORM.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `scorm-${lessonId}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
   createMaterial: (
     lessonId: string,
     input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },

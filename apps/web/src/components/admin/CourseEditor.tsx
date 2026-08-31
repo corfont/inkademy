@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { UploadCloud, Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical } from "lucide-react";
+import { Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,8 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
 import { FileDropzone } from "./FileDropzone";
+import { DropLabel } from "./DropLabel";
+import { ScormBuilder } from "./ScormBuilder";
 import { ExamBuilder } from "./ExamBuilder";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -870,6 +872,7 @@ function LessonRow({
   const [linkUrl, setLinkUrl] = useState(lesson.externalUrl ?? "");
   const [savingLink, setSavingLink] = useState(false);
   const [scormUploading, setScormUploading] = useState(false);
+  const [scormBuilderOpen, setScormBuilderOpen] = useState(false);
 
   async function handleScormUpload(file: File) {
     setScormUploading(true);
@@ -1041,7 +1044,20 @@ function LessonRow({
           ) : (
             <span>Sin paquete SCORM todavía — sube un .zip exportado de tu autor de contenido (Articulate, iSpring, etc.)</span>
           )}
-          <DropLabel accept=".zip" busy={scormUploading} label={lesson.scormEntryPath ? "Reemplazar paquete (.zip)" : "Subir paquete SCORM (.zip)"} small onFile={handleScormUpload} />
+          <div className="flex items-center gap-3">
+            <DropLabel accept=".zip" busy={scormUploading} label={lesson.scormEntryPath ? "Reemplazar paquete (.zip)" : "Subir paquete SCORM (.zip)"} small onFile={handleScormUpload} />
+            <button type="button" className="text-ink-700 hover:underline" onClick={() => setScormBuilderOpen(true)}>
+              {lesson.scormAuthoredContent ? "Editar con el editor" : "Crear con el editor"}
+            </button>
+          </div>
+          {scormBuilderOpen && (
+            <ScormBuilder
+              lesson={lesson}
+              open={scormBuilderOpen}
+              onClose={() => setScormBuilderOpen(false)}
+              onSaved={() => setScormBuilderOpen(false)}
+            />
+          )}
         </div>
       )}
       {lesson.contentType === "VIDEO" && lesson.videoAssetId && (
@@ -1273,54 +1289,6 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
 }
 
 /** Etiqueta compacta de subida (click o arrastrar-y-soltar) para filas angostas — la versión completa con recuadro es `FileDropzone`. */
-function DropLabel({
-  accept,
-  busy,
-  label,
-  small,
-  onFile,
-}: {
-  accept?: string;
-  busy?: boolean;
-  label: string;
-  small?: boolean;
-  onFile: (file: File) => void;
-}) {
-  const [dragging, setDragging] = useState(false);
-  return (
-    <label
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (!busy) setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragging(false);
-        const file = e.dataTransfer.files?.[0];
-        if (file && !busy) onFile(file);
-      }}
-      className={`flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${small ? "text-xs" : "text-sm"} text-ink-700 hover:underline ${
-        dragging ? "bg-paper-muted ring-1 ring-ink-400" : ""
-      }`}
-    >
-      <UploadCloud className={small ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
-      {busy ? "Subiendo…" : label}
-      <input
-        type="file"
-        accept={accept}
-        className="hidden"
-        disabled={busy}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
-          e.target.value = "";
-        }}
-      />
-    </label>
-  );
-}
-
 function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean; run: any }) {
   const [form, setForm] = useState({ startsAt: "", endsAt: "", capacity: "", teacherId: "", recurrence: "ONCE" as "ONCE" | "WEEKLY" });
   const [teachers, setTeachers] = useState<any[]>([]);

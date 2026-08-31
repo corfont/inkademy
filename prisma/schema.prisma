@@ -488,6 +488,16 @@ model Lesson {
   scormPackagePrefix String?
   scormEntryPath     String?
   scormVersion       String?
+  // "Me gustaría poder crear un paquete SCORM en este sistema" — editor de
+  // autoría (diapositivas de contenido/pregunta) DENTRO de Inkademy, en vez
+  // de solo subir un .zip ya armado en Articulate/iSpring. Esta es la
+  // definición editable ({ slides, passingScore }) que el constructor lee/
+  // escribe; `null` = el paquete de esta lección se subió como .zip (no se
+  // generó acá, no se puede "editar", solo reemplazar el archivo). El .zip
+  // real que reproduce el alumno (imsmanifest.xml + index.html) se genera a
+  // partir de esto y se sube al mismo `scormPackagePrefix` de siempre — ver
+  // scorm-authoring.ts/ScormService.buildFromAuthoredContent.
+  scormAuthoredContent Json?
 
   // "Cursos e-learning interactivos con evaluación formativa integrada" —
   // preguntas de autoevaluación DENTRO de la lección (feedback inmediato con

@@ -7,12 +7,15 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { StorageService } from "../../storage/storage.service";
 import { contentTypeFromPath } from "./scorm-content-type";
 import { buildScormPlayerHtml } from "./scorm-shim";
+import { buildScormContentHtml, buildScormManifestXml, type ScormAuthoredContent } from "./scorm-authoring";
 
 interface ScormSessionPayload {
   sub: string;
-  enrollmentId: string;
+  // Ausente en modo "scorm-preview" — el admin/docente prueba el paquete
+  // ANTES de que exista ninguna matrícula real (ver createPreviewSession).
+  enrollmentId?: string;
   lessonId: string;
-  scope: "scorm";
+  scope: "scorm" | "scorm-preview";
 }
 
 function asArray<T>(value: T | T[] | undefined): T[] {
@@ -87,10 +90,74 @@ export class ScormService {
 
     await this.prisma.lesson.update({
       where: { id: lessonId },
-      data: { contentType: "SCORM", scormPackagePrefix: prefix, scormEntryPath: entryPath, scormVersion: version },
+      // scormAuthoredContent en null: si esta lección tenía un paquete
+      // armado con el constructor, subir un .zip a mano lo reemplaza por
+      // completo — ya no hay una definición editable detrás de este archivo.
+      data: { contentType: "SCORM", scormPackagePrefix: prefix, scormEntryPath: entryPath, scormVersion: version, scormAuthoredContent: null as never },
     });
 
     return { entryPath, version };
+  }
+
+  /**
+   * Genera el paquete (imsmanifest.xml + index.html) a partir de la
+   * definición armada con el constructor y lo sube al mismo prefijo que
+   * usaría un .zip subido a mano — el reproductor del alumno (ScormPlayer/
+   * scorm-shim.ts) no distingue el origen, así que no necesita ningún
+   * cambio para reproducir esto.
+   */
+  async buildFromAuthoredContent(lessonId: string, content: ScormAuthoredContent, teacherUserId?: string) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+    if (teacherUserId) {
+      const membership = await this.prisma.courseStaff.findFirst({ where: { courseId: lesson.module.courseId, userId: teacherUserId } });
+      if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+    }
+
+    const title = (lesson.title as Record<string, string> | null)?.es ?? "Contenido SCORM";
+    const manifestXml = buildScormManifestXml(lessonId, title);
+    const contentHtml = buildScormContentHtml(content, title);
+
+    const prefix = `scorm/${lessonId}/`;
+    await this.storage.uploadBuffer(prefix + "imsmanifest.xml", Buffer.from(manifestXml, "utf-8"), "application/xml");
+    await this.storage.uploadBuffer(prefix + "index.html", Buffer.from(contentHtml, "utf-8"), "text/html");
+
+    await this.prisma.lesson.update({
+      where: { id: lessonId },
+      data: {
+        contentType: "SCORM",
+        scormPackagePrefix: prefix,
+        scormEntryPath: "index.html",
+        scormVersion: "1.2",
+        scormAuthoredContent: content as never,
+      },
+    });
+
+    return { entryPath: "index.html", version: "1.2" };
+  }
+
+  /**
+   * Arma un .zip real y descargable con lo mismo que ya se generó y subió
+   * — sirve para reutilizar el paquete fuera de Inkademy en cualquier otro
+   * LMS que lea SCORM 1.2 estándar (ya lo es: mismo imsmanifest.xml/
+   * index.html que reproduce esta misma plataforma).
+   */
+  async exportPackageZip(lessonId: string, teacherUserId?: string): Promise<Buffer> {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+    if (teacherUserId) {
+      const membership = await this.prisma.courseStaff.findFirst({ where: { courseId: lesson.module.courseId, userId: teacherUserId } });
+      if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+    }
+    if (!lesson.scormPackagePrefix) throw new BadRequestException("Esta lección todavía no tiene un paquete SCORM generado");
+
+    const manifest = await this.storage.getObjectBuffer(lesson.scormPackagePrefix + "imsmanifest.xml");
+    const index = await this.storage.getObjectBuffer(lesson.scormPackagePrefix + (lesson.scormEntryPath ?? "index.html"));
+
+    const zip = new AdmZip();
+    zip.addFile("imsmanifest.xml", manifest);
+    zip.addFile(lesson.scormEntryPath ?? "index.html", index);
+    return zip.toBuffer();
   }
 
   /**
@@ -166,6 +233,28 @@ export class ScormService {
     return { token };
   }
 
+  /**
+   * "Vista previa" para ADMIN/TEACHER antes de publicar — mismo mecanismo
+   * de reproducción que un alumno real (getPlayerHtml/getContentFile no
+   * distinguen el scope), pero sin atarse a ninguna Enrollment (no existe
+   * ninguna todavía si el curso ni se publicó) y reportProgress ignora este
+   * scope explícitamente — probarlo nunca ensucia el progreso de nadie.
+   */
+  async createPreviewSession(userId: string, lessonId: string, teacherUserId?: string): Promise<{ token: string }> {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+    if (teacherUserId) {
+      const membership = await this.prisma.courseStaff.findFirst({ where: { courseId: lesson.module.courseId, userId: teacherUserId } });
+      if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+    }
+    if (lesson.contentType !== "SCORM" || !lesson.scormPackagePrefix || !lesson.scormEntryPath) {
+      throw new BadRequestException("Esta lección no tiene un paquete SCORM cargado");
+    }
+    const payload: ScormSessionPayload = { sub: userId, lessonId, scope: "scorm-preview" };
+    const token = this.jwt.sign(payload, { expiresIn: "1h" });
+    return { token };
+  }
+
   private verifyToken(token: string): ScormSessionPayload {
     let payload: ScormSessionPayload;
     try {
@@ -173,7 +262,9 @@ export class ScormService {
     } catch {
       throw new UnauthorizedException("Token de sesión SCORM inválido o vencido");
     }
-    if (payload.scope !== "scorm") throw new UnauthorizedException("Token no válido para reproducción SCORM");
+    if (payload.scope !== "scorm" && payload.scope !== "scorm-preview") {
+      throw new UnauthorizedException("Token no válido para reproducción SCORM");
+    }
     return payload;
   }
 
@@ -212,7 +303,11 @@ export class ScormService {
   }
 
   async reportProgress(token: string, input: { completionStatus?: string; scoreRaw?: number | null }): Promise<void> {
-    const { sub: userId, enrollmentId, lessonId } = this.verifyToken(token);
+    const { sub: userId, enrollmentId, lessonId, scope } = this.verifyToken(token);
+    // Modo vista previa: el admin/docente lo está probando antes de
+    // publicar, sin ninguna matrícula real detrás — no hay dónde guardar
+    // el progreso, y no debería haberlo (no es un intento real de nadie).
+    if (scope === "scorm-preview" || !enrollmentId) return;
     const COMPLETED_STATUSES = new Set(["completed", "passed", "satisfied"]);
     const completed = input.completionStatus ? COMPLETED_STATUSES.has(input.completionStatus) : false;
     await this.prisma.lessonProgress.upsert({
