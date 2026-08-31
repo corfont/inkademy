@@ -46,9 +46,9 @@ export const DOCUMENT_MIME_PREFIXES = [
   "image/gif",
 ];
 
-// Uploads generales de admin/docente: lo anterior + video (portada de
-// curso, video de lección) — pero sigue excluyendo html/svg/ejecutables.
-export const COURSE_ASSET_MIME_PREFIXES = [...DOCUMENT_MIME_PREFIXES, "video/"];
+// Uploads generales de admin/docente: lo anterior + video/audio (portada de
+// curso, video/audio de lección) — pero sigue excluyendo html/svg/ejecutables.
+export const COURSE_ASSET_MIME_PREFIXES = [...DOCUMENT_MIME_PREFIXES, "video/", "audio/"];
 
 // Avatar de usuario: solo imágenes rasterizadas comunes (ni SVG, que puede
 // llevar script embebido).

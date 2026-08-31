@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Award, CheckCircle2, Circle, ClipboardCheck, ExternalLink, FileDown, FileText, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
+import { Award, CheckCircle2, Circle, ClipboardCheck, ExternalLink, FileDown, FileText, Headphones, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz, FormativeQuizQuestion } from "@/lib/mock-data";
 import { meApi, API_URL } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -430,13 +430,20 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     }
   }
 
-  function onTimeUpdate(e: SyntheticEvent<HTMLVideoElement>) {
+  // HTMLMediaElement (no HTMLVideoElement) — así el mismo handler sirve
+  // tanto para el <video> como para el <audio> de una lección AUDIO, sin
+  // duplicar la lógica de progreso/reanudar/checkpoints.
+  function onTimeUpdate(e: SyntheticEvent<HTMLMediaElement>) {
     const seconds = Math.floor(e.currentTarget.currentTime);
     if (seconds - lastSentRef.current >= 10) {
       lastSentRef.current = seconds;
       persistProgress(current.id, { lastPositionSeconds: seconds });
     }
     if (!activeCheckpoint && seconds > maxWatchedSeconds) setMaxWatchedSeconds(seconds);
+    // Los checkpoints (preguntas que interrumpen la reproducción) solo
+    // aplican a video — videoCheckpoints queda vacío para una lección de
+    // audio (formativeQuiz sin videoTimestampSeconds), así que este bloque
+    // simplemente nunca dispara ahí.
     const due = videoCheckpoints.find((q) => !answeredCheckpoints[q.id] && (q.videoTimestampSeconds ?? 0) <= e.currentTarget.currentTime);
     if (due) {
       e.currentTarget.pause();
@@ -448,9 +455,9 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   // solo puede pausar, retroceder o reproducir el tiempo ya visto" — se
   // detecta con onSeeking (dispara ANTES de que el navegador termine de
   // saltar) y se fuerza de vuelta a lo ya visto. No es infalible contra un
-  // usuario decidido con devtools (ningún <video> nativo lo es sin DRM
-  // real), pero sí bloquea el uso normal de la barra de progreso.
-  function onSeeking(e: SyntheticEvent<HTMLVideoElement>) {
+  // usuario decidido con devtools (ningún <video>/<audio> nativo lo es sin
+  // DRM real), pero sí bloquea el uso normal de la barra de progreso.
+  function onSeeking(e: SyntheticEvent<HTMLMediaElement>) {
     if (e.currentTarget.currentTime > maxWatchedSeconds + 1) {
       e.currentTarget.currentTime = maxWatchedSeconds;
     }
@@ -562,6 +569,28 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                 </video>
                 {detail.blockMainVideoDownload !== false && watermarkLabel && <VideoWatermark label={watermarkLabel} />}
                 {activeCheckpoint && <VideoCheckpointOverlay question={activeCheckpoint} onContinue={() => continueAfterCheckpoint(activeCheckpoint)} />}
+              </div>
+            ) : current?.contentType === "AUDIO" ? (
+              // Misma mecánica de progreso/reanudar/bloqueo-de-adelantar que
+              // el video (onTimeUpdate/onSeeking generalizados a
+              // HTMLMediaElement) — sin marca de agua ni checkpoints, que son
+              // específicos de tener un frame visual sobre el que superponerse.
+              <div className="flex flex-col items-center gap-5 rounded-lg bg-ink-900 p-10 text-center">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ink-800 text-paper">
+                  <Headphones className="h-8 w-8" aria-hidden="true" />
+                </span>
+                <p className="font-serif text-lg font-semibold text-paper">{localize(current.title, locale)}</p>
+                <audio
+                  key={current.id}
+                  controls
+                  controlsList={detail.blockMainVideoDownload !== false ? "nodownload" : undefined}
+                  onContextMenu={(e) => detail.blockMainVideoDownload !== false && e.preventDefault()}
+                  className="w-full"
+                  src={current.audioUrl}
+                  onTimeUpdate={onTimeUpdate}
+                  onSeeking={onSeeking}
+                  onEnded={() => markComplete(current.id)}
+                />
               </div>
             ) : current?.contentType === "LINK" && current.externalUrl ? (
               // "Pongo un link... no funciona" — antes contentType=LINK no
@@ -754,6 +783,8 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                           <CheckCircle2 className="h-4 w-4 flex-none text-success" aria-hidden="true" />
                         ) : lesson.contentType === "VIDEO" ? (
                           <PlayCircle className="h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
+                        ) : lesson.contentType === "AUDIO" ? (
+                          <Headphones className="h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
                         ) : (
                           <Circle className="h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
                         )}

@@ -588,6 +588,7 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
           onChange={(e) => setNewLesson((l) => ({ ...l, contentType: e.target.value }))}
         >
           <option value="VIDEO">Video</option>
+          <option value="AUDIO">Audio</option>
           <option value="PDF">PDF</option>
           <option value="LINK">Link</option>
           <option value="TEXT">Texto</option>
@@ -841,6 +842,7 @@ function kindFromFile(file: File): string {
   if (type.includes("sheet") || /\.xlsx?$/.test(name)) return "sheet";
   if (type.startsWith("image/")) return "image";
   if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
   if (type === "application/pdf") return "pdf";
   return "file";
 }
@@ -918,6 +920,19 @@ function LessonRow({
     }
   }
 
+  async function handleAudioUpload(file: File) {
+    setUploading(true);
+    try {
+      const { assetId } = await adminApi.uploadAsset(file);
+      await adminApi.updateLesson(lesson.id, { audioAssetId: assetId });
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handleMaterialUpload(file: File) {
     setUploading(true);
     try {
@@ -987,6 +1002,16 @@ function LessonRow({
             <span>Sin video todavía</span>
           )}
           <DropLabel accept="video/*" busy={uploading} label="Subir video" onFile={handleVideoUpload} />
+        </div>
+      )}
+      {lesson.contentType === "AUDIO" && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-ash-600">
+          {lesson.audioAssetId ? (
+            <span>Audio cargado ({lesson.audioAssetId.split("/").pop()})</span>
+          ) : (
+            <span>Sin audio todavía</span>
+          )}
+          <DropLabel accept="audio/*" busy={uploading} label="Subir audio" onFile={handleAudioUpload} />
         </div>
       )}
       {lesson.contentType === "LINK" && (

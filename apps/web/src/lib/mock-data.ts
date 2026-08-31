@@ -342,12 +342,13 @@ export interface ClassroomLesson {
   id: string;
   order: number;
   title: LocalizedText;
-  contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "ASSIGNMENT" | "SCORM";
+  contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "ASSIGNMENT" | "SCORM" | "AUDIO";
   durationMinutes?: number;
   // "El administrador debe indicar si ese video inicia el curso" — la
   // lección iniciadora se abre de una vez al entrar al curso.
   isCourseStarter?: boolean;
   videoUrl?: string;
+  audioUrl?: string;
   // Solo aplica a contentType="LINK" — a qué URL apunta la lección.
   externalUrl?: string | null;
   // Subtítulos/transcripción automática (Fase 2, generados con Gemini) —

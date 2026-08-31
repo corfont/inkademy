@@ -435,6 +435,7 @@ enum LessonContentType {
   TEXT
   ASSIGNMENT
   SCORM
+  AUDIO
 }
 
 model Lesson {
@@ -445,6 +446,13 @@ model Lesson {
   title           Json
   contentType     LessonContentType
   videoAssetId    String?
+  // "¿Se puede crear... material audiovisual?" — contentType="AUDIO":
+  // misma mecánica que VIDEO (subida, reproductor con controles nativos,
+  // progreso/reanudar por segundo, bloqueo de adelantar sin haber
+  // escuchado) pero sin las piezas que son específicamente de video
+  // (marca de agua superpuesta, preguntas-checkpoint sobre el frame) — no
+  // pedidas para audio y sin una superficie visual natural donde vivir.
+  audioAssetId    String?
   // "Pongo un link para que se ejecute al inicio... no funciona" — bug real
   // confirmado: contentType=LINK se podía elegir al crear una lección, pero
   // no existía NINGÚN campo para guardar a qué URL apunta, y el reproductor
@@ -517,7 +525,7 @@ model Material {
   // sigue requiriendo un assetId real.
   assetId     String?
   externalUrl String?
-  kind        String // pdf | slide | doc | sheet | image | video | template | link
+  kind        String // pdf | slide | doc | sheet | image | video | audio | template | link
   // "Si hay tres videos, ¿cómo sabe el sistema cuál es primero?" — antes
   // los materiales solo se ordenaban por fecha de subida (createdAt), sin
   // forma de reordenarlos después. Ahora tienen su propio orden explícito,

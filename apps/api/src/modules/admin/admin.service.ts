@@ -593,8 +593,9 @@ export class AdminService {
     input: {
       title: object;
       order?: number;
-      contentType: "VIDEO" | "PDF" | "LINK" | "TEXT";
+      contentType: "VIDEO" | "PDF" | "LINK" | "TEXT" | "SCORM" | "AUDIO";
       videoAssetId?: string;
+      audioAssetId?: string;
       durationMinutes?: number;
       isFreePreview?: boolean;
     },

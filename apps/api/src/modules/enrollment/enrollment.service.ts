@@ -471,6 +471,7 @@ export class EnrollmentService {
                 durationMinutes: l.durationMinutes ?? undefined,
                 isCourseStarter: l.isCourseStarter,
                 videoUrl: l.videoAssetId ? this.storage.getPublicUrl(l.videoAssetId) ?? undefined : undefined,
+                audioUrl: l.audioAssetId ? this.storage.getPublicUrl(l.audioAssetId) ?? undefined : undefined,
                 externalUrl: l.externalUrl,
                 // Subtítulos/transcripción (Fase 2) — solo se manda la URL si
                 // ya están listos (subtitlesStatus="READY"); mientras se
