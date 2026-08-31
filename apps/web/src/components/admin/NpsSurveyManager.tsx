@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, MessageCircle, Eye } from "lucide-react";
+import { Send, MessageCircle, Eye, ThumbsUp, Meh, ThumbsDown, BarChart3, Building2 } from "lucide-react";
 import { npsAdminApi, ApiError, type NpsCompanyRow, type NpsResultsDTO } from "@/lib/api-client";
 import { Textarea, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -10,12 +10,96 @@ import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/cn";
+
+type NpsZone = "promoter" | "passive" | "detractor";
+function zoneOf(score: number): NpsZone {
+  return score >= 9 ? "promoter" : score >= 7 ? "passive" : "detractor";
+}
+const ZONE_TEXT: Record<NpsZone, string> = { promoter: "text-success", passive: "text-warning", detractor: "text-danger" };
+const ZONE_ROW: Record<NpsZone, string> = {
+  promoter: "border-l-success bg-success-bg/30",
+  passive: "border-l-warning bg-warning-bg/30",
+  detractor: "border-l-danger bg-danger-bg/30",
+};
 
 // Mismo criterio de color que la franja 100% apilada de resultados: 9-10
 // promotor (verde), 7-8 pasivo (ámbar), 0-6 detractor (rojo).
 function ScoreBadge({ score }: { score: number }) {
   const cls = score >= 9 ? "bg-success-bg text-success" : score >= 7 ? "bg-warning-bg text-warning" : "bg-danger-bg text-danger";
   return <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${cls}`}>{score}</span>;
+}
+
+/**
+ * Anillo SVG puro (sin librería de gráficos) con la proporción Promotores/
+ * Pasivos/Detractores — mismos tokens success/warning/danger que ya usa
+ * ScoreBadge y la barra apilada (paleta de ESTADO reservada, no una
+ * categórica nueva). Extremos redondeados + un pequeño espacio entre
+ * segmentos (especificación de trazos del skill de dataviz). El centro
+ * conserva el número del score como protagonista.
+ */
+function NpsRing({ promoters, passives, detractors, score }: { promoters: number; passives: number; detractors: number; score: number }) {
+  const total = promoters + passives + detractors;
+  const SIZE = 152;
+  const STROKE = 18;
+  const r = (SIZE - STROKE) / 2;
+  const C = 2 * Math.PI * r;
+  const GAP = 6;
+
+  const segments = [
+    { count: promoters, className: "text-success" },
+    { count: passives, className: "text-warning" },
+    { count: detractors, className: "text-danger" },
+  ].filter((s) => s.count > 0);
+
+  let offset = 0;
+  const arcs = segments.map((s, i) => {
+    const fraction = s.count / total;
+    const length = Math.max(fraction * C - (segments.length > 1 ? GAP : 0), 0);
+    const arc = (
+      <circle
+        key={i}
+        cx={SIZE / 2}
+        cy={SIZE / 2}
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        strokeDasharray={`${length} ${C}`}
+        strokeDashoffset={-offset}
+        className={s.className}
+      />
+    );
+    offset += fraction * C;
+    return arc;
+  });
+
+  return (
+    <div className="relative inline-flex flex-none items-center justify-center">
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="-rotate-90">
+        <circle cx={SIZE / 2} cy={SIZE / 2} r={r} fill="none" stroke="currentColor" strokeWidth={STROKE} className="text-paper-muted" />
+        {arcs}
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <p className={cn("font-serif text-3xl font-bold", score >= 0 ? "text-success" : "text-danger")}>{score}</p>
+        <p className="text-[10px] uppercase tracking-wide text-ash-500">Score NPS</p>
+      </div>
+    </div>
+  );
+}
+
+function NpsStatChip({ icon: Icon, count, label, zone }: { icon: typeof ThumbsUp; count: number; label: string; zone: NpsZone }) {
+  const bg = { promoter: "bg-success-bg", passive: "bg-warning-bg", detractor: "bg-danger-bg" }[zone];
+  return (
+    <div className={cn("flex flex-1 items-center gap-2.5 rounded-lg px-3 py-2.5", bg)}>
+      <Icon className={cn("h-4 w-4 flex-none", ZONE_TEXT[zone])} aria-hidden="true" />
+      <div>
+        <p className={cn("font-serif text-lg font-semibold leading-none", ZONE_TEXT[zone])}>{count}</p>
+        <p className="text-xs text-ash-600">{label}</p>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -116,68 +200,60 @@ export function NpsSurveyManager({
         )}
       </Dialog>
 
-      {initialResults.totalResponses > 0 && (
-        <Card>
-          <CardContent className="flex flex-col gap-6 p-6">
-            <h2 className="font-serif text-lg font-semibold text-ink-900">Resultados</h2>
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-              <div className="flex flex-col items-center gap-1 sm:border-r sm:border-paper-border sm:pr-6">
-                <p className={`font-serif text-4xl font-semibold ${(initialResults.npsScore ?? 0) >= 0 ? "text-success" : "text-danger"}`}>
-                  {initialResults.npsScore}
-                </p>
-                <p className="text-xs uppercase tracking-wide text-ash-500">Score NPS</p>
-                <p className="text-xs text-ash-500">{initialResults.totalResponses} respuesta{initialResults.totalResponses === 1 ? "" : "s"}</p>
-              </div>
-              <div className="flex-1">
-                {/* Barra 100% apilada — el formato estándar para leer NPS de un
-                    vistazo: qué proporción de las respuestas es promotor,
-                    pasivo o detractor. */}
-                <div className="flex h-3 w-full overflow-hidden rounded-full bg-paper-muted">
-                  {initialResults.promoters > 0 && (
-                    <div className="h-full bg-success" style={{ width: `${(initialResults.promoters / initialResults.totalResponses) * 100}%` }} />
-                  )}
-                  {initialResults.passives > 0 && (
-                    <div className="h-full bg-warning" style={{ width: `${(initialResults.passives / initialResults.totalResponses) * 100}%` }} />
-                  )}
-                  {initialResults.detractors > 0 && (
-                    <div className="h-full bg-danger" style={{ width: `${(initialResults.detractors / initialResults.totalResponses) * 100}%` }} />
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-4 text-sm text-ash-600">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden="true" /> {initialResults.promoters} Promotores (9-10)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-warning" aria-hidden="true" /> {initialResults.passives} Pasivos (7-8)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-danger" aria-hidden="true" /> {initialResults.detractors} Detractores (0-6)
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col divide-y divide-paper-border">
-              {initialResults.responses
-                .filter((r) => r.comment)
-                .map((r) => (
-                  <div key={r.id} className="flex items-start gap-3 py-3">
-                    <MessageCircle className="mt-0.5 h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
-                    <div>
-                      <p className="text-sm text-ink-800">{r.comment}</p>
-                      <p className="mt-1 flex items-center gap-1.5 text-xs text-ash-500">
-                        {r.companyName} · {r.score != null && <ScoreBadge score={r.score} />} · {r.respondedAt ? formatDate(r.respondedAt, "es") : ""}
-                      </p>
-                    </div>
+      <Card>
+        <CardContent className="flex flex-col gap-6 p-6">
+          <h2 className="flex items-center gap-2 font-serif text-lg font-semibold text-ink-900">
+            <BarChart3 className="h-5 w-5 text-indigo-600" aria-hidden="true" />
+            Resultados
+          </h2>
+          {initialResults.totalResponses === 0 ? (
+            <p className="py-6 text-center text-sm text-ash-500">Todavía no hay respuestas — envía la encuesta a una empresa para ver resultados acá.</p>
+          ) : (
+            <>
+              <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+                <NpsRing
+                  promoters={initialResults.promoters}
+                  passives={initialResults.passives}
+                  detractors={initialResults.detractors}
+                  score={initialResults.npsScore ?? 0}
+                />
+                <div className="flex flex-1 flex-col gap-3">
+                  <p className="text-xs text-ash-500">
+                    {initialResults.totalResponses} respuesta{initialResults.totalResponses === 1 ? "" : "s"}
+                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <NpsStatChip icon={ThumbsUp} count={initialResults.promoters} label="Promotores (9-10)" zone="promoter" />
+                    <NpsStatChip icon={Meh} count={initialResults.passives} label="Pasivos (7-8)" zone="passive" />
+                    <NpsStatChip icon={ThumbsDown} count={initialResults.detractors} label="Detractores (0-6)" zone="detractor" />
                   </div>
-                ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              </div>
+              <div className="flex flex-col divide-y divide-paper-border">
+                {initialResults.responses
+                  .filter((r) => r.comment)
+                  .map((r) => (
+                    <div key={r.id} className="flex items-start gap-3 py-3">
+                      <MessageCircle className="mt-0.5 h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm text-ink-800">{r.comment}</p>
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-ash-500">
+                          {r.companyName} · {r.score != null && <ScoreBadge score={r.score} />} · {r.respondedAt ? formatDate(r.respondedAt, "es") : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-6">
-          <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">Empresas</h2>
+          <h2 className="mb-4 flex items-center gap-2 font-serif text-lg font-semibold text-ink-900">
+            <Building2 className="h-5 w-5 text-indigo-600" aria-hidden="true" />
+            Empresas
+          </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
@@ -191,8 +267,8 @@ export function NpsSurveyManager({
               </thead>
               <tbody className="divide-y divide-paper-border">
                 {initialCompanies.map((c) => (
-                  <tr key={c.id}>
-                    <td className="py-2.5 pr-4 font-medium text-ink-900">{c.legalName}</td>
+                  <tr key={c.id} className={cn("border-l-4", c.lastScore !== null ? ZONE_ROW[zoneOf(c.lastScore)] : "border-l-transparent")}>
+                    <td className="py-2.5 pr-4 pl-3 font-medium text-ink-900">{c.legalName}</td>
                     <td className="py-2.5 pr-4 text-ash-600">{c.lastSentAt ? formatDate(c.lastSentAt, "es") : "Nunca"}</td>
                     <td className="py-2.5 pr-4 text-ash-600">{c.lastRespondedAt ? formatDate(c.lastRespondedAt, "es") : "—"}</td>
                     <td className="py-2.5 pr-4">{c.lastScore !== null ? <ScoreBadge score={c.lastScore} /> : "—"}</td>

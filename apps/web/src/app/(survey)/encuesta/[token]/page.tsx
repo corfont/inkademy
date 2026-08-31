@@ -9,8 +9,9 @@ export default async function NpsSurveyPage({ params }: { params: { token: strin
   const survey = await npsPublicApi.get(params.token).catch(() => null);
 
   return (
-    <div className="container flex min-h-[60vh] items-center justify-center py-16">
-      <div className="w-full max-w-lg rounded-lg border border-paper-border bg-paper p-8 shadow-card">
+    <div className="w-full overflow-hidden rounded-xl border border-paper-border bg-paper shadow-raised">
+      <div className="h-1.5 w-full bg-gradient-to-r from-ink-700 via-indigo-500 to-gold-500" aria-hidden="true" />
+      <div className="p-8">
         {!survey ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center text-ash-500">
             <XCircle className="h-10 w-10" aria-hidden="true" />
