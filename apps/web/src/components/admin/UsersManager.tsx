@@ -128,7 +128,7 @@ interface UserRow {
   createdAt: string;
   signatureAssetId?: string | null;
   signatureUrl?: string | null;
-  companies?: { companyId: string; companyName: string; role: string }[];
+  companies?: { membershipId: string; companyId: string; companyName: string; role: string }[];
   phone?: string | null;
   documentType?: string | null;
   documentNumber?: string | null;
@@ -477,6 +477,20 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
     }
   }
 
+  async function handleRemoveCompany(companyIdToRemove: string, membershipId: string, companyName: string) {
+    if (!confirm(`¿Quitar a ${user.firstName} de ${companyName}? Deja de ver los datos de esa empresa.`)) return;
+    setBusy(true);
+    setRowError(null);
+    try {
+      await companyApi.removeMember(companyIdToRemove, membershipId);
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos quitarlo de la empresa.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleToggleRole(role: string) {
     const next = toggleRole(user, role);
     if (!next) return; // debe quedar al menos un rol
@@ -578,14 +592,17 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
           <RoleChips user={user} busy={busy} onToggle={handleToggleRole} />
           {hasCompany ? (
             user.companies!.map((c) => (
-              <span
+              <button
                 key={c.companyId}
-                title={`${c.role === "COMPANY_ADMIN" ? "Admin de empresa" : "Colaborador"}`}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${COMPANY_CHIP_STYLE.chipActive}`}
+                type="button"
+                disabled={busy}
+                onClick={() => handleRemoveCompany(c.companyId, c.membershipId, c.companyName)}
+                title={`${c.role === "COMPANY_ADMIN" ? "Admin de empresa" : "Colaborador"} — clic para quitar`}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${COMPANY_CHIP_STYLE.chipActive} hover:opacity-80`}
               >
                 <COMPANY_CHIP_STYLE.icon className="h-3 w-3" aria-hidden="true" />
                 {c.companyName}
-              </span>
+              </button>
             ))
           ) : (
             <button

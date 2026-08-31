@@ -2569,7 +2569,9 @@ export class AdminService {
         // devuelve para cualquier fila — la UI solo la ofrece para docentes).
         signatureAssetId: u.signatureAssetId,
         signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
-        companies: u.companyMemberships.map((m) => ({ companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
+        // membershipId: necesario para poder "quitar de la empresa" desde acá
+        // (companyApi.removeMember pide companyId + membershipId, no userId).
+        companies: u.companyMemberships.map((m) => ({ membershipId: m.id, companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
         // "El admin debería poder editar a cualquier usuario" — se exponen acá
         // los campos de perfil editables (ver updateUserSchema) para poder
         // precargar el formulario de edición.

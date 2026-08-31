@@ -43,24 +43,32 @@ export class CompaniesService {
       },
     });
 
-    // "Debe existir el rol Empresa" — quien crea una empresa sin tener ya
-    // un rol más específico (TEACHER/ADMIN/SUPPORT) pasa a entrar
-    // directamente a /empresa al iniciar sesión, en vez de caer siempre en
-    // el panel de alumno aunque nunca le haya interesado tomar cursos. Si
-    // ya tenía otro rol, se le agrega COMPANY como rol secundario (mismo
-    // patrón multi-rol que TEACHER/STUDENT en el sidebar) para no perder
-    // acceso a lo que ya tenía.
+    await this.ensureCompanyRole(userId);
+    return company;
+  }
+
+  /**
+   * "Debe existir el rol Empresa" — quien queda vinculado a una empresa (la
+   * crea, o es invitado como colaborador) sin tener ya un rol más
+   * específico (TEACHER/ADMIN/SUPPORT) pasa a entrar directamente a
+   * /empresa al iniciar sesión, en vez de caer siempre en el panel de
+   * alumno aunque nunca le haya interesado tomar cursos. Si ya tenía otro
+   * rol, se le agrega COMPANY como rol secundario (mismo patrón multi-rol
+   * que TEACHER/STUDENT en el sidebar) para no perder acceso a lo que ya
+   * tenía — y para que "Mi empresa" le aparezca en el menú (ver
+   * roles.includes("COMPANY") en cada layout de apps/web).
+   */
+  private async ensureCompanyRole(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user && user.globalRole === "STUDENT") {
+    if (!user) return;
+    if (user.globalRole === "STUDENT") {
       await this.prisma.user.update({
         where: { id: userId },
         data: { globalRole: "COMPANY", secondaryRoles: { push: "STUDENT" } },
       });
-    } else if (user && !user.secondaryRoles.includes("COMPANY") && user.globalRole !== "COMPANY") {
+    } else if (!user.secondaryRoles.includes("COMPANY") && user.globalRole !== "COMPANY") {
       await this.prisma.user.update({ where: { id: userId }, data: { secondaryRoles: { push: "COMPANY" } } });
     }
-
-    return company;
   }
 
   /** Empresas a las que pertenece el usuario — usadas para resolver a dónde entrar tras iniciar sesión (ver /empresa). */
@@ -159,8 +167,14 @@ export class CompaniesService {
           email: input.email,
           firstName: firstName || "Nuevo",
           lastName: rest.join(" ") || "Colaborador",
+          // Colaborador nuevo, sin cuenta previa: entra directo como Empresa
+          // (ver ensureCompanyRole) — sin esto quedaba en el default STUDENT
+          // y nunca veía "Mi empresa" en su menú.
+          globalRole: "COMPANY",
         },
       });
+    } else {
+      await this.ensureCompanyRole(user.id);
     }
 
     const existingMembership = await this.prisma.companyMembership.findUnique({
@@ -196,6 +210,28 @@ export class CompaniesService {
       throw new NotFoundException("Membresía no encontrada");
     }
     await this.prisma.companyMembership.update({ where: { id: membershipId }, data: { status: "REMOVED" } });
+    // Simétrico a ensureCompanyRole: si esta era su última empresa, quitarle
+    // el rol Empresa también — si no, se queda con acceso a un panel /empresa
+    // que ya no tiene nada que mostrarle.
+    await this.demoteCompanyRoleIfUnaffiliated(membership.userId);
+  }
+
+  private async demoteCompanyRoleIfUnaffiliated(userId: string) {
+    const remaining = await this.prisma.companyMembership.count({
+      where: { userId, status: { not: "REMOVED" } },
+    });
+    if (remaining > 0) return;
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return;
+    if (user.globalRole === "COMPANY") {
+      const [newPrimary, ...rest] = user.secondaryRoles.length > 0 ? user.secondaryRoles : (["STUDENT"] as const);
+      await this.prisma.user.update({ where: { id: userId }, data: { globalRole: newPrimary as never, secondaryRoles: rest } });
+    } else if (user.secondaryRoles.includes("COMPANY")) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { secondaryRoles: user.secondaryRoles.filter((r) => r !== "COMPANY") },
+      });
+    }
   }
 
   async listSeatPools(companyId: string) {
