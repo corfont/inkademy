@@ -517,7 +517,7 @@ export class CommerceService {
   async cancelOrder(orderId: string, input: CancelOrderInput, actorId?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { payments: true, electronicInvoice: true },
+      include: { payments: true, electronicInvoice: true, items: true },
     });
     if (!order) throw new NotFoundException("Orden no encontrada");
     if (order.status !== "PAID") {
@@ -546,9 +546,30 @@ export class CommerceService {
       throw new BadRequestException(refundResult.failureMessage ?? "No se pudo procesar el reembolso");
     }
 
+    // "Retrotraer un pago" en zona de pruebas ya cancela las Enrollment que
+    // generó — este SÍ es un reembolso real y deliberadamente NO les quita
+    // el acceso ya entregado (misma política, ver cancelTestOrder arriba).
+    // Pero una compra B2B de cupos (seatPoolQty>0) no crea Enrollment, crea
+    // capacidad en CompanySeatPool — sin este ajuste, `seatsPurchased`
+    // quedaba inflado para siempre tras reembolsar, dándole a la empresa
+    // cupos que ya pagó de vuelta sin haberlos pagado. Nunca se baja por
+    // debajo de `seatsUsed`: los cupos ya canjeados por un colaborador no
+    // se les quita (mismo criterio "no reclamar acceso ya entregado").
+    const seatPoolUpdates = [];
+    for (const item of order.items) {
+      if (!item.seatPoolQty || item.seatPoolQty <= 0 || !order.companyId) continue;
+      const pool = await this.prisma.companySeatPool.findFirst({
+        where: { companyId: order.companyId, offeringKind: item.offeringKind, courseId: item.courseId, programId: item.programId },
+      });
+      if (!pool) continue;
+      const seatsPurchased = Math.max(pool.seatsUsed, pool.seatsPurchased - item.seatPoolQty);
+      seatPoolUpdates.push(this.prisma.companySeatPool.update({ where: { id: pool.id }, data: { seatsPurchased } }));
+    }
+
     await this.prisma.$transaction([
       this.prisma.order.update({ where: { id: order.id }, data: { status: "REFUNDED" } }),
       this.prisma.payment.update({ where: { id: successfulPayment.id }, data: { status: "REFUNDED" } }),
+      ...seatPoolUpdates,
     ]);
 
     const noteType: ElectronicNoteType = "CREDIT";

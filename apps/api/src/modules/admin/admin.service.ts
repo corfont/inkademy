@@ -1002,7 +1002,12 @@ export class AdminService {
       const currency = r.royaltyRecipient.feeCurrency;
       let amount = 0;
       if (r.royaltyRecipient.billingType === "PER_ENROLLMENT") {
-        const count = await this.prisma.enrollment.count({ where: { courseId: r.courseId, enrolledAt: { gte: params.from, lte: params.to } } });
+        // Excluye CANCELLED (p.ej. una orden de prueba retrotraída en zona de
+        // pruebas) — de otro modo se le seguía pagando al socio por una
+        // matrícula que nunca llegó a ser real.
+        const count = await this.prisma.enrollment.count({
+          where: { courseId: r.courseId, enrolledAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" } },
+        });
         amount = count; // % se aplica sobre un monto fijo por matrícula — ver feePercent como "soles por matrícula" en este caso simplificado
       } else if (r.royaltyRecipient.billingType === "PER_COMPLETION") {
         const count = await this.prisma.certificate.count({ where: { courseId: r.courseId, issuedAt: { gte: params.from, lte: params.to } } });
