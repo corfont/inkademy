@@ -68,6 +68,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
   }, []);
 
+  // Se calcula antes de armar navItems porque se usa para filtrar varias
+  // pantallas ADMIN-puro (ver más abajo) además del bloque de "otros
+  // roles" al final de esta función.
+  const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
+
   const navItems: SidebarNavItem[] = [
     { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/catalogo", label: t("catalog"), icon: LibraryBig },
@@ -80,25 +85,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/finanzas", label: "Finanzas", icon: Wallet },
     { href: "/admin/matriculas", label: "Casos extemporáneos", icon: CalendarClock },
     { href: "/admin/cortesias", label: "Cortesías", icon: Gift },
-    { href: "/admin/facturacion", label: "Facturación (SUNAT)", icon: FileSpreadsheet },
     { href: "/admin/reportes", label: "Reportes", icon: FileDown },
     { href: "/admin/soporte", label: t("support"), icon: LifeBuoy, badgeCount: pendingSupport },
     { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus, badgeCount: pendingSuggestions },
     { href: "/admin/certificados", label: t("certificates"), icon: Award },
     { href: "/admin/evaluaciones-pendientes", label: t("pendingReview"), icon: ClipboardCheck },
     { href: "/admin/apariencia", label: t("appearance"), icon: Palette },
-    { href: "/admin/asistente-ia", label: "Asistente de IA", icon: Bot },
-    { href: "/admin/marketing", label: "Marketing por correo", icon: Mail },
-    { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake },
-    { href: "/admin/regalias", label: "Regalías", icon: Percent },
-    { href: "/admin/horas-docentes", label: "Horas dictadas por docente", icon: CalendarDays },
-    { href: "/admin/liquidaciones", label: "Liquidación de docentes", icon: Banknote },
-    { href: "/admin/liquidaciones/tarifas", label: "Tarifas y adelantos (docentes)", icon: Wallet },
-    ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock }] : []),
-    // "Los accesos a borrar todo... deberían estar en un módulo aparte" —
-    // solo ADMIN puro (nunca SUPPORT) ve esta pantalla, mismo criterio que
-    // "Configuración avanzada" arriba.
-    ...(user?.globalRole === "ADMIN" ? [{ href: "/admin/zona-de-pruebas", label: "Zona de pruebas", icon: AlertTriangle }] : []),
+    // Todo lo de acá para abajo pega contra rutas @Roles("ADMIN") puro (nunca
+    // SUPPORT) — antes solo "Configuración avanzada"/"Zona de pruebas" se
+    // ocultaban así; el resto se veía en el menú de un SUPPORT pero
+    // reventaba (o daba un 403 confuso) al abrirlas. Mismo bloqueo en
+    // middleware.ts (ADMIN_ONLY_PREFIXES) para que ocultarlas del menú no
+    // sea la única defensa.
+    ...(roles.includes("ADMIN")
+      ? [
+          { href: "/admin/facturacion", label: "Facturación (SUNAT)", icon: FileSpreadsheet },
+          { href: "/admin/asistente-ia", label: "Asistente de IA", icon: Bot },
+          { href: "/admin/marketing", label: "Marketing por correo", icon: Mail },
+          { href: "/admin/convenios", label: "Convenios institucionales", icon: Handshake },
+          { href: "/admin/regalias", label: "Regalías", icon: Percent },
+          { href: "/admin/horas-docentes", label: "Horas dictadas por docente", icon: CalendarDays },
+          { href: "/admin/liquidaciones", label: "Liquidación de docentes", icon: Banknote },
+          { href: "/admin/liquidaciones/tarifas", label: "Tarifas y adelantos (docentes)", icon: Wallet },
+          { href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock },
+          { href: "/admin/zona-de-pruebas", label: "Zona de pruebas", icon: AlertTriangle },
+        ]
+      : []),
   ];
 
   // "Si un usuario tiene más de un rol, debería ver en el menú todas las
@@ -109,8 +121,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // "tengo varios roles y navegué a otra área" (ver el mismo comentario,
   // más detallado, en campus/layout.tsx). Este bloque vive solo dentro de
   // /admin — nunca hace falta excluir ADMIN/SUPPORT (el rol nativo de
-  // esta área) para evitar duplicados.
-  const roles = [user?.globalRole, ...(user?.secondaryRoles ?? [])];
+  // esta área) para evitar duplicados. (`roles` ya se calculó arriba.)
   if (roles.includes("TEACHER")) {
     navItems.push(
       { href: "/docente", label: "Panel de docente", icon: LayoutDashboard, section: "Docente" },

@@ -7,6 +7,25 @@ import { SESSION_COOKIE } from "@/lib/auth";
 // final, en vez de que se le pida iniciar sesión antes de escribir nada.
 const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/docente", "/checkout"];
 
+// Pantallas cuyas rutas de API detrás son @Roles("ADMIN") puro (nunca
+// SUPPORT) — Configuración avanzada/Zona de pruebas ya se ocultaban del
+// menú para SUPPORT, pero un link directo (o entrar por URL a mano)
+// igual llegaba a la página y esta reventaba con un 403 sin manejar al
+// pedir sus datos (ninguna de estas usa withFallback). Mismo criterio que
+// esas dos: SUPPORT nunca debería ni poder abrirlas, no solo no verlas en
+// el menú.
+const ADMIN_ONLY_PREFIXES = [
+  "/admin/configuracion",
+  "/admin/zona-de-pruebas",
+  "/admin/facturacion",
+  "/admin/asistente-ia",
+  "/admin/marketing",
+  "/admin/convenios",
+  "/admin/regalias",
+  "/admin/horas-docentes",
+  "/admin/liquidaciones",
+];
+
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -33,6 +52,13 @@ export function middleware(request: NextRequest) {
       const roles: string[] = [user.globalRole, ...(user.secondaryRoles ?? [])];
       if (!roles.includes("ADMIN") && !roles.includes("SUPPORT")) {
         return NextResponse.redirect(new URL(roles.includes("TEACHER") ? "/docente" : "/campus", request.url));
+      }
+      // SUPPORT entra a /admin, pero no a estas pantallas puntuales
+      // (finanzas/configuración/HR de docentes) — sin este chequeo, la
+      // página igual se renderiza y revienta al pedir datos que el backend
+      // rechaza con 403.
+      if (!roles.includes("ADMIN") && ADMIN_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+        return NextResponse.redirect(new URL("/admin", request.url));
       }
     } catch {
       // cookie corrupta: dejamos pasar y la propia página resolverá el estado real vía /auth/me
