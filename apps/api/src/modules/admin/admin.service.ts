@@ -1379,6 +1379,17 @@ export class AdminService {
     if (!campaign) throw new NotFoundException("Campaña no encontrada");
     if (campaign.status === "SENT") throw new BadRequestException("Ya se envió — no se puede editar, solo consultar.");
 
+    // upsertEmailCampaignSchema exige asunto+contenido para una campaña
+    // manual al CREARLA, pero updateEmailCampaignSchema (sin `mode` en el
+    // payload — no se puede cambiar después de creada) no puede replicar
+    // ese chequeo a nivel de schema. Se hace acá, con el `mode` real de la
+    // fila existente y el valor resultante tras aplicar el patch.
+    const nextSubject = input.subject !== undefined ? input.subject : campaign.subject;
+    const nextBodyHtml = input.bodyHtml !== undefined ? input.bodyHtml : campaign.bodyHtml;
+    if (campaign.mode === "MANUAL" && (!nextSubject?.trim() || !nextBodyHtml?.trim())) {
+      throw new BadRequestException("Una campaña manual necesita asunto y contenido.");
+    }
+
     const data: Record<string, unknown> = { ...input };
     if (input.scheduledAt !== undefined) data.scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
     // Si no la cancelan explícitamente y ahora tiene fecha, pasa a SCHEDULED.

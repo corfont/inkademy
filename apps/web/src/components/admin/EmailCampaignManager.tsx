@@ -61,19 +61,36 @@ export function EmailCampaignManager({
     }
   }
 
+  const [editingId, setEditingId] = useState<string | null>(null);
   const drafts = campaigns.filter((c) => c.status === "DRAFT" || c.status === "SCHEDULED");
   const history = campaigns.filter((c) => c.status === "SENT" || c.status === "CANCELLED");
+  const editingCampaign = drafts.find((c) => c.id === editingId) ?? null;
 
   return (
     <div className="flex flex-col gap-6">
       {error && <Callout variant="danger">{error}</Callout>}
 
-      <NewCampaignForm areas={areas} companies={companies} courses={courses} busy={busy} run={run} />
+      {editingCampaign ? (
+        <CampaignForm
+          key={editingCampaign.id}
+          areas={areas}
+          companies={companies}
+          courses={courses}
+          busy={busy}
+          run={run}
+          initial={editingCampaign}
+          onDone={() => setEditingId(null)}
+        />
+      ) : (
+        <CampaignForm areas={areas} companies={companies} courses={courses} busy={busy} run={run} />
+      )}
 
       {drafts.length > 0 && (
         <div className="flex flex-col gap-3">
           <h2 className="font-serif text-lg font-semibold text-ink-900">Borradores y programadas</h2>
-          {drafts.map((c) => <CampaignCard key={c.id} campaign={c} busy={busy} run={run} />)}
+          {drafts.map((c) => (
+            <CampaignCard key={c.id} campaign={c} busy={busy} run={run} onEdit={() => setEditingId(c.id)} editing={c.id === editingId} />
+          ))}
         </div>
       )}
 
@@ -89,9 +106,23 @@ export function EmailCampaignManager({
   );
 }
 
-function CampaignCard({ campaign: c, busy, run, readOnly }: { campaign: EmailCampaignDTO; busy: boolean; run: (a: () => Promise<unknown>) => Promise<void>; readOnly?: boolean }) {
+function CampaignCard({
+  campaign: c,
+  busy,
+  run,
+  readOnly,
+  onEdit,
+  editing,
+}: {
+  campaign: EmailCampaignDTO;
+  busy: boolean;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  readOnly?: boolean;
+  onEdit?: () => void;
+  editing?: boolean;
+}) {
   return (
-    <Card>
+    <Card className={editing ? "border-ink-400" : undefined}>
       <CardContent className="flex flex-col gap-2 p-5">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -110,6 +141,9 @@ function CampaignCard({ campaign: c, busy, run, readOnly }: { campaign: EmailCam
         </p>
         {!readOnly && (
           <div className="flex flex-wrap gap-2 pt-1">
+            <Button size="sm" variant="outline" disabled={busy} onClick={onEdit}>
+              {editing ? "Editando…" : "Editar"}
+            </Button>
             <Button size="sm" disabled={busy} onClick={() => run(() => adminApi.sendEmailCampaignNow(c.id))}>
               Enviar ahora
             </Button>
@@ -136,35 +170,58 @@ const ENROLLMENT_STATUS_LABEL: Record<string, string> = {
   NONE: "Nunca se ha matriculado (primera compra)",
 };
 
-function NewCampaignForm({
+/** Convierte a datetime-local (input HTML) el ISO que guarda el backend, en hora local del navegador. */
+function toDatetimeLocal(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Crea una campaña nueva, o edita una existente (todavía DRAFT/SCHEDULED —
+ * "no hay ninguna forma de arreglar un error de tipeo sin borrar y rehacer
+ * la campaña entera" era el hueco real: adminApi.updateEmailCampaign ya
+ * existía en el backend, pero nada en esta pantalla lo llamaba nunca).
+ * `mode`/`goal` no se pueden cambiar después de creada (el backend tampoco
+ * los acepta en el PATCH) — se muestran de solo lectura al editar.
+ */
+function CampaignForm({
   areas,
   companies,
   courses,
   busy,
   run,
+  initial,
+  onDone,
 }: {
   areas: any[];
   companies: any[];
   courses: any[];
   busy: boolean;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  initial?: EmailCampaignDTO;
+  onDone?: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [mode, setMode] = useState<"MANUAL" | "AUTOMATIC_AI">("MANUAL");
-  const [goal, setGoal] = useState("NEW_COURSES");
-  const [subject, setSubject] = useState("");
-  const [bodyHtml, setBodyHtml] = useState("");
-  const [interests, setInterests] = useState("");
-  const [areaIds, setAreaIds] = useState<string[]>([]);
-  const [courseIds, setCourseIds] = useState<string[]>([]);
-  const [companyId, setCompanyId] = useState("");
-  const [inactiveDays, setInactiveDays] = useState("");
-  const [enrollmentStatus, setEnrollmentStatus] = useState("ANY");
-  const [countries, setCountries] = useState("");
-  const [globalRole, setGlobalRole] = useState("");
-  const [excludeRecentPurchaseDays, setExcludeRecentPurchaseDays] = useState("");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [recurrence, setRecurrence] = useState<"ONCE" | "WEEKLY" | "MONTHLY">("ONCE");
+  const f = (initial?.audienceFilter ?? {}) as Record<string, unknown>;
+  const [name, setName] = useState(initial?.name ?? "");
+  const [mode, setMode] = useState<"MANUAL" | "AUTOMATIC_AI">(initial?.mode ?? "MANUAL");
+  const [goal, setGoal] = useState<string>(initial?.goal ?? "NEW_COURSES");
+  const [subject, setSubject] = useState(initial?.subject ?? "");
+  const [bodyHtml, setBodyHtml] = useState(initial?.bodyHtml ?? "");
+  const [interests, setInterests] = useState(((f.interests as string[]) ?? []).join(", "));
+  const [areaIds, setAreaIds] = useState<string[]>((f.areaIds as string[]) ?? []);
+  const [courseIds, setCourseIds] = useState<string[]>((f.courseIds as string[]) ?? []);
+  const [companyId, setCompanyId] = useState((f.companyId as string) ?? "");
+  const [inactiveDays, setInactiveDays] = useState(f.inactiveDays != null ? String(f.inactiveDays) : "");
+  const [enrollmentStatus, setEnrollmentStatus] = useState((f.enrollmentStatus as string) ?? "ANY");
+  const [countries, setCountries] = useState(((f.countries as string[]) ?? []).join(", "));
+  const [globalRole, setGlobalRole] = useState((f.globalRole as string) ?? "");
+  const [excludeRecentPurchaseDays, setExcludeRecentPurchaseDays] = useState(
+    f.excludeRecentPurchaseDays != null ? String(f.excludeRecentPurchaseDays) : "",
+  );
+  const [scheduledAt, setScheduledAt] = useState(toDatetimeLocal(initial?.scheduledAt ?? null));
+  const [recurrence, setRecurrence] = useState<"ONCE" | "WEEKLY" | "MONTHLY">(initial?.recurrence ?? "ONCE");
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
@@ -224,24 +281,47 @@ function NewCampaignForm({
     setPreviewCount(null);
   }
 
+  async function handleSaveEdit() {
+    if (!initial) return;
+    await run(() =>
+      adminApi.updateEmailCampaign(initial.id, {
+        name,
+        subject: mode === "MANUAL" ? subject : undefined,
+        bodyHtml: mode === "MANUAL" ? bodyHtml : undefined,
+        audienceFilter: buildAudienceFilter(),
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        recurrence,
+      }),
+    );
+    onDone?.();
+  }
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">Nueva campaña</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink-900">{initial ? `Editando "${initial.name}"` : "Nueva campaña"}</h2>
 
         <div>
           <Label htmlFor="camp-name">Nombre interno</Label>
           <Input id="camp-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Descuentos de julio" />
         </div>
 
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" checked={mode === "MANUAL"} onChange={() => setMode("MANUAL")} /> Manual (yo redacto)
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" checked={mode === "AUTOMATIC_AI"} onChange={() => setMode("AUTOMATIC_AI")} /> Automática con IA
-          </label>
-        </div>
+        {initial ? (
+          // El modo (manual vs. IA) no se puede cambiar después de creada
+          // (el backend tampoco lo acepta en el PATCH) — solo se muestra.
+          <p className="text-xs text-ash-500">
+            {mode === "MANUAL" ? "Manual (yo redacto)" : "Automática con IA"} — no se puede cambiar una vez creada.
+          </p>
+        ) : (
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" checked={mode === "MANUAL"} onChange={() => setMode("MANUAL")} /> Manual (yo redacto)
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" checked={mode === "AUTOMATIC_AI"} onChange={() => setMode("AUTOMATIC_AI")} /> Automática con IA
+            </label>
+          </div>
+        )}
 
         {mode === "MANUAL" ? (
           <div className="flex flex-col gap-3">
@@ -257,7 +337,7 @@ function NewCampaignForm({
         ) : (
           <div>
             <Label htmlFor="camp-goal">La IA debe redactar sobre…</Label>
-            <Select id="camp-goal" value={goal} onChange={(e) => setGoal(e.target.value)}>
+            <Select id="camp-goal" value={goal} disabled={Boolean(initial)} onChange={(e) => setGoal(e.target.value)}>
               {Object.entries(GOAL_LABEL).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -265,8 +345,9 @@ function NewCampaignForm({
               ))}
             </Select>
             <p className="mt-1 text-xs text-ash-500">
-              Requiere el asistente de IA activado en /admin/asistente-ia. Si el destinatario tiene varios intereses distintos entre sí, se agrupan
-              por interés principal para redactar un correo por grupo (no 100% personalizado por persona).
+              {initial
+                ? "El objetivo tampoco se puede cambiar una vez creada."
+                : "Requiere el asistente de IA activado en /admin/asistente-ia. Si el destinatario tiene varios intereses distintos entre sí, se agrupan por interés principal para redactar un correo por grupo (no 100% personalizado por persona)."}
             </p>
           </div>
         )}
@@ -385,12 +466,25 @@ function NewCampaignForm({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button disabled={busy || !name.trim()} onClick={() => handleCreate(false)}>
-            {scheduledAt ? "Programar" : "Guardar como borrador"}
-          </Button>
-          <Button variant="outline" disabled={busy || !name.trim()} onClick={() => handleCreate(true)}>
-            Enviar ahora
-          </Button>
+          {initial ? (
+            <>
+              <Button disabled={busy || !name.trim()} onClick={handleSaveEdit}>
+                Guardar cambios
+              </Button>
+              <Button variant="ghost" disabled={busy} onClick={onDone}>
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button disabled={busy || !name.trim()} onClick={() => handleCreate(false)}>
+                {scheduledAt ? "Programar" : "Guardar como borrador"}
+              </Button>
+              <Button variant="outline" disabled={busy || !name.trim()} onClick={() => handleCreate(true)}>
+                Enviar ahora
+              </Button>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
