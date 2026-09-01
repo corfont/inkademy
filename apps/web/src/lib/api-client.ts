@@ -357,6 +357,10 @@ export const meApi = {
   // ScormService.createSession. playerUrl es relativo a API_URL.
   scormSession: (enrollmentId: string, lessonId: string) =>
     apiFetch<{ token: string; playerUrl: string }>(`/me/enrollments/${enrollmentId}/lessons/${lessonId}/scorm-session`, { method: "POST" }),
+  // Mismo mecanismo que scormSession, para un paquete SCORM adjunto como
+  // material (no el contenido principal de la lección) — ver ScormService.createMaterialSession.
+  materialScormSession: (enrollmentId: string, materialId: string) =>
+    apiFetch<{ token: string; playerUrl: string }>(`/me/enrollments/${enrollmentId}/materials/${materialId}/scorm-session`, { method: "POST" }),
   calendar: (from?: string, to?: string, accessToken?: string | null) =>
     apiFetch<any[]>("/me/calendar", { query: { from, to }, accessToken }),
   certificates: (accessToken?: string | null) => apiFetch<CertificateDTO[]>("/me/certificates", { accessToken }),
@@ -872,6 +876,42 @@ export const adminApi = {
     const a = document.createElement("a");
     a.href = url;
     a.download = `scorm-${lessonId}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  // SCORM como material complementario (no solo como contenido principal de
+  // la lección) — mismas 5 llamadas de arriba, apuntando a /admin/materials.
+  uploadMaterialScormPackage: (materialId: string, file: File, accessToken?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<any>(`/admin/materials/${materialId}/scorm-upload`, { method: "POST", body: form, accessToken });
+  },
+  buildMaterialScormPackage: (materialId: string, content: { slides: unknown[]; passingScore: number }, accessToken?: string | null) =>
+    apiFetch<{ entryPath: string; version: string }>(`/admin/materials/${materialId}/scorm/build`, {
+      method: "POST",
+      body: JSON.stringify(content),
+      accessToken,
+    }),
+  materialScormPreviewSession: (materialId: string, accessToken?: string | null) =>
+    apiFetch<{ token: string; playerUrl: string }>(`/admin/materials/${materialId}/scorm/preview-session`, { method: "POST", accessToken }),
+  materialScormAnalytics: (materialId: string, accessToken?: string | null) =>
+    apiFetch<{
+      totalAttempts: number;
+      completedCount: number;
+      completionRate: number;
+      averageScore: number | null;
+      perQuestion: { id: string; type: string; correct: number; total: number; correctRate: number }[];
+    }>(`/admin/materials/${materialId}/scorm/analytics`, { accessToken, cache: "no-store" }),
+  downloadMaterialScormPackage: async (materialId: string, accessToken: string) => {
+    const res = await fetch(`${API_URL}/admin/materials/${materialId}/scorm/export`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, "No pudimos generar el paquete SCORM.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `scorm-material-${materialId}.zip`;
     document.body.appendChild(a);
     a.click();
     a.remove();

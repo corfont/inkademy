@@ -252,8 +252,11 @@ export const upsertMaterialSchema = z
     allowDownload: z.boolean().optional(),
     allowView: z.boolean().optional(),
   })
-  .refine((v) => (v.kind === "link" ? Boolean(v.externalUrl) : Boolean(v.assetId)), {
-    message: "Un material de tipo link necesita externalUrl; cualquier otro tipo necesita assetId",
+  .refine((v) => (v.kind === "link" ? Boolean(v.externalUrl) : v.kind === "scorm" ? true : Boolean(v.assetId)), {
+    // kind="scorm" empieza vacío (sin assetId ni externalUrl) — el paquete
+    // se sube/arma después con las rutas dedicadas (POST .../scorm-upload,
+    // .../scorm/build), igual que una lección SCORM empieza vacía.
+    message: "Un material de tipo link necesita externalUrl; cualquier otro tipo (salvo scorm) necesita assetId",
   })
   .refine((v) => v.allowDownload !== false || v.allowView !== false, {
     message: "El material debe permitir al menos descarga o visualización",

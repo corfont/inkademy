@@ -643,11 +643,53 @@ function MaterialItem({
   isFirst?: boolean;
   isLast?: boolean;
 }) {
+  const [scormUploading, setScormUploading] = useState(false);
+  const [scormBuilderOpen, setScormBuilderOpen] = useState(false);
+
+  async function handleScormUpload(file: File) {
+    setScormUploading(true);
+    try {
+      await run(() => adminApi.uploadMaterialScormPackage(material.id, file));
+    } finally {
+      setScormUploading(false);
+    }
+  }
+
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 rounded bg-paper px-2 py-1 text-xs text-ash-600">
-      <a href={material.assetUrl ?? "#"} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:underline">
-        📎 {material.title}
-      </a>
+      {material.kind === "scorm" ? (
+        // "SCORM ya existe pero solo como contenido principal de la
+        // lección" — mismo patrón en dos pasos que esa: el material se
+        // crea vacío y acá se sube un .zip o se arma con el editor.
+        <div className="flex flex-col gap-1 py-0.5">
+          <span className="flex items-center gap-1">📎 {material.title}</span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-ash-500">
+            {material.scormEntryPath ? <span>Paquete SCORM cargado</span> : <span className="text-ash-400">Sin paquete SCORM todavía</span>}
+            <DropLabel
+              accept=".zip"
+              busy={scormUploading}
+              label={material.scormEntryPath ? "Reemplazar (.zip)" : "Subir (.zip)"}
+              small
+              onFile={handleScormUpload}
+            />
+            <button type="button" className="text-ink-700 hover:underline" onClick={() => setScormBuilderOpen(true)}>
+              {material.scormAuthoredContent ? "Editar con el editor" : "Crear con el editor"}
+            </button>
+          </div>
+          {scormBuilderOpen && (
+            <ScormBuilder
+              owner={{ id: material.id, type: "material", scormEntryPath: material.scormEntryPath, scormAuthoredContent: material.scormAuthoredContent }}
+              open={scormBuilderOpen}
+              onClose={() => setScormBuilderOpen(false)}
+              onSaved={() => setScormBuilderOpen(false)}
+            />
+          )}
+        </div>
+      ) : (
+        <a href={material.assetUrl ?? "#"} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:underline">
+          📎 {material.title}
+        </a>
+      )}
       <div className="flex items-center gap-2">
         <div className="flex items-center">
           <button
@@ -783,6 +825,57 @@ function AddLinkControl({ onAdd, busy }: { onAdd: (title: string, url: string) =
   );
 }
 
+/**
+ * "SCORM ya existe pero solo como contenido principal de la lección" — crea
+ * el Material vacío (kind="scorm", sin assetId todavía) y devuelve su id
+ * para que el caller abra de inmediato los controles de subir/armar el
+ * paquete — mismo patrón en dos pasos que una lección SCORM (se crea vacía,
+ * el paquete se sube/arma después).
+ */
+function AddScormMaterialControl({ onAdd, busy }: { onAdd: (title: string) => unknown; busy: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        + Agregar paquete SCORM
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input placeholder="Título del paquete SCORM" className="h-8 max-w-xs text-xs" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <Button
+        size="sm"
+        disabled={saving || busy || !title.trim()}
+        onClick={async () => {
+          setSaving(true);
+          setError(null);
+          try {
+            await onAdd(title.trim());
+            setTitle("");
+            setOpen(false);
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : "No pudimos crear el material SCORM.");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        Agregar
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+        Cancelar
+      </Button>
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </div>
+  );
+}
+
 /** Lecturas/documentos de un módulo entero (principal y complementario) — no atadas a una lección puntual. */
 function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy: boolean; run: (a: () => Promise<unknown>) => void }) {
   const [title, setTitle] = useState("");
@@ -829,6 +922,10 @@ function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy:
         <AddLinkControl
           busy={busy}
           onAdd={(linkTitle, url) => run(() => adminApi.createModuleMaterial(mod.id, { title: linkTitle, externalUrl: url, kind: "link", category }))}
+        />
+        <AddScormMaterialControl
+          busy={busy}
+          onAdd={(scormTitle) => run(() => adminApi.createModuleMaterial(mod.id, { title: scormTitle, kind: "scorm", category }))}
         />
       </div>
     </div>
@@ -1052,7 +1149,7 @@ function LessonRow({
           </div>
           {scormBuilderOpen && (
             <ScormBuilder
-              lesson={lesson}
+              owner={{ id: lesson.id, type: "lesson", scormEntryPath: lesson.scormEntryPath, scormAuthoredContent: lesson.scormAuthoredContent }}
               open={scormBuilderOpen}
               onClose={() => setScormBuilderOpen(false)}
               onSaved={() => setScormBuilderOpen(false)}
@@ -1122,6 +1219,10 @@ function LessonRow({
           onAdd={(linkTitle, url) =>
             run(() => adminApi.createMaterial(lesson.id, { title: linkTitle, externalUrl: url, kind: "link", category: newMaterialCategory }))
           }
+        />
+        <AddScormMaterialControl
+          busy={busy}
+          onAdd={(scormTitle) => run(() => adminApi.createMaterial(lesson.id, { title: scormTitle, kind: "scorm", category: newMaterialCategory }))}
         />
       </div>
       <p className="mt-1 text-[11px] text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>

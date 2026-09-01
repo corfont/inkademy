@@ -10,6 +10,7 @@ import { meApi, API_URL } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { Dialog } from "@/components/ui/Dialog";
 import { RequirementChecklist } from "@/components/ui/RequirementChecklist";
 import { ActionSection } from "./ActionSection";
 import { CourseRatingPrompt } from "./CourseRatingPrompt";
@@ -211,6 +212,18 @@ function VideoCheckpointOverlay({ question, onContinue }: { question: FormativeQ
  * agrega allow-top-navigation ni allow-popups-to-escape-sandbox, así que el
  * paquete no puede navegar ni redirigir la pestaña del alumno.
  */
+function ScormFrame({ playerUrl }: { playerUrl: string | null }) {
+  if (!playerUrl) return <div className="flex h-[32rem] items-center justify-center rounded-lg border border-paper-border bg-paper text-sm text-ash-500">Cargando contenido…</div>;
+  return (
+    <iframe
+      src={playerUrl}
+      title="Contenido SCORM"
+      className="h-[32rem] w-full rounded-lg border border-paper-border bg-ink-950"
+      sandbox="allow-scripts allow-same-origin allow-forms"
+    />
+  );
+}
+
 function ScormPlayer({ enrollmentId, lessonId }: { enrollmentId: string; lessonId: string }) {
   const [playerUrl, setPlayerUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -233,14 +246,49 @@ function ScormPlayer({ enrollmentId, lessonId }: { enrollmentId: string; lessonI
   }, [enrollmentId, lessonId]);
 
   if (error) return <Callout variant="danger">{error}</Callout>;
-  if (!playerUrl) return <div className="flex h-[32rem] items-center justify-center rounded-lg border border-paper-border bg-paper text-sm text-ash-500">Cargando contenido…</div>;
+  return <ScormFrame playerUrl={playerUrl} />;
+}
+
+/**
+ * "SCORM ya existe pero solo como contenido principal de la lección, no
+ * como material" — mismo mecanismo que ScormPlayer, pero para un paquete
+ * adjunto como material complementario: se abre en un modal (no inline en
+ * la página) porque un material es uno más de una lista, no el contenido
+ * central de la lección.
+ */
+function MaterialScormDialog({
+  enrollmentId,
+  materialId,
+  title,
+  onClose,
+}: {
+  enrollmentId: string;
+  materialId: string;
+  title: string;
+  onClose: () => void;
+}) {
+  const [playerUrl, setPlayerUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    meApi
+      .materialScormSession(enrollmentId, materialId)
+      .then((session) => {
+        if (!cancelled) setPlayerUrl(`${API_URL}${session.playerUrl}`);
+      })
+      .catch(() => {
+        if (!cancelled) setError("No pudimos iniciar el contenido SCORM. Intenta recargar la página.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enrollmentId, materialId]);
+
   return (
-    <iframe
-      src={playerUrl}
-      title="Contenido SCORM"
-      className="h-[32rem] w-full rounded-lg border border-paper-border bg-ink-950"
-      sandbox="allow-scripts allow-same-origin allow-forms"
-    />
+    <Dialog open onClose={onClose} title={title} className="max-w-4xl">
+      {error ? <Callout variant="danger">{error}</Callout> : <ScormFrame playerUrl={playerUrl} />}
+    </Dialog>
   );
 }
 
@@ -249,13 +297,17 @@ function MaterialList({
   materials,
   readMap,
   onMarkRead,
+  enrollmentId,
 }: {
   heading: string;
   materials: ClassroomMaterial[];
   readMap?: Record<string, boolean>;
   onMarkRead?: (materialId: string) => void;
+  enrollmentId: string;
 }) {
+  const [openScormMaterialId, setOpenScormMaterialId] = useState<string | null>(null);
   if (materials.length === 0) return null;
+  const openScormMaterial = materials.find((m) => m.id === openScormMaterialId);
   return (
     <div>
       <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ash-500">{heading}</p>
@@ -276,15 +328,32 @@ function MaterialList({
           const isRead = readMap?.[mat.id] ?? false;
           return (
             <li key={mat.id} className="flex items-center justify-between gap-3">
-              <a href={mat.url} {...linkProps} className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
-                <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
-                {mat.title}
-                {!allowDownload && <span className="text-xs text-ash-400">(solo vista)</span>}
-              </a>
+              {mat.kind === "scorm" ? (
+                // Un paquete SCORM no es un archivo estático — necesita su
+                // propia sesión de reproducción (ver MaterialScormDialog),
+                // no un <a href> como el resto de materiales.
+                <button
+                  type="button"
+                  disabled={!mat.scormReady}
+                  onClick={() => setOpenScormMaterialId(mat.id)}
+                  className="flex items-center gap-2 text-sm text-ink-700 hover:underline disabled:cursor-not-allowed disabled:text-ash-400 disabled:no-underline"
+                >
+                  <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
+                  {mat.title}
+                  {!mat.scormReady && <span className="text-xs text-ash-400">(se está preparando)</span>}
+                </button>
+              ) : (
+                <a href={mat.url ?? "#"} {...linkProps} className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
+                  <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
+                  {mat.title}
+                  {!allowDownload && <span className="text-xs text-ash-400">(solo vista)</span>}
+                </a>
+              )}
               {/* "Si un curso tiene lecturas principales el alumno deberá
                   marcar como leído para que el sistema entienda que ha leído
                   ese documento; para las complementarias no" — el toggle solo
-                  se pasa (onMarkRead) para materiales MAIN. */}
+                  se pasa (onMarkRead) para materiales MAIN. Un SCORM MAIN usa
+                  el mismo botón manual — completar el SCORM no lo marca solo. */}
               {onMarkRead &&
                 (isRead ? (
                   <span className="flex flex-none items-center gap-1 text-xs font-medium text-success">
@@ -304,6 +373,14 @@ function MaterialList({
           );
         })}
       </ul>
+      {openScormMaterial && (
+        <MaterialScormDialog
+          enrollmentId={enrollmentId}
+          materialId={openScormMaterial.id}
+          title={openScormMaterial.title}
+          onClose={() => setOpenScormMaterialId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -488,7 +565,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   // con el visor de Office Online en vez de solo dejarlo como un link a
   // abrir aparte (funciona con cualquier URL pública, sin instalar nada).
   const officeMaterial = lessonMain.find((m) => ["slide", "doc", "sheet"].includes(m.kind));
-  const officeViewerUrl = officeMaterial ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(officeMaterial.url)}` : null;
+  const officeViewerUrl = officeMaterial?.url ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(officeMaterial.url)}` : null;
 
   // Notas del alumno — por lección, sincronizadas con el backend
   // (LessonNote) para que no se pierdan al limpiar el navegador ni queden
@@ -666,9 +743,9 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         {hasAnyMaterials && (
           <section className="flex flex-col gap-4">
             <h2 className="font-serif text-lg font-semibold text-ink-900">{t("materials")}</h2>
-            <MaterialList heading="De esta lección" materials={lessonMain} readMap={readMap} onMarkRead={markMaterialRead} />
-            <MaterialList heading="Lecturas principales del módulo" materials={moduleMain} readMap={readMap} onMarkRead={markMaterialRead} />
-            <MaterialList heading="Lecturas complementarias" materials={[...lessonSupplementary, ...moduleSupplementary]} />
+            <MaterialList heading="De esta lección" materials={lessonMain} readMap={readMap} onMarkRead={markMaterialRead} enrollmentId={detail.enrollmentId} />
+            <MaterialList heading="Lecturas principales del módulo" materials={moduleMain} readMap={readMap} onMarkRead={markMaterialRead} enrollmentId={detail.enrollmentId} />
+            <MaterialList heading="Lecturas complementarias" materials={[...lessonSupplementary, ...moduleSupplementary]} enrollmentId={detail.enrollmentId} />
           </section>
         )}
 

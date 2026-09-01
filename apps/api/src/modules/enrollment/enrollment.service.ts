@@ -349,6 +349,7 @@ export class EnrollmentService {
       category: string;
       allowDownload: boolean;
       allowView: boolean;
+      scormEntryPath?: string | null;
     }) => ({
       id: m.id,
       title: m.title,
@@ -360,6 +361,10 @@ export class EnrollmentService {
       // "El alumno deberá marcar como leído" — solo tiene sentido/se expone
       // para MAIN; el frontend igual no muestra el botón en SUPPLEMENTARY.
       read: m.category === "MAIN" ? readMaterialIds.has(m.id) : undefined,
+      // kind="scorm": el material puede existir ANTES de que se suba/arme el
+      // paquete (mismo flujo que una lección SCORM vacía) — sin esto, el
+      // botón de "abrir" del Aula fallaría recién al hacer clic.
+      scormReady: m.kind === "scorm" ? Boolean(m.scormEntryPath) : undefined,
     });
 
     const approval =

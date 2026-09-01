@@ -124,6 +124,7 @@ model User {
   attendances           Attendance[]
   lessonProgress        LessonProgress[]
   materialProgress      MaterialProgress[]
+  materialScormProgress MaterialScormProgress[]
   savedCourses          SavedCourse[]
   lessonNotes           LessonNote[]
   courseRatings         CourseRating[]
@@ -558,7 +559,39 @@ model Material {
   allowView     Boolean         @default(true)
   createdAt   DateTime          @default(now())
 
+  // "SCORM ya existe pero solo como contenido principal de la lección, no
+  // como material" — kind="scorm": mismos 4 campos que Lesson (ver arriba),
+  // mismo mecanismo de subida/autoría/reproducción (ScormService), solo que
+  // el prefijo de storage es scorm/material/{id}/ en vez de scorm/{lessonId}/.
+  // El progreso vive en MaterialScormProgress (tabla aparte), NO en
+  // MaterialProgress — así "aprobar el SCORM" no toca el cálculo de avance/
+  // certificado, que sigue contando únicamente la fila de MaterialProgress
+  // (creada por el mismo botón manual "Marcar como leído" de siempre).
+  scormPackagePrefix String?
+  scormEntryPath     String?
+  scormVersion       String?
+  scormAuthoredContent Json?
+
   progress    MaterialProgress[]
+  scormProgress MaterialScormProgress[]
+}
+
+model MaterialScormProgress {
+  id           String     @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  materialId   String
+  material     Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scormCompletionStatus String?
+  scormScoreRaw         Float?
+  scormInteractions     Json?
+  scormLessonLocation   String?
+  scormSuspendData      String?
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([enrollmentId, materialId])
 }
 
 // "Si un curso tiene lecturas principales el alumno deberá marcar como
@@ -717,6 +750,7 @@ model Enrollment {
 
   lessonProgress   LessonProgress[]
   materialProgress MaterialProgress[]
+  materialScormProgress MaterialScormProgress[]
   attempts        AssessmentAttempt[]
   certificate     Certificate?
   rating          CourseRating?

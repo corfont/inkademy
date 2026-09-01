@@ -38,6 +38,18 @@ export class ScormController {
     return { token, playerUrl: `/scorm/player/${encodeURIComponent(token)}` };
   }
 
+  @Post("me/enrollments/:enrollmentId/materials/:materialId/scorm-session")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Crea una sesión de reproducción SCORM para este material (adjunto complementario, token de alcance acotado, 6h)" })
+  async createMaterialSession(
+    @CurrentUser() user: RequestUser,
+    @Param("enrollmentId") enrollmentId: string,
+    @Param("materialId") materialId: string,
+  ) {
+    const { token } = await this.scorm.createMaterialSession(user.id, enrollmentId, materialId);
+    return { token, playerUrl: `/scorm/player/${encodeURIComponent(token)}` };
+  }
+
   @Public()
   @Get("scorm/player/:token")
   @ApiOperation({ summary: "Página envoltorio con el shim de la API SCORM + el contenido embebido" })

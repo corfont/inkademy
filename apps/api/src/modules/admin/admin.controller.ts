@@ -304,6 +304,65 @@ export class AdminController {
     return this.scormService.getAnalytics(id, teacherScopeId(user));
   }
 
+  // "SCORM ya existe pero solo como contenido principal de la lección" —
+  // mismas 5 rutas de arriba, pero apuntando a un Material (adjunto
+  // complementario) en vez de a la Lección entera.
+  @Post("materials/:id/scorm-upload")
+  @Roles("ADMIN", "TEACHER")
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({ summary: "Sube un paquete SCORM (.zip) para este material — TEACHER solo si puede editar el curso dueño" })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: 200 * 1024 * 1024 },
+      fileFilter: fileMimeFilter(["application/zip", "application/x-zip-compressed", "application/octet-stream"]),
+    }),
+  )
+  uploadMaterialScormPackage(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @UploadedFile() file: { originalname: string; buffer: Buffer; mimetype: string },
+  ) {
+    return this.scormService.ingestMaterialPackage(id, file.buffer, teacherScopeId(user));
+  }
+
+  @Post("materials/:id/scorm/build")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Genera un paquete SCORM para este material a partir de diapositivas armadas con el editor de autoría" })
+  buildMaterialScormPackage(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(scormAuthoredContentSchema)) dto: any,
+  ) {
+    return this.scormService.buildMaterialFromAuthoredContent(id, dto, teacherScopeId(user));
+  }
+
+  @Post("materials/:id/scorm/preview-session")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Sesión de prueba para reproducir el paquete SCORM de este material sin matricularse" })
+  async createMaterialScormPreviewSession(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    const { token } = await this.scormService.createMaterialPreviewSession(user.id, id, teacherScopeId(user));
+    return { token, playerUrl: `/scorm/player/${encodeURIComponent(token)}` };
+  }
+
+  @Get("materials/:id/scorm/export")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Descarga el paquete SCORM de este material (.zip real)" })
+  async exportMaterialScormPackage(@CurrentUser() user: RequestUser, @Param("id") id: string, @Res() res: Response) {
+    const buffer = await this.scormService.exportMaterialPackageZip(id, teacherScopeId(user));
+    res.set({
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="scorm-material-${id}.zip"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get("materials/:id/scorm/analytics")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Analítica por pregunta agregada de todos los intentos del SCORM de este material" })
+  getMaterialScormAnalytics(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.scormService.getMaterialAnalytics(id, teacherScopeId(user));
+  }
+
   @Post("lessons/:id/generate-subtitles")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Encola la transcripción automática (Gemini) del video de la lección — TEACHER solo si es CourseStaff del curso dueño" })

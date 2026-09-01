@@ -449,23 +449,42 @@ interface ScormAnalytics {
  * findAPI() no encuentra ningún SCORM API ahí y sigue funcionando igual),
  * y analítica por pregunta una vez que ya hay intentos reales.
  */
-export function ScormBuilder({ lesson, open, onClose, onSaved }: { lesson: any; open: boolean; onClose: () => void; onSaved: () => void }) {
+/**
+ * "SCORM ya existe pero solo como contenido principal de la lección" — este
+ * editor sirve igual para un paquete que cuelga de una Lesson (contenido
+ * principal) o de un Material (adjunto complementario); `owner.type` decide
+ * qué endpoint de adminApi usar en cada llamada, todo lo demás es idéntico.
+ */
+interface ScormBuilderOwner {
+  id: string;
+  type: "lesson" | "material";
+  scormEntryPath: string | null;
+  scormAuthoredContent: ScormAuthoredContent | null;
+}
+
+export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBuilderOwner; open: boolean; onClose: () => void; onSaved: () => void }) {
   const router = useRouter();
-  const existing = lesson.scormAuthoredContent as ScormAuthoredContent | null;
+  const buildPackage = owner.type === "lesson" ? adminApi.buildScormPackage : adminApi.buildMaterialScormPackage;
+  const fetchAnalytics = owner.type === "lesson" ? adminApi.scormAnalytics : adminApi.materialScormAnalytics;
+  const previewSession = owner.type === "lesson" ? adminApi.scormPreviewSession : adminApi.materialScormPreviewSession;
+  const downloadPackage = owner.type === "lesson" ? adminApi.downloadScormPackage : adminApi.downloadMaterialScormPackage;
+
+  const existing = owner.scormAuthoredContent;
   const [slides, setSlides] = useState<ScormSlide[]>(existing?.slides?.length ? existing.slides : [SLIDE_FACTORIES.content()]);
   const [passingScore, setPassingScore] = useState(existing?.passingScore ?? 70);
   const [addType, setAddType] = useState<ScormSlide["type"]>("content");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [built, setBuilt] = useState(Boolean(lesson.scormEntryPath && lesson.scormAuthoredContent));
+  const [built, setBuilt] = useState(Boolean(owner.scormEntryPath && owner.scormAuthoredContent));
   const [previewLoading, setPreviewLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [analytics, setAnalytics] = useState<ScormAnalytics | null>(null);
 
   useEffect(() => {
     if (!built) return;
-    adminApi.scormAnalytics(lesson.id).then(setAnalytics).catch(() => setAnalytics(null));
-  }, [built, lesson.id]);
+    fetchAnalytics(owner.id).then(setAnalytics).catch(() => setAnalytics(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [built, owner.id]);
 
   const previewHtml = useMemo(() => {
     try {
@@ -516,7 +535,7 @@ export function ScormBuilder({ lesson, open, onClose, onSaved }: { lesson: any; 
     setSaving(true);
     setError(null);
     try {
-      await adminApi.buildScormPackage(lesson.id, { slides, passingScore });
+      await buildPackage(owner.id, { slides, passingScore });
       setBuilt(true);
       onSaved();
       router.refresh();
@@ -530,7 +549,7 @@ export function ScormBuilder({ lesson, open, onClose, onSaved }: { lesson: any; 
   async function handlePreviewSession() {
     setPreviewLoading(true);
     try {
-      const { playerUrl } = await adminApi.scormPreviewSession(lesson.id);
+      const { playerUrl } = await previewSession(owner.id);
       window.open(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}${playerUrl}`, "_blank", "noopener,noreferrer");
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "No pudimos abrir la vista previa.");
@@ -544,7 +563,7 @@ export function ScormBuilder({ lesson, open, onClose, onSaved }: { lesson: any; 
     try {
       const token = getClientAccessToken();
       if (!token) throw new Error("Sesión inválida");
-      await adminApi.downloadScormPackage(lesson.id, token);
+      await downloadPackage(owner.id, token);
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "No pudimos descargar el paquete.");
     } finally {

@@ -315,7 +315,7 @@ export interface ClassroomMaterial {
   title: string;
   kind: string;
   category?: "MAIN" | "SUPPLEMENTARY";
-  url: string;
+  url: string | null;
   // "El admin/docente podrá marcar si el material puede descargarse,
   // visualizarse, o ambos" — ambos true por defecto.
   allowDownload?: boolean;
@@ -323,6 +323,11 @@ export interface ClassroomMaterial {
   // "El alumno deberá marcar como leído para que el sistema entienda que ha
   // leído ese documento" — solo tiene sentido en category="MAIN".
   read?: boolean;
+  // kind="scorm": el material no tiene un `url` estático (no es un archivo
+  // descargable, necesita su propia sesión de reproducción) — scormReady
+  // dice si el paquete ya se subió/armó (sin esto el botón de abrir en el
+  // Aula fallaría recién al hacer clic, para un material recién creado).
+  scormReady?: boolean;
 }
 export interface FormativeQuizQuestion {
   id: string;
