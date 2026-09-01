@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical } from "lucide-react";
+import { Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical, Pencil } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -529,13 +530,74 @@ function ContentSection({ course, busy, run }: { course: any; busy: boolean; run
   );
 }
 
+/**
+ * "No hay ninguna forma de corregir un typo en el título de un módulo o
+ * lección sin borrarlo y rehacerlo entero" — hueco real: updateModule/
+ * updateLesson ya aceptan `title` en el backend, pero ambos títulos se
+ * renderizaban como texto plano en el editor. Un solo componente para las
+ * dos (mismo patrón de edición inline, solo cambia a quién le pega el save).
+ */
+function EditableTitle({ title, onSave, disabled, className }: { title: string; onSave: (value: string) => Promise<unknown>; disabled?: boolean; className?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setEditing(false);
+    if (!value.trim() || value.trim() === title) return;
+    setSaving(true);
+    try {
+      await onSave(value.trim());
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <Input
+        autoFocus
+        className={cn("h-7 text-sm", className)}
+        value={value}
+        disabled={saving}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        onBlur={handleSave}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={cn("group flex items-center gap-1.5 text-left disabled:cursor-default", className)}
+      disabled={disabled || saving}
+      onClick={() => {
+        setValue(title);
+        setEditing(true);
+      }}
+      title="Click para renombrar"
+    >
+      <span>{title || "(sin título)"}</span>
+      <Pencil className="h-3 w-3 flex-none text-ash-400 opacity-0 group-hover:opacity-100" aria-hidden="true" />
+    </button>
+  );
+}
+
 function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; module: any; busy: boolean; run: any }) {
   const [newLesson, setNewLesson] = useState({ title: "", contentType: "VIDEO" });
 
   return (
     <div className="rounded-lg border border-paper-border p-4">
       <div className="mb-3 flex items-center justify-between">
-        <p className="font-medium text-ink-900">{mod.title?.es ?? "(sin título)"}</p>
+        <EditableTitle
+          title={mod.title?.es ?? ""}
+          disabled={busy}
+          className="font-medium text-ink-900"
+          onSave={(value) => run(() => adminApi.updateModule(mod.id, { title: { ...mod.title, es: value } }))}
+        />
         <button
           type="button"
           className="text-ash-400 hover:text-danger"
@@ -1080,7 +1142,12 @@ function LessonRow({
             </button>
           </div>
           <Badge variant="outline">{lesson.contentType}</Badge>
-          <span className="text-sm font-medium text-ink-900">{lesson.title?.es}</span>
+          <EditableTitle
+            title={lesson.title?.es ?? ""}
+            disabled={busy}
+            className="text-sm font-medium text-ink-900"
+            onSave={(value) => run(() => adminApi.updateLesson(lesson.id, { title: { ...lesson.title, es: value } }))}
+          />
           {lesson.isFreePreview && <Badge variant="gold">Vista previa gratis</Badge>}
         </div>
         <button
