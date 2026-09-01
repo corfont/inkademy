@@ -11,6 +11,11 @@ import { ScormService } from "./scorm.service";
 const scormProgressSchema = z.object({
   completionStatus: z.string().optional(),
   scoreRaw: z.number().nullable().optional(),
+  lessonLocation: z.string().nullable().optional(),
+  suspendData: z.string().nullable().optional(),
+  interactions: z
+    .array(z.object({ id: z.string(), type: z.string(), response: z.string(), correct: z.boolean() }))
+    .optional(),
 });
 
 /**

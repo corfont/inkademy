@@ -824,6 +824,21 @@ model LessonProgress {
   // / cmi.score.raw); no alimenta el certificado en esta fase.
   scormCompletionStatus String?
   scormScoreRaw         Float?
+  // "Que no le falte nada" — analítica por pregunta (cmi.interactions.n.*,
+  // no solo el puntaje final) del intento más reciente: [{id,type,response,correct}].
+  scormInteractions     Json?
+  // Reanudar donde quedó: cmi.core.lesson_location (1.2) / cmi.location
+  // (2004) — el shim lo siembra en el próximo LMSInitialize de esta lección
+  // (ver ScormService.getPlayerHtml). Sirve también para paquetes SUBIDOS de
+  // terceros que ya implementan su propio reanudar, no es exclusivo del
+  // editor de autoría.
+  scormLessonLocation   String?
+  // cmi.suspend_data (misma clave en 1.2 y 2004) — el "bookmark" real del
+  // intento (qué respondió el alumno en cada diapositiva ya vista), no solo
+  // en qué diapositiva está. Sin esto, reanudar movía el cursor a la
+  // diapositiva correcta pero las respuestas previas se perdían al terminar
+  // (contaban como no respondidas en el puntaje final).
+  scormSuspendData      String?
   updatedAt    DateTime   @updatedAt
 
   @@unique([enrollmentId, lessonId])

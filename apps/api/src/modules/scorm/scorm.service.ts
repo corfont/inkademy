@@ -7,7 +7,7 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { StorageService } from "../../storage/storage.service";
 import { contentTypeFromPath } from "./scorm-content-type";
 import { buildScormPlayerHtml } from "./scorm-shim";
-import { buildScormContentHtml, buildScormManifestXml, type ScormAuthoredContent } from "./scorm-authoring";
+import { buildScormContentHtml, buildScormManifestXml, type ScormAuthoredContent } from "@inkademy/shared";
 
 interface ScormSessionPayload {
   sub: string;
@@ -269,7 +269,7 @@ export class ScormService {
   }
 
   async getPlayerHtml(token: string): Promise<string> {
-    const { lessonId } = this.verifyToken(token);
+    const { lessonId, enrollmentId, scope } = this.verifyToken(token);
     const lesson = await this.prisma.lesson.findUniqueOrThrow({ where: { id: lessonId } });
     // El token va COMO SEGMENTO DE RUTA (no query string) en /scorm/content/:token/*path
     // a propósito: el paquete SCORM referencia sus propios assets (imágenes/
@@ -281,7 +281,24 @@ export class ScormService {
     // mismo prefijo /scorm/content/{token}/.
     const contentUrl = `/scorm/content/${encodeURIComponent(token)}/${lesson.scormEntryPath!}`;
     const progressUrl = `/scorm/progress?token=${encodeURIComponent(token)}`;
-    return buildScormPlayerHtml({ contentUrl, progressUrl, title: (lesson.title as Record<string, string>)?.es ?? "Contenido SCORM" });
+    // Reanudar: la vista previa (sin Enrollment real detrás) siempre parte
+    // de cero — no hay ningún progreso real que reanudar. Una sesión real
+    // busca si ya existe progreso guardado para esta matrícula+lección.
+    let initialLocation: string | null = null;
+    let initialSuspendData: string | null = null;
+    if (scope === "scorm" && enrollmentId) {
+      const progress = await this.prisma.lessonProgress.findUnique({ where: { enrollmentId_lessonId: { enrollmentId, lessonId } } });
+      initialLocation = progress?.scormLessonLocation ?? null;
+      initialSuspendData = progress?.scormSuspendData ?? null;
+    }
+    return buildScormPlayerHtml({
+      contentUrl,
+      progressUrl,
+      title: (lesson.title as Record<string, string>)?.es ?? "Contenido SCORM",
+      initialLocation,
+      initialEntry: initialLocation ? "resume" : "ab-initio",
+      initialSuspendData,
+    });
   }
 
   async getContentFile(token: string, requestedPath: string): Promise<{ buffer: Buffer; contentType: string }> {
@@ -302,7 +319,16 @@ export class ScormService {
     return { buffer, contentType: contentTypeFromPath(normalized) };
   }
 
-  async reportProgress(token: string, input: { completionStatus?: string; scoreRaw?: number | null }): Promise<void> {
+  async reportProgress(
+    token: string,
+    input: {
+      completionStatus?: string;
+      scoreRaw?: number | null;
+      lessonLocation?: string | null;
+      suspendData?: string | null;
+      interactions?: { id: string; type: string; response: string; correct: boolean }[];
+    },
+  ): Promise<void> {
     const { sub: userId, enrollmentId, lessonId, scope } = this.verifyToken(token);
     // Modo vista previa: el admin/docente lo está probando antes de
     // publicar, sin ninguna matrícula real detrás — no hay dónde guardar
@@ -319,6 +345,9 @@ export class ScormService {
         completed,
         scormCompletionStatus: input.completionStatus ?? null,
         scormScoreRaw: input.scoreRaw ?? null,
+        scormLessonLocation: input.lessonLocation ?? null,
+        scormSuspendData: input.suspendData ?? null,
+        scormInteractions: (input.interactions?.length ? input.interactions : null) as never,
       },
       update: {
         // No se "des-completa" una lección que ya estaba marcada completa
@@ -327,7 +356,55 @@ export class ScormService {
         completed: completed || undefined,
         scormCompletionStatus: input.completionStatus ?? undefined,
         scormScoreRaw: input.scoreRaw ?? undefined,
+        scormLessonLocation: input.lessonLocation ?? undefined,
+        scormSuspendData: input.suspendData ?? undefined,
+        // Solo se pisa la analítica si este reporte SÍ trae interacciones —
+        // los Commit intermedios de "reanudar" (sin cmi.interactions todavía)
+        // no deben borrar el detalle de un intento anterior ya completo.
+        scormInteractions: input.interactions?.length ? (input.interactions as never) : undefined,
       },
     });
+  }
+
+  /**
+   * "Analítica por pregunta" — agrega cmi.interactions de TODOS los
+   * intentos guardados para esta lección: % de aciertos por pregunta (para
+   * ver "la pregunta 3 la falla el 40%"), score promedio, tasa de
+   * finalización. Cierra el círculo "se guarda" → "se puede ver".
+   */
+  async getAnalytics(lessonId: string, teacherUserId?: string) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { module: true } });
+    if (!lesson) throw new NotFoundException("Lección no encontrada");
+    if (teacherUserId) {
+      const membership = await this.prisma.courseStaff.findFirst({ where: { courseId: lesson.module.courseId, userId: teacherUserId } });
+      if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+    }
+    const rows = await this.prisma.lessonProgress.findMany({ where: { lessonId } });
+    const totalAttempts = rows.length;
+    const completedCount = rows.filter((r) => r.completed).length;
+    const scores = rows.map((r) => r.scormScoreRaw).filter((s): s is number => s != null);
+    const averageScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+
+    const perQuestion = new Map<string, { id: string; type: string; correct: number; total: number }>();
+    for (const row of rows) {
+      const interactions = (row.scormInteractions as { id: string; type: string; correct: boolean }[] | null) ?? [];
+      for (const it of interactions) {
+        const entry = perQuestion.get(it.id) ?? { id: it.id, type: it.type, correct: 0, total: 0 };
+        entry.total += 1;
+        if (it.correct) entry.correct += 1;
+        perQuestion.set(it.id, entry);
+      }
+    }
+
+    return {
+      totalAttempts,
+      completedCount,
+      completionRate: totalAttempts > 0 ? Math.round((completedCount / totalAttempts) * 100) : 0,
+      averageScore,
+      perQuestion: Array.from(perQuestion.values()).map((q) => ({
+        ...q,
+        correctRate: q.total > 0 ? Math.round((q.correct / q.total) * 100) : 0,
+      })),
+    };
   }
 }

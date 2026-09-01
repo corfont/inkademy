@@ -157,7 +157,11 @@ export const upsertLessonSchema = z.object({
 });
 export const updateLessonSchema = upsertLessonSchema.partial();
 
-// --- Editor de autoría SCORM (armar el paquete DESDE Inkademy) ---
+// --- Editor de autoría SCORM (armar el paquete DESDE Inkademy) — catálogo
+// de 8 tipos de diapositiva (7 de pregunta/interacción + Contenido),
+// equivalente al catálogo base de iSpring QuizMaker/plantillas "Quiz" de
+// Storyline. Ver también packages/shared/src/scorm-authoring.ts (los
+// mismos tipos, del lado del motor de render/calificación).
 const scormContentSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("content"),
@@ -165,15 +169,68 @@ const scormContentSlideSchema = z.object({
   body: z.string().max(5000),
   imageUrl: z.string().url().optional().nullable(),
 });
-const scormQuestionSlideSchema = z.object({
+const scormTrueFalseSlideSchema = z.object({
   id: z.string().min(1),
-  type: z.literal("question"),
+  type: z.literal("true_false"),
+  question: z.string().min(1).max(1000),
+  correctAnswer: z.boolean(),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+const scormSingleChoiceSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("single_choice"),
   question: z.string().min(1).max(1000),
   options: z.array(z.string().min(1).max(300)).min(2).max(6),
   correctIndex: z.number().int().min(0),
   explanation: z.string().max(1000).optional().nullable(),
 });
-export const scormSlideSchema = z.discriminatedUnion("type", [scormContentSlideSchema, scormQuestionSlideSchema]);
+const scormMultipleChoiceSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("multiple_choice"),
+  question: z.string().min(1).max(1000),
+  options: z.array(z.string().min(1).max(300)).min(2).max(6),
+  correctIndexes: z.array(z.number().int().min(0)).min(1),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+const scormFillBlankSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("fill_blank"),
+  text: z.string().min(1).max(2000),
+  blanks: z.array(z.array(z.string().min(1).max(200)).min(1)).min(1),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+const scormMatchingSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("matching"),
+  instructions: z.string().max(300).optional().nullable(),
+  pairs: z.array(z.object({ left: z.string().min(1).max(200), right: z.string().min(1).max(200) })).min(2).max(8),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+const scormOrderingSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("ordering"),
+  instructions: z.string().max(300).optional().nullable(),
+  items: z.array(z.string().min(1).max(200)).min(2).max(10),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+const scormHotspotSlideSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("hotspot"),
+  question: z.string().min(1).max(1000),
+  imageUrl: z.string().url(),
+  zones: z.array(z.object({ x: z.number().min(0).max(100), y: z.number().min(0).max(100), width: z.number().min(0).max(100), height: z.number().min(0).max(100) })).min(1),
+  explanation: z.string().max(1000).optional().nullable(),
+});
+export const scormSlideSchema = z.discriminatedUnion("type", [
+  scormContentSlideSchema,
+  scormTrueFalseSlideSchema,
+  scormSingleChoiceSlideSchema,
+  scormMultipleChoiceSlideSchema,
+  scormFillBlankSlideSchema,
+  scormMatchingSlideSchema,
+  scormOrderingSlideSchema,
+  scormHotspotSlideSchema,
+]);
 export const scormAuthoredContentSchema = z.object({
   slides: z.array(scormSlideSchema).min(1).max(50),
   passingScore: z.number().min(0).max(100).default(70),

@@ -297,6 +297,13 @@ export class AdminController {
     res.send(buffer);
   }
 
+  @Get("lessons/:id/scorm/analytics")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Analítica por pregunta (cmi.interactions) agregada de todos los intentos de esta lección SCORM" })
+  getScormAnalytics(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.scormService.getAnalytics(id, teacherScopeId(user));
+  }
+
   @Post("lessons/:id/generate-subtitles")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Encola la transcripción automática (Gemini) del video de la lección — TEACHER solo si es CourseStaff del curso dueño" })

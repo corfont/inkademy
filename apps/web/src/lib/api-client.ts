@@ -855,6 +855,14 @@ export const adminApi = {
     apiFetch<{ entryPath: string; version: string }>(`/admin/lessons/${lessonId}/scorm/build`, { method: "POST", body: JSON.stringify(content), accessToken }),
   scormPreviewSession: (lessonId: string, accessToken?: string | null) =>
     apiFetch<{ token: string; playerUrl: string }>(`/admin/lessons/${lessonId}/scorm/preview-session`, { method: "POST", accessToken }),
+  scormAnalytics: (lessonId: string, accessToken?: string | null) =>
+    apiFetch<{
+      totalAttempts: number;
+      completedCount: number;
+      completionRate: number;
+      averageScore: number | null;
+      perQuestion: { id: string; type: string; correct: number; total: number; correctRate: number }[];
+    }>(`/admin/lessons/${lessonId}/scorm/analytics`, { accessToken, cache: "no-store" }),
   // Descarga binaria — no pasa por apiFetch (mismo criterio que downloadReportPdf).
   downloadScormPackage: async (lessonId: string, accessToken: string) => {
     const res = await fetch(`${API_URL}/admin/lessons/${lessonId}/scorm/export`, { headers: { Authorization: `Bearer ${accessToken}` } });
