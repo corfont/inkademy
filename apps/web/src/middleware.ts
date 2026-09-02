@@ -24,6 +24,8 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/regalias",
   "/admin/horas-docentes",
   "/admin/liquidaciones",
+  "/admin/backups",
+  "/admin/auditoria",
 ];
 
 export function middleware(request: NextRequest) {

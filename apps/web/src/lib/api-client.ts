@@ -313,6 +313,42 @@ export interface MailingListDTO {
   createdBy?: { firstName: string; lastName: string } | null;
 }
 
+export interface BackupRecordDTO {
+  id: string;
+  trigger: "MANUAL" | "SCHEDULED";
+  status: "PENDING" | "RUNNING" | "DONE" | "FAILED";
+  s3Key: string | null;
+  sizeBytes: number | null;
+  modelCounts: Record<string, number> | null;
+  errorMessage: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  triggeredBy?: { firstName: string; lastName: string } | null;
+}
+
+export interface AuditLogEntryDTO {
+  id: string;
+  actorId: string | null;
+  companyId: string | null;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  before: unknown;
+  after: unknown;
+  createdAt: string;
+  actor?: { firstName: string; lastName: string } | null;
+}
+
+export interface AuditLogFilter {
+  entity?: string;
+  action?: string;
+  actorId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export const settingsApi = {
   // "no-store": la propia pantalla de /admin/apariencia promete que los
   // cambios se ven "al instante" — con el cache por defecto de fetch() en
@@ -1152,6 +1188,26 @@ export const adminApi = {
     apiFetch<MailingListDTO>(`/admin/mailing-lists/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteMailingList: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/mailing-lists/${id}`, { method: "DELETE", accessToken }),
+
+  // --- Backups descargables ("toda la base de datos... que si se pierde lo pueda recuperar") ---
+  backups: (accessToken?: string | null) => apiFetch<BackupRecordDTO[]>("/admin/backups", { accessToken, cache: "no-store" }),
+  generateBackupNow: (accessToken?: string | null) =>
+    apiFetch<{ queued: boolean }>("/admin/backups/generate", { method: "POST", accessToken }),
+  getBackupDownloadUrl: (id: string, accessToken?: string | null) =>
+    apiFetch<{ url: string }>(`/admin/backups/${id}/download-url`, { accessToken }),
+
+  // --- Auditoría genérica ("bucear en el histórico") ---
+  auditLog: (filter: AuditLogFilter, accessToken?: string | null) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return apiFetch<{ rows: AuditLogEntryDTO[]; total: number; page: number; pageSize: number }>(
+      `/admin/audit-log${qs ? `?${qs}` : ""}`,
+      { accessToken, cache: "no-store" },
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------

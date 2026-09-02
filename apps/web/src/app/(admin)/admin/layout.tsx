@@ -32,6 +32,8 @@ import {
   Smile,
   Star,
   AlertTriangle,
+  DatabaseBackup,
+  History,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
@@ -108,6 +110,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           { href: "/admin/liquidaciones", label: "Liquidación de docentes", icon: Banknote },
           { href: "/admin/liquidaciones/tarifas", label: "Tarifas y adelantos (docentes)", icon: Wallet },
           { href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock },
+          { href: "/admin/backups", label: "Backups", icon: DatabaseBackup },
+          { href: "/admin/auditoria", label: "Auditoría", icon: History },
           { href: "/admin/zona-de-pruebas", label: "Zona de pruebas", icon: AlertTriangle },
         ]
       : []),
