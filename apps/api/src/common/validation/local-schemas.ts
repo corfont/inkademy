@@ -841,6 +841,16 @@ export const updateEmailCampaignSchema = z.object({
   status: z.enum(["DRAFT", "SCHEDULED", "CANCELLED"]).optional(),
 });
 
+// "También debería de poderse crear listas de correo... y poderlas
+// reutilizar, actualizar, borrar" — audiencia guardada, reusa el mismo
+// filtro de 9 campos que ya usan las campañas, sin redefinirlo.
+export const upsertMailingListSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional().nullable(),
+  filter: emailAudienceFilterSchema,
+});
+export const updateMailingListSchema = upsertMailingListSchema.partial();
+
 export const chatbotMessageSchema = z.object({
   message: z.string().min(1).max(2000),
   // Historial reciente de la conversación (para dar contexto sin guardar

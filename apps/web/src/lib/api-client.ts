@@ -266,11 +266,22 @@ export interface EmailServerSettingsDTO {
   updatedAt: string | null;
 }
 
+// Espejo de emailAudienceFilterSchema (apps/api/src/common/validation/local-schemas.ts)
+// — hasta hace poco solo tenía 4 de estos 9 campos, un tercer punto de
+// desincronización (junto al del worker, ya corregido) que no rompía
+// nada en runtime (el form arma el payload como Record<string,unknown>)
+// pero sí dejaba mal tipado tanto EmailCampaignDTO.audienceFilter como el
+// `filter` de una MailingList.
 export interface EmailAudienceFilter {
   interests?: string[];
   areaIds?: string[];
+  courseIds?: string[];
   companyId?: string;
   inactiveDays?: number;
+  enrollmentStatus?: "ANY" | "HAS_ACTIVE" | "COMPLETED_NO_ACTIVE" | "NONE";
+  countries?: string[];
+  globalRole?: "STUDENT" | "TEACHER" | "SUPPORT" | "ADMIN";
+  excludeRecentPurchaseDays?: number;
 }
 
 export interface EmailCampaignDTO {
@@ -287,6 +298,18 @@ export interface EmailCampaignDTO {
   recurrence: "ONCE" | "WEEKLY" | "MONTHLY";
   recipientCount: number;
   createdAt: string;
+  createdBy?: { firstName: string; lastName: string } | null;
+}
+
+// "También debería de poderse crear listas de correo... y poderlas
+// reutilizar, actualizar, borrar" — audiencia de marketing guardada.
+export interface MailingListDTO {
+  id: string;
+  name: string;
+  description: string | null;
+  filter: EmailAudienceFilter | null;
+  createdAt: string;
+  updatedAt: string;
   createdBy?: { firstName: string; lastName: string } | null;
 }
 
@@ -1117,6 +1140,18 @@ export const adminApi = {
     apiFetch<{ deleted: boolean }>(`/admin/email-campaigns/${id}`, { method: "DELETE", accessToken }),
   previewEmailAudience: (filter: EmailAudienceFilter, accessToken?: string | null) =>
     apiFetch<{ count: number }>("/admin/email-campaigns/audience-preview", { method: "POST", body: JSON.stringify(filter), accessToken }),
+
+  // "También debería de poderse crear listas de correo... y poderlas
+  // reutilizar, actualizar, borrar" — reusa previewEmailAudience de arriba
+  // para "a cuántos llega" una lista, no hace falta un endpoint aparte.
+  mailingLists: (accessToken?: string | null) =>
+    apiFetch<MailingListDTO[]>("/admin/mailing-lists", { accessToken, cache: "no-store" }),
+  createMailingList: (input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<MailingListDTO>("/admin/mailing-lists", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateMailingList: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
+    apiFetch<MailingListDTO>(`/admin/mailing-lists/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteMailingList: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/mailing-lists/${id}`, { method: "DELETE", accessToken }),
 };
 
 // ---------------------------------------------------------------------------

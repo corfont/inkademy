@@ -29,6 +29,8 @@ import {
   emailAudienceFilterSchema,
   upsertEmailCampaignSchema,
   updateEmailCampaignSchema,
+  upsertMailingListSchema,
+  updateMailingListSchema,
   upsertPartnerInstitutionSchema,
   upsertRoyaltyRecipientSchema,
   upsertTeacherRateSchema,
@@ -923,6 +925,37 @@ export class AdminController {
   @ApiOperation({ summary: "Elimina una campaña que todavía no se envió" })
   deleteEmailCampaign(@Param("id") id: string) {
     return this.adminService.deleteEmailCampaign(id);
+  }
+
+  // "También debería de poderse crear listas de correo... y poderlas
+  // reutilizar, actualizar, borrar" — audiencia guardada, reusa
+  // /email-campaigns/audience-preview de arriba para "a cuántos llega".
+  @Get("mailing-lists")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Lista las listas de correo guardadas (audiencias reutilizables)" })
+  listMailingLists() {
+    return this.adminService.listMailingLists();
+  }
+
+  @Post("mailing-lists")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Guarda una nueva lista de correo (audiencia reutilizable)" })
+  createMailingList(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertMailingListSchema)) dto: any) {
+    return this.adminService.createMailingList(dto, user.id);
+  }
+
+  @Patch("mailing-lists/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Edita una lista de correo guardada" })
+  updateMailingList(@Param("id") id: string, @Body(new ZodValidationPipe(updateMailingListSchema)) dto: any) {
+    return this.adminService.updateMailingList(id, dto);
+  }
+
+  @Delete("mailing-lists/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina una lista de correo guardada" })
+  deleteMailingList(@Param("id") id: string) {
+    return this.adminService.deleteMailingList(id);
   }
 
   @Get("companies")

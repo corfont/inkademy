@@ -1330,8 +1330,12 @@ export class AdminService {
   /**
    * Resuelve cuántos/cuáles usuarios calzan con un filtro de audiencia —
    * usado tanto para la vista previa de "a cuántos les llega" en el admin
-   * como (una versión espejo, ver email-campaign.processor.ts) por el
-   * worker al momento de enviar de verdad.
+   * como (una versión espejo, ver apps/worker/src/processors/email-campaign.processor.ts
+   * resolveAudience) por el worker al momento de enviar de verdad. SI
+   * TOCAS UNO, TOCA EL OTRO — hasta hace poco esa copia solo implementaba
+   * 4 de estos 9 filtros (courseIds/enrollmentStatus/countries/globalRole/
+   * excludeRecentPurchaseDays se ignoraban silenciosamente al enviar de
+   * verdad), ya corregido para que ambos calcen exacto.
    */
   async resolveEmailAudience(filter: {
     interests?: string[];
@@ -1510,6 +1514,31 @@ export class AdminService {
     if (!campaign) throw new NotFoundException("Campaña no encontrada");
     if (campaign.status === "SENT") throw new BadRequestException("Ya se envió — se conserva como historial.");
     await this.prisma.emailCampaign.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  // "También debería de poderse crear listas de correo... y poderlas
+  // reutilizar, actualizar, borrar" — audiencia de marketing guardada,
+  // reusa exactamente el mismo filtro de 9 campos que las campañas
+  // (previewEmailAudienceCount/resolveEmailAudience de arriba sirven tal
+  // cual para "a cuántos llega" esta lista, sin un endpoint aparte).
+  async listMailingLists() {
+    return this.prisma.mailingList.findMany({
+      include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  createMailingList(input: { name: string; description?: string | null; filter?: unknown }, actorId?: string) {
+    return this.prisma.mailingList.create({ data: { name: input.name, description: input.description ?? null, filter: (input.filter ?? null) as never, createdById: actorId } });
+  }
+
+  updateMailingList(id: string, input: { name?: string; description?: string | null; filter?: unknown }) {
+    return this.prisma.mailingList.update({ where: { id }, data: input as never });
+  }
+
+  async deleteMailingList(id: string) {
+    await this.prisma.mailingList.delete({ where: { id } });
     return { deleted: true };
   }
 

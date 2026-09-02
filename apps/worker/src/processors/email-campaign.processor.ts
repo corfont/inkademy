@@ -18,21 +18,36 @@ function appUrl(): string {
 interface AudienceFilter {
   interests?: string[];
   areaIds?: string[];
+  courseIds?: string[];
   companyId?: string;
   inactiveDays?: number;
+  enrollmentStatus?: "ANY" | "HAS_ACTIVE" | "COMPLETED_NO_ACTIVE" | "NONE";
+  countries?: string[];
+  globalRole?: string;
+  excludeRecentPurchaseDays?: number;
 }
 
 /**
- * Espejo de `AdminService.resolveEmailAudience` (apps/api) — duplicado a
- * propósito porque el envío real ocurre acá, en el sweep del worker, no en
- * apps/api (mismo patrón de duplicación mínima ya usado para
- * SUNAT/Gemini). Si algo cambia de un lado hay que actualizar el otro.
+ * Espejo de `AdminService.resolveEmailAudience` (apps/api/src/modules/admin/admin.service.ts)
+ * — duplicado a propósito porque el envío real ocurre acá, en el sweep del
+ * worker, no en apps/api (mismo patrón de duplicación mínima ya usado para
+ * SUNAT/Gemini). SI TOCAS UNO, TOCA EL OTRO — hasta ahora este solo
+ * implementaba 4 de los 9 filtros (courseIds/enrollmentStatus/countries/
+ * globalRole/excludeRecentPurchaseDays quedaban silenciosamente
+ * ignorados al enviar de verdad, aunque la vista previa del admin sí los
+ * aplicaba) — bug real de auditoría, corregido acá con el mismo algoritmo
+ * exacto que usa admin.service.ts.
  */
 async function resolveAudience(filter: AudienceFilter | null | undefined) {
   let enrolledUserIds: string[] | undefined;
-  if (filter?.areaIds?.length) {
+  if (filter?.areaIds?.length || filter?.courseIds?.length) {
     const rows = await prisma.enrollment.findMany({
-      where: { course: { areaId: { in: filter.areaIds } } },
+      where: {
+        OR: [
+          ...(filter?.areaIds?.length ? [{ course: { areaId: { in: filter.areaIds } } }] : []),
+          ...(filter?.courseIds?.length ? [{ courseId: { in: filter.courseIds } }] : []),
+        ],
+      },
       select: { userId: true },
       distinct: ["userId"],
     });
@@ -52,13 +67,49 @@ async function resolveAudience(filter: AudienceFilter | null | undefined) {
     inactiveBeforeUserIds = all.map((u) => u.id).filter((id) => !activeIds.has(id));
   }
 
+  // "Los que están llevando un curso o más, los que ya culminaron y no
+  // están llevando nada, los que aún no han llevado ninguno" — mismo
+  // criterio que admin.service.ts (semáforo de /admin/usuarios).
+  let enrollmentStatusUserIds: string[] | undefined;
+  if (filter?.enrollmentStatus && filter.enrollmentStatus !== "ANY") {
+    const rows = await prisma.enrollment.groupBy({ by: ["userId", "status"] });
+    const byUser = new Map<string, Set<string>>();
+    for (const r of rows) {
+      (byUser.get(r.userId) ?? byUser.set(r.userId, new Set()).get(r.userId)!).add(r.status);
+    }
+    const allUsers = await prisma.user.findMany({ where: { status: "active" }, select: { id: true } });
+    enrollmentStatusUserIds = allUsers
+      .map((u) => u.id)
+      .filter((id) => {
+        const statuses = byUser.get(id);
+        if (filter.enrollmentStatus === "NONE") return !statuses || statuses.size === 0;
+        if (filter.enrollmentStatus === "HAS_ACTIVE") return Boolean(statuses?.has("ACTIVE"));
+        return Boolean(statuses && statuses.size > 0 && statuses.has("COMPLETED") && !statuses.has("ACTIVE"));
+      });
+  }
+
+  let recentPurchaserIds: string[] | undefined;
+  if (filter?.excludeRecentPurchaseDays) {
+    const cutoff = new Date(Date.now() - filter.excludeRecentPurchaseDays * 24 * 60 * 60 * 1000);
+    const rows = await prisma.order.findMany({
+      where: { status: "PAID", createdAt: { gte: cutoff } },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    recentPurchaserIds = rows.map((r) => r.userId);
+  }
+
   return prisma.user.findMany({
     where: {
       status: "active",
       marketingConsentEmail: true,
+      globalRole: (filter?.globalRole as never) ?? undefined,
       ...(enrolledUserIds ? { id: { in: enrolledUserIds } } : {}),
       ...(inactiveBeforeUserIds ? { id: { in: inactiveBeforeUserIds } } : {}),
+      ...(enrollmentStatusUserIds ? { id: { in: enrollmentStatusUserIds } } : {}),
+      ...(recentPurchaserIds?.length ? { id: { notIn: recentPurchaserIds } } : {}),
       ...(filter?.interests?.length ? { interests: { hasSome: filter.interests } } : {}),
+      ...(filter?.countries?.length ? { country: { in: filter.countries } } : {}),
       ...(filter?.companyId ? { companyMemberships: { some: { companyId: filter.companyId } } } : {}),
     },
     select: { id: true, email: true, firstName: true, interests: true },

@@ -130,6 +130,7 @@ model User {
   courseRatings         CourseRating[]
   royaltyRecipient      RoyaltyRecipient[]
   scormThemePresets     ScormThemePreset[]
+  mailingLists          MailingList[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
@@ -2151,6 +2152,24 @@ model ScormThemePreset {
   createdById String?
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
+}
+
+// "También debería de poderse crear listas de correo... y poderlas
+// reutilizar, actualizar, borrar" — audiencia de marketing guardada y
+// reutilizable entre campañas (antes el filtro solo vivía suelto dentro
+// de cada EmailCampaign.audienceFilter, sin forma de reusarlo). `filter`
+// es el mismo shape que emailAudienceFilterSchema/EmailCampaign.audienceFilter
+// (null = todos los activos con consentimiento de marketing). A diferencia
+// de ScormThemePreset, esta sí se edita después de creada (updatedAt).
+model MailingList {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  filter      Json?
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model CourseRoyalty {
