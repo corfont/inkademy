@@ -12,6 +12,7 @@ import { decimalToString } from "../../common/utils/money";
 import { CalendarService } from "../calendar/calendar.service";
 import { NotificationService } from "../notification/notification.service";
 import { EnrollmentService } from "../enrollment/enrollment.service";
+import { CommerceService } from "../commerce/commerce.service";
 
 @Injectable()
 export class CompaniesService {
@@ -20,6 +21,7 @@ export class CompaniesService {
     private readonly calendarService: CalendarService,
     private readonly notifications: NotificationService,
     private readonly enrollmentService: EnrollmentService,
+    private readonly commerceService: CommerceService,
   ) {}
 
   async create(userId: string, input: CreateCompanyInput) {
@@ -469,6 +471,15 @@ export class CompaniesService {
   async respondToQuote(quoteId: string, input: RespondToQuoteInput) {
     const quote = await this.prisma.quote.findUnique({ where: { id: quoteId } });
     if (!quote) throw new NotFoundException("Cotización no encontrada");
+    // "¿Se puede reescribir el monto/cupos de una cotización que la empresa
+    // ya aceptó y que ya se convirtió en cupos reales (CompanySeatPool)?" —
+    // hallazgo de auditoría: sin este chequeo, sí — dejando el registro de
+    // la cotización desalineado con lo que de verdad se entregó. Una vez
+    // convertida, cualquier ajuste real (más cupos, otro precio) debe ser
+    // una cotización NUEVA, no una edición retroactiva de esta.
+    if (quote.convertedSeatPoolId) {
+      throw new BadRequestException("Esta cotización ya se convirtió en cupos reales — no se puede reescribir. Crea una cotización nueva si el monto/cantidad cambió.");
+    }
     const updated = await this.prisma.quote.update({
       where: { id: quoteId },
       data: {
@@ -509,6 +520,16 @@ export class CompaniesService {
    * cupos B2B reales (mismo `createSeatPool` que usa el alta manual) — sin
    * esto, aceptar una cotización no tenía ningún efecto real en el sistema,
    * era solo una etiqueta.
+   *
+   * "¿Qué pasa con el monto real que se negoció?" — hallazgo de auditoría:
+   * antes esto solo creaba el CompanySeatPool, sin dejar NINGÚN registro de
+   * Order/Payment — la venta (con dinero real, a diferencia de grantFree,
+   * que es deliberadamente gratis) no aparecía en ningún reporte de
+   * ingresos y nunca generaba comprobante SUNAT, un incumplimiento fiscal
+   * real, no solo un problema de reportes. Ahora se registra como una Order
+   * PAID con un Payment provider=MANUAL (el cobro ya ocurrió fuera de
+   * pasarela — transferencia/cotización negociada) y se factura igual que
+   * cualquier otra orden pagada.
    */
   async convertQuoteToSeatPool(quoteId: string) {
     const quote = await this.prisma.quote.findUnique({ where: { id: quoteId } });
@@ -518,6 +539,12 @@ export class CompaniesService {
     if (!quote.seatsQuoted || (!quote.courseId && !quote.programId)) {
       throw new BadRequestException("A esta cotización le falta el curso/programa o la cantidad de cupos para poder convertirla");
     }
+    if (quote.amount == null) {
+      throw new BadRequestException("A esta cotización le falta el monto — fíjalo antes de convertirla.");
+    }
+    const company = await this.prisma.company.findUnique({ where: { id: quote.companyId } });
+    if (!company) throw new NotFoundException("Empresa no encontrada");
+
     const pool = await this.createSeatPool(quote.companyId, {
       offeringKind: quote.courseId ? "COURSE" : "PROGRAM",
       courseId: quote.courseId ?? undefined,
@@ -525,7 +552,53 @@ export class CompaniesService {
       seatsPurchased: quote.seatsQuoted,
       expiresAt: quote.validUntil ?? undefined,
     });
+
+    const currency = quote.currency ?? "PEN";
+    const total = quote.amount;
+    const unitPrice = Number(total) / quote.seatsQuoted;
+    const order = await this.prisma.order.create({
+      data: {
+        userId: quote.requestedByUserId,
+        companyId: quote.companyId,
+        subtotal: total,
+        total,
+        currency,
+        status: "PAID",
+        // Factura a nombre de la empresa (RUC/razón social) — mismo criterio
+        // que CommerceService.resolveBuyerInfo para una compra con companyId.
+        buyerDocumentType: "6",
+        buyerDocumentNumber: company.taxId,
+        buyerLegalName: company.legalName,
+        buyerCountry: company.country,
+        items: {
+          create: {
+            offeringKind: quote.courseId ? "COURSE" : "PROGRAM",
+            courseId: quote.courseId,
+            programId: quote.programId,
+            seatPoolQty: quote.seatsQuoted,
+            unitPrice,
+            quantity: quote.seatsQuoted,
+          },
+        },
+        payments: {
+          create: {
+            provider: "MANUAL",
+            status: "SUCCEEDED",
+            amount: total,
+            currency,
+            paidAt: new Date(),
+          },
+        },
+      },
+    });
+
     await this.prisma.quote.update({ where: { id: quoteId }, data: { convertedSeatPoolId: pool.id } });
+
+    // No debe tumbar la conversión (los cupos YA son reales en este punto) —
+    // mismo criterio de "nunca lanza" que createElectronicInvoiceIfNeeded ya
+    // documenta para el checkout normal.
+    await this.commerceService.createElectronicInvoiceIfNeeded(order);
+
     return pool;
   }
 }

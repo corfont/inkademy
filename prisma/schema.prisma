@@ -1400,6 +1400,12 @@ enum PaymentProviderType {
   CULQI
   STRIPE
   PAYPAL
+  // Venta B2B negociada fuera de pasarela (cotización aceptada, transferencia
+  // bancaria) — ver CompaniesService.convertQuoteToSeatPool. El pago ya
+  // ocurrió por fuera; esto solo lo registra para que la venta SÍ quede en
+  // los reportes de ingresos y genere su comprobante SUNAT, como cualquier
+  // otra orden pagada.
+  MANUAL
 }
 
 enum PaymentStatus {

@@ -1658,10 +1658,21 @@ export class AdminService {
     // legítima), se avisa explícitamente si ya existe una para este
     // docente+periodo exacto, para que sea una decisión consciente y no un
     // duplicado accidental.
-    const existing = await this.prisma.teacherLiquidation.findFirst({ where: { teacherId: input.teacherId, periodStart, periodEnd } });
-    if (existing) {
+    //
+    // El chequeo original solo comparaba fechas EXACTAMENTE iguales — generar
+    // 1-15 ene y después 1-31 ene (o 10-31 ene) no lo detectaba, y las
+    // sesiones del solape (1-15 ene) se pagaban dos veces sin ningún aviso.
+    // Ahora se detecta cualquier RANGO que se superponga (no solo el idéntico):
+    // dos periodos [a,b] y [c,d] se solapan si a<=d Y c<=b.
+    const overlapping = await this.prisma.teacherLiquidation.findFirst({
+      where: { teacherId: input.teacherId, periodStart: { lte: periodEnd }, periodEnd: { gte: periodStart } },
+    });
+    if (overlapping) {
+      const exact = overlapping.periodStart.getTime() === periodStart.getTime() && overlapping.periodEnd.getTime() === periodEnd.getTime();
       throw new BadRequestException(
-        `Ya existe una liquidación para este docente en este periodo exacto (id ${existing.id}, estado ${existing.status}). Si la tarifa cambió después de generarla, corrígela ahí en vez de crear una segunda.`,
+        exact
+          ? `Ya existe una liquidación para este docente en este periodo exacto (id ${overlapping.id}, estado ${overlapping.status}). Si la tarifa cambió después de generarla, corrígela ahí en vez de crear una segunda.`
+          : `Ya existe una liquidación para este docente que se superpone con este periodo (id ${overlapping.id}, del ${overlapping.periodStart.toLocaleDateString("es-PE", { timeZone: "UTC" })} al ${overlapping.periodEnd.toLocaleDateString("es-PE", { timeZone: "UTC" })}, estado ${overlapping.status}) — generar esta pagaría dos veces las sesiones del solape.`,
       );
     }
 

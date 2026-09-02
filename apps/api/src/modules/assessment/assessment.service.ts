@@ -842,8 +842,30 @@ export class AssessmentService {
     });
   }
 
+  /**
+   * "El peso de los exámenes de un curso puede sumar más de 100% sin que
+   * nada lo valide" — hallazgo de auditoría: updateAssessment ya lo
+   * validaba, createAssessment no (alcanzable directo por API aunque el
+   * builder del admin solo fija el peso al editar, nunca al crear).
+   */
+  private async assertWeightPercentFits(courseId: string, excludeAssessmentId: string | null, newWeight: number): Promise<void> {
+    const others = await this.prisma.assessment.findMany({
+      where: { courseId, archived: false, ...(excludeAssessmentId ? { id: { not: excludeAssessmentId } } : {}) },
+      select: { weightPercent: true },
+    });
+    const othersSum = others.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0);
+    if (othersSum + newWeight > 100.01) {
+      throw new BadRequestException(
+        `La suma de los pesos del curso superaría 100% (los demás exámenes ya suman ${othersSum}%, quedan ${Math.max(0, 100 - othersSum)}% disponibles).`,
+      );
+    }
+  }
+
   async createAssessment(courseId: string, input: Record<string, unknown>, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
+    if (Object.prototype.hasOwnProperty.call(input, "weightPercent") && input.weightPercent != null) {
+      await this.assertWeightPercentFits(courseId, null, input.weightPercent as number);
+    }
     // "Si ya hay una regla de nota mínima para el certificado, no debería
     // repetirse cada vez que hago un examen" — un examen nuevo hereda por
     // defecto la nota mínima ya configurada a nivel curso (ApprovalRule),
@@ -890,17 +912,8 @@ export class AssessmentService {
     if (Object.prototype.hasOwnProperty.call(input, "weightPercent")) {
       const current = await this.prisma.assessment.findUnique({ where: { id }, select: { courseId: true } });
       if (!current) throw new NotFoundException("Evaluación no encontrada");
-      const others = await this.prisma.assessment.findMany({
-        where: { courseId: current.courseId, archived: false, id: { not: id } },
-        select: { weightPercent: true },
-      });
-      const othersSum = others.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0);
       const newWeight = (input.weightPercent as number | null | undefined) ?? 0;
-      if (othersSum + newWeight > 100.01) {
-        throw new BadRequestException(
-          `La suma de los pesos del curso superaría 100% (los demás exámenes ya suman ${othersSum}%, quedan ${Math.max(0, 100 - othersSum)}% disponibles).`,
-        );
-      }
+      await this.assertWeightPercentFits(current.courseId, id, newWeight);
     }
     return this.prisma.assessment.update({ where: { id }, data: input as never });
   }

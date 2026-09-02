@@ -440,7 +440,10 @@ export class CommerceService {
     return settings?.[field] ?? process.env[envKey] ?? fallbackDefault;
   }
 
-  private async createElectronicInvoiceIfNeeded(order: {
+  // Público (no solo interno de checkout/webhook) — CompaniesService.convertQuoteToSeatPool
+  // también lo necesita para la venta B2B que factura al convertir una
+  // cotización aceptada, fuera del flujo normal de checkout.
+  async createElectronicInvoiceIfNeeded(order: {
     id: string;
     total: Prisma.Decimal;
     currency: string;
