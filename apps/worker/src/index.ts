@@ -12,9 +12,9 @@ const rootEnv = join(__dirname, "../../../.env");
 dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
 
 import { Worker, type Job } from "bullmq";
-import { INVOICE_JOBS, QUEUE_NAMES, REMINDER_SWEEP_JOB, EMAIL_CAMPAIGN_SWEEP_JOB } from "./queues";
+import { INVOICE_JOBS, QUEUE_NAMES, REMINDER_SWEEP_JOB, EMAIL_CAMPAIGN_SWEEP_JOB, BACKUP_JOBS } from "./queues";
 import { createRedisConnection } from "./lib/redis";
-import { reminderQueue } from "./lib/queue-client";
+import { reminderQueue, backupQueue } from "./lib/queue-client";
 import { createLogger } from "./lib/logger";
 import { processEmailJob } from "./processors/email.processor";
 import { processCertificateGenerateJob } from "./processors/certificate.processor";
@@ -26,6 +26,7 @@ import { processInvoiceGenerateNoteJob } from "./processors/credit-note.processo
 import { processSuggestionAutoRespondJob } from "./processors/suggestion.processor";
 import { processSubtitlesGenerateJob } from "./processors/subtitles.processor";
 import { processExpireAttemptJob } from "./processors/assessment-expiry.processor";
+import { processBackupGenerateJob } from "./processors/backup.processor";
 
 /**
  * La cola "invoice" tiene dos jobs (boleta/factura y nota de crédito/
@@ -68,6 +69,10 @@ const workers: Worker[] = [
   // ancho de banda de subida sin ganar nada.
   new Worker(QUEUE_NAMES.SUBTITLES, processSubtitlesGenerateJob, { connection, concurrency: 1 }),
   new Worker(QUEUE_NAMES.ASSESSMENT_EXPIRY, processExpireAttemptJob, { connection, concurrency: 5 }),
+  // Concurrencia 1 a propósito: un backup completo ya recorre las 64 tablas
+  // y sube un zip — dos corriendo a la vez no aportan nada y sí compiten
+  // por memoria/ancho de banda.
+  new Worker(QUEUE_NAMES.BACKUP, processBackupGenerateJob, { connection, concurrency: 1 }),
 ];
 
 workers.forEach((worker, i) => attachLifecycleLogs(worker, Object.values(QUEUE_NAMES)[i]));
@@ -98,6 +103,27 @@ async function registerEmailCampaignSweep(): Promise<void> {
 registerEmailCampaignSweep()
   .then(() => logger.info("sweep de campañas de correo programado", { everyMs: EMAIL_CAMPAIGN_SWEEP_INTERVAL_MS }))
   .catch((err) => logger.error("no se pudo programar el sweep de campañas de correo", { err: String(err) }));
+
+const BACKUP_WEEKLY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
+
+/**
+ * A diferencia de reminder.sweep/email-campaign.sweep (que escanean la DB
+ * en cada tick para decidir qué está "vencido"), un backup no necesita
+ * lógica adicional — es simplemente "correr esto cada N días", así que se
+ * usa el propio scheduler de repetición de BullMQ (`repeat`) sobre la cola
+ * "backup" en vez de un setInterval + add manual.
+ */
+async function registerBackupWeeklySweep(): Promise<void> {
+  await backupQueue().add(
+    BACKUP_JOBS.GENERATE,
+    { trigger: "SCHEDULED" },
+    { repeat: { every: BACKUP_WEEKLY_INTERVAL_MS }, jobId: "backup-weekly" },
+  );
+}
+
+registerBackupWeeklySweep()
+  .then(() => logger.info("backup semanal programado", { everyMs: BACKUP_WEEKLY_INTERVAL_MS }))
+  .catch((err) => logger.error("no se pudo programar el backup semanal", { err: String(err) }));
 
 logger.info("Inkademy worker iniciado", { queues: Object.values(QUEUE_NAMES), redisUrl: process.env.REDIS_URL });
 

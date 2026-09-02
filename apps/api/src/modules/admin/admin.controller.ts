@@ -683,42 +683,48 @@ export class AdminController {
   @Patch("partner-institutions/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Edita una institución socia" })
-  updatePartnerInstitution(@Param("id") id: string, @Body(new ZodValidationPipe(upsertPartnerInstitutionSchema.partial())) dto: any) {
-    return this.adminService.updatePartnerInstitution(id, dto);
+  updatePartnerInstitution(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(upsertPartnerInstitutionSchema.partial())) dto: any,
+  ) {
+    return this.adminService.updatePartnerInstitution(id, dto, user.id);
   }
 
   @Delete("partner-institutions/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Elimina una institución socia (y sus asociaciones a cursos)" })
-  deletePartnerInstitution(@Param("id") id: string) {
-    return this.adminService.deletePartnerInstitution(id);
+  deletePartnerInstitution(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.deletePartnerInstitution(id, user.id);
   }
 
   @Post("partner-institutions/:id/courses")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Asocia un curso a un convenio (3ra firma en el certificado + costo en finanzas)" })
   addCoursePartnership(
+    @CurrentUser() user: RequestUser,
     @Param("id") partnerInstitutionId: string,
     @Body(new ZodValidationPipe(addCoursePartnershipSchema)) dto: { courseId: string; startDate?: string; endDate?: string },
   ) {
-    return this.adminService.addCoursePartnership({ ...dto, partnerInstitutionId });
+    return this.adminService.addCoursePartnership({ ...dto, partnerInstitutionId }, user.id);
   }
 
   @Delete("partner-institutions/course-partnerships/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Desasocia un curso de un convenio" })
-  removeCoursePartnership(@Param("id") id: string) {
-    return this.adminService.removeCoursePartnership(id);
+  removeCoursePartnership(@CurrentUser() user: RequestUser, @Param("id") id: string) {
+    return this.adminService.removeCoursePartnership(id, user.id);
   }
 
   @Patch("partner-institutions/course-partnerships/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Renueva o extiende el plazo de un convenio ya asignado a un curso" })
   updateCoursePartnership(
+    @CurrentUser() user: RequestUser,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateCoursePartnershipSchema)) dto: { startDate?: string | null; endDate?: string | null },
   ) {
-    return this.adminService.updateCoursePartnership(id, dto);
+    return this.adminService.updateCoursePartnership(id, dto, user.id);
   }
 
   // --- Reporte de horas dictadas (conexión/desconexión en clases en vivo) ---
@@ -1256,5 +1262,49 @@ export class AdminController {
   @ApiOperation({ summary: "Bloquea/restaura el permiso de edición de un docente sobre este curso, sin desasignarlo" })
   setCourseStaffCanEdit(@Param("id") id: string, @Body() dto: { canEdit: boolean }) {
     return this.adminService.setCourseStaffCanEdit(id, dto.canEdit);
+  }
+
+  // --- Backups descargables ---
+
+  @Get("backups")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Lista el historial de backups completos generados" })
+  listBackups() {
+    return this.adminService.listBackups();
+  }
+
+  @Post("backups/generate")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Encola la generación de un backup completo ahora mismo" })
+  generateBackupNow(@CurrentUser() user: RequestUser) {
+    return this.adminService.generateBackupNow(user.id);
+  }
+
+  @Get("backups/:id/download-url")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "URL firmada (15 min) para descargar un backup ya generado" })
+  getBackupDownloadUrl(@Param("id") id: string) {
+    return this.adminService.getBackupDownloadUrl(id);
+  }
+
+  // --- Auditoría genérica ---
+
+  @Get("audit-log")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Bucea en el histórico de acciones administrativas (AuditLog), con filtros" })
+  listAuditLog(
+    @Query("entity") entity?: string,
+    @Query("action") action?: string,
+    @Query("actorId") actorId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+  ) {
+    return this.adminService.listAuditLog(
+      { entity, action, actorId, from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined },
+      Number(page) || undefined,
+      Number(pageSize) || undefined,
+    );
   }
 }

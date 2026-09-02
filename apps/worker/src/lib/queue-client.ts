@@ -22,3 +22,4 @@ export const certificateQueue = () => getQueue(QUEUE_NAMES.CERTIFICATE);
 export const reminderQueue = () => getQueue(QUEUE_NAMES.REMINDER);
 export const attendanceSyncQueue = () => getQueue(QUEUE_NAMES.ATTENDANCE_SYNC);
 export const recommendationQueue = () => getQueue(QUEUE_NAMES.RECOMMENDATION);
+export const backupQueue = () => getQueue(QUEUE_NAMES.BACKUP);

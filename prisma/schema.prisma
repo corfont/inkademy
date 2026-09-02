@@ -131,6 +131,7 @@ model User {
   royaltyRecipient      RoyaltyRecipient[]
   scormThemePresets     ScormThemePreset[]
   mailingLists          MailingList[]
+  backupsTriggered      BackupRecord[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
@@ -2184,4 +2185,35 @@ model CourseRoyalty {
 
   @@unique([courseId, royaltyRecipientId])
   @@index([courseId])
+}
+
+enum BackupStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum BackupTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+// "Toda la base de datos... que si se pierde lo pueda recuperar, o si me
+// hacen alguna auditoría lo pueda sustentar" — un export completo de todos
+// los modelos (vía Prisma.dmmf, ver apps/worker/src/lib/backup.ts) más los
+// binarios chicos y con valor legal (certificados, firmas de convenios,
+// facturas electrónicas), empaquetado en un zip subido a S3/MinIO.
+model BackupRecord {
+  id            String        @id @default(uuid())
+  trigger       BackupTrigger
+  status        BackupStatus  @default(PENDING)
+  triggeredById String?
+  triggeredBy   User?         @relation(fields: [triggeredById], references: [id], onDelete: SetNull)
+  s3Key         String?
+  sizeBytes     Int?
+  modelCounts   Json?
+  errorMessage  String?
+  createdAt     DateTime      @default(now())
+  finishedAt    DateTime?
 }

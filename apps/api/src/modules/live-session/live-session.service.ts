@@ -5,6 +5,7 @@ import type { Queue } from "bullmq";
 import type { PrismaClient, VirtualClassroomProviderType } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { ATTENDANCE_SYNC_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
+import { logAudit } from "../admin/audit-log.util";
 import { CalendarService } from "../calendar/calendar.service";
 import { NotificationService } from "../notification/notification.service";
 import { TeamsProvider } from "./providers/teams.provider";
@@ -247,9 +248,7 @@ export class LiveSessionService {
       throw new BadRequestException("Esta sesión ya finalizó o ya está cancelada");
     }
     const updated = await this.prisma.liveSession.update({ where: { id: liveSessionId }, data: { status: "CANCELLED" } });
-    await this.prisma.auditLog.create({
-      data: { actorId, action: "LIVE_SESSION_CANCEL", entity: "LiveSession", entityId: liveSessionId, after: { reason } },
-    });
+    await logAudit(this.prisma, { actorId, action: "LIVE_SESSION_CANCEL", entity: "LiveSession", entityId: liveSessionId, after: { reason } });
     return updated;
   }
 
@@ -333,15 +332,13 @@ export class LiveSessionService {
 
     await this.calendarService.rescheduleLiveSessionEvents(liveSessionId, input.startsAt, input.endsAt);
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "LIVE_SESSION_RESCHEDULE",
-        entity: "LiveSession",
-        entityId: liveSessionId,
-        before: { startsAt: previousStartsAt.toISOString(), endsAt: previousEndsAt.toISOString() },
-        after: { startsAt: input.startsAt.toISOString(), endsAt: input.endsAt.toISOString(), reason: input.reason },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "LIVE_SESSION_RESCHEDULE",
+      entity: "LiveSession",
+      entityId: liveSessionId,
+      before: { startsAt: previousStartsAt.toISOString(), endsAt: previousEndsAt.toISOString() },
+      after: { startsAt: input.startsAt.toISOString(), endsAt: input.endsAt.toISOString(), reason: input.reason },
     });
 
     const enrollments = await this.prisma.enrollment.findMany({

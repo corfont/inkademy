@@ -17,6 +17,7 @@ export const QUEUE_NAMES = {
   SUGGESTION: "suggestion",
   SUBTITLES: "subtitles",
   ASSESSMENT_EXPIRY: "assessment-expiry",
+  BACKUP: "backup",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -90,3 +91,19 @@ export const SUBTITLES_JOBS = {
 export const ASSESSMENT_EXPIRY_JOBS = {
   EXPIRE_ATTEMPT: "assessment-expiry.expire-attempt",
 } as const;
+
+// --- Jobs de la cola "backup" ---
+// "Toda la base de datos... que si se pierde lo pueda recuperar" — cola
+// propia (no la de "reminder") porque un backup completo es un trabajo
+// pesado y esporádico, no encaja en el switch de sweeps livianos. apps/api
+// solo encola (botón "Generar backup ahora" en AdminService); el worker
+// arma el zip y lo sube, y además se autoprograma un disparo semanal (ver
+// apps/worker/src/index.ts) que apps/api no necesita conocer.
+export const BACKUP_JOBS = {
+  GENERATE: "backup.generate",
+} as const;
+
+export interface BackupGenerateJobData {
+  trigger: "MANUAL" | "SCHEDULED";
+  triggeredById?: string;
+}

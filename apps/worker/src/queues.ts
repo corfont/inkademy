@@ -23,6 +23,7 @@ export const QUEUE_NAMES = {
   SUGGESTION: "suggestion",
   SUBTITLES: "subtitles",
   ASSESSMENT_EXPIRY: "assessment-expiry",
+  BACKUP: "backup",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -234,4 +235,20 @@ export const ASSESSMENT_EXPIRY_JOBS = {
 
 export interface ExpireAttemptJobData {
   attemptId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cola "backup" — mirror de BACKUP_JOBS. apps/api encola esto solo con
+// {trigger: "MANUAL", triggeredById} desde el botón "Generar backup ahora".
+// El worker además se autoprograma un job repetible ("backup-weekly", no
+// expuesto a apps/api, mismo criterio que reminder.sweep) que encola
+// {trigger: "SCHEDULED"} cada 7 días. Ver processors/backup.processor.ts.
+// ---------------------------------------------------------------------------
+export const BACKUP_JOBS = {
+  GENERATE: "backup.generate",
+} as const;
+
+export interface BackupGenerateJobData {
+  trigger: "MANUAL" | "SCHEDULED";
+  triggeredById?: string;
 }

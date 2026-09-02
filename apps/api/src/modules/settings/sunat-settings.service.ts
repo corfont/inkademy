@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { logAudit } from "../admin/audit-log.util";
 
 const SETTINGS_ID = "default";
 
@@ -79,14 +80,12 @@ export class SunatSettingsService {
     // "Un cambio al RUC, la clave SOL, el certificado, o el % de IGV no
     // deja registro de quién lo hizo" — hallazgo de auditoría. Nunca se
     // guardan los secretos en el log, solo qué campos cambiaron.
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "SUNAT_SETTINGS_UPDATE",
-        entity: "SunatSettings",
-        entityId: SETTINGS_ID,
-        after: { changedFields: Object.keys(input) },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "SUNAT_SETTINGS_UPDATE",
+      entity: "SunatSettings",
+      entityId: SETTINGS_ID,
+      after: { changedFields: Object.keys(input) },
     });
     return this.get();
   }

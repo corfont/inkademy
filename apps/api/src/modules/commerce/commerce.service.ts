@@ -13,6 +13,7 @@ import type { CancelOrderInput, CheckoutInput, CheckoutResult } from "@inkademy/
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { INVOICE_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
+import { logAudit } from "../admin/audit-log.util";
 import { NotificationService } from "../notification/notification.service";
 import { CalendarService } from "../calendar/calendar.service";
 import { EnrollmentService } from "../enrollment/enrollment.service";
@@ -611,15 +612,13 @@ export class CommerceService {
       { attempts: 3, backoff: { type: "exponential", delay: 15000 }, removeOnComplete: true },
     );
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "ORDER_CANCEL_REFUND",
-        entity: "Order",
-        entityId: order.id,
-        before: { status: order.status, total: decimalToString(order.total) },
-        after: { status: "REFUNDED", reasonCode: input.reasonCode, reasonDescription: input.reasonDescription, creditNoteId: note.id },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "ORDER_CANCEL_REFUND",
+      entity: "Order",
+      entityId: order.id,
+      before: { status: order.status, total: decimalToString(order.total) },
+      after: { status: "REFUNDED", reasonCode: input.reasonCode, reasonDescription: input.reasonDescription, creditNoteId: note.id },
     });
 
     return { orderId: order.id, status: "REFUNDED" as const, noteId: note.id };
@@ -688,15 +687,13 @@ export class CommerceService {
         : []),
     ]);
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "ORDER_CANCEL_TEST",
-        entity: "Order",
-        entityId: order.id,
-        before: { status: order.status },
-        after: { status: "CANCELLED", cancelledEnrollmentIds: relatedEnrollments.map((e) => e.id) },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "ORDER_CANCEL_TEST",
+      entity: "Order",
+      entityId: order.id,
+      before: { status: order.status },
+      after: { status: "CANCELLED", cancelledEnrollmentIds: relatedEnrollments.map((e) => e.id) },
     });
 
     return { orderId: order.id, status: "CANCELLED" as const, cancelledEnrollmentIds: relatedEnrollments.map((e) => e.id) };
@@ -750,15 +747,13 @@ export class CommerceService {
         });
       }
 
-      await this.prisma.auditLog.create({
-        data: {
-          actorId,
-          companyId: input.companyId,
-          action: "GRANT_FREE_ACCESS",
-          entity: input.offeringKind === "COURSE" ? "Course" : "Program",
-          entityId: courseId ?? programId,
-          after: { companyId: input.companyId, seatPoolQty: input.seatPoolQty, note: input.note },
-        },
+      await logAudit(this.prisma, {
+        actorId,
+        companyId: input.companyId,
+        action: "GRANT_FREE_ACCESS",
+        entity: input.offeringKind === "COURSE" ? "Course" : "Program",
+        entityId: courseId ?? programId,
+        after: { companyId: input.companyId, seatPoolQty: input.seatPoolQty, note: input.note },
       });
 
       return { granted: "COMPANY_SEATS" as const, companyId: input.companyId, seatPoolQty: input.seatPoolQty };
@@ -788,14 +783,12 @@ export class CommerceService {
       }
     }
 
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "GRANT_FREE_ACCESS",
-        entity: input.offeringKind === "COURSE" ? "Course" : "Program",
-        entityId: courseId ?? programId,
-        after: { userId, note: input.note },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "GRANT_FREE_ACCESS",
+      entity: input.offeringKind === "COURSE" ? "Course" : "Program",
+      entityId: courseId ?? programId,
+      after: { userId, note: input.note },
     });
 
     await this.notifications.sendFreeAccessGranted(user.email, title, userId);

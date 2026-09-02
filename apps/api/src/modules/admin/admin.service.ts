@@ -7,7 +7,8 @@ import type { PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
-import { QUEUE_NAMES, SUBTITLES_JOBS } from "../../common/queues/queue.constants";
+import { QUEUE_NAMES, SUBTITLES_JOBS, BACKUP_JOBS } from "../../common/queues/queue.constants";
+import { logAudit } from "./audit-log.util";
 import { StorageService } from "../../storage/storage.service";
 import { NotificationService } from "../notification/notification.service";
 import { buildFinancialReportPdf } from "./finance-report.pdf";
@@ -19,6 +20,7 @@ export class AdminService {
     private readonly storageService: StorageService,
     private readonly notificationService: NotificationService,
     @InjectQueue(QUEUE_NAMES.SUBTITLES) private readonly subtitlesQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.BACKUP) private readonly backupQueue: Queue,
   ) {}
 
   async getKpis() {
@@ -960,17 +962,26 @@ export class AdminService {
     return this.prisma.partnerInstitution.create({ data: input as never });
   }
 
-  updatePartnerInstitution(id: string, input: Record<string, unknown>) {
-    return this.prisma.partnerInstitution.update({ where: { id }, data: input as never });
+  // "Los convenios" — antes sin ninguna auditoría pese a afectar el estado
+  // de resultados (getPartnerInstitutionCosts) y la firma que aparece en
+  // los certificados; ver plan de backups/auditoría. Update/delete piden el
+  // "antes" con un findUnique previo (antes iban directo a la mutación).
+  async updatePartnerInstitution(id: string, input: Record<string, unknown>, actorId?: string) {
+    const before = await this.prisma.partnerInstitution.findUnique({ where: { id } });
+    const updated = await this.prisma.partnerInstitution.update({ where: { id }, data: input as never });
+    await logAudit(this.prisma, { actorId, action: "PARTNER_INSTITUTION_UPDATE", entity: "PartnerInstitution", entityId: id, before: before as never, after: input });
+    return updated;
   }
 
-  async deletePartnerInstitution(id: string) {
+  async deletePartnerInstitution(id: string, actorId?: string) {
+    const before = await this.prisma.partnerInstitution.findUnique({ where: { id } });
     await this.prisma.partnerInstitution.delete({ where: { id } });
+    await logAudit(this.prisma, { actorId, action: "PARTNER_INSTITUTION_DELETE", entity: "PartnerInstitution", entityId: id, before: before as never });
     return { deleted: true };
   }
 
-  addCoursePartnership(input: { courseId: string; partnerInstitutionId: string; startDate?: string; endDate?: string }) {
-    return this.prisma.coursePartnership.create({
+  async addCoursePartnership(input: { courseId: string; partnerInstitutionId: string; startDate?: string; endDate?: string }, actorId?: string) {
+    const created = await this.prisma.coursePartnership.create({
       data: {
         courseId: input.courseId,
         partnerInstitutionId: input.partnerInstitutionId,
@@ -978,22 +989,29 @@ export class AdminService {
         endDate: input.endDate ? new Date(input.endDate) : undefined,
       },
     });
+    await logAudit(this.prisma, { actorId, action: "COURSE_PARTNERSHIP_ADD", entity: "CoursePartnership", entityId: created.id, after: input });
+    return created;
   }
 
-  async removeCoursePartnership(id: string) {
+  async removeCoursePartnership(id: string, actorId?: string) {
+    const before = await this.prisma.coursePartnership.findUnique({ where: { id } });
     await this.prisma.coursePartnership.delete({ where: { id } });
+    await logAudit(this.prisma, { actorId, action: "COURSE_PARTNERSHIP_REMOVE", entity: "CoursePartnership", entityId: id, before: before as never });
     return { deleted: true };
   }
 
   /** "Los convenios se pueden renovar, extender su plazo" — actualiza el rango de fechas de un curso ya asignado a un convenio. */
-  updateCoursePartnership(id: string, input: { startDate?: string | null; endDate?: string | null }) {
-    return this.prisma.coursePartnership.update({
+  async updateCoursePartnership(id: string, input: { startDate?: string | null; endDate?: string | null }, actorId?: string) {
+    const before = await this.prisma.coursePartnership.findUnique({ where: { id } });
+    const updated = await this.prisma.coursePartnership.update({
       where: { id },
       data: {
         ...(input.startDate !== undefined ? { startDate: input.startDate ? new Date(input.startDate) : null } : {}),
         ...(input.endDate !== undefined ? { endDate: input.endDate ? new Date(input.endDate) : null } : {}),
       },
     });
+    await logAudit(this.prisma, { actorId, action: "COURSE_PARTNERSHIP_UPDATE", entity: "CoursePartnership", entityId: id, before: before as never, after: input });
+    return updated;
   }
 
   /**
@@ -1272,9 +1290,7 @@ export class AdminService {
     // mayor, no algo para forzar en el mismo cambio.
     const before = await this.prisma.royaltyRecipient.findUnique({ where: { id } });
     await this.prisma.royaltyRecipient.delete({ where: { id } });
-    await this.prisma.auditLog.create({
-      data: { actorId, action: "ROYALTY_RECIPIENT_DELETE", entity: "RoyaltyRecipient", entityId: id, before: before as never },
-    });
+    await logAudit(this.prisma, { actorId, action: "ROYALTY_RECIPIENT_DELETE", entity: "RoyaltyRecipient", entityId: id, before: before as never });
     return { deleted: true };
   }
 
@@ -1312,9 +1328,7 @@ export class AdminService {
   async removeCourseRoyalty(id: string, actorId?: string) {
     const before = await this.prisma.courseRoyalty.findUnique({ where: { id } });
     await this.prisma.courseRoyalty.delete({ where: { id } });
-    await this.prisma.auditLog.create({
-      data: { actorId, action: "COURSE_ROYALTY_REMOVE", entity: "CourseRoyalty", entityId: id, before: before as never },
-    });
+    await logAudit(this.prisma, { actorId, action: "COURSE_ROYALTY_REMOVE", entity: "CourseRoyalty", entityId: id, before: before as never });
     return { deleted: true };
   }
 
@@ -1818,14 +1832,12 @@ export class AdminService {
         detail: { sessions: detail, hourlyRateOtherActivities: otherActivitiesRate } as never,
       },
     });
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "TEACHER_LIQUIDATION_GENERATE",
-        entity: "TeacherLiquidation",
-        entityId: liquidation.id,
-        after: { teacherId: input.teacherId, periodStart: input.periodStart, periodEnd: input.periodEnd, grossAmount, netAmount, currency },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "TEACHER_LIQUIDATION_GENERATE",
+      entity: "TeacherLiquidation",
+      entityId: liquidation.id,
+      after: { teacherId: input.teacherId, periodStart: input.periodStart, periodEnd: input.periodEnd, grossAmount, netAmount, currency },
     });
     // Los adelantos usados quedan marcados como aplicados a ESTA liquidación
     // — no se vuelven a descontar en la próxima.
@@ -1855,15 +1867,13 @@ export class AdminService {
     // "Se puede saber que se perdonó una deducción y por qué, pero nunca
     // quién ni cuándo" — hallazgo de auditoría. waivedById/waivedAt en la
     // misma fila ya lo resuelven; el AuditLog además guarda el monto antes/después.
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: "TEACHER_LIQUIDATION_WAIVE_DEDUCTION",
-        entity: "TeacherLiquidation",
-        entityId: id,
-        before: { grossAmount: decimalToString(liquidation.grossAmount), netAmount: decimalToString(liquidation.netAmount) },
-        after: { grossAmount: decimalToString(updated.grossAmount), netAmount: decimalToString(updated.netAmount), reason },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: "TEACHER_LIQUIDATION_WAIVE_DEDUCTION",
+      entity: "TeacherLiquidation",
+      entityId: id,
+      before: { grossAmount: decimalToString(liquidation.grossAmount), netAmount: decimalToString(liquidation.netAmount) },
+      after: { grossAmount: decimalToString(updated.grossAmount), netAmount: decimalToString(updated.netAmount), reason },
     });
     return updated;
   }
@@ -1880,15 +1890,13 @@ export class AdminService {
     });
     // "Aprobar/pagar una liquidación — literalmente liberar el dinero —
     // no deja registro de quién lo hizo" — hallazgo de auditoría.
-    await this.prisma.auditLog.create({
-      data: {
-        actorId,
-        action: `TEACHER_LIQUIDATION_${status}`,
-        entity: "TeacherLiquidation",
-        entityId: id,
-        before: { status: before?.status },
-        after: { status },
-      },
+    await logAudit(this.prisma, {
+      actorId,
+      action: `TEACHER_LIQUIDATION_${status}`,
+      entity: "TeacherLiquidation",
+      entityId: id,
+      before: { status: before?.status },
+      after: { status },
     });
     return updated;
   }
@@ -2422,9 +2430,7 @@ export class AdminService {
     // para arreglar en el mismo cambio.
     const before = await this.prisma.platformSettings.findUnique({ where: { id: "default" } });
     const updated = await this.prisma.platformSettings.upsert({ where: { id: "default" }, create: { id: "default", ...input }, update: input });
-    await this.prisma.auditLog.create({
-      data: { actorId, action: "FEE_SETTINGS_UPDATE", entity: "PlatformSettings", entityId: "default", before: before as never, after: input as never },
-    });
+    await logAudit(this.prisma, { actorId, action: "FEE_SETTINGS_UPDATE", entity: "PlatformSettings", entityId: "default", before: before as never, after: input as never });
     return updated;
   }
 
@@ -2870,15 +2876,13 @@ export class AdminService {
     try {
       const updated = await this.prisma.user.update({ where: { id }, data: data as never });
       if (input.globalRole !== undefined || input.secondaryRoles !== undefined || input.status !== undefined) {
-        await this.prisma.auditLog.create({
-          data: {
-            actorId,
-            action: "USER_UPDATE",
-            entity: "User",
-            entityId: id,
-            before: before as never,
-            after: { globalRole: updated.globalRole, secondaryRoles: updated.secondaryRoles, status: updated.status },
-          },
+        await logAudit(this.prisma, {
+          actorId,
+          action: "USER_UPDATE",
+          entity: "User",
+          entityId: id,
+          before: before as never,
+          after: { globalRole: updated.globalRole, secondaryRoles: updated.secondaryRoles, status: updated.status },
         });
       }
       return updated;
@@ -2912,9 +2916,7 @@ export class AdminService {
     // no hace falta reemitirle tokens a nadie acá.
     await this.prisma.user.update({ where: { id }, data: { passwordHash, currentSessionId: randomUUID() } });
     // Nunca se guarda la contraseña en el log — solo que se restableció y quién lo hizo.
-    await this.prisma.auditLog.create({
-      data: { actorId, action: "USER_PASSWORD_RESET", entity: "User", entityId: id },
-    });
+    await logAudit(this.prisma, { actorId, action: "USER_PASSWORD_RESET", entity: "User", entityId: id });
     return { id, email: user.email, tempPassword };
   }
 
@@ -2954,9 +2956,7 @@ export class AdminService {
       select: { email: true, firstName: true, lastName: true, globalRole: true },
     });
     await this.prisma.user.delete({ where: { id } });
-    await this.prisma.auditLog.create({
-      data: { actorId, action: "USER_DELETE", entity: "User", entityId: id, before: deletedSnapshot as never },
-    });
+    await logAudit(this.prisma, { actorId, action: "USER_DELETE", entity: "User", entityId: id, before: deletedSnapshot as never });
   }
 
   /**
@@ -3016,9 +3016,7 @@ export class AdminService {
         continue;
       }
       await this.prisma.course.delete({ where: { id } });
-      await this.prisma.auditLog.create({
-        data: { actorId, action: "COURSE_DELETE", entity: "Course", entityId: id, before: snapshot as never },
-      });
+      await logAudit(this.prisma, { actorId, action: "COURSE_DELETE", entity: "Course", entityId: id, before: snapshot as never });
       deleted.push(id);
     }
     return { deleted, skipped };
@@ -3040,9 +3038,7 @@ export class AdminService {
         continue;
       }
       await this.prisma.area.delete({ where: { id } });
-      await this.prisma.auditLog.create({
-        data: { actorId, action: "AREA_DELETE", entity: "Area", entityId: id, before: snapshot as never },
-      });
+      await logAudit(this.prisma, { actorId, action: "AREA_DELETE", entity: "Area", entityId: id, before: snapshot as never });
       deleted.push(id);
     }
     return { deleted, skipped };
@@ -3068,9 +3064,7 @@ export class AdminService {
         continue;
       }
       await this.prisma.company.delete({ where: { id } });
-      await this.prisma.auditLog.create({
-        data: { actorId, action: "COMPANY_DELETE", entity: "Company", entityId: id, before: snapshot as never },
-      });
+      await logAudit(this.prisma, { actorId, action: "COMPANY_DELETE", entity: "Company", entityId: id, before: snapshot as never });
       deleted.push(id);
     }
     return { deleted, skipped };
@@ -3109,5 +3103,55 @@ export class AdminService {
   async removeCourseStaff(id: string) {
     await this.prisma.courseStaff.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  // --- Backups descargables ("toda la base de datos... que si se pierde
+  // lo pueda recuperar") — el trabajo pesado (armar el zip, subirlo) vive
+  // en apps/worker (ver backup.processor.ts); acá solo se encola y se
+  // consulta el historial. ---
+
+  async listBackups() {
+    return this.prisma.backupRecord.findMany({
+      include: { triggeredBy: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async generateBackupNow(actorId: string) {
+    await this.backupQueue.add(BACKUP_JOBS.GENERATE, { trigger: "MANUAL", triggeredById: actorId });
+    return { queued: true };
+  }
+
+  async getBackupDownloadUrl(id: string) {
+    const record = await this.prisma.backupRecord.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException("Backup no encontrado");
+    if (record.status !== "DONE" || !record.s3Key) throw new BadRequestException("Este backup todavía no está listo");
+    return { url: await this.storageService.getSignedUrl(record.s3Key, 900) };
+  }
+
+  // --- Auditoría genérica ("bucear en el histórico", "sustentar lo que
+  // sucedió en un momento dado") — lee AuditLog, hoy solo alimentado por
+  // logAudit() en los 20+ call sites de apps/api. ---
+
+  async listAuditLog(filters: { entity?: string; action?: string; actorId?: string; from?: Date; to?: Date }, page = 1, pageSize = 30) {
+    const where = {
+      ...(filters.entity ? { entity: filters.entity } : {}),
+      ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.actorId ? { actorId: filters.actorId } : {}),
+      ...(filters.from || filters.to
+        ? { createdAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        include: { actor: { select: { id: true, firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+    return { rows, total, page, pageSize };
   }
 }
