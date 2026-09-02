@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminApi, ApiError, type EmailCampaignDTO } from "@/lib/api-client";
+import { adminApi, ApiError, type EmailCampaignDTO, type MailingListDTO } from "@/lib/api-client";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { AudienceFilterFields, filterToFormState, formStateToFilter, type AudienceFilterFormState } from "@/components/admin/AudienceFilterFields";
 
 const GOAL_LABEL: Record<string, string> = {
   RELATED_COURSES: "Cursos relacionados a lo que ya estudia",
@@ -38,11 +39,13 @@ export function EmailCampaignManager({
   areas,
   companies,
   courses,
+  mailingLists,
 }: {
   campaigns: EmailCampaignDTO[];
   areas: any[];
   companies: any[];
   courses: any[];
+  mailingLists: MailingListDTO[];
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -76,13 +79,14 @@ export function EmailCampaignManager({
           areas={areas}
           companies={companies}
           courses={courses}
+          mailingLists={mailingLists}
           busy={busy}
           run={run}
           initial={editingCampaign}
           onDone={() => setEditingId(null)}
         />
       ) : (
-        <CampaignForm areas={areas} companies={companies} courses={courses} busy={busy} run={run} />
+        <CampaignForm areas={areas} companies={companies} courses={courses} mailingLists={mailingLists} busy={busy} run={run} />
       )}
 
       {drafts.length > 0 && (
@@ -163,13 +167,6 @@ function CampaignCard({
   );
 }
 
-const ENROLLMENT_STATUS_LABEL: Record<string, string> = {
-  ANY: "Cualquiera",
-  HAS_ACTIVE: "Llevando un curso o más ahora",
-  COMPLETED_NO_ACTIVE: "Ya terminó todo, nada pendiente (upsell)",
-  NONE: "Nunca se ha matriculado (primera compra)",
-};
-
 /** Convierte a datetime-local (input HTML) el ISO que guarda el backend, en hora local del navegador. */
 function toDatetimeLocal(iso: string | null): string {
   if (!iso) return "";
@@ -190,6 +187,7 @@ function CampaignForm({
   areas,
   companies,
   courses,
+  mailingLists,
   busy,
   run,
   initial,
@@ -198,51 +196,37 @@ function CampaignForm({
   areas: any[];
   companies: any[];
   courses: any[];
+  mailingLists: MailingListDTO[];
   busy: boolean;
   run: (a: () => Promise<unknown>) => Promise<void>;
   initial?: EmailCampaignDTO;
   onDone?: () => void;
 }) {
-  const f = (initial?.audienceFilter ?? {}) as Record<string, unknown>;
   const [name, setName] = useState(initial?.name ?? "");
   const [mode, setMode] = useState<"MANUAL" | "AUTOMATIC_AI">(initial?.mode ?? "MANUAL");
   const [goal, setGoal] = useState<string>(initial?.goal ?? "NEW_COURSES");
   const [subject, setSubject] = useState(initial?.subject ?? "");
   const [bodyHtml, setBodyHtml] = useState(initial?.bodyHtml ?? "");
-  const [interests, setInterests] = useState(((f.interests as string[]) ?? []).join(", "));
-  const [areaIds, setAreaIds] = useState<string[]>((f.areaIds as string[]) ?? []);
-  const [courseIds, setCourseIds] = useState<string[]>((f.courseIds as string[]) ?? []);
-  const [companyId, setCompanyId] = useState((f.companyId as string) ?? "");
-  const [inactiveDays, setInactiveDays] = useState(f.inactiveDays != null ? String(f.inactiveDays) : "");
-  const [enrollmentStatus, setEnrollmentStatus] = useState((f.enrollmentStatus as string) ?? "ANY");
-  const [countries, setCountries] = useState(((f.countries as string[]) ?? []).join(", "));
-  const [globalRole, setGlobalRole] = useState((f.globalRole as string) ?? "");
-  const [excludeRecentPurchaseDays, setExcludeRecentPurchaseDays] = useState(
-    f.excludeRecentPurchaseDays != null ? String(f.excludeRecentPurchaseDays) : "",
-  );
+  const [audience, setAudience] = useState<AudienceFilterFormState>(filterToFormState(initial?.audienceFilter as never));
+  const [loadListId, setLoadListId] = useState("");
   const [scheduledAt, setScheduledAt] = useState(toDatetimeLocal(initial?.scheduledAt ?? null));
   const [recurrence, setRecurrence] = useState<"ONCE" | "WEEKLY" | "MONTHLY">(initial?.recurrence ?? "ONCE");
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
-  function buildAudienceFilter() {
-    const filter: Record<string, unknown> = {};
-    if (interests.trim()) filter.interests = interests.split(",").map((s) => s.trim()).filter(Boolean);
-    if (areaIds.length) filter.areaIds = areaIds;
-    if (courseIds.length) filter.courseIds = courseIds;
-    if (companyId) filter.companyId = companyId;
-    if (inactiveDays) filter.inactiveDays = Number(inactiveDays);
-    if (enrollmentStatus !== "ANY") filter.enrollmentStatus = enrollmentStatus;
-    if (countries.trim()) filter.countries = countries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-    if (globalRole) filter.globalRole = globalRole;
-    if (excludeRecentPurchaseDays) filter.excludeRecentPurchaseDays = Number(excludeRecentPurchaseDays);
-    return Object.keys(filter).length ? filter : null;
+  // Copia puntual del filtro guardado hacia el formulario de la campaña —
+  // no es un vínculo vivo: editar o borrar la lista después nunca afecta
+  // retroactivamente una campaña que ya cargó su filtro una vez.
+  function handleLoadList(id: string) {
+    setLoadListId(id);
+    const list = mailingLists.find((l) => l.id === id);
+    if (list) setAudience(filterToFormState(list.filter));
   }
 
   async function handlePreview() {
     setPreviewBusy(true);
     try {
-      const { count } = await adminApi.previewEmailAudience(buildAudienceFilter() ?? {});
+      const { count } = await adminApi.previewEmailAudience(formStateToFilter(audience) ?? {});
       setPreviewCount(count);
     } catch {
       setPreviewCount(null);
@@ -259,7 +243,7 @@ function CampaignForm({
         goal: mode === "AUTOMATIC_AI" ? goal : undefined,
         subject: mode === "MANUAL" ? subject : undefined,
         bodyHtml: mode === "MANUAL" ? bodyHtml : undefined,
-        audienceFilter: buildAudienceFilter(),
+        audienceFilter: formStateToFilter(audience),
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : sendNow ? new Date().toISOString() : null,
         recurrence,
       });
@@ -268,15 +252,8 @@ function CampaignForm({
     setName("");
     setSubject("");
     setBodyHtml("");
-    setInterests("");
-    setAreaIds([]);
-    setCourseIds([]);
-    setCompanyId("");
-    setInactiveDays("");
-    setEnrollmentStatus("ANY");
-    setCountries("");
-    setGlobalRole("");
-    setExcludeRecentPurchaseDays("");
+    setAudience(filterToFormState(null));
+    setLoadListId("");
     setScheduledAt("");
     setPreviewCount(null);
   }
@@ -288,7 +265,7 @@ function CampaignForm({
         name,
         subject: mode === "MANUAL" ? subject : undefined,
         bodyHtml: mode === "MANUAL" ? bodyHtml : undefined,
-        audienceFilter: buildAudienceFilter(),
+        audienceFilter: formStateToFilter(audience),
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
         recurrence,
       }),
@@ -354,94 +331,21 @@ function CampaignForm({
 
         <div className="rounded-md bg-paper-muted p-3">
           <p className="mb-2 text-xs font-medium text-ash-600">Audiencia (deja todo vacío para "todos los que aceptaron correos de marketing")</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="camp-interests">Por interés (separado por comas)</Label>
-              <Input id="camp-interests" value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="marketing, finanzas" />
-            </div>
-            <div>
-              <Label htmlFor="camp-company">Por empresa</Label>
-              <Select id="camp-company" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-                <option value="">Todas</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.legalName}
+          {mailingLists.length > 0 && (
+            <div className="mb-3">
+              <Label htmlFor="camp-load-list">Cargar desde lista guardada</Label>
+              <Select id="camp-load-list" value={loadListId} onChange={(e) => handleLoadList(e.target.value)}>
+                <option value="">— Armar a mano —</option>
+                {mailingLists.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
                   </option>
                 ))}
               </Select>
+              <p className="mt-1 text-xs text-ash-500">Copia el filtro de la lista a este formulario — se puede seguir ajustando sin afectar la lista original.</p>
             </div>
-            <div>
-              <Label htmlFor="camp-inactive">Inactivos hace más de (días)</Label>
-              <Input id="camp-inactive" type="number" min="1" value={inactiveDays} onChange={(e) => setInactiveDays(e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="camp-areas">Por área (matriculados en)</Label>
-              <select
-                id="camp-areas"
-                multiple
-                className="h-24 w-full rounded-md border border-paper-border bg-paper px-2 py-1 text-sm"
-                value={areaIds}
-                onChange={(e) => setAreaIds(Array.from(e.target.selectedOptions, (o) => o.value))}
-              >
-                {areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name?.es ?? a.slug}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="camp-courses">Por curso puntual (matriculados en)</Label>
-              <select
-                id="camp-courses"
-                multiple
-                className="h-24 w-full rounded-md border border-paper-border bg-paper px-2 py-1 text-sm"
-                value={courseIds}
-                onChange={(e) => setCourseIds(Array.from(e.target.selectedOptions, (o) => o.value))}
-              >
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title?.es ?? c.slug}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="camp-enrollment-status">Estado de matrícula</Label>
-              <Select id="camp-enrollment-status" value={enrollmentStatus} onChange={(e) => setEnrollmentStatus(e.target.value)}>
-                {Object.entries(ENROLLMENT_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="camp-role">Rol</Label>
-              <Select id="camp-role" value={globalRole} onChange={(e) => setGlobalRole(e.target.value)}>
-                <option value="">Cualquiera</option>
-                <option value="STUDENT">Alumno</option>
-                <option value="TEACHER">Docente</option>
-                <option value="SUPPORT">Soporte</option>
-                <option value="ADMIN">Administrador</option>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="camp-countries">Por país (código ISO, separado por comas)</Label>
-              <Input id="camp-countries" value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="PE, CO, MX" />
-            </div>
-            <div>
-              <Label htmlFor="camp-exclude-recent">Excluir si compró en los últimos (días)</Label>
-              <Input
-                id="camp-exclude-recent"
-                type="number"
-                min="1"
-                value={excludeRecentPurchaseDays}
-                onChange={(e) => setExcludeRecentPurchaseDays(e.target.value)}
-                placeholder="Ej. 15 — no molestar a quien acaba de comprar"
-              />
-            </div>
-          </div>
+          )}
+          <AudienceFilterFields value={audience} onChange={setAudience} areas={areas} companies={companies} courses={courses} idPrefix="camp" />
           <div className="mt-2 flex items-center gap-2">
             <Button size="sm" variant="outline" disabled={previewBusy} onClick={handlePreview}>
               {previewBusy ? "Calculando…" : "Ver a cuántos llega"}
