@@ -855,7 +855,7 @@ export const adminApi = {
     return apiFetch<any>(`/admin/lessons/${lessonId}/scorm-upload`, { method: "POST", body: form, accessToken });
   },
   // Editor de autoría SCORM (armar el paquete desde Inkademy, sin subir ningún .zip) — ver ScormBuilder.tsx.
-  buildScormPackage: (lessonId: string, content: { slides: unknown[]; passingScore: number; sections?: unknown[] }, accessToken?: string | null) =>
+  buildScormPackage: (lessonId: string, content: { slides: unknown[]; passingScore: number; sections?: unknown[]; theme?: unknown }, accessToken?: string | null) =>
     apiFetch<{ entryPath: string; version: string }>(`/admin/lessons/${lessonId}/scorm/build`, { method: "POST", body: JSON.stringify(content), accessToken }),
   scormPreviewSession: (lessonId: string, accessToken?: string | null) =>
     apiFetch<{ token: string; playerUrl: string }>(`/admin/lessons/${lessonId}/scorm/preview-session`, { method: "POST", accessToken }),
@@ -888,7 +888,7 @@ export const adminApi = {
     form.append("file", file);
     return apiFetch<any>(`/admin/materials/${materialId}/scorm-upload`, { method: "POST", body: form, accessToken });
   },
-  buildMaterialScormPackage: (materialId: string, content: { slides: unknown[]; passingScore: number; sections?: unknown[] }, accessToken?: string | null) =>
+  buildMaterialScormPackage: (materialId: string, content: { slides: unknown[]; passingScore: number; sections?: unknown[]; theme?: unknown }, accessToken?: string | null) =>
     apiFetch<{ entryPath: string; version: string }>(`/admin/materials/${materialId}/scorm/build`, {
       method: "POST",
       body: JSON.stringify(content),
@@ -917,6 +917,12 @@ export const adminApi = {
     a.remove();
     URL.revokeObjectURL(url);
   },
+  // "¿Colores, tipos de letra, tamaño?" — brand kit reutilizable del editor SCORM.
+  listScormThemePresets: (accessToken?: string | null) => apiFetch<any[]>("/admin/scorm-theme-presets", { accessToken, cache: "no-store" }),
+  createScormThemePreset: (input: { name: string; theme: unknown }, accessToken?: string | null) =>
+    apiFetch<any>("/admin/scorm-theme-presets", { method: "POST", body: JSON.stringify(input), accessToken }),
+  deleteScormThemePreset: (id: string, accessToken?: string | null) =>
+    apiFetch<{ deleted: boolean }>(`/admin/scorm-theme-presets/${id}`, { method: "DELETE", accessToken }),
   createMaterial: (
     lessonId: string,
     input: { title: string; assetId?: string; externalUrl?: string; kind: string; category?: "MAIN" | "SUPPLEMENTARY"; visible?: boolean },

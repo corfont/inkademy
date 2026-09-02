@@ -5,14 +5,21 @@ import { useRouter } from "next/navigation";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2, Eye, Download, BarChart3 } from "lucide-react";
+import { GripVertical, Trash2, Eye, Download, BarChart3, Save, Palette } from "lucide-react";
 import {
   SCORM_SLIDE_TYPE_LABEL,
   SCORM_INTERACTION_TYPE_LABEL,
+  SCORM_SYSTEM_FONTS,
+  SCORM_EMBEDDABLE_FONTS,
+  BUILTIN_SCORM_THEME_PRESETS,
+  DEFAULT_SCORM_THEME,
   buildScormContentHtml,
   type ScormSlide,
   type ScormAuthoredContent,
   type ScormSection,
+  type ScormTheme,
+  type ScormThemePresetSummary,
+  type ContentSlideLayout,
   type MatchingSlide,
   type OrderingSlide,
   type HotspotSlide,
@@ -43,6 +50,118 @@ const SLIDE_FACTORIES: Record<ScormSlide["type"], () => ScormSlide> = {
   hotspot: () => ({ id: uid(), type: "hotspot", question: "", imageUrl: "", zones: [] }),
 };
 const SLIDE_TYPES = Object.keys(SLIDE_FACTORIES) as ScormSlide["type"][];
+
+// Chips de acceso rápido a la paleta de marca ya usada en el resto de
+// Inkademy (apps/web/src/app/globals.css) — el admin puede elegir uno de un
+// clic o abrir el selector de color nativo para un hex custom.
+const BRAND_COLOR_CHIPS = [
+  { label: "Ink", hex: "#1c4792" },
+  { label: "Gold", hex: "#7a501f" },
+  { label: "Indigo", hex: "#3241ae" },
+  { label: "Éxito", hex: "#277c54" },
+  { label: "Alerta", hex: "#97640c" },
+  { label: "Peligro", hex: "#bc2e24" },
+  { label: "Negro", hex: "#000000" },
+  { label: "Blanco", hex: "#ffffff" },
+];
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (hex: string) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex items-center gap-1">
+        {BRAND_COLOR_CHIPS.map((c) => (
+          <button
+            key={c.hex}
+            type="button"
+            className={cn("h-5 w-5 rounded-full border", value.toLowerCase() === c.hex ? "ring-2 ring-offset-1 ring-ink-700" : "border-paper-border")}
+            style={{ background: c.hex }}
+            title={c.label}
+            onClick={() => onChange(c.hex)}
+          />
+        ))}
+        <input type="color" className="h-6 w-8 cursor-pointer rounded border border-paper-border p-0" value={value} onChange={(e) => onChange(e.target.value)} />
+      </div>
+    </div>
+  );
+}
+
+const CONTENT_LAYOUTS: { value: ContentSlideLayout; label: string }[] = [
+  { value: "text", label: "Solo texto" },
+  { value: "image-top", label: "Imagen arriba" },
+  { value: "image-bottom", label: "Imagen abajo" },
+  { value: "image-left", label: "Imagen izquierda" },
+  { value: "image-right", label: "Imagen derecha" },
+  { value: "image-background", label: "Fondo personalizado" },
+];
+
+/**
+ * Mueve/redimensiona la ÚNICA caja de imagen de un layout "Fondo
+ * personalizado" — mismo patrón de puntero (% relativo al contenedor,
+ * clamp 0-100) que HotspotSlideEditor más abajo, pero en vez de "dibujar
+ * una zona nueva cada vez", arrastra el cuerpo para mover y una manija en
+ * la esquina para redimensionar.
+ */
+function ImageBoxEditor({
+  imageUrl,
+  box,
+  onChange,
+}: {
+  imageUrl: string;
+  box: { x: number; y: number; width: number; height: number };
+  onChange: (next: { x: number; y: number; width: number; height: number }) => void;
+}) {
+  const [drag, setDrag] = useState<{ mode: "move" | "resize"; startClientX: number; startClientY: number; startBox: typeof box; rect: DOMRect } | null>(null);
+
+  function onBodyMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    const rect = e.currentTarget.parentElement!.getBoundingClientRect();
+    setDrag({ mode: "move", startClientX: e.clientX, startClientY: e.clientY, startBox: box, rect });
+  }
+  function onHandleMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.closest("[data-imagebox-wrap]")!.getBoundingClientRect();
+    setDrag({ mode: "resize", startClientX: e.clientX, startClientY: e.clientY, startBox: box, rect });
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!drag) return;
+    const dx = ((e.clientX - drag.startClientX) / drag.rect.width) * 100;
+    const dy = ((e.clientY - drag.startClientY) / drag.rect.height) * 100;
+    if (drag.mode === "move") {
+      const x = Math.min(100 - drag.startBox.width, Math.max(0, drag.startBox.x + dx));
+      const y = Math.min(100 - drag.startBox.height, Math.max(0, drag.startBox.y + dy));
+      onChange({ ...drag.startBox, x, y });
+    } else {
+      const width = Math.min(100 - drag.startBox.x, Math.max(10, drag.startBox.width + dx));
+      const height = Math.min(100 - drag.startBox.y, Math.max(10, drag.startBox.height + dy));
+      onChange({ ...drag.startBox, width, height });
+    }
+  }
+  function onMouseUp() {
+    setDrag(null);
+  }
+
+  return (
+    <div
+      data-imagebox-wrap
+      className="relative inline-block max-w-full select-none overflow-hidden rounded-md"
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={imageUrl} alt="" className="max-w-full opacity-50" draggable={false} />
+      <div
+        className="absolute cursor-move rounded border-2 border-ink-700 bg-ink-700/10"
+        style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.width}%`, height: `${box.height}%` }}
+        onMouseDown={onBodyMouseDown}
+      >
+        <div className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border border-white bg-ink-700" onMouseDown={onHandleMouseDown} />
+      </div>
+    </div>
+  );
+}
 
 // ============ Sub-editores por tipo ============
 
@@ -124,6 +243,37 @@ function ContentSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { 
         {slide.imageUrl ? <span>Imagen cargada</span> : <span>Sin imagen (opcional)</span>}
         <DropLabel accept="image/*" busy={uploading} label={slide.imageUrl ? "Reemplazar imagen" : "Subir imagen"} small onFile={handleImageUpload} />
       </div>
+      {/* "Como lo hacen los mejores" — dónde va la imagen dentro de la
+          diapositiva. Solo tiene sentido con una imagen ya cargada. */}
+      {slide.imageUrl && (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {CONTENT_LAYOUTS.map((l) => (
+              <button
+                key={l.value}
+                type="button"
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[11px]",
+                  (slide.layout ?? "image-bottom") === l.value ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper-muted",
+                )}
+                onClick={() => onChange({ ...slide, layout: l.value, imageBox: l.value === "image-background" ? (slide.imageBox ?? { x: 10, y: 10, width: 60, height: 60 }) : slide.imageBox })}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          {slide.layout === "image-background" && (
+            <>
+              <p className="text-[11px] text-ash-500">Arrastra la caja para mover la imagen; usa la esquina para redimensionarla.</p>
+              <ImageBoxEditor
+                imageUrl={slide.imageUrl}
+                box={slide.imageBox ?? { x: 10, y: 10, width: 60, height: 60 }}
+                onChange={(box) => onChange({ ...slide, imageBox: box })}
+              />
+            </>
+          )}
+        </>
+      )}
     </>
   );
 }
@@ -464,6 +614,25 @@ function SlideRow({
   );
 }
 
+/** Fila de sección arrastrable — mismo patrón de drag handle que SlideRow. */
+function SortableSectionRow({ section, onChange, onDelete }: { section: ScormSection; onChange: (patch: Partial<ScormSection>) => void; onDelete: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2">
+      <button type="button" className="flex-none cursor-grab touch-none text-ash-400 hover:text-ash-600" aria-label="Arrastrar para reordenar" {...attributes} {...listeners}>
+        <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+      <Input className="h-7 flex-1 text-xs" value={section.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Nombre de la sección" />
+      <Input className="h-7 w-20 text-xs" type="number" min={0} max={100} value={section.weightPercent} onChange={(e) => onChange({ weightPercent: Number(e.target.value) })} />
+      <span className="text-xs text-ash-500">%</span>
+      <button type="button" className="text-ash-400 hover:text-danger" onClick={onDelete} aria-label="Quitar sección">
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 interface ScormAnalytics {
   totalAttempts: number;
   completedCount: number;
@@ -505,6 +674,11 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   const [passingScore, setPassingScore] = useState(existing?.passingScore ?? 70);
   const [sections, setSections] = useState<ScormSection[]>(existing?.sections ?? []);
   const sectionsWeightTotal = Math.round(sections.reduce((sum, s) => sum + s.weightPercent, 0) * 100) / 100;
+  const [theme, setTheme] = useState<ScormTheme>(existing?.theme ?? DEFAULT_SCORM_THEME);
+  const [savedPresets, setSavedPresets] = useState<ScormThemePresetSummary[]>([]);
+  const [presetToApply, setPresetToApply] = useState("");
+  const [presetNameInput, setPresetNameInput] = useState<string | null>(null);
+  const [savingPreset, setSavingPreset] = useState(false);
   const [addType, setAddType] = useState<ScormSlide["type"]>("content");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -519,13 +693,49 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [built, owner.id]);
 
+  useEffect(() => {
+    adminApi
+      .listScormThemePresets()
+      .then((rows: any[]) => setSavedPresets(rows.map((r) => ({ id: r.id, name: r.name, theme: r.theme as ScormTheme, builtin: false }))))
+      .catch(() => setSavedPresets([]));
+  }, []);
+  const allPresets = [...BUILTIN_SCORM_THEME_PRESETS, ...savedPresets];
+
+  function applyPreset() {
+    const preset = allPresets.find((p) => p.id === presetToApply);
+    if (preset) setTheme(preset.theme);
+  }
+  async function handleSavePreset() {
+    if (!presetNameInput?.trim()) return;
+    setSavingPreset(true);
+    try {
+      await adminApi.createScormThemePreset({ name: presetNameInput.trim(), theme });
+      const rows = await adminApi.listScormThemePresets();
+      setSavedPresets((rows as any[]).map((r) => ({ id: r.id, name: r.name, theme: r.theme as ScormTheme, builtin: false })));
+      setPresetNameInput(null);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos guardar el preset.");
+    } finally {
+      setSavingPreset(false);
+    }
+  }
+  async function handleDeletePreset(id: string) {
+    if (!confirm("¿Eliminar este preset guardado?")) return;
+    try {
+      await adminApi.deleteScormThemePreset(id);
+      setSavedPresets((sp) => sp.filter((p) => p.id !== id));
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos eliminar el preset (¿eres el ADMIN?).");
+    }
+  }
+
   const previewHtml = useMemo(() => {
     try {
-      return buildScormContentHtml({ slides, passingScore, sections }, "Vista previa");
+      return buildScormContentHtml({ slides, passingScore, sections, theme }, "Vista previa");
     } catch {
       return null;
     }
-  }, [slides, passingScore, sections]);
+  }, [slides, passingScore, sections, theme]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -535,6 +745,13 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
     const oldIndex = slides.findIndex((s) => s.id === active.id);
     const newIndex = slides.findIndex((s) => s.id === over.id);
     setSlides(arrayMove(slides, oldIndex, newIndex));
+  }
+  function handleSectionDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sections.findIndex((s) => s.id === active.id);
+    const newIndex = sections.findIndex((s) => s.id === over.id);
+    setSections(arrayMove(sections, oldIndex, newIndex));
   }
 
   function updateSlide(id: string, next: ScormSlide) {
@@ -591,7 +808,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
     setSaving(true);
     setError(null);
     try {
-      await buildPackage(owner.id, { slides, passingScore, sections: sections.length > 0 ? sections : undefined });
+      await buildPackage(owner.id, { slides, passingScore, sections: sections.length > 0 ? sections : undefined, theme });
       setBuilt(true);
       onSaved();
       router.refresh();
@@ -648,26 +865,169 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                 {sections.length > 0 ? `Total: ${sectionsWeightTotal}%` : "Sin secciones — se califica todo junto"}
               </span>
             </div>
-            {sections.map((sec) => (
-              <div key={sec.id} className="flex items-center gap-2">
-                <Input className="h-7 flex-1 text-xs" value={sec.title} onChange={(e) => updateSection(sec.id, { title: e.target.value })} placeholder="Nombre de la sección" />
-                <Input
-                  className="h-7 w-20 text-xs"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={sec.weightPercent}
-                  onChange={(e) => updateSection(sec.id, { weightPercent: Number(e.target.value) })}
-                />
-                <span className="text-xs text-ash-500">%</span>
-                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => deleteSection(sec.id)} aria-label="Quitar sección">
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </div>
-            ))}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
+              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                <div className="flex flex-col gap-1.5">
+                  {sections.map((sec) => (
+                    <SortableSectionRow key={sec.id} section={sec} onChange={(patch) => updateSection(sec.id, patch)} onDelete={() => deleteSection(sec.id)} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
             <Button size="sm" variant="outline" className="self-start" onClick={addSection}>
               + Agregar sección
             </Button>
+          </div>
+
+          {/* "¿Colores, tipos de letra, tamaño, como lo hacen los mejores?"
+              — tema visual del paquete, con presets reutilizables (brand
+              kit del equipo). Sin tocar nada acá, el paquete se ve
+              exactamente igual que siempre (DEFAULT_SCORM_THEME). */}
+          <div className="flex flex-col gap-3 rounded-md border border-paper-border bg-paper-muted p-3">
+            <Label className="flex items-center gap-1.5">
+              <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+              Apariencia
+            </Label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Select className="h-7 flex-1 text-xs" value={presetToApply} onChange={(e) => setPresetToApply(e.target.value)}>
+                <option value="">Elige un preset…</option>
+                <optgroup label="De fábrica">
+                  {BUILTIN_SCORM_THEME_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+                {savedPresets.length > 0 && (
+                  <optgroup label="Guardados">
+                    {savedPresets.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+              <Button size="sm" variant="outline" disabled={!presetToApply} onClick={applyPreset}>
+                Aplicar
+              </Button>
+              {savedPresets.some((p) => p.id === presetToApply) && (
+                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => handleDeletePreset(presetToApply)} aria-label="Eliminar preset guardado">
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+
+            {presetNameInput === null ? (
+              <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => setPresetNameInput("")}>
+                + Guardar como preset
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input className="h-7 flex-1 text-xs" placeholder="Nombre del preset" value={presetNameInput} onChange={(e) => setPresetNameInput(e.target.value)} />
+                <Button size="sm" variant="outline" disabled={savingPreset || !presetNameInput.trim()} onClick={handleSavePreset} className="gap-1">
+                  <Save className="h-3 w-3" aria-hidden="true" />
+                  Guardar
+                </Button>
+                <button type="button" className="text-xs text-ash-500 hover:underline" onClick={() => setPresetNameInput(null)}>
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+              <ColorField label="Primario" value={theme.primaryColor} onChange={(hex) => setTheme((t) => ({ ...t, primaryColor: hex }))} />
+              <ColorField label="Correcto" value={theme.correctColor} onChange={(hex) => setTheme((t) => ({ ...t, correctColor: hex }))} />
+              <ColorField label="Incorrecto" value={theme.incorrectColor} onChange={(hex) => setTheme((t) => ({ ...t, incorrectColor: hex }))} />
+              <ColorField label="Fondo" value={theme.backgroundColor} onChange={(hex) => setTheme((t) => ({ ...t, backgroundColor: hex }))} />
+              <ColorField label="Tarjeta" value={theme.cardColor} onChange={(hex) => setTheme((t) => ({ ...t, cardColor: hex }))} />
+              <ColorField label="Texto" value={theme.textColor} onChange={(hex) => setTheme((t) => ({ ...t, textColor: hex }))} />
+            </div>
+
+            <div>
+              <Label className="text-xs">Tipografía</Label>
+              <Select
+                className="h-8 text-xs"
+                value={theme.fontFamily}
+                onChange={(e) => {
+                  const sys = SCORM_SYSTEM_FONTS.find((f) => f.stack === e.target.value);
+                  if (sys) return setTheme((t) => ({ ...t, fontFamily: sys.stack, fontFamilyKind: "system" }));
+                  const emb = SCORM_EMBEDDABLE_FONTS.find((f) => f.stack === e.target.value);
+                  if (emb) setTheme((t) => ({ ...t, fontFamily: emb.stack, fontFamilyKind: "embedded" }));
+                }}
+              >
+                <optgroup label="Fuentes de sistema (instantáneas)">
+                  {SCORM_SYSTEM_FONTS.map((f) => (
+                    <option key={f.stack} value={f.stack}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Fuentes de marca (se incrustan al generar)">
+                  {SCORM_EMBEDDABLE_FONTS.map((f) => (
+                    <option key={f.stack} value={f.stack}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs">Tamaño</Label>
+                {(["sm", "md", "lg"] as const).map((sc) => (
+                  <button
+                    key={sc}
+                    type="button"
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px]",
+                      theme.fontScale === sc ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper",
+                    )}
+                    onClick={() => setTheme((t) => ({ ...t, fontScale: sc }))}
+                  >
+                    {sc === "sm" ? "Aa pequeño" : sc === "md" ? "Aa mediano" : "Aa grande"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs">Tarjeta</Label>
+                {(["rounded", "square"] as const).map((cs) => (
+                  <button
+                    key={cs}
+                    type="button"
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px]",
+                      theme.cardStyle === cs ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper",
+                    )}
+                    onClick={() => setTheme((t) => ({ ...t, cardStyle: cs }))}
+                  >
+                    {cs === "rounded" ? "Redondeada" : "Cuadrada"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-ash-600">
+              {theme.headerImageUrl ? <span>Logo cargado</span> : <span>Sin logo de cabecera (opcional)</span>}
+              <DropLabel
+                accept="image/*"
+                busy={false}
+                label={theme.headerImageUrl ? "Reemplazar logo" : "Subir logo"}
+                small
+                onFile={(file) => {
+                  const reader = new FileReader();
+                  reader.onload = () => setTheme((t) => ({ ...t, headerImageUrl: reader.result as string }));
+                  reader.readAsDataURL(file);
+                }}
+              />
+              {theme.headerImageUrl && (
+                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => setTheme((t) => ({ ...t, headerImageUrl: null }))} aria-label="Quitar logo">
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
