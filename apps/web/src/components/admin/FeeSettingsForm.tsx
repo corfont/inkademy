@@ -41,7 +41,8 @@ function SectionHeader({ icon: Icon, accent, title }: { icon: typeof CreditCard;
 export function FeeSettingsForm({
   culqiFeePercent,
   stripeFeePercent,
-  yapePlinFeePercent,
+  yapeFeePercent,
+  plinFeePercent,
   detractionEnabled,
   detractionRucNaturalPercent,
   detractionRucNaturalThreshold,
@@ -51,7 +52,8 @@ export function FeeSettingsForm({
 }: {
   culqiFeePercent: number;
   stripeFeePercent: number;
-  yapePlinFeePercent: number;
+  yapeFeePercent: number;
+  plinFeePercent: number;
   detractionEnabled: boolean;
   detractionRucNaturalPercent: number;
   detractionRucNaturalThreshold: number;
@@ -62,7 +64,8 @@ export function FeeSettingsForm({
   const router = useRouter();
   const [culqi, setCulqi] = useState(String(culqiFeePercent));
   const [stripe, setStripe] = useState(String(stripeFeePercent));
-  const [yapePlin, setYapePlin] = useState(String(yapePlinFeePercent));
+  const [yape, setYape] = useState(String(yapeFeePercent));
+  const [plin, setPlin] = useState(String(plinFeePercent));
   const [detractOn, setDetractOn] = useState(detractionEnabled);
   const [rucNaturalPct, setRucNaturalPct] = useState(String(detractionRucNaturalPercent));
   const [rucNaturalThreshold, setRucNaturalThreshold] = useState(String(detractionRucNaturalThreshold));
@@ -81,7 +84,8 @@ export function FeeSettingsForm({
       await adminApi.updateFeeSettings({
         culqiFeePercent: Number(culqi),
         stripeFeePercent: Number(stripe),
-        yapePlinFeePercent: Number(yapePlin),
+        yapeFeePercent: Number(yape),
+        plinFeePercent: Number(plin),
         detractionEnabled: detractOn,
         detractionRucNaturalPercent: Number(rucNaturalPct),
         detractionRucNaturalThreshold: Number(rucNaturalThreshold),
@@ -118,27 +122,21 @@ export function FeeSettingsForm({
             <Input id="stripe-fee" type="number" min="0" max="100" step="0.01" value={stripe} onChange={(e) => setStripe(e.target.value)} className="w-28" />
           </div>
           <div>
-            <Label htmlFor="yapeplin-fee">Comisión adicional Yape/Plin (%)</Label>
-            <Input
-              id="yapeplin-fee"
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              value={yapePlin}
-              onChange={(e) => setYapePlin(e.target.value)}
-              className="w-28"
-            />
+            <Label htmlFor="yape-fee">Comisión adicional Yape — BCP (%)</Label>
+            <Input id="yape-fee" type="number" min="0" max="100" step="0.01" value={yape} onChange={(e) => setYape(e.target.value)} className="w-28" />
+          </div>
+          <div>
+            <Label htmlFor="plin-fee">Comisión adicional Plin — Interbank (%)</Label>
+            <Input id="plin-fee" type="number" min="0" max="100" step="0.01" value={plin} onChange={(e) => setPlin(e.target.value)} className="w-28" />
           </div>
         </div>
         <p className="mt-3 text-xs text-ash-500">
-          Investigado a pedido (revisado con BCP/Culqi): Culqi cobra <strong>3.44% + S/0.20 + IGV</strong> parejo en tarjeta nacional y Yape/Plin —
-          no hay un cargo adicional específico por aceptar Yape/Plin encima de esa comisión (por eso el default de Comisión Culqi bajó de 3.99% a
-          3.44%, que era en realidad la tarifa de tarjeta internacional). Sí existe una comisión de <strong>Yape Empresa (BCP) del 2.95%</strong>,
-          pero esa aplica solo si un negocio recibe Yape directo a su propia cuenta/QR — no es el caso de Inkapitales, que cobra siempre a través
-          de Culqi como pasarela. Se deja en 0% por defecto; súbelo solo si tu contrato específico con Culqi confirma un cargo adicional real. Si
-          lo subes, se aplica <strong>solo</strong> a los cobros que Culqi reporta como Yape/Plin (no a tarjeta) — y siempre sobre el monto{" "}
-          <strong>bruto efectivamente cobrado (con IGV incluido)</strong>, que es como realmente descuenta la pasarela, nunca sobre el neto.
+          Son comisiones <strong>separadas, no una sola</strong> — el costo por recibir Yape en cuenta empresa lo cobra <strong>BCP</strong>, y el
+          costo por recibir Plin en cuenta empresa lo cobra <strong>Interbank</strong>; cada banco tiene su propia tasa, no hay razón para que
+          coincidan. Cada % es <strong>adicional</strong> a la comisión de Culqi (que sigue cobrando su descuento de comercio aparte) y se aplica{" "}
+          <strong>solo</strong> a los cobros que Culqi reporta como esa billetera puntual (nunca a tarjeta, y nunca ambas a la vez sobre un mismo
+          cobro) — siempre sobre el monto <strong>bruto efectivamente cobrado (con IGV incluido)</strong>. Se dejan en 0% hasta que cargues la tasa
+          real que te confirmó tu banco.
         </p>
       </div>
 

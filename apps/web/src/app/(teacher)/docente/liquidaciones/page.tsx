@@ -69,8 +69,9 @@ export default async function MyLiquidationsPage() {
                           <tr className="text-[0.65rem] uppercase tracking-wide text-ash-400">
                             <th className="pb-1 pr-3">Clase</th>
                             <th className="pb-1 pr-3">Tardanza</th>
+                            <th className="pb-1 pr-3">Tolerancia inicio</th>
                             <th className="pb-1 pr-3">Salida temprana</th>
-                            <th className="pb-1 pr-3">Tolerancia</th>
+                            <th className="pb-1 pr-3">Tolerancia final</th>
                             <th className="pb-1">Descuento</th>
                           </tr>
                         </thead>
@@ -84,8 +85,9 @@ export default async function MyLiquidationsPage() {
                                   {d.sessionStartsAt && ` · ${new Date(d.sessionStartsAt).toLocaleDateString("es-PE")}`}
                                 </td>
                                 <td className="py-1 pr-3">{d.latenessMinutes > 0 ? `${d.latenessMinutes} min` : "—"}</td>
+                                <td className="py-1 pr-3">{d.toleranceStartMinutes} min</td>
                                 <td className="py-1 pr-3">{d.earlinessMinutes > 0 ? `${d.earlinessMinutes} min` : "—"}</td>
-                                <td className="py-1 pr-3">{d.toleranceMinutes} min</td>
+                                <td className="py-1 pr-3">{d.toleranceEndMinutes} min</td>
                                 <td className="py-1">
                                   {currencySymbol(l.currency)}
                                   {(((d.scheduledMinutes - d.payableMinutes) / 60) * d.hourlyRateTeaching).toFixed(2)}

@@ -48,7 +48,8 @@ export default async function AdvancedSettingsPage() {
           <FeeSettingsForm
             culqiFeePercent={summary.culqiFeePercent}
             stripeFeePercent={summary.stripeFeePercent}
-            yapePlinFeePercent={summary.yapePlinFeePercent}
+            yapeFeePercent={summary.yapeFeePercent}
+            plinFeePercent={summary.plinFeePercent}
             detractionEnabled={summary.detractionEnabled}
             detractionRucNaturalPercent={summary.detractionRucNaturalPercent}
             detractionRucNaturalThreshold={summary.detractionRucNaturalThreshold}

@@ -300,7 +300,8 @@ function RateEditor({ teacherId, rates, courses, busy, run }: { teacherId: strin
   const [hourlyRateTeaching, setHourlyRateTeaching] = useState("0");
   const [hourlyRateOtherActivities, setHourlyRateOtherActivities] = useState("0");
   const [currency, setCurrency] = useState("PEN");
-  const [toleranceMinutes, setToleranceMinutes] = useState("10");
+  const [toleranceStartMinutes, setToleranceStartMinutes] = useState("10");
+  const [toleranceEndMinutes, setToleranceEndMinutes] = useState("10");
   const [paymentFrequency, setPaymentFrequency] = useState("MONTHLY");
 
   return (
@@ -309,7 +310,8 @@ function RateEditor({ teacherId, rates, courses, busy, run }: { teacherId: strin
         <h2 className="font-serif text-lg font-semibold text-ink-900">Tarifas</h2>
         <p className="text-xs text-ash-500">
           Cada docente puede tener tarifas distintas — una global y, si hace falta, una específica por curso (que tiene prioridad sobre la
-          global). La tolerancia son minutos de gracia al inicio/fin de cada clase antes de descontar por tardanza/salida temprana.
+          global). La tolerancia de inicio y la de final son minutos de gracia INDEPENDIENTES — una para tardanza al empezar, otra para salida
+          temprana al terminar — antes de descontar de la liquidación.
         </p>
         {rates.length > 0 && (
           <ul className="flex flex-col gap-1">
@@ -317,8 +319,8 @@ function RateEditor({ teacherId, rates, courses, busy, run }: { teacherId: strin
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded bg-paper-muted p-2 text-xs">
                 <span>
                   {r.course ? r.course.title?.es ?? r.course.slug : "Tarifa global"} — {currencySymbol(r.currency)}{Number(r.hourlyRateTeaching).toFixed(2)}/h dictado,{" "}
-                  {currencySymbol(r.currency)}{Number(r.hourlyRateOtherActivities).toFixed(2)}/h otras · tolerancia {r.toleranceMinutes}min ·{" "}
-                  {FREQ_LABEL[r.paymentFrequency]}
+                  {currencySymbol(r.currency)}{Number(r.hourlyRateOtherActivities).toFixed(2)}/h otras · tolerancia {r.toleranceStartMinutes}min inicio /{" "}
+                  {r.toleranceEndMinutes}min final · {FREQ_LABEL[r.paymentFrequency]}
                 </span>
                 <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => run(() => adminApi.deleteTeacherRate(r.id))}>
                   Eliminar
@@ -355,8 +357,12 @@ function RateEditor({ teacherId, rates, courses, busy, run }: { teacherId: strin
             </Select>
           </div>
           <div>
-            <Label>Tolerancia (min)</Label>
-            <Input type="number" min="0" max="120" value={toleranceMinutes} onChange={(e) => setToleranceMinutes(e.target.value)} />
+            <Label>Tolerancia al inicio (min)</Label>
+            <Input type="number" min="0" max="120" value={toleranceStartMinutes} onChange={(e) => setToleranceStartMinutes(e.target.value)} />
+          </div>
+          <div>
+            <Label>Tolerancia al final (min)</Label>
+            <Input type="number" min="0" max="120" value={toleranceEndMinutes} onChange={(e) => setToleranceEndMinutes(e.target.value)} />
           </div>
           <div>
             <Label>Frecuencia de pago</Label>
@@ -381,7 +387,8 @@ function RateEditor({ teacherId, rates, courses, busy, run }: { teacherId: strin
                   hourlyRateTeaching: Number(hourlyRateTeaching),
                   hourlyRateOtherActivities: Number(hourlyRateOtherActivities),
                   currency,
-                  toleranceMinutes: Number(toleranceMinutes),
+                  toleranceStartMinutes: Number(toleranceStartMinutes),
+                  toleranceEndMinutes: Number(toleranceEndMinutes),
                   paymentFrequency,
                 }),
               )

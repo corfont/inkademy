@@ -459,7 +459,10 @@ export const upsertTeacherRateSchema = z.object({
   hourlyRateTeaching: z.number().min(0).optional(),
   hourlyRateOtherActivities: z.number().min(0).optional(),
   currency: z.enum(["PEN", "USD"]).optional(),
-  toleranceMinutes: z.number().int().min(0).max(120).optional(),
+  // "La tolerancia al inicio de clase y la tolerancia al final son
+  // diferentes" — cada una con su propio margen.
+  toleranceStartMinutes: z.number().int().min(0).max(120).optional(),
+  toleranceEndMinutes: z.number().int().min(0).max(120).optional(),
   paymentFrequency: z.enum(["DAILY", "WEEKLY", "MONTHLY", "END_OF_COURSE"]).optional(),
   active: z.boolean().optional(),
 });
@@ -919,7 +922,10 @@ export const createExpenseSchema = z.object({
 export const updateFeeSettingsSchema = z.object({
   culqiFeePercent: z.number().min(0).max(100).optional(),
   stripeFeePercent: z.number().min(0).max(100).optional(),
-  yapePlinFeePercent: z.number().min(0).max(100).optional(),
+  // "Las comisiones de Yape/Plin son separadas, no juntas" — BCP (Yape) e
+  // Interbank (Plin) cobran cada uno su propia tasa por cuenta empresa.
+  yapeFeePercent: z.number().min(0).max(100).optional(),
+  plinFeePercent: z.number().min(0).max(100).optional(),
   detractionEnabled: z.boolean().optional(),
   detractionRucNaturalPercent: z.number().min(0).max(100).optional(),
   detractionRucNaturalThreshold: z.number().min(0).optional(),

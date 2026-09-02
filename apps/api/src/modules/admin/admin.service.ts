@@ -1108,7 +1108,8 @@ export class AdminService {
   private computeSessionPayableMinutes(
     session: { startsAt: Date; endsAt: Date },
     attendance: { joinedAt: Date | null; leftAt: Date | null } | null,
-    toleranceMinutes: number,
+    toleranceStartMinutes: number,
+    toleranceEndMinutes: number,
   ): { scheduledMinutes: number; payableMinutes: number; latenessMinutes: number; earlinessMinutes: number } {
     const scheduledMinutes = (session.endsAt.getTime() - session.startsAt.getTime()) / 60_000;
     if (!attendance?.joinedAt || !attendance?.leftAt) {
@@ -1116,8 +1117,11 @@ export class AdminService {
       // todavía) — se estima con la duración completa programada.
       return { scheduledMinutes, payableMinutes: scheduledMinutes, latenessMinutes: 0, earlinessMinutes: 0 };
     }
-    const latenessMinutes = Math.max(0, (attendance.joinedAt.getTime() - session.startsAt.getTime()) / 60_000 - toleranceMinutes);
-    const earlinessMinutes = Math.max(0, (session.endsAt.getTime() - attendance.leftAt.getTime()) / 60_000 - toleranceMinutes);
+    // "La tolerancia al inicio de clase y la tolerancia al final son
+    // diferentes" — cada margen se resta contra el suyo, no un solo valor
+    // compartido.
+    const latenessMinutes = Math.max(0, (attendance.joinedAt.getTime() - session.startsAt.getTime()) / 60_000 - toleranceStartMinutes);
+    const earlinessMinutes = Math.max(0, (session.endsAt.getTime() - attendance.leftAt.getTime()) / 60_000 - toleranceEndMinutes);
     const payableMinutes = Math.max(0, scheduledMinutes - latenessMinutes - earlinessMinutes);
     return { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes };
   }
@@ -1142,7 +1146,7 @@ export class AdminService {
       const attendance = await this.prisma.attendance.findUnique({
         where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
       });
-      const { payableMinutes } = this.computeSessionPayableMinutes(session, attendance, rate.toleranceMinutes);
+      const { payableMinutes } = this.computeSessionPayableMinutes(session, attendance, rate.toleranceStartMinutes, rate.toleranceEndMinutes);
       const amount = (payableMinutes / 60) * Number(rate.hourlyRateTeaching);
       byCurrency.set(rate.currency, (byCurrency.get(rate.currency) ?? 0) + amount);
       totalMinutes += payableMinutes;
@@ -1180,8 +1184,9 @@ export class AdminService {
         where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
       });
       const rate = await this.findTeacherRate(session.teacherId, session.courseId);
-      const toleranceMinutes = rate?.toleranceMinutes ?? 10;
-      const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(session, attendance, toleranceMinutes);
+      const toleranceStartMinutes = rate?.toleranceStartMinutes ?? 10;
+      const toleranceEndMinutes = rate?.toleranceEndMinutes ?? 10;
+      const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(session, attendance, toleranceStartMinutes, toleranceEndMinutes);
       rows.push({
         sessionId: session.id,
         courseId: session.courseId,
@@ -1540,7 +1545,8 @@ export class AdminService {
     hourlyRateTeaching?: number;
     hourlyRateOtherActivities?: number;
     currency?: string;
-    toleranceMinutes?: number;
+    toleranceStartMinutes?: number;
+    toleranceEndMinutes?: number;
     paymentFrequency?: "DAILY" | "WEEKLY" | "MONTHLY" | "END_OF_COURSE";
     active?: boolean;
   }) {
@@ -1718,7 +1724,8 @@ export class AdminService {
       latenessMinutes: number;
       earlinessMinutes: number;
       hourlyRateTeaching: number;
-      toleranceMinutes: number;
+      toleranceStartMinutes: number;
+      toleranceEndMinutes: number;
     }> = [];
 
     for (const session of sessions) {
@@ -1731,7 +1738,8 @@ export class AdminService {
       const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(
         session,
         attendance,
-        rate.toleranceMinutes,
+        rate.toleranceStartMinutes,
+        rate.toleranceEndMinutes,
       );
       hoursTeaching += payableMinutes / 60;
       grossFromTeaching += (payableMinutes / 60) * Number(rate.hourlyRateTeaching);
@@ -1745,7 +1753,8 @@ export class AdminService {
         latenessMinutes,
         earlinessMinutes,
         hourlyRateTeaching: Number(rate.hourlyRateTeaching),
-        toleranceMinutes: rate.toleranceMinutes,
+        toleranceStartMinutes: rate.toleranceStartMinutes,
+        toleranceEndMinutes: rate.toleranceEndMinutes,
       });
     }
 
@@ -2167,7 +2176,8 @@ export class AdminService {
     const igvPercent = sunat?.igvPercent ?? 18;
     const culqiFeePercent = platformSettings?.culqiFeePercent ?? 3.99;
     const stripeFeePercent = platformSettings?.stripeFeePercent ?? 4.99;
-    const yapePlinFeePercent = platformSettings?.yapePlinFeePercent ?? 0;
+    const yapeFeePercent = platformSettings?.yapeFeePercent ?? 0;
+    const plinFeePercent = platformSettings?.plinFeePercent ?? 0;
     const detractionSettings = {
       detractionEnabled: platformSettings?.detractionEnabled ?? true,
       detractionRucNaturalPercent: platformSettings?.detractionRucNaturalPercent ?? 12,
@@ -2178,23 +2188,24 @@ export class AdminService {
     const exchangeRateSourceUrl =
       platformSettings?.exchangeRateSourceUrl ?? "https://www.sbs.gob.pe/app/pp/sistip_portal/paginas/publicacion/tipocambiopromedio.aspx";
 
-    // "Yape y Plin tienen comisiones diferentes, ¿aplica sobre la venta con
-    // IGV o sin IGV?" — ya se investigó esto antes (ver comentario en
-    // PlatformSettings.yapePlinFeePercent): Culqi/Izipay cobran UNA sola
-    // "comisión de descuento de comercio" que ya cubre tarjeta+Yape, sin un
-    // % adicional específico confirmado — por eso yapePlinFeePercent existe
-    // como un % ADICIONAL configurable (0 por defecto, subir solo si el
-    // admin confirma un cargo real en su contrato) que se suma SOLO sobre
-    // los pagos cuyo `paymentMethod` (capturado del `source.type` que
-    // devuelve Culqi al cobrar, ver CulqiProvider.charge) es Yape/Plin — no
-    // sobre tarjeta. Antes este % se guardaba pero nunca se aplicaba acá
-    // (quedaba "muerto"). La base SIEMPRE es el monto bruto efectivamente
-    // cobrado (`p._sum.amount`, que YA incluye IGV) — así cobran las
-    // pasarelas en realidad, nunca sobre el neto sin IGV.
+    // "Las comisiones de Yape/Plin son separadas, no juntas" — corrección
+    // explícita del admin: SÍ es un costo real de Inkapitales (el
+    // comercio) — BCP cobra por recibir Yape en cuenta empresa, Interbank
+    // cobra por recibir Plin en cuenta empresa, cada uno con su propia
+    // tasa (ver PlatformSettings.yapeFeePercent/plinFeePercent). Cada % es
+    // ADICIONAL a la comisión de la pasarela (Culqi sigue cobrando su
+    // "descuento de comercio" aparte), aplicado SOLO sobre los pagos cuyo
+    // `paymentMethod` (capturado del `source.type` que devuelve Culqi al
+    // cobrar, ver CulqiProvider.charge) coincide con esa billetera puntual
+    // — nunca sobre tarjeta, y nunca se suman ambos a la vez sobre un
+    // mismo pago (un cargo es Yape O Plin O tarjeta, nunca dos). La base
+    // SIEMPRE es el monto bruto efectivamente cobrado (`p._sum.amount`,
+    // que YA incluye IGV) — así cobran las pasarelas en realidad, nunca
+    // sobre el neto sin IGV.
     const feesByCurrency = new Map<string, number>();
     for (const p of paymentsByCurrencyProvider) {
-      const isWallet = p.paymentMethod === "yape" || p.paymentMethod === "plin";
-      const pct = p.provider === "CULQI" ? culqiFeePercent + (isWallet ? yapePlinFeePercent : 0) : p.provider === "STRIPE" ? stripeFeePercent : 0;
+      const walletFeePercent = p.paymentMethod === "yape" ? yapeFeePercent : p.paymentMethod === "plin" ? plinFeePercent : 0;
+      const pct = p.provider === "CULQI" ? culqiFeePercent + walletFeePercent : p.provider === "STRIPE" ? stripeFeePercent : 0;
       feesByCurrency.set(p.currency, (feesByCurrency.get(p.currency) ?? 0) + Number(p._sum.amount ?? 0) * (pct / 100));
     }
     const expensesMap = new Map(expensesByCurrency.map((e) => [e.currency, Number(e._sum.amount ?? 0)]));
@@ -2297,7 +2308,8 @@ export class AdminService {
       igvPercent,
       culqiFeePercent,
       stripeFeePercent,
-      yapePlinFeePercent,
+      yapeFeePercent,
+      plinFeePercent,
       usdExchangeRate,
       exchangeRateSourceUrl,
       ...detractionSettings,
@@ -2361,7 +2373,8 @@ export class AdminService {
     input: {
       culqiFeePercent?: number;
       stripeFeePercent?: number;
-      yapePlinFeePercent?: number;
+      yapeFeePercent?: number;
+      plinFeePercent?: number;
       detractionEnabled?: boolean;
       detractionRucNaturalPercent?: number;
       detractionRucNaturalThreshold?: number;

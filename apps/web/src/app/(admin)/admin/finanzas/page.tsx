@@ -24,7 +24,8 @@ const MOCK_SUMMARY = {
   igvPercent: 18,
   culqiFeePercent: 3.99,
   stripeFeePercent: 4.99,
-  yapePlinFeePercent: 0,
+  yapeFeePercent: 0,
+  plinFeePercent: 0,
   detractionEnabled: true,
   detractionRucNaturalPercent: 12,
   detractionRucNaturalThreshold: 700,
@@ -182,7 +183,8 @@ export default async function AdminFinancePage({ searchParams }: { searchParams:
             <FeeSettingsForm
               culqiFeePercent={summary.culqiFeePercent}
               stripeFeePercent={summary.stripeFeePercent}
-              yapePlinFeePercent={summary.yapePlinFeePercent}
+              yapeFeePercent={summary.yapeFeePercent}
+              plinFeePercent={summary.plinFeePercent}
               detractionEnabled={summary.detractionEnabled}
               detractionRucNaturalPercent={summary.detractionRucNaturalPercent}
               detractionRucNaturalThreshold={summary.detractionRucNaturalThreshold}
