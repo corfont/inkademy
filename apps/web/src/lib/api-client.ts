@@ -454,7 +454,12 @@ export const certificateApi = {
       status: "VALID" | "REVOKED";
       pdfUrl?: string | null;
     }>(`/certificates/verify/${code}`),
-  pdfUrl: (id: string) => `${API_URL}/certificates/${id}/pdf`,
+  // Antes esto era un simple armador de URL (`${API_URL}/certificates/${id}/pdf`)
+  // que el frontend nunca llamaba — enlazaba directo a la URL pública del
+  // storage. Un hipo del storage (ej. "MetadataTooLarge") le llegaba al
+  // alumno como XML crudo sin envolver. Ahora se pide la URL firmada acá
+  // (con el chequeo de dueño de siempre) y el llamador navega a esa URL.
+  getDownloadUrl: (id: string, accessToken?: string | null) => apiFetch<{ url: string }>(`/certificates/${id}/pdf`, { accessToken }),
   // Antes no existía ningún endpoint para listar certificados emitidos más
   // allá de "los míos" — /admin/certificados y /empresa/:id/certificados
   // mostraban siempre MOCK_CERTIFICATES sin importar los datos reales.

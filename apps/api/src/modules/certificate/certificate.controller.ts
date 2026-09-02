@@ -20,20 +20,23 @@ export class CertificateController {
     return this.certificateService.verifyByCode(code);
   }
 
+  // "MetadataTooLarge" (u otro error crudo del storage) no debe llegarle al
+  // alumno como XML sin envolver — antes el frontend enlazaba DIRECTO a la
+  // URL pública del storage (this.storage.getPublicUrl, sin pasar por acá
+  // en absoluto: este endpoint nunca se llamaba, código muerto). Ahora el
+  // frontend pide esta URL firmada primero (con el mismo chequeo de dueño
+  // de siempre) y recién ahí navega — cualquier hipo del storage lo ve
+  // Nest, no el navegador del alumno directo contra el bucket.
   @ApiBearerAuth()
   @Get("certificates/:id/pdf")
-  @ApiOperation({ summary: "Redirige a la URL firmada del PDF del certificado" })
-  async downloadPdf(
-    @CurrentUser() user: RequestUser,
-    @Param("id") id: string,
-    @Res() res: Response,
-  ) {
+  @ApiOperation({ summary: "URL firmada del PDF del certificado (el frontend navega a esa URL después)" })
+  async downloadPdf(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     const url = await this.certificateService.getDownloadRedirectUrl(
       id,
       user.id,
       user.globalRole === "ADMIN" || user.globalRole === "SUPPORT",
     );
-    return res.redirect(url);
+    return { url };
   }
 
   @ApiBearerAuth()

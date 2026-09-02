@@ -41,6 +41,22 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
   const [exportError, setExportError] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regeneratedIds, setRegeneratedIds] = useState<Set<string>>(new Set());
+  const [openingPdfId, setOpeningPdfId] = useState<string | null>(null);
+
+  // Antes era un `<a href={cert.pdfUrl}>` directo a la URL pública del
+  // storage — un hipo del storage (ej. "MetadataTooLarge") le llegaba al
+  // admin como XML crudo. Ahora se pide la URL firmada acá primero.
+  async function handleViewPdf(certId: string) {
+    setOpeningPdfId(certId);
+    try {
+      const { url } = await certificateApi.getDownloadUrl(certId);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "No pudimos abrir el PDF.");
+    } finally {
+      setOpeningPdfId(null);
+    }
+  }
 
   // "Cuando pongo emitir certificado no me aparece ni una firma y debería
   // aparecer si ya se tiene configurada" — el PDF se renderiza UNA sola vez;
@@ -210,10 +226,15 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
                         Ver
                       </Link>
                       {cert.pdfUrl ? (
-                        <a href={cert.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-ink-700 hover:underline">
+                        <button
+                          type="button"
+                          disabled={openingPdfId === cert.id}
+                          onClick={() => handleViewPdf(cert.id)}
+                          className="flex items-center gap-1 text-ink-700 hover:underline disabled:opacity-50"
+                        >
                           <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                          PDF
-                        </a>
+                          {openingPdfId === cert.id ? "Abriendo…" : "PDF"}
+                        </button>
                       ) : (
                         <span className="text-xs text-ash-400">generando…</span>
                       )}

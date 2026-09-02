@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Award, Download, ShieldCheck } from "lucide-react";
+import { Award, ShieldCheck } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { SendCertificateEmailButton } from "@/components/campus/SendCertificateEmailButton";
+import { ViewCertificateButton } from "@/components/campus/ViewCertificateButton";
 import { localize, formatDate } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Certificados" };
@@ -57,14 +58,7 @@ export default async function CertificatesPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {cert.pdfUrl && (
-                    <a href={cert.pdfUrl} target="_blank" rel="noopener noreferrer">
-                      <Button size="sm" variant="outline">
-                        <Download className="h-4 w-4" aria-hidden="true" />
-                        {t("download")}
-                      </Button>
-                    </a>
-                  )}
+                  {cert.pdfUrl && <ViewCertificateButton certificateId={cert.id} label={t("download")} />}
                   <Link href={cert.verificationUrl}>
                     <Button size="sm" variant="ghost">
                       <ShieldCheck className="h-4 w-4" aria-hidden="true" />
