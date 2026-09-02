@@ -12,20 +12,7 @@ import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Catálogo" };
 
-function applyClientSideExtras(
-  items: CourseCardDTO[],
-  duration?: string,
-  liveOnly?: boolean,
-): CourseCardDTO[] {
-  let result = items;
-  if (liveOnly) result = result.filter((c) => !!c.nextLiveSessionAt);
-  if (duration === "short") result = result.filter((c) => c.durationHours < 10);
-  if (duration === "medium") result = result.filter((c) => c.durationHours >= 10 && c.durationHours <= 20);
-  if (duration === "long") result = result.filter((c) => c.durationHours > 20);
-  return result;
-}
-
-function filterMock(filters: CatalogFilters & { duration?: string; liveOnly?: boolean }) {
+function filterMock(filters: CatalogFilters) {
   let items = MOCK_COURSES;
   if (filters.q) {
     const q = filters.q.toLowerCase();
@@ -40,6 +27,10 @@ function filterMock(filters: CatalogFilters & { duration?: string; liveOnly?: bo
   if (filters.certificationOnly) items = items.filter((c) => c.certificationIncluded);
   if (filters.minPrice) items = items.filter((c) => Number(c.priceAmount) >= Number(filters.minPrice));
   if (filters.maxPrice) items = items.filter((c) => Number(c.priceAmount) <= Number(filters.maxPrice));
+  if (filters.liveOnly) items = items.filter((c) => !!c.nextLiveSessionAt);
+  if (filters.duration === "short") items = items.filter((c) => c.durationHours < 10);
+  if (filters.duration === "medium") items = items.filter((c) => c.durationHours >= 10 && c.durationHours <= 20);
+  if (filters.duration === "long") items = items.filter((c) => c.durationHours > 20);
   return items;
 }
 
@@ -57,6 +48,12 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     certificationOnly: searchParams.certificationOnly === "true",
     minPrice: searchParams.minPrice ? Number(searchParams.minPrice) : undefined,
     maxPrice: searchParams.maxPrice ? Number(searchParams.maxPrice) : undefined,
+    // Antes se aplicaban client-side, DESPUÉS de que la API ya había
+    // paginado a 12 ítems sin saber de ellos — el conteo y el paginador
+    // quedaban mal apenas se combinaban con cualquier otro filtro. Ahora
+    // viajan como cualquier otro filtro, ver CatalogService.listCourses.
+    duration: searchParams.duration as CatalogFilters["duration"],
+    liveOnly: searchParams.liveOnly === "true" ? true : undefined,
     sort: searchParams.sort as CatalogFilters["sort"],
     page: searchParams.page ? Number(searchParams.page) : 1,
     pageSize: 12,
@@ -70,7 +67,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     ),
   ]);
 
-  const items = applyClientSideExtras(courseResult.items, searchParams.duration, searchParams.liveOnly === "true");
+  const items = courseResult.items;
 
   return (
     <div className="container py-10">

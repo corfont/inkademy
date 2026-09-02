@@ -110,6 +110,12 @@ export interface CatalogFilters {
   minPrice?: number;
   maxPrice?: number;
   certificationOnly?: boolean;
+  // "duration/liveOnly nunca se le mandaban al backend" — se filtraban del
+  // lado del cliente sobre los 12 ítems YA paginados de la página actual,
+  // no sobre el total real (paginador y conteo quedaban mal apenas se
+  // combinaban con otro filtro). Ahora viajan como cualquier otro filtro.
+  duration?: "short" | "medium" | "long";
+  liveOnly?: boolean;
   sort?: "newest" | "priceAsc" | "priceDesc" | "bestSelling";
   page?: number;
   pageSize?: number;

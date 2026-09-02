@@ -45,6 +45,12 @@ export const catalogFiltersSchema = z.object({
   minPrice: z.coerce.number().optional(),
   maxPrice: z.coerce.number().optional(),
   certificationOnly: z.coerce.boolean().optional(),
+  // "duration/liveOnly nunca llegaban al backend" — el Zod schema (sin
+  // .strict()) los descartaba en silencio de la query aunque el frontend sí
+  // los mandara, así que terminaban filtrándose client-side sobre una sola
+  // página ya paginada — ver CatalogService.listCourses.
+  duration: z.enum(["short", "medium", "long"]).optional(),
+  liveOnly: z.coerce.boolean().optional(),
   sort: z.enum(["newest", "priceAsc", "priceDesc", "bestSelling"]).optional(),
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().optional(),

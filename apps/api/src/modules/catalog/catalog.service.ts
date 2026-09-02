@@ -126,12 +126,34 @@ export class CatalogService {
         ...(filters.maxPrice !== undefined ? { lte: filters.maxPrice } : {}),
       };
     }
+    // Antes se aplicaba client-side sobre los `pageSize` ítems YA paginados
+    // de esta única página — combinado con cualquier otro filtro, tanto el
+    // conteo mostrado como el paginador quedaban mal (podía haber más
+    // cursos que calzan en otras páginas nunca traídas). Mismos rangos que
+    // ya usaba ese filtro cliente.
+    if (filters.duration === "short") where.durationHours = { lt: 10 };
+    else if (filters.duration === "medium") where.durationHours = { gte: 10, lte: 20 };
+    else if (filters.duration === "long") where.durationHours = { gt: 20 };
+    // "Solo en vivo" — mismo criterio que nextLiveSessionAt en toCourseCard:
+    // tiene al menos una sesión programada todavía por dictarse.
+    if (filters.liveOnly) where.liveSessions = { some: { status: "SCHEDULED", startsAt: { gt: new Date() } } };
     if (filters.q) {
+      // "Buscar por el nombre real del curso no encuentra nada" — antes SOLO
+      // miraba el slug; si el slug se personalizó (o el título tiene
+      // palabras que no están seguidas en el slug), la búsqueda por el
+      // título real del curso fallaba siempre. title es Json (LocalizedText,
+      // {es, en, pt}) — Prisma sí permite filtrar dentro de un campo Json
+      // con string_contains, pero `mode: "insensitive"` no es un argumento
+      // válido ahí (solo aplica a columnas de texto plano, como slug) — el
+      // motor lo rechaza con un 500 en runtime si se combinan. La búsqueda
+      // por título queda case-sensitive por esa limitación de Prisma+Postgres.
+      // Sigue sin ser tilde-insensible ("León" no calza con "leon") sin la
+      // extensión `unaccent` de Postgres — se mantiene como limitación
+      // conocida, documentada en IMPLEMENTATION-NOTES.md, para no reescribir
+      // esta función entera a SQL crudo solo por eso.
       where.OR = [
         { slug: { contains: filters.q, mode: "insensitive" } },
-        // title/description son Json (LocalizedText): Postgres permite filtrar por
-        // texto plano dentro del JSON de forma limitada; se documenta como
-        // búsqueda simplificada (no full-text) en IMPLEMENTATION-NOTES.md.
+        { title: { path: ["es"], string_contains: filters.q } },
       ];
     }
 
@@ -243,8 +265,12 @@ export class CatalogService {
   }
 
   async getProgramBySlug(slug: string): Promise<ProgramDetailDTO> {
-    const program = await this.prisma.program.findUnique({
-      where: { slug },
+    // findFirst (no findUnique) + status: "PUBLISHED" — mismo bug que ya se
+    // corrigió en getCourseBySlug (ver el comentario ahí): sin este filtro,
+    // un diplomado en DRAFT o ARCHIVED seguía siendo visible por su slug en
+    // esta ruta pública, sin importar lo que el admin haya elegido mostrar.
+    const program = await this.prisma.program.findFirst({
+      where: { slug, status: "PUBLISHED" },
       include: {
         courses: {
           orderBy: { order: "asc" },
