@@ -2399,11 +2399,31 @@ export class AdminService {
     return updated;
   }
 
+  /**
+   * Logo configurado en PlatformSettings, descargado para incrustar en el
+   * PDF — mismo patrón que ReportsService.logoBytes (duplicado a propósito,
+   * es un helper de 8 líneas, no vale la pena acoplar los dos módulos solo
+   * por esto). Best-effort: sin logo configurado o si falla la descarga,
+   * el PDF se genera igual (report-kit.ts cae a texto "INKADEMY").
+   */
+  private async financialReportLogoBytes(): Promise<Buffer | null> {
+    const settings = await this.prisma.platformSettings.findUnique({ where: { id: "default" } });
+    if (!settings?.logoUrl) return null;
+    try {
+      const res = await fetch(settings.logoUrl);
+      if (!res.ok) return null;
+      return Buffer.from(await res.arrayBuffer());
+    } catch {
+      return null;
+    }
+  }
+
   /** Arma el PDF del estado financiero para el periodo pedido — reutilizado por descarga directa y por envío a correo. */
   private async buildFinancialReport(params: { from?: string; to?: string; period?: string; year?: number; months?: number }) {
-    const [summary, pnl] = await Promise.all([
+    const [summary, pnl, logoBytes] = await Promise.all([
       this.getFinancialSummary(params),
       this.getProfitAndLoss({ months: params.months }),
+      this.financialReportLogoBytes(),
     ]);
     const periodLabel =
       params.period === "allTime"
@@ -2413,7 +2433,7 @@ export class AdminService {
           : params.period === "year" && params.year
             ? `año ${params.year}`
             : "últimos 30 días";
-    const pdf = await buildFinancialReportPdf(summary, pnl);
+    const pdf = await buildFinancialReportPdf(summary, pnl, logoBytes);
     return { pdf, periodLabel };
   }
 

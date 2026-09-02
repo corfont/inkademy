@@ -332,6 +332,217 @@ export function drawBarChart(ctx: ReportContext, opts: { title: string; seriesLa
   ctx.y -= 24;
 }
 
+export interface KpiDatum {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "danger" | "warning";
+}
+
+const KPI_TONE_COLOR: Record<NonNullable<KpiDatum["tone"]>, ReturnType<typeof rgb>> = {
+  default: rgb(0.35, 0.36, 0.4),
+  success: rgb(0.09, 0.64, 0.29),
+  danger: rgb(0.86, 0.15, 0.15),
+  warning: rgb(0.85, 0.55, 0.05),
+};
+
+/**
+ * "Tiene que ser como un dashboard en PDF, profesional y ejecutivo" —
+ * fila de tarjetas KPI (hasta 3 por fila) con una barra de acento de
+ * color, en vez de una lista de texto plano. El color es un refuerzo
+ * visual, nunca la única señal: la etiqueta y el monto siempre van en
+ * texto (mismo criterio que la paleta de estado del resto de la app —
+ * verde=éxito, rojo=peligro, ámbar=alerta).
+ */
+export function drawKpiRow(ctx: ReportContext, data: KpiDatum[]) {
+  if (data.length === 0) return;
+  const cardHeight = 46;
+  const gap = 10;
+  const cardsPerRow = Math.min(3, data.length);
+  const rows = Math.ceil(data.length / cardsPerRow);
+  ensureSpace(ctx, rows * (cardHeight + gap) + 6);
+  const cardWidth = (CONTENT_WIDTH - gap * (cardsPerRow - 1)) / cardsPerRow;
+
+  data.forEach((d, i) => {
+    const col = i % cardsPerRow;
+    const row = Math.floor(i / cardsPerRow);
+    const x = MARGIN + col * (cardWidth + gap);
+    const y = ctx.y - row * (cardHeight + gap) - cardHeight;
+    const accent = KPI_TONE_COLOR[d.tone ?? "default"];
+    ctx.page.drawRectangle({ x, y, width: cardWidth, height: cardHeight, color: rgb(0.97, 0.97, 0.98) });
+    ctx.page.drawRectangle({ x, y, width: 4, height: cardHeight, color: accent });
+    ctx.page.drawText(d.label, { x: x + 12, y: y + cardHeight - 16, size: 8, font: ctx.fonts.regular, color: rgb(0.45, 0.46, 0.52) });
+    ctx.page.drawText(d.value, { x: x + 12, y: y + 12, size: 13, font: ctx.fonts.bold, color: rgb(0.11, 0.12, 0.22) });
+  });
+
+  ctx.y -= rows * (cardHeight + gap) + 6;
+}
+
+export interface ComboDatum {
+  label: string;
+  income: number;
+  expenses: number;
+  profit: number;
+}
+
+/**
+ * Réplica vectorial del ComposedChart ya usado en pantalla
+ * (apps/web/src/components/admin/ProfitAndLossCharts.tsx): barras
+ * agrupadas Ingresos/Gastos por mes + línea de Utilidad + línea de
+ * referencia punteada en el punto de equilibrio — mismos colores que la
+ * versión en pantalla, para que el PDF se sienta como el mismo dashboard.
+ */
+export function drawComboChart(ctx: ReportContext, opts: { title: string; data: ComboDatum[]; breakEvenIncome?: number | null; height?: number }) {
+  const chartHeight = opts.height ?? 170;
+  const titleSize = 12;
+  ensureSpace(ctx, titleSize + chartHeight + 50);
+
+  ctx.page.drawText(opts.title, { x: MARGIN, y: ctx.y, size: titleSize, font: ctx.fonts.bold, color: rgb(0.11, 0.12, 0.22) });
+  ctx.y -= titleSize + 14;
+
+  const data = opts.data.slice(-12); // mismo tope de legibilidad que drawBarChart
+  if (data.length === 0) {
+    ctx.page.drawText("Sin datos suficientes todavía.", { x: MARGIN, y: ctx.y - 4, size: 9, font: ctx.fonts.regular, color: rgb(0.55, 0.56, 0.6) });
+    ctx.y -= 30;
+    return;
+  }
+
+  const allValues = data.flatMap((d) => [d.income, d.expenses, Math.abs(d.profit)]);
+  const maxValue = Math.max(1, ...allValues, opts.breakEvenIncome ?? 0);
+  const chartTop = ctx.y;
+  const chartBottom = chartTop - chartHeight;
+  const groupGap = 10;
+  const barGap = 3;
+  const groupWidth = Math.max(24, (CONTENT_WIDTH - groupGap * (data.length + 1)) / Math.max(1, data.length));
+  const barWidth = (groupWidth - barGap) / 2;
+  const plotHeight = chartHeight - 20;
+
+  ctx.page.drawLine({ start: { x: MARGIN, y: chartBottom }, end: { x: MARGIN + CONTENT_WIDTH, y: chartBottom }, thickness: 1, color: rgb(0.7, 0.7, 0.75) });
+
+  if (opts.breakEvenIncome && opts.breakEvenIncome > 0) {
+    const beY = chartBottom + (opts.breakEvenIncome / maxValue) * plotHeight;
+    ctx.page.drawLine({
+      start: { x: MARGIN, y: beY },
+      end: { x: MARGIN + CONTENT_WIDTH, y: beY },
+      thickness: 1,
+      color: rgb(0.96, 0.62, 0.04),
+      dashArray: [4, 3],
+    });
+  }
+
+  const profitPoints: { x: number; y: number }[] = [];
+  let x = MARGIN + groupGap;
+  for (const d of data) {
+    const incomeHeight = Math.max(0, (d.income / maxValue) * plotHeight);
+    const expensesHeight = Math.max(0, (d.expenses / maxValue) * plotHeight);
+    ctx.page.drawRectangle({ x, y: chartBottom, width: barWidth, height: incomeHeight, color: rgb(0.34, 0.42, 0.86) });
+    ctx.page.drawRectangle({ x: x + barWidth + barGap, y: chartBottom, width: barWidth, height: expensesHeight, color: rgb(0.86, 0.15, 0.15) });
+
+    const profitHeight = (d.profit / maxValue) * plotHeight;
+    profitPoints.push({ x: x + groupWidth / 2 - barGap / 2, y: chartBottom + profitHeight });
+
+    const label = d.label.length > 10 ? `${d.label.slice(0, 9)}…` : d.label;
+    const labelWidth = ctx.fonts.regular.widthOfTextAtSize(label, 7);
+    ctx.page.drawText(label, { x: x + groupWidth / 2 - labelWidth / 2 - barGap / 2, y: chartBottom - 11, size: 7, font: ctx.fonts.regular, color: rgb(0.45, 0.46, 0.52) });
+
+    x += groupWidth + groupGap;
+  }
+
+  for (let i = 0; i < profitPoints.length - 1; i++) {
+    ctx.page.drawLine({ start: profitPoints[i], end: profitPoints[i + 1], thickness: 1.5, color: rgb(0.09, 0.64, 0.29) });
+  }
+  for (const p of profitPoints) {
+    ctx.page.drawEllipse({ x: p.x, y: p.y, xScale: 2.5, yScale: 2.5, color: rgb(0.09, 0.64, 0.29) });
+  }
+
+  ctx.y = chartBottom - 26;
+  const legend = [
+    { label: "Ingresos", color: rgb(0.34, 0.42, 0.86) },
+    { label: "Gastos", color: rgb(0.86, 0.15, 0.15) },
+    { label: "Utilidad", color: rgb(0.09, 0.64, 0.29) },
+  ];
+  let lx = MARGIN;
+  for (const item of legend) {
+    ctx.page.drawRectangle({ x: lx, y: ctx.y, width: 9, height: 9, color: item.color });
+    ctx.page.drawText(item.label, { x: lx + 14, y: ctx.y + 1, size: 8, font: ctx.fonts.regular, color: rgb(0.35, 0.36, 0.4) });
+    lx += 14 + ctx.fonts.regular.widthOfTextAtSize(item.label, 8) + 16;
+  }
+  ctx.y -= 24;
+}
+
+export interface DonutDatum {
+  label: string;
+  value: number;
+  color: ReturnType<typeof rgb>;
+}
+
+/**
+ * Donut de una sola serie categórica — pdf-lib no trae gráficos de torta
+ * nativos, así que cada cuña se arma a mano con `drawSvgPath` (un abanico
+ * de triángulos desde el centro, no un arco SVG "A" — evita los flags de
+ * arco, que son fáciles de invertir). IMPORTANTE: `drawSvgPath` traslada
+ * el origen a `(x,y)` y LUEGO invierte el eje Y internamente (ver
+ * pdf-lib/cjs/api/operations.js, comentario "SVG path Y axis is opposite
+ * pdf-lib's") — por eso el path se arma en coordenadas LOCALES relativas
+ * a (0,0), nunca coordenadas absolutas de página; el centro real va como
+ * `x`/`y` del propio `drawSvgPath`. Un círculo generado así es simétrico,
+ * así que ese flip interno no distorsiona el resultado.
+ */
+export function drawDonutChart(ctx: ReportContext, opts: { title: string; data: DonutDatum[]; centerLabel?: string; radius?: number }) {
+  const titleSize = 12;
+  const radius = opts.radius ?? 65;
+  const holeRadius = radius * 0.55;
+  const diameter = radius * 2;
+  ensureSpace(ctx, titleSize + 18 + diameter + 20);
+
+  ctx.page.drawText(opts.title, { x: MARGIN, y: ctx.y, size: titleSize, font: ctx.fonts.bold, color: rgb(0.11, 0.12, 0.22) });
+  ctx.y -= titleSize + 18;
+
+  const cx = MARGIN + radius + 6;
+  const cy = ctx.y - radius;
+  const total = opts.data.reduce((sum, d) => sum + Math.max(0, d.value), 0);
+
+  if (total <= 0) {
+    ctx.page.drawEllipse({ x: cx, y: cy, xScale: radius, yScale: radius, color: rgb(0.92, 0.92, 0.94) });
+    ctx.page.drawEllipse({ x: cx, y: cy, xScale: holeRadius, yScale: holeRadius, color: rgb(1, 1, 1) });
+    const noData = "Sin datos";
+    const w = ctx.fonts.regular.widthOfTextAtSize(noData, 9);
+    ctx.page.drawText(noData, { x: cx - w / 2, y: cy - 3, size: 9, font: ctx.fonts.regular, color: rgb(0.55, 0.56, 0.6) });
+  } else {
+    let angle = Math.PI / 2; // arranca arriba
+    for (const d of opts.data) {
+      const value = Math.max(0, d.value);
+      if (value <= 0) continue;
+      const sweep = (value / total) * Math.PI * 2;
+      const steps = Math.max(2, Math.round((sweep / (Math.PI * 2)) * 90));
+      const pts: string[] = ["0 0"];
+      for (let i = 0; i <= steps; i++) {
+        const a = angle - (sweep * i) / steps;
+        pts.push(`${(radius * Math.cos(a)).toFixed(2)} ${(radius * Math.sin(a)).toFixed(2)}`);
+      }
+      ctx.page.drawSvgPath(`M ${pts.join(" L ")} Z`, { x: cx, y: cy, color: d.color });
+      angle -= sweep;
+    }
+    ctx.page.drawEllipse({ x: cx, y: cy, xScale: holeRadius, yScale: holeRadius, color: rgb(1, 1, 1) });
+    if (opts.centerLabel) {
+      const size = 11;
+      const w = ctx.fonts.bold.widthOfTextAtSize(opts.centerLabel, size);
+      ctx.page.drawText(opts.centerLabel, { x: cx - w / 2, y: cy - size / 2 + 2, size, font: ctx.fonts.bold, color: rgb(0.11, 0.12, 0.22) });
+    }
+  }
+
+  // Leyenda a la derecha — nunca solo color: etiqueta + % siempre en texto.
+  let legendY = ctx.y - 6;
+  const legendX = cx + radius + 20;
+  for (const d of opts.data) {
+    const pct = total > 0 ? Math.round((Math.max(0, d.value) / total) * 100) : 0;
+    ctx.page.drawRectangle({ x: legendX, y: legendY - 7, width: 9, height: 9, color: d.color });
+    ctx.page.drawText(`${d.label} — ${pct}%`, { x: legendX + 14, y: legendY - 6, size: 9, font: ctx.fonts.regular, color: rgb(0.25, 0.26, 0.3) });
+    legendY -= 15;
+  }
+
+  ctx.y -= diameter + 20;
+}
+
 export async function finalizeReport(ctx: ReportContext): Promise<Buffer> {
   drawFooter(ctx);
   const bytes = await ctx.doc.save();

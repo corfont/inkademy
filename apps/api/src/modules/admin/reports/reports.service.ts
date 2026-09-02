@@ -3,10 +3,9 @@ import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../../common/prisma/prisma.module";
 import { AdminService } from "../admin.service";
 import { createReport, drawBarChart, drawParagraph, drawSubtitle, drawTable, drawTitle, finalizeReport, type ReportContext } from "./report-kit";
+import { buildFinancialReportPdf } from "../finance-report.pdf";
 
-const PEN = (n: number) => `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const money = (n: number, currency: string) => `${currency === "USD" ? "US$" : "S/"} ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fullName = (u: { firstName?: string | null; lastName?: string | null; email?: string } | null | undefined) =>
+const fullName =(u: { firstName?: string | null; lastName?: string | null; email?: string } | null | undefined) =>
   u ? [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "—" : "—";
 
 export interface ReportDefinition {
@@ -293,44 +292,19 @@ export class ReportsService {
   }
 
   /**
-   * Mismo estado financiero de /admin/finanzas, pero con el formato "muy
-   * profesional" pedido (logo, sello de agua, Trebuchet, márgenes 2.5cm) —
-   * el reporte viejo (finance-report.pdf.ts, servido en /admin/finance/report.pdf)
-   * se deja intacto para no romper el botón que ya usa esa pantalla.
+   * "Estado financiero (EEFF)" en /admin/reportes — MISMO generador que el
+   * botón "Descargar PDF" de /admin/finanzas (finance-report.pdf.ts). Antes
+   * este método armaba su propio PDF por separado (con logo/tabla/un solo
+   * gráfico de barras) mientras el botón real de Finanzas se quedaba con la
+   * versión vieja de puro texto — la mejora nunca le llegó al usuario
+   * porque quedó en una pantalla distinta. Ahora hay un solo generador
+   * (con tarjetas KPI, combo de barras+línea, y donut de gastos por
+   * origen) y ambos botones producen el mismo PDF.
    */
   private async estadoFinanciero(params: { from?: string; to?: string }) {
     const summary = await this.adminService.getFinancialSummary({ from: params.from, to: params.to });
     const pnl = await this.adminService.getProfitAndLoss({ months: 6 });
-    const ctx = await this.open("Estado financiero (EEFF)");
-    drawTitle(ctx, "Estado financiero");
-    drawSubtitle(ctx, `Periodo: ${new Date(summary.from).toLocaleDateString("es-PE")} — ${new Date(summary.to).toLocaleDateString("es-PE")}.`);
-    for (const row of summary.rows as any[]) {
-      drawTable(
-        ctx,
-        [
-          { header: `Balance en ${row.currency}`, width: 3 },
-          { header: "Monto", width: 1.5, align: "right" },
-        ],
-        [
-          ["Ingresos", money(row.income, row.currency)],
-          ["IGV a pagar a SUNAT", money(row.igv, row.currency)],
-          ["Detracción SUNAT", money(row.detraction, row.currency)],
-          ["Comisión de pasarela", money(row.providerFees, row.currency)],
-          ["Otros gastos", money(row.otherExpenses, row.currency)],
-          ["Saldo total", money(row.balance, row.currency)],
-        ],
-      );
-    }
-    const months = (pnl as any).months as { month: string; income: number; expenses: number; profit: number }[];
-    if (months.length > 0) {
-      drawBarChart(ctx, { title: "Ingresos mensuales (PEN)", seriesLabel: "Ingresos", data: months.map((m) => ({ label: m.month, value: Math.round(m.income) })) });
-    }
-    drawParagraph(
-      ctx,
-      `Punto de equilibrio mensual: ${(pnl as any).breakEvenIncome ? PEN((pnl as any).breakEvenIncome) : "no calculable todavía"}. Crecimiento mensual promedio: ${
-        (pnl as any).avgGrowthPct !== null ? `${(pnl as any).avgGrowthPct.toFixed(1)}%` : "—"
-      }. Estado: ${(pnl as any).status}.`,
-    );
-    return { pdf: await finalizeReport(ctx), filename: "inkademy-estado-financiero.pdf" };
+    const pdf = await buildFinancialReportPdf(summary, pnl, await this.logoBytes());
+    return { pdf, filename: "inkademy-estado-financiero.pdf" };
   }
 }

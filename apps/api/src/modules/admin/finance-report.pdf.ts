@@ -1,68 +1,96 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { rgb } from "pdf-lib";
+import { createReport, drawTitle, drawSubtitle, drawKpiRow, drawComboChart, drawDonutChart, drawParagraph, finalizeReport } from "./reports/report-kit";
 
 /**
- * PDF simple (texto plano, sin Puppeteer) para el estado financiero — "esto
- * me debería permitir descargarlo o pasarlo a PDF o mandarlo por correo".
- * Se genera con pdf-lib (ya usado por apps/worker para certificados) en vez
- * de sumar una dependencia de renderizado HTML pesada solo para un reporte
- * tabular.
+ * "Tiene que ser como un dashboard en PDF, profesional y ejecutivo" —
+ * antes era puro texto plano (drawText línea por línea, sin tablas ni
+ * gráficos). Ahora usa el mismo kit compartido (report-kit.ts: logo,
+ * marca de agua, Trebuchet/Helvetica de respaldo) que ya usan el resto de
+ * reportes, con tarjetas KPI de color y dos gráficos vectoriales nuevos
+ * (drawComboChart/drawDonutChart) — sin sumar ninguna dependencia de
+ * renderizado (nada de Puppeteer/canvas/chart.js, solo primitivas de
+ * pdf-lib que ya se usaban en el proyecto para otros reportes).
+ *
+ * Este es el generador que consume EL BOTÓN REAL que el admin usa
+ * ("Descargar PDF" en /admin/finanzas, GET admin/finance/report.pdf) — una
+ * sesión anterior ya había hecho una versión "profesional" separada
+ * (ver ReportsService.estadoFinanciero) pero la puso en OTRA pantalla
+ * (/admin/reportes), así que la mejora nunca le llegó a este botón. Ahora
+ * ese método delega acá mismo, para que no vuelva a pasar.
  */
-export async function buildFinancialReportPdf(summary: any, pnl: any): Promise<Buffer> {
-  const doc = await PDFDocument.create();
-  let page = doc.addPage([595.28, 841.89]); // A4 vertical
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const margin = 48;
-  let y = 841.89 - margin;
-  const ink = rgb(0.11, 0.12, 0.22);
-  const gray = rgb(0.45, 0.46, 0.52);
+const money = (n: number, currency: string) => `${currency === "USD" ? "US$" : "S/"} ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  function line(text: string, opts: { size?: number; f?: typeof font; color?: typeof ink; gapAfter?: number } = {}) {
-    const size = opts.size ?? 10;
-    if (y < margin + 40) {
-      page = doc.addPage([595.28, 841.89]);
-      y = 841.89 - margin;
-    }
-    page.drawText(text, { x: margin, y, size, font: opts.f ?? font, color: opts.color ?? ink });
-    y -= size + (opts.gapAfter ?? 6);
-  }
+function monthLabel(month: string): string {
+  // "2026-01" -> "Ene 26"
+  const [year, m] = month.split("-");
+  const date = new Date(Number(year), Number(m) - 1, 1);
+  const label = date.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
 
-  line("Inkademy — Estado financiero", { size: 18, f: bold, gapAfter: 4 });
-  line(`Periodo: ${new Date(summary.from).toLocaleDateString("es-PE")} — ${new Date(summary.to).toLocaleDateString("es-PE")}`, {
-    size: 10,
-    color: gray,
-    gapAfter: 16,
-  });
+// Mismos 4 orígenes de "otros gastos" que ya se ven en pantalla
+// (OtherExpensesDetail.tsx, que los arma en cliente sin endpoint propio) —
+// el PDF nunca los mostró, ni la versión vieja ni la "profesional" separada.
+const EXPENSE_ORIGIN_COLORS = {
+  teaching: rgb(0.34, 0.42, 0.86), // indigo — Docencia
+  partners: rgb(0.85, 0.55, 0.05), // ámbar — Convenios
+  royalties: rgb(0.09, 0.64, 0.29), // verde — Regalías
+  manual: rgb(0.55, 0.56, 0.6), // gris — Manuales
+};
 
-  for (const row of summary.rows) {
-    line(`Balance en ${row.currency}`, { size: 13, f: bold, gapAfter: 8 });
-    const fmt = (n: number) => `${row.currency} ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    line(`Ingresos: ${fmt(row.income)}`);
-    line(`IGV a pagar a SUNAT: ${fmt(row.igv)}`);
-    line(`Detracción SUNAT: ${fmt(row.detraction)}`);
+export async function buildFinancialReportPdf(summary: any, pnl: any, logoBytes?: Buffer | null): Promise<Buffer> {
+  const ctx = await createReport({ title: "Estado financiero", watermarkText: "INKADEMY", logoBytes });
+
+  drawTitle(ctx, "Estado financiero");
+  drawSubtitle(ctx, `Periodo: ${new Date(summary.from).toLocaleDateString("es-PE")} — ${new Date(summary.to).toLocaleDateString("es-PE")}.`);
+
+  for (const row of summary.rows as any[]) {
+    drawSubtitle(ctx, `Balance en ${row.currency}`, { gapAfter: 8 });
+    drawKpiRow(ctx, [
+      { label: "Ingresos", value: money(row.income, row.currency) },
+      { label: "IGV a pagar a SUNAT", value: money(row.igv, row.currency) },
+      { label: "Detracción SUNAT", value: money(row.detraction, row.currency) },
+      { label: "Comisión de pasarela", value: money(row.providerFees, row.currency) },
+      { label: "Otros gastos", value: money(row.otherExpenses, row.currency) },
+      { label: "Saldo total", value: money(row.balance, row.currency), tone: row.balance >= 0 ? "success" : "danger" },
+    ]);
     if (row.currency !== "PEN" && row.detractionPenEquivalent > 0) {
-      line(`  (equivalente a depositar: PEN ${row.detractionPenEquivalent.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, T.C. ${summary.usdExchangeRate})`, {
+      drawParagraph(ctx, `Detracción equivalente a depositar: PEN ${row.detractionPenEquivalent.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (T.C. ${summary.usdExchangeRate}).`, {
         size: 9,
-        color: gray,
+        gapAfter: 6,
       });
     }
-    line(`Comisión de pasarela: ${fmt(row.providerFees)}`);
-    line(`Otros gastos: ${fmt(row.otherExpenses)}`);
-    line(`Saldo total: ${fmt(row.balance)}`, { f: bold, gapAfter: 16 });
-  }
 
-  line("Estado de resultados mensual (PEN)", { size: 13, f: bold, gapAfter: 8 });
-  for (const m of pnl.months) {
-    line(`${m.month}  —  Ingresos: S/ ${m.income.toFixed(2)}   Gastos: S/ ${m.expenses.toFixed(2)}   Utilidad: S/ ${m.profit.toFixed(2)}`, {
-      size: 9,
+    // "Otros gastos" desglosado por origen — mismo criterio que
+    // OtherExpensesDetail.tsx en pantalla, nunca antes visible en el PDF.
+    const partnersTotal = (summary.partnerCosts ?? []).filter((p: any) => p.currency === row.currency).reduce((s: number, p: any) => s + p.amount, 0);
+    const royaltiesTotal = (summary.royaltyCosts ?? []).filter((r: any) => r.currency === row.currency).reduce((s: number, r: any) => s + r.amount, 0);
+    const teachingTotal = summary.teachingHoursCost?.byCurrency?.[row.currency] ?? 0;
+    const manualTotal = summary.manualExpensesByCurrency?.[row.currency] ?? 0;
+    drawDonutChart(ctx, {
+      title: `Otros gastos por origen (${row.currency})`,
+      centerLabel: money(row.otherExpenses, row.currency),
+      data: [
+        { label: "Docencia", value: teachingTotal, color: EXPENSE_ORIGIN_COLORS.teaching },
+        { label: "Convenios", value: partnersTotal, color: EXPENSE_ORIGIN_COLORS.partners },
+        { label: "Regalías", value: royaltiesTotal, color: EXPENSE_ORIGIN_COLORS.royalties },
+        { label: "Manuales", value: manualTotal, color: EXPENSE_ORIGIN_COLORS.manual },
+      ],
     });
   }
-  y -= 6;
-  line(`Punto de equilibrio mensual: ${pnl.breakEvenIncome ? `S/ ${pnl.breakEvenIncome.toFixed(2)}` : "—"}`, { gapAfter: 4 });
-  line(`Crecimiento mensual promedio: ${pnl.avgGrowthPct !== null ? `${pnl.avgGrowthPct.toFixed(1)}%` : "—"}`, { gapAfter: 4 });
-  line(`Proyección próximo mes: ${pnl.forecastNextMonth !== null ? `S/ ${pnl.forecastNextMonth.toFixed(2)}` : "—"}`, { gapAfter: 4 });
-  line(`Estado: ${pnl.status}`, { f: bold });
 
-  const bytes = await doc.save();
-  return Buffer.from(bytes);
+  drawComboChart(ctx, {
+    title: "Estado de resultados mensual (PEN)",
+    data: (pnl.months as any[]).map((m) => ({ label: monthLabel(m.month), income: m.income, expenses: m.expenses, profit: m.profit })),
+    breakEvenIncome: pnl.breakEvenIncome,
+  });
+
+  drawParagraph(
+    ctx,
+    `Punto de equilibrio mensual: ${pnl.breakEvenIncome ? money(pnl.breakEvenIncome, "PEN") : "no calculable todavía"}. Crecimiento mensual promedio: ${
+      pnl.avgGrowthPct !== null ? `${pnl.avgGrowthPct.toFixed(1)}%` : "—"
+    }. Proyección próximo mes: ${pnl.forecastNextMonth !== null ? money(pnl.forecastNextMonth, "PEN") : "—"}. Estado: ${pnl.status}.`,
+  );
+
+  return finalizeReport(ctx);
 }
