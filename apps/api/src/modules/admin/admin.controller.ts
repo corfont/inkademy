@@ -18,6 +18,7 @@ import {
   adminResetPasswordSchema,
   bulkIdsSchema,
   scormAuthoredContentSchema,
+  upsertScormThemePresetSchema,
   createExpenseSchema,
   createTeacherActivityLogSchema,
   createTeacherAdvanceSchema,
@@ -361,6 +362,29 @@ export class AdminController {
   @ApiOperation({ summary: "Analítica por pregunta agregada de todos los intentos del SCORM de este material" })
   getMaterialScormAnalytics(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.scormService.getMaterialAnalytics(id, teacherScopeId(user));
+  }
+
+  // "¿Colores, tipos de letra, tamaño, como lo hacen los mejores?" — brand
+  // kit reutilizable del editor de autoría SCORM (catálogo global).
+  @Get("scorm-theme-presets")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Lista los presets de tema visual guardados para el editor SCORM (brand kit del equipo)" })
+  listScormThemePresets() {
+    return this.adminService.listScormThemePresets();
+  }
+
+  @Post("scorm-theme-presets")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Guarda el tema visual actual del editor SCORM como preset reutilizable" })
+  createScormThemePreset(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertScormThemePresetSchema)) dto: any) {
+    return this.adminService.createScormThemePreset(dto, user.id);
+  }
+
+  @Delete("scorm-theme-presets/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Elimina un preset de tema visual guardado" })
+  deleteScormThemePreset(@Param("id") id: string) {
+    return this.adminService.deleteScormThemePreset(id);
   }
 
   @Post("lessons/:id/generate-subtitles")

@@ -7,7 +7,8 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { StorageService } from "../../storage/storage.service";
 import { contentTypeFromPath } from "./scorm-content-type";
 import { buildScormPlayerHtml } from "./scorm-shim";
-import { buildScormContentHtml, buildScormManifestXml, type ScormAuthoredContent } from "@inkademy/shared";
+import { buildScormContentHtml, buildScormManifestXml, SCORM_EMBEDDABLE_FONTS, type ScormAuthoredContent } from "@inkademy/shared";
+import { fetchEmbeddedFontFaceCss } from "./embed-google-font";
 
 type ScormOwnerType = "lesson" | "material";
 
@@ -291,10 +292,22 @@ export class ScormService {
     }
   }
 
-  /** Genera manifest+HTML desde una definición de autoría y los sube bajo `prefix`. */
+  /**
+   * Genera manifest+HTML desde una definición de autoría y los sube bajo
+   * `prefix`. Si el tema elige una tipografía de marca (Google Fonts), se
+   * incrusta como datos ACÁ (el servidor sí tiene red) para que el .zip
+   * final quede autocontenido — ver embed-google-font.ts. Best-effort: si
+   * falla la descarga, el paquete se genera igual con el fallback de
+   * sistema del propio stack, nunca bloquea al docente.
+   */
   private async uploadAuthoredContent(prefix: string, ownerId: string, title: string, content: ScormAuthoredContent): Promise<void> {
+    let embeddedFontFaceCss: string | null = null;
+    if (content.theme?.fontFamilyKind === "embedded") {
+      const match = SCORM_EMBEDDABLE_FONTS.find((f) => content.theme!.fontFamily.includes(f.googleName));
+      if (match) embeddedFontFaceCss = await fetchEmbeddedFontFaceCss(match.googleName);
+    }
     const manifestXml = buildScormManifestXml(ownerId, title);
-    const contentHtml = buildScormContentHtml(content, title);
+    const contentHtml = buildScormContentHtml(content, title, embeddedFontFaceCss ?? undefined);
     await this.storage.uploadBuffer(prefix + "imsmanifest.xml", Buffer.from(manifestXml, "utf-8"), "application/xml");
     await this.storage.uploadBuffer(prefix + "index.html", Buffer.from(contentHtml, "utf-8"), "text/html");
   }

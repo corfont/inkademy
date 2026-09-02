@@ -1273,6 +1273,26 @@ export class AdminService {
     return { deleted: true };
   }
 
+  // "¿Colores, tipos de letra, tamaño, como lo hacen los mejores?" — brand
+  // kit reutilizable del editor SCORM (ver ScormThemePreset en el schema).
+  // Catálogo global (no privado por usuario) — cualquier ADMIN/TEACHER
+  // puede listar/crear; solo ADMIN puede borrar el de otro docente.
+  async listScormThemePresets() {
+    return this.prisma.scormThemePreset.findMany({
+      include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  createScormThemePreset(input: { name: string; theme: unknown }, actorId?: string) {
+    return this.prisma.scormThemePreset.create({ data: { name: input.name, theme: input.theme as never, createdById: actorId } });
+  }
+
+  async deleteScormThemePreset(id: string) {
+    await this.prisma.scormThemePreset.delete({ where: { id } });
+    return { deleted: true };
+  }
+
   addCourseRoyalty(input: { courseId: string; royaltyRecipientId: string; startDate?: string; endDate?: string }) {
     return this.prisma.courseRoyalty.create({
       data: {
