@@ -129,6 +129,7 @@ model User {
   lessonNotes           LessonNote[]
   courseRatings         CourseRating[]
   royaltyRecipient      RoyaltyRecipient[]
+  scormThemePresets     ScormThemePreset[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
   supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
@@ -2128,6 +2129,20 @@ model RoyaltyRecipient {
   updatedAt    DateTime           @updatedAt
 
   courses      CourseRoyalty[]
+}
+
+// "¿Puedo poner colores, tipos de letra, tamaño?" — brand kit reutilizable
+// del equipo para el editor de autoría SCORM (ver ScormTheme en
+// packages/shared/scorm-authoring.ts). Los 4 presets "de fábrica" NO viven
+// acá — son constantes en @inkademy/shared, siempre disponibles sin ir a
+// la base; esta tabla es solo para los que el propio equipo guarda.
+model ScormThemePreset {
+  id          String   @id @default(uuid())
+  name        String
+  theme       Json
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
 }
 
 model CourseRoyalty {

@@ -168,12 +168,25 @@ export const updateLessonSchema = upsertLessonSchema.partial();
 // equivalente al catálogo base de iSpring QuizMaker/plantillas "Quiz" de
 // Storyline. Ver también packages/shared/src/scorm-authoring.ts (los
 // mismos tipos, del lado del motor de render/calificación).
+// "Como lo hacen los mejores" — layout de la imagen dentro de una
+// diapositiva de Contenido; `imageBox` (mismo shape que las zonas de
+// hotspot, %) solo aplica a "image-background", arrastrable/redimensionable
+// en el editor. Sin `layout`, el render es el legado (imagen al final) —
+// ver packages/shared/scorm-authoring.ts renderContent.
+const scormImageBoxSchema = z.object({
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  width: z.number().min(0).max(100),
+  height: z.number().min(0).max(100),
+});
 const scormContentSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("content"),
   title: z.string().min(1).max(200),
   body: z.string().max(5000),
   imageUrl: z.string().url().optional().nullable(),
+  layout: z.enum(["text", "image-top", "image-bottom", "image-left", "image-right", "image-background"]).optional(),
+  imageBox: scormImageBoxSchema.optional().nullable(),
 });
 const scormTrueFalseSlideSchema = z.object({
   id: z.string().min(1),
@@ -255,11 +268,32 @@ const scormSectionSchema = z.object({
   title: z.string().min(1).max(120),
   weightPercent: z.number().min(0).max(100),
 });
+// "¿Colores, tipos de letra, tamaño?" — ver ScormTheme en
+// packages/shared/scorm-authoring.ts. Colores como hex estricto (el motor
+// los interpola directo en CSS var(...), sin sanitizar más). `fontFamily`
+// no se restringe a un enum acá porque ya viaja el stack CSS completo
+// (SCORM_SYSTEM_FONTS/SCORM_EMBEDDABLE_FONTS del lado del editor limitan
+// las opciones reales que se pueden elegir).
+const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Debe ser un color hex (#rrggbb)");
+export const scormThemeSchema = z.object({
+  primaryColor: hexColorSchema,
+  correctColor: hexColorSchema,
+  incorrectColor: hexColorSchema,
+  backgroundColor: hexColorSchema,
+  cardColor: hexColorSchema,
+  textColor: hexColorSchema,
+  fontFamily: z.string().min(1).max(300),
+  fontFamilyKind: z.enum(["system", "embedded"]),
+  fontScale: z.enum(["sm", "md", "lg"]),
+  cardStyle: z.enum(["rounded", "square"]),
+  headerImageUrl: z.string().url().optional().nullable(),
+});
 export const scormAuthoredContentSchema = z
   .object({
     slides: z.array(scormSlideSchema).min(1).max(50),
     passingScore: z.number().min(0).max(100).default(70),
     sections: z.array(scormSectionSchema).max(20).optional(),
+    theme: scormThemeSchema.optional(),
   })
   .refine(
     (data) => {
@@ -272,6 +306,13 @@ export const scormAuthoredContentSchema = z
     },
     { message: "Si defines secciones, sus pesos deben sumar 100% y cada pregunta debe pertenecer a una sección." },
   );
+
+// Presets de tema SCORM reutilizables (el brand kit del equipo) — catálogo
+// global, ver AdminService.listScormThemePresets/createScormThemePreset.
+export const upsertScormThemePresetSchema = z.object({
+  name: z.string().min(1).max(120),
+  theme: scormThemeSchema,
+});
 
 export const upsertMaterialSchema = z
   .object({

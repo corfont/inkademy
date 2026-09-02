@@ -14,12 +14,22 @@
  * <iframe srcDoc>) — cero duplicación de la lógica de render/calificación.
  */
 
+// "¿Colores, tipografía, tamaño?" — layout de la imagen dentro de una
+// diapositiva de Contenido. Sin `layout` (todo paquete generado antes de
+// esto), el render es "image-bottom" — EXACTAMENTE el comportamiento
+// legado (imagen siempre al final) — cero riesgo para contenido existente.
+// "image-background" es el único que usa `imageBox` (mismo shape que
+// HotspotZone: %, arrastrable/redimensionable con el mismo patrón de
+// puntero que ya usa esa diapositiva).
+export type ContentSlideLayout = "text" | "image-top" | "image-bottom" | "image-left" | "image-right" | "image-background";
 export interface ContentSlide {
   id: string;
   type: "content";
   title: string;
   body: string;
   imageUrl?: string | null;
+  layout?: ContentSlideLayout;
+  imageBox?: { x: number; y: number; width: number; height: number } | null;
 }
 export interface TrueFalseSlide {
   id: string;
@@ -112,10 +122,112 @@ export interface ScormSection {
   title: string;
   weightPercent: number;
 }
+// "¿Puedo poner colores, tipos de letra, tamaño, como lo hacen los
+// mejores?" — un paquete SCORM debe ser 100% autocontenido (se reproduce
+// offline/en un iframe aislado), así que la tipografía tiene dos familias
+// posibles: `system` (pilas del sistema operativo, cero red, siempre
+// disponibles) o `embedded` (una de las 10 tipografías de marca que ya usa
+// el resto de Inkademy — ver BRAND_FONT_OPTIONS en apps/web — pero
+// incrustada como datos al generar el paquete real, ver
+// apps/api/scorm/embed-google-font.ts, para no romper la portabilidad).
+// Sin `theme` (todo paquete generado antes de esto), se usa
+// DEFAULT_SCORM_THEME — pixel-idéntico al render fijo que había hasta
+// ahora, cero riesgo para contenido existente.
+export type ScormFontFamilyKind = "system" | "embedded";
+export interface ScormTheme {
+  primaryColor: string;
+  correctColor: string;
+  incorrectColor: string;
+  backgroundColor: string;
+  cardColor: string;
+  textColor: string;
+  fontFamily: string; // stack CSS completo, con fallback ya incluido
+  fontFamilyKind: ScormFontFamilyKind;
+  fontScale: "sm" | "md" | "lg";
+  cardStyle: "rounded" | "square";
+  headerImageUrl?: string | null;
+}
+export const DEFAULT_SCORM_THEME: ScormTheme = {
+  primaryColor: "#23262b",
+  correctColor: "#2e7d4f",
+  incorrectColor: "#b3261e",
+  backgroundColor: "#f7f5f0",
+  cardColor: "#ffffff",
+  textColor: "#23262b",
+  fontFamily: `-apple-system, "Segoe UI", Roboto, sans-serif`,
+  fontFamilyKind: "system",
+  fontScale: "md",
+  cardStyle: "rounded",
+  headerImageUrl: null,
+};
+
+export const SCORM_SYSTEM_FONTS: { label: string; stack: string }[] = [
+  { label: "Sistema (predeterminada)", stack: `-apple-system, "Segoe UI", Roboto, sans-serif` },
+  { label: "Georgia (serif clásica)", stack: `Georgia, "Times New Roman", serif` },
+  { label: "Verdana (alta legibilidad)", stack: `Verdana, Geneva, sans-serif` },
+  { label: "Trebuchet (moderna)", stack: `"Trebuchet MS", sans-serif` },
+  { label: "Courier (monoespaciada)", stack: `"Courier New", Courier, monospace` },
+];
+
+// Mismos 10 nombres que BRAND_FONT_OPTIONS (apps/web/src/lib/brand-fonts.ts)
+// — consistencia de marca con el resto de la plataforma. `googleName` es el
+// nombre exacto para pedirlo a la API CSS2 de Google Fonts al generar el
+// paquete (embed-google-font.ts); `stack` es el fallback si la incrustación
+// falla o mientras carga en la vista previa.
+export const SCORM_EMBEDDABLE_FONTS: { label: string; googleName: string; stack: string }[] = [
+  { label: "Outfit", googleName: "Outfit", stack: `"Outfit", -apple-system, sans-serif` },
+  { label: "Work Sans", googleName: "Work Sans", stack: `"Work Sans", -apple-system, sans-serif` },
+  { label: "Inter", googleName: "Inter", stack: `"Inter", -apple-system, sans-serif` },
+  { label: "Poppins", googleName: "Poppins", stack: `"Poppins", -apple-system, sans-serif` },
+  { label: "Roboto", googleName: "Roboto", stack: `"Roboto", -apple-system, sans-serif` },
+  { label: "Lato", googleName: "Lato", stack: `"Lato", -apple-system, sans-serif` },
+  { label: "Montserrat", googleName: "Montserrat", stack: `"Montserrat", -apple-system, sans-serif` },
+  { label: "Nunito", googleName: "Nunito", stack: `"Nunito", -apple-system, sans-serif` },
+  { label: "Playfair Display", googleName: "Playfair Display", stack: `"Playfair Display", Georgia, serif` },
+  { label: "Merriweather", googleName: "Merriweather", stack: `"Merriweather", Georgia, serif` },
+];
+
+export interface ScormThemePresetSummary {
+  id: string;
+  name: string;
+  theme: ScormTheme;
+  builtin: boolean;
+}
+// 4 puntos de partida siempre disponibles, sin ida y vuelta a la API — el
+// admin puede aplicar uno y seguir personalizando, o guardar los suyos
+// propios (ver ScormThemePreset en Prisma, catálogo del equipo).
+export const BUILTIN_SCORM_THEME_PRESETS: ScormThemePresetSummary[] = [
+  {
+    id: "builtin-inkademy",
+    name: "Inkademy",
+    builtin: true,
+    theme: { ...DEFAULT_SCORM_THEME, primaryColor: "#183167", correctColor: "#277c54", incorrectColor: "#bc2e24", backgroundColor: "#f7f5f0", cardColor: "#ffffff", textColor: "#1c2331" },
+  },
+  {
+    id: "builtin-corporativo",
+    name: "Corporativo índigo",
+    builtin: true,
+    theme: { ...DEFAULT_SCORM_THEME, primaryColor: "#3241ae", correctColor: "#277c54", incorrectColor: "#bc2e24", backgroundColor: "#eef0fb", cardColor: "#ffffff", textColor: "#1f2340", fontFamily: SCORM_EMBEDDABLE_FONTS[2].stack, fontFamilyKind: "embedded" },
+  },
+  {
+    id: "builtin-alto-contraste",
+    name: "Alto contraste",
+    builtin: true,
+    theme: { ...DEFAULT_SCORM_THEME, primaryColor: "#000000", correctColor: "#0a6b2f", incorrectColor: "#a10f0f", backgroundColor: "#ffffff", cardColor: "#ffffff", textColor: "#000000", cardStyle: "square" },
+  },
+  {
+    id: "builtin-calido-serif",
+    name: "Cálido serif",
+    builtin: true,
+    theme: { ...DEFAULT_SCORM_THEME, primaryColor: "#7a501f", correctColor: "#2e7d4f", incorrectColor: "#b3261e", backgroundColor: "#faf3e8", cardColor: "#fffdf8", textColor: "#3a2d1c", fontFamily: SCORM_EMBEDDABLE_FONTS[9].stack, fontFamilyKind: "embedded" },
+  },
+];
+
 export interface ScormAuthoredContent {
   slides: ScormSlide[];
   passingScore: number;
   sections?: ScormSection[];
+  theme?: ScormTheme;
 }
 
 export const SCORM_SLIDE_TYPE_LABEL: Record<ScormSlide["type"], string> = {
@@ -204,68 +316,128 @@ export function buildScormManifestXml(lessonId: string, title: string): string {
  * vista previa en vivo del editor, servida suelta en un iframe), sigue
  * funcionando igual: todo apiCall(...) es no-op seguro.
  */
-export function buildScormContentHtml(content: ScormAuthoredContent, title: string): string {
+export function buildScormContentHtml(content: ScormAuthoredContent, title: string, embeddedFontFaceCss?: string | null): string {
   const dataJson = safeJsonForScript(content);
   const safeTitle = escapeHtml(title);
+  const theme = content.theme ?? DEFAULT_SCORM_THEME;
+  const radius = theme.cardStyle === "square" ? "2px" : "10px";
+  const radiusSm = theme.cardStyle === "square" ? "0px" : "6px";
+  const scale = theme.fontScale === "sm" ? 0.9 : theme.fontScale === "lg" ? 1.15 : 1;
+
+  // Tipografía de marca (Google Fonts): en el paquete REAL (apps/api ya
+  // resolvió `embeddedFontFaceCss` descargando y empotrando el .woff2 como
+  // data-URI, ver embed-google-font.ts — el .zip queda 100% autocontenido).
+  // En la vista previa en vivo del navegador (sin ese parámetro), se pide
+  // normal a Google Fonts — best-effort, si falla cae al fallback del stack
+  // sin romper nada; la vista previa no necesita ser offline, solo el
+  // paquete exportado.
+  let fontFaceHtml = "";
+  if (theme.fontFamilyKind === "embedded") {
+    if (embeddedFontFaceCss) {
+      fontFaceHtml = `<style>${embeddedFontFaceCss}</style>`;
+    } else {
+      const match = SCORM_EMBEDDABLE_FONTS.find((f) => theme.fontFamily.includes(f.googleName));
+      const googleName = match?.googleName;
+      if (googleName) {
+        const familyParam = encodeURIComponent(googleName).replace(/%20/g, "+");
+        fontFaceHtml = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${familyParam}:wght@400;700&display=swap" />`;
+      }
+    }
+  }
+
+  const headerHtml = theme.headerImageUrl
+    ? `<header class="scorm-header"><img src="${escapeHtml(theme.headerImageUrl)}" alt="" /></header>`
+    : "";
+
   return `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${safeTitle}</title>
+${fontFaceHtml}
 <style>
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: light;
+    --scorm-primary: ${theme.primaryColor};
+    --scorm-correct: ${theme.correctColor};
+    --scorm-incorrect: ${theme.incorrectColor};
+    --scorm-bg: ${theme.backgroundColor};
+    --scorm-card: ${theme.cardColor};
+    --scorm-text: ${theme.textColor};
+    --scorm-border: color-mix(in srgb, var(--scorm-text) 15%, var(--scorm-card));
+    --scorm-muted: color-mix(in srgb, var(--scorm-text) 55%, var(--scorm-card));
+    --scorm-correct-bg: color-mix(in srgb, var(--scorm-correct) 15%, var(--scorm-card));
+    --scorm-incorrect-bg: color-mix(in srgb, var(--scorm-incorrect) 15%, var(--scorm-card));
+    --scorm-pool-bg: color-mix(in srgb, var(--scorm-text) 6%, var(--scorm-card));
+    --scorm-radius: ${radius};
+    --scorm-radius-sm: ${radiusSm};
+    --scorm-font: ${theme.fontFamily};
+    --scorm-scale: ${scale};
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; min-height: 100%; background: #f7f5f0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #23262b; }
+  html, body { margin: 0; padding: 0; min-height: 100%; background: var(--scorm-bg); font-family: var(--scorm-font); color: var(--scorm-text); font-size: calc(16px * var(--scorm-scale)); }
+  .scorm-header { background: var(--scorm-card); border-bottom: 1px solid var(--scorm-border); padding: 10px 20px; text-align: center; }
+  .scorm-header img { max-height: 40px; max-width: 220px; }
   .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 96px; }
-  .bar { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: #e5e1d8; z-index: 50; }
-  .bar-fill { height: 100%; background: linear-gradient(90deg, #23262b, #d8b26c); transition: width .3s; }
-  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  .bar { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: var(--scorm-border); z-index: 50; }
+  .bar-fill { height: 100%; background: var(--scorm-primary); transition: width .3s; }
+  h1 { font-size: calc(1.4rem * var(--scorm-scale)); margin: 0 0 12px; }
   p { line-height: 1.6; white-space: pre-wrap; }
-  img.slide-image { max-width: 100%; border-radius: 8px; margin-top: 12px; }
-  .card { background: #fff; border: 1px solid #e5e1d8; border-radius: 10px; padding: 24px; box-shadow: 0 1px 8px rgba(0,0,0,.05); }
+  img.slide-image { max-width: 100%; border-radius: var(--scorm-radius); margin-top: 12px; }
+  .card { background: var(--scorm-card); border: 1px solid var(--scorm-border); border-radius: var(--scorm-radius); padding: 24px; box-shadow: 0 1px 8px rgba(0,0,0,.05); }
   .options { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
-  .option { display: flex; align-items: center; gap: 10px; border: 1px solid #e5e1d8; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
-  .option.correct { border-color: #2e7d4f; background: #eaf6ee; }
-  .option.wrong { border-color: #b3261e; background: #fbeceb; }
-  .option input { accent-color: #23262b; }
-  .feedback { margin-top: 14px; font-size: .9rem; }
-  .feedback.ok { color: #2e7d4f; }
-  .feedback.bad { color: #b3261e; }
+  .option { display: flex; align-items: center; gap: 10px; border: 1px solid var(--scorm-border); border-radius: var(--scorm-radius-sm); padding: 10px 14px; cursor: pointer; }
+  .option.correct { border-color: var(--scorm-correct); background: var(--scorm-correct-bg); }
+  .option.wrong { border-color: var(--scorm-incorrect); background: var(--scorm-incorrect-bg); }
+  .option input { accent-color: var(--scorm-primary); }
+  .feedback { margin-top: 14px; font-size: calc(.9rem * var(--scorm-scale)); }
+  .feedback.ok { color: var(--scorm-correct); }
+  .feedback.bad { color: var(--scorm-incorrect); }
   .nav { display: flex; justify-content: space-between; margin-top: 28px; }
-  button { font: inherit; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; }
-  button.primary { background: #23262b; color: #fff; }
+  button { font: inherit; border: none; border-radius: var(--scorm-radius-sm); padding: 10px 20px; cursor: pointer; }
+  button.primary { background: var(--scorm-primary); color: #fff; }
   button.primary:disabled { opacity: .4; cursor: not-allowed; }
-  button.ghost { background: transparent; color: #23262b; text-decoration: underline; padding: 10px 4px; }
-  .result-score { font-size: 2.4rem; font-weight: 700; margin: 8px 0; }
-  .result-score.pass { color: #2e7d4f; }
-  .result-score.fail { color: #b3261e; }
-  .section-breakdown { list-style: none; padding: 0; margin: 8px 0; font-size: .85rem; color: #55595f; }
+  button.ghost { background: transparent; color: var(--scorm-text); text-decoration: underline; padding: 10px 4px; }
+  .result-score { font-size: calc(2.4rem * var(--scorm-scale)); font-weight: 700; margin: 8px 0; }
+  .result-score.pass { color: var(--scorm-correct); }
+  .result-score.fail { color: var(--scorm-incorrect); }
+  .section-breakdown { list-style: none; padding: 0; margin: 8px 0; font-size: calc(.85rem * var(--scorm-scale)); color: var(--scorm-muted); }
   .section-breakdown li { padding: 2px 0; }
-  .blank-input { border: none; border-bottom: 2px solid #23262b; font: inherit; padding: 2px 4px; width: 8em; text-align: center; }
-  .blank-input.correct { border-color: #2e7d4f; color: #2e7d4f; }
-  .blank-input.wrong { border-color: #b3261e; color: #b3261e; }
+  .blank-input { border: none; border-bottom: 2px solid var(--scorm-text); font: inherit; padding: 2px 4px; width: 8em; text-align: center; background: transparent; color: var(--scorm-text); }
+  .blank-input.correct { border-color: var(--scorm-correct); color: var(--scorm-correct); }
+  .blank-input.wrong { border-color: var(--scorm-incorrect); color: var(--scorm-incorrect); }
   .match-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .match-left { flex: 1; border: 1px solid #e5e1d8; border-radius: 8px; padding: 8px 12px; }
-  .match-slot { flex: 1; min-height: 42px; border: 2px dashed #cfc9ba; border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-  .match-slot.filled { border-style: solid; background: #f2f0ea; }
-  .match-slot.correct { border-color: #2e7d4f; background: #eaf6ee; }
-  .match-slot.wrong { border-color: #b3261e; background: #fbeceb; }
-  .match-pool { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; min-height: 48px; padding: 8px; border-radius: 8px; background: #f2f0ea; }
-  .chip { background: #fff; border: 1px solid #cfc9ba; border-radius: 6px; padding: 8px 12px; cursor: grab; user-select: none; touch-action: none; }
+  .match-left { flex: 1; border: 1px solid var(--scorm-border); border-radius: var(--scorm-radius-sm); padding: 8px 12px; }
+  .match-slot { flex: 1; min-height: 42px; border: 2px dashed var(--scorm-border); border-radius: var(--scorm-radius-sm); padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .match-slot.filled { border-style: solid; background: var(--scorm-pool-bg); }
+  .match-slot.correct { border-color: var(--scorm-correct); background: var(--scorm-correct-bg); }
+  .match-slot.wrong { border-color: var(--scorm-incorrect); background: var(--scorm-incorrect-bg); }
+  .match-pool { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; min-height: 48px; padding: 8px; border-radius: var(--scorm-radius-sm); background: var(--scorm-pool-bg); }
+  .chip { background: var(--scorm-card); border: 1px solid var(--scorm-border); border-radius: var(--scorm-radius-sm); padding: 8px 12px; cursor: grab; user-select: none; touch-action: none; color: var(--scorm-text); }
   .chip.dragging { position: fixed; z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,.2); pointer-events: none; }
-  .remove-x { cursor: pointer; color: #8a8578; font-weight: 700; padding: 0 4px; }
+  .remove-x { cursor: pointer; color: var(--scorm-muted); font-weight: 700; padding: 0 4px; }
   .order-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .order-item { display: flex; align-items: center; gap: 10px; border: 1px solid #e5e1d8; border-radius: 8px; padding: 10px 12px; background: #fff; }
+  .order-item { display: flex; align-items: center; gap: 10px; border: 1px solid var(--scorm-border); border-radius: var(--scorm-radius-sm); padding: 10px 12px; background: var(--scorm-card); }
   .order-item.dragging { opacity: .4; }
-  .drag-handle { cursor: grab; touch-action: none; color: #8a8578; }
+  .drag-handle { cursor: grab; touch-action: none; color: var(--scorm-muted); }
   .hotspot-wrap { position: relative; display: inline-block; max-width: 100%; margin-top: 12px; }
-  .hotspot-wrap img { max-width: 100%; border-radius: 8px; display: block; }
-  .hotspot-marker { position: absolute; width: 18px; height: 18px; margin-left: -9px; margin-top: -9px; border-radius: 50%; background: #23262b; border: 2px solid #fff; box-shadow: 0 0 0 2px #23262b; }
-  .hotspot-zone { position: absolute; border: 2px solid #2e7d4f; background: rgba(46,125,79,.15); border-radius: 4px; }
+  .hotspot-wrap img { max-width: 100%; border-radius: var(--scorm-radius); display: block; }
+  .hotspot-marker { position: absolute; width: 18px; height: 18px; margin-left: -9px; margin-top: -9px; border-radius: 50%; background: var(--scorm-primary); border: 2px solid var(--scorm-card); box-shadow: 0 0 0 2px var(--scorm-primary); }
+  .hotspot-zone { position: absolute; border: 2px solid var(--scorm-correct); background: color-mix(in srgb, var(--scorm-correct) 15%, transparent); border-radius: var(--scorm-radius-sm); }
+  .content-layout { display: flex; flex-direction: column; gap: 16px; }
+  .content-layout.image-left, .content-layout.image-right { flex-direction: row; align-items: flex-start; }
+  .content-layout.image-right { flex-direction: row-reverse; }
+  .content-layout .content-image { flex: 0 0 38%; }
+  .content-layout .content-image img { width: 100%; }
+  .content-layout .content-text { flex: 1; min-width: 0; }
+  .content-bg-wrap { position: relative; border-radius: var(--scorm-radius); overflow: hidden; min-height: 240px; }
+  .content-bg-wrap img.slide-bg { position: absolute; object-fit: cover; margin: 0; border-radius: 0; }
+  .content-bg-wrap .content-text-overlay { position: relative; z-index: 1; background: color-mix(in srgb, var(--scorm-card) 88%, transparent); padding: 20px; border-radius: var(--scorm-radius); margin: 16px; }
 </style>
 </head>
 <body>
+${headerHtml}
 <div class="bar"><div class="bar-fill" id="bar-fill" style="width:0%"></div></div>
 <div class="wrap"><div class="card" id="app">Cargando…</div></div>
 <script>
@@ -460,9 +632,27 @@ export function buildScormContentHtml(content: ScormAuthoredContent, title: stri
   }
 
   // ============ Render por tipo ============
+  // "Como lo hacen los mejores" — layout de la imagen dentro de una
+  // diapositiva de Contenido. Sin layout (paquetes generados antes de
+  // esto), el comportamiento es EXACTAMENTE el legado: imagen al final.
   function renderContent(s) {
-    var img = s.imageUrl ? '<img class="slide-image" src="' + escapeHtml(s.imageUrl) + '" alt="" />' : "";
-    return '<h1>' + escapeHtml(s.title) + '</h1><p>' + escapeHtml(s.body) + '</p>' + img;
+    var titleHtml = '<h1>' + escapeHtml(s.title) + '</h1>';
+    var bodyHtml = '<p>' + escapeHtml(s.body) + '</p>';
+    var layout = s.layout || (s.imageUrl ? "image-bottom" : "text");
+    if (!s.imageUrl || layout === "text") return titleHtml + bodyHtml;
+    var img = '<img class="slide-image" src="' + escapeHtml(s.imageUrl) + '" alt="" />';
+    if (layout === "image-top") return img + titleHtml + bodyHtml;
+    if (layout === "image-left" || layout === "image-right") {
+      return '<div class="content-layout ' + layout + '"><div class="content-image">' + img + '</div><div class="content-text">' + titleHtml + bodyHtml + '</div></div>';
+    }
+    if (layout === "image-background") {
+      var box = s.imageBox || { x: 0, y: 0, width: 100, height: 100 };
+      var style = 'left:' + box.x + '%;top:' + box.y + '%;width:' + box.width + '%;height:' + box.height + '%;';
+      return '<div class="content-bg-wrap"><img class="slide-bg" style="' + style + '" src="' + escapeHtml(s.imageUrl) + '" alt="" />' +
+        '<div class="content-text-overlay">' + titleHtml + bodyHtml + '</div></div>';
+    }
+    // "image-bottom" (legado) — imagen siempre al final.
+    return titleHtml + bodyHtml + img;
   }
 
   function renderOptionsQuestion(s, questionText, options, isMulti) {
