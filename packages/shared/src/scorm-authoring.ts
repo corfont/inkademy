@@ -27,6 +27,7 @@ export interface TrueFalseSlide {
   question: string;
   correctAnswer: boolean;
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export interface SingleChoiceSlide {
   id: string;
@@ -35,6 +36,7 @@ export interface SingleChoiceSlide {
   options: string[];
   correctIndex: number;
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export interface MultipleChoiceSlide {
   id: string;
@@ -43,6 +45,7 @@ export interface MultipleChoiceSlide {
   options: string[];
   correctIndexes: number[];
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export interface FillBlankSlide {
   id: string;
@@ -52,6 +55,7 @@ export interface FillBlankSlide {
   // Una entrada por cada "___" en `text`, cada una con sus respuestas aceptadas.
   blanks: string[][];
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export interface MatchingSlide {
   id: string;
@@ -59,6 +63,7 @@ export interface MatchingSlide {
   instructions?: string | null;
   pairs: { left: string; right: string }[];
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export interface OrderingSlide {
   id: string;
@@ -67,6 +72,7 @@ export interface OrderingSlide {
   // En el ORDEN CORRECTO — se muestra desordenado en tiempo de reproducción.
   items: string[];
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export interface HotspotZone {
   x: number; // % desde la izquierda
@@ -81,6 +87,7 @@ export interface HotspotSlide {
   imageUrl: string;
   zones: HotspotZone[];
   explanation?: string | null;
+  sectionId?: string | null;
 }
 export type ScormSlide =
   | ContentSlide
@@ -92,9 +99,23 @@ export type ScormSlide =
   | OrderingSlide
   | HotspotSlide;
 
+// "Varios exámenes con pesos distintos dentro de un mismo SCORM" — el
+// estándar SCORM solo reporta UN puntaje final al LMS (cmi.core.score.raw),
+// así que la ponderación entre "sub-exámenes" tiene que resolverse ACÁ
+// DENTRO, antes de reportar. Cada Sección agrupa preguntas y define su
+// peso; el puntaje final = promedio ponderado de las secciones. Opcional:
+// si `sections` viene vacío/ausente (todo paquete generado antes de esto),
+// el cálculo es exactamente el de siempre (aciertos/total sin ponderar) —
+// cero riesgo para contenido ya existente.
+export interface ScormSection {
+  id: string;
+  title: string;
+  weightPercent: number;
+}
 export interface ScormAuthoredContent {
   slides: ScormSlide[];
   passingScore: number;
+  sections?: ScormSection[];
 }
 
 export const SCORM_SLIDE_TYPE_LABEL: Record<ScormSlide["type"], string> = {
@@ -219,6 +240,8 @@ export function buildScormContentHtml(content: ScormAuthoredContent, title: stri
   .result-score { font-size: 2.4rem; font-weight: 700; margin: 8px 0; }
   .result-score.pass { color: #2e7d4f; }
   .result-score.fail { color: #b3261e; }
+  .section-breakdown { list-style: none; padding: 0; margin: 8px 0; font-size: .85rem; color: #55595f; }
+  .section-breakdown li { padding: 2px 0; }
   .blank-input { border: none; border-bottom: 2px solid #23262b; font: inherit; padding: 2px 4px; width: 8em; text-align: center; }
   .blank-input.correct { border-color: #2e7d4f; color: #2e7d4f; }
   .blank-input.wrong { border-color: #b3261e; color: #b3261e; }
@@ -564,13 +587,47 @@ export function buildScormContentHtml(content: ScormAuthoredContent, title: stri
   function totalQuestions() { return slides.filter(isQuestionSlide).length; }
   function correctCount() { return slides.filter(isQuestionSlide).filter(function (s) { return revealed[s.id] && isCorrect(s); }).length; }
 
-  function renderResult() {
+  // "Varios exámenes con pesos distintos dentro de un mismo SCORM" — SCORM
+  // solo reporta UN puntaje final al LMS, así que si el admin definió
+  // Secciones (con peso), la ponderación se resuelve ACÁ antes de reportar:
+  // puntaje = promedio ponderado de (aciertos/total de CADA sección). Sin
+  // secciones (todo paquete generado antes de esto), es exactamente el
+  // cálculo de siempre — aciertos/total sin ponderar.
+  function sectionScores() {
+    var sections = DATA.sections || [];
+    return sections.map(function (sec) {
+      var qs = slides.filter(function (s) { return isQuestionSlide(s) && s.sectionId === sec.id; });
+      var correct = qs.filter(function (s) { return revealed[s.id] && isCorrect(s); }).length;
+      return { id: sec.id, title: sec.title, weightPercent: sec.weightPercent, total: qs.length, correct: correct, score: qs.length > 0 ? Math.round((correct / qs.length) * 100) : 0 };
+    });
+  }
+  function computeScore() {
+    var sections = DATA.sections || [];
+    if (sections.length > 0) {
+      var secs = sectionScores();
+      var totalWeight = 0, weightedSum = 0;
+      secs.forEach(function (sec) { weightedSum += sec.score * sec.weightPercent; totalWeight += sec.weightPercent; });
+      return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+    }
     var total = totalQuestions();
     var correct = correctCount();
-    var score = total > 0 ? Math.round((correct / total) * 100) : 100;
+    return total > 0 ? Math.round((correct / total) * 100) : 100;
+  }
+
+  function renderResult() {
+    var score = computeScore();
+    var total = totalQuestions();
+    var correct = correctCount();
     var passed = score >= passingScore;
+    var sections = DATA.sections || [];
+    var breakdown = sections.length > 0
+      ? '<ul class="section-breakdown">' + sectionScores().map(function (sec) {
+          return '<li>' + escapeHtml(sec.title) + ': ' + sec.correct + '/' + sec.total + ' (' + sec.score + '%, peso ' + sec.weightPercent + '%)</li>';
+        }).join("") + '</ul>'
+      : "";
     return '<h1>Resultado</h1><p class="result-score ' + (passed ? "pass" : "fail") + '">' + score + '%</p>' +
-      '<p>' + (total > 0 ? correct + ' de ' + total + ' respuestas correctas. ' : "") + (passed ? "Aprobado." : "No alcanzaste la nota mínima (" + passingScore + "%).") + '</p>';
+      breakdown +
+      '<p>' + (sections.length === 0 && total > 0 ? correct + ' de ' + total + ' respuestas correctas. ' : "") + (passed ? "Aprobado." : "No alcanzaste la nota mínima (" + passingScore + "%).") + '</p>';
   }
 
   function canAdvance() {
@@ -755,9 +812,7 @@ export function buildScormContentHtml(content: ScormAuthoredContent, title: stri
   function reportFinal() {
     if (finalReported) return;
     finalReported = true;
-    var total = totalQuestions();
-    var correct = correctCount();
-    var score = total > 0 ? Math.round((correct / total) * 100) : 100;
+    var score = computeScore();
     var passed = score >= passingScore;
     if (is2004) {
       apiCall("SetValue", null, ["cmi.completion_status", "completed"]);

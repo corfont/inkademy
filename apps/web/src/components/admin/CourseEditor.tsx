@@ -2034,6 +2034,11 @@ function SortableAssessmentRow({
   // abrir cada examen para verlo.
   const totalPoints = (assessment.questions ?? []).reduce((sum: number, q: any) => sum + (q.points ?? 0), 0);
   const pointsOverLimit = totalPoints > 100.01;
+  const scormBackedLabel = assessment.scormLessonId
+    ? assessment.scormLesson?.title?.es
+    : assessment.scormMaterialId
+      ? assessment.scormMaterial?.title
+      : null;
   return (
     <div ref={setNodeRef} style={style} className="flex items-center justify-between gap-3 rounded-lg border border-paper-border p-4">
       <div className="flex items-start gap-2">
@@ -2050,6 +2055,7 @@ function SortableAssessmentRow({
           <p className="font-medium text-ink-900">
             {assessment.title?.es} {assessment.archived && <Badge variant="outline">Archivado</Badge>}{" "}
             {assessment.sourceFileAssetId && <Badge variant="outline">Examen de archivo</Badge>}
+            {scormBackedLabel && <Badge variant="outline">Respaldado por SCORM</Badge>}
             {pointsOverLimit && <Badge variant="danger">Puntaje excede 100 — no usable</Badge>}
           </p>
           <p className="text-xs text-ash-500">
@@ -2057,9 +2063,11 @@ function SortableAssessmentRow({
                 dice a qué módulo pertenece (o que es el examen final), sin
                 tener que abrirla. */}
             <span className="font-medium text-ash-600">{moduleTitle ?? "Examen final del curso"}</span> ·{" "}
-            {assessment.sourceFileAssetId
-              ? "Sin preguntas — se califica el archivo completo que sube el alumno"
-              : `${assessment.questions?.length ?? 0} pregunta${assessment.questions?.length === 1 ? "" : "s"}`}{" "}
+            {scormBackedLabel
+              ? `Nota tomada del paquete SCORM de «${scormBackedLabel}»`
+              : assessment.sourceFileAssetId
+                ? "Sin preguntas — se califica el archivo completo que sube el alumno"
+                : `${assessment.questions?.length ?? 0} pregunta${assessment.questions?.length === 1 ? "" : "s"}`}{" "}
             · {assessment._count?.attempts ?? 0} intento(s) de alumnos
             {assessment.weightPercent != null && ` · peso en fórmula: ${assessment.weightPercent}%`}
           </p>
@@ -2095,15 +2103,38 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
   // completo en vez de un módulo puntual).
   const [newModuleId, setNewModuleId] = useState("");
   // "Módulo para crear evaluaciones O subir un archivo (Word/Excel/PPT/
-  // imagen/PDF) como examen" — antes solo se podía crear evaluaciones por
-  // preguntas; este toggle agrega la segunda modalidad, sin preguntas: el
-  // docente sube el archivo del examen, el alumno lo descarga, lo responde
-  // offline y sube su respuesta como otro archivo (ver AssessmentRunner).
-  const [isFileUpload, setIsFileUpload] = useState(false);
+  // imagen/PDF) como examen O respaldado por el SCORM de este módulo" —
+  // tres modalidades mutuamente excluyentes. "Dentro de un mismo curso
+  // nunca se mezclan" (pedido explícito) — se deshabilita la modalidad
+  // contraria a la que el curso ya usa (ver courseAssessmentMode abajo),
+  // espejo de AssessmentService.assertConsistentAssessmentMode.
+  const [mode, setMode] = useState<"questions" | "file" | "scorm">("questions");
+  const isFileUpload = mode === "file";
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [scormOwnerKey, setScormOwnerKey] = useState(""); // "lesson:<id>" | "material:<id>"
   const [editingId, setEditingId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const moduleTitleById = new Map((course.modules ?? []).map((m: any) => [m.id, m.title?.es]));
+
+  // Lecciones/materiales SCORM ya armados en este curso — candidatos a
+  // respaldar un examen (ver Assessment.scormLessonId/scormMaterialId).
+  const scormTargets = (course.modules ?? []).flatMap((m: any) => [
+    ...(m.lessons ?? [])
+      .filter((l: any) => l.contentType === "SCORM")
+      .map((l: any) => ({ key: `lesson:${l.id}`, label: `${m.title?.es} → ${l.title?.es}`, ready: Boolean(l.scormEntryPath) })),
+    ...(m.materials ?? [])
+      .filter((mat: any) => mat.kind === "scorm")
+      .map((mat: any) => ({ key: `material:${mat.id}`, label: `${m.title?.es} → ${mat.title} (material)`, ready: Boolean(mat.scormEntryPath) })),
+    ...(m.lessons ?? []).flatMap((l: any) =>
+      (l.materials ?? [])
+        .filter((mat: any) => mat.kind === "scorm")
+        .map((mat: any) => ({ key: `material:${mat.id}`, label: `${m.title?.es} → ${l.title?.es} → ${mat.title} (material)`, ready: Boolean(mat.scormEntryPath) })),
+    ),
+  ]);
+  // "No se puede mezclar" — null = todavía no hay ningún examen que fije el
+  // modo del curso; con valor, la modalidad contraria queda deshabilitada.
+  const courseAssessmentMode: "native" | "scorm" | null =
+    assessments.length === 0 ? null : assessments.some((a) => a.scormLessonId || a.scormMaterialId) ? "scorm" : "native";
 
   async function refresh() {
     try {
@@ -2150,12 +2181,36 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
         moduleId: newModuleId || null,
       });
       setNewTitle("");
-      setIsFileUpload(false);
+      setMode("questions");
       await refresh();
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "No pudimos crear el examen de archivo.");
     } finally {
       setUploadingFile(false);
+    }
+  }
+
+  // "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — en vez
+  // de preguntas propias, este examen toma su nota del SCORM ya armado de
+  // una lección/material de este curso (ver assertScormBackingTarget).
+  async function handleCreateScormBacked() {
+    if (!newTitle.trim() || !scormOwnerKey) return;
+    const [kind, id] = scormOwnerKey.split(":");
+    setCreating(true);
+    try {
+      await adminApi.createAssessment(course.id, {
+        title: { es: newTitle },
+        moduleId: newModuleId || null,
+        scormLessonId: kind === "lesson" ? id : null,
+        scormMaterialId: kind === "material" ? id : null,
+      });
+      setNewTitle("");
+      setScormOwnerKey("");
+      await refresh();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "No pudimos crear el examen respaldado por SCORM.");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -2241,8 +2296,13 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
                   ))}
                 </Select>
               </div>
-              {!isFileUpload && (
+              {mode === "questions" && (
                 <Button size="sm" disabled={creating || !newTitle.trim()} onClick={handleCreate}>
+                  + Nueva evaluación
+                </Button>
+              )}
+              {mode === "scorm" && (
+                <Button size="sm" disabled={creating || !newTitle.trim() || !scormOwnerKey} onClick={handleCreateScormBacked}>
                   + Nueva evaluación
                 </Button>
               )}
@@ -2251,17 +2311,50 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
               &ldquo;Examen final del curso&rdquo; se habilita al terminar el 100% del curso; un examen de un módulo puntual se habilita apenas
               ESE módulo se completa.
             </p>
-            <label className="flex items-center gap-2 text-xs text-ash-600">
-              <input type="checkbox" checked={isFileUpload} onChange={(e) => setIsFileUpload(e.target.checked)} />
-              Es un examen de archivo (el docente sube el examen en Word/Excel/PPT/imagen/PDF, en vez de escribir preguntas)
-            </label>
-            {isFileUpload && (
+            {/* "Dentro de un mismo curso nunca se mezclan" — la modalidad
+                contraria a la que el curso ya usa queda deshabilitada, con
+                el motivo, en vez de dejar que el 400 del backend sea la
+                única señal. */}
+            <div className="flex flex-wrap gap-3 text-xs text-ash-600">
+              <label className="flex items-center gap-1.5">
+                <input type="radio" name="assessment-mode" checked={mode === "questions"} onChange={() => setMode("questions")} disabled={courseAssessmentMode === "scorm"} />
+                Por preguntas
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" name="assessment-mode" checked={mode === "file"} onChange={() => setMode("file")} disabled={courseAssessmentMode === "scorm"} />
+                De archivo
+              </label>
+              <label
+                className="flex items-center gap-1.5"
+                title={courseAssessmentMode === "native" ? "Este curso ya tiene exámenes nativos — no se puede mezclar con exámenes respaldados por SCORM." : undefined}
+              >
+                <input type="radio" name="assessment-mode" checked={mode === "scorm"} onChange={() => setMode("scorm")} disabled={courseAssessmentMode === "native"} />
+                Respaldado por SCORM
+              </label>
+            </div>
+            {mode === "file" && (
               <DropLabel
                 busy={uploadingFile}
                 label="Subir archivo del examen y crear"
                 small
                 onFile={handleCreateFileExam}
               />
+            )}
+            {mode === "scorm" && (
+              <div className="flex flex-col gap-1">
+                <Select value={scormOwnerKey} onChange={(e) => setScormOwnerKey(e.target.value)} aria-label="¿Qué SCORM respalda este examen?">
+                  <option value="">Elige el SCORM que respalda este examen…</option>
+                  {scormTargets.map((t: { key: string; label: string; ready: boolean }) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                      {t.ready ? "" : " (todavía sin paquete armado)"}
+                    </option>
+                  ))}
+                </Select>
+                {scormTargets.length === 0 && (
+                  <p className="text-xs text-ash-500">Este curso todavía no tiene ninguna lección/material SCORM — créalo primero en Contenido.</p>
+                )}
+              </div>
             )}
           </div>
         </CardContent>

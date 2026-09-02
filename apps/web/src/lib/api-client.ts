@@ -855,7 +855,7 @@ export const adminApi = {
     return apiFetch<any>(`/admin/lessons/${lessonId}/scorm-upload`, { method: "POST", body: form, accessToken });
   },
   // Editor de autoría SCORM (armar el paquete desde Inkademy, sin subir ningún .zip) — ver ScormBuilder.tsx.
-  buildScormPackage: (lessonId: string, content: { slides: unknown[]; passingScore: number }, accessToken?: string | null) =>
+  buildScormPackage: (lessonId: string, content: { slides: unknown[]; passingScore: number; sections?: unknown[] }, accessToken?: string | null) =>
     apiFetch<{ entryPath: string; version: string }>(`/admin/lessons/${lessonId}/scorm/build`, { method: "POST", body: JSON.stringify(content), accessToken }),
   scormPreviewSession: (lessonId: string, accessToken?: string | null) =>
     apiFetch<{ token: string; playerUrl: string }>(`/admin/lessons/${lessonId}/scorm/preview-session`, { method: "POST", accessToken }),
@@ -888,7 +888,7 @@ export const adminApi = {
     form.append("file", file);
     return apiFetch<any>(`/admin/materials/${materialId}/scorm-upload`, { method: "POST", body: form, accessToken });
   },
-  buildMaterialScormPackage: (materialId: string, content: { slides: unknown[]; passingScore: number }, accessToken?: string | null) =>
+  buildMaterialScormPackage: (materialId: string, content: { slides: unknown[]; passingScore: number; sections?: unknown[] }, accessToken?: string | null) =>
     apiFetch<{ entryPath: string; version: string }>(`/admin/materials/${materialId}/scorm/build`, {
       method: "POST",
       body: JSON.stringify(content),

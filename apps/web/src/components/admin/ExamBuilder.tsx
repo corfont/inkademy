@@ -352,6 +352,11 @@ export function ExamBuilder({
   const [instructionsText, setInstructionsText] = useState(assessment.instructionsOverride?.es ?? "");
 
   const isFileUpload = Boolean(assessment.sourceFileAssetId);
+  // "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — este
+  // examen no tiene preguntas propias, su nota la reporta el paquete SCORM
+  // de una lección/material (ver Assessment.scormLessonId/scormMaterialId).
+  const isScormBacked = Boolean(assessment.scormLessonId || assessment.scormMaterialId);
+  const scormBackedLabel = assessment.scormLessonId ? assessment.scormLesson?.title?.es : assessment.scormMaterial?.title;
   const maxWeight = Math.max(0, 100 - otherWeightsSum);
   const weightNum = weightPercent.trim() === "" ? 0 : Number(weightPercent);
   const weightOverLimit = weightNum > maxWeight + 0.01;
@@ -512,7 +517,13 @@ export function ExamBuilder({
           </TabsList>
 
           <TabsContent value="questions">
-            {isFileUpload ? (
+            {isScormBacked ? (
+              <p className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
+                Este examen no tiene preguntas propias — su nota es la que reporta el paquete SCORM de «{scormBackedLabel ?? "un contenido de este curso"}
+                ». Edítalo desde el bloque de esa lección/material, más abajo en este mismo curso (botón &ldquo;Editar con el editor&rdquo; o
+                &ldquo;Subir paquete SCORM&rdquo;).
+              </p>
+            ) : isFileUpload ? (
               <p className="rounded-md bg-paper-muted p-3 text-xs text-ash-600">
                 Este examen no tiene preguntas — el alumno descarga el archivo que subiste, lo completa offline, y sube su respuesta como archivo
                 para que lo califiques a mano en /docente/evaluaciones-pendientes.

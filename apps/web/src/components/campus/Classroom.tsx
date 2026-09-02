@@ -785,8 +785,14 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                           Se habilita al completar {a.moduleId && moduleTitleById.has(a.moduleId) ? moduleTitleById.get(a.moduleId) : `el curso (llevas ${Math.round(progressPct)}%)`}.
                         </p>
                       )}
+                      {/* Un examen respaldado por SCORM no tiene un intento
+                          nativo que rendir acá — la evaluación real ocurre
+                          jugando ese contenido más arriba, en el módulo. */}
+                      {a.unlocked && (a.scormLessonId || a.scormMaterialId) && (
+                        <p className="mt-1 text-xs text-ash-500">Réndelo abriendo el contenido SCORM de ese módulo, más arriba.</p>
+                      )}
                     </div>
-                    {a.unlocked && (
+                    {a.unlocked && !a.scormLessonId && !a.scormMaterialId && (
                       <Link href={`/campus/cursos/${detail.enrollmentId}/evaluacion/${a.id}`}>
                         <Button size="sm">{a.bestScore !== null ? "Ver / reintentar" : t("goToAssessment")}</Button>
                       </Link>

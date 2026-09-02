@@ -181,6 +181,7 @@ const scormTrueFalseSlideSchema = z.object({
   question: z.string().min(1).max(1000),
   correctAnswer: z.boolean(),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 const scormSingleChoiceSlideSchema = z.object({
   id: z.string().min(1),
@@ -189,6 +190,7 @@ const scormSingleChoiceSlideSchema = z.object({
   options: z.array(z.string().min(1).max(300)).min(2).max(6),
   correctIndex: z.number().int().min(0),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 const scormMultipleChoiceSlideSchema = z.object({
   id: z.string().min(1),
@@ -197,6 +199,7 @@ const scormMultipleChoiceSlideSchema = z.object({
   options: z.array(z.string().min(1).max(300)).min(2).max(6),
   correctIndexes: z.array(z.number().int().min(0)).min(1),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 const scormFillBlankSlideSchema = z.object({
   id: z.string().min(1),
@@ -204,6 +207,7 @@ const scormFillBlankSlideSchema = z.object({
   text: z.string().min(1).max(2000),
   blanks: z.array(z.array(z.string().min(1).max(200)).min(1)).min(1),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 const scormMatchingSlideSchema = z.object({
   id: z.string().min(1),
@@ -211,6 +215,7 @@ const scormMatchingSlideSchema = z.object({
   instructions: z.string().max(300).optional().nullable(),
   pairs: z.array(z.object({ left: z.string().min(1).max(200), right: z.string().min(1).max(200) })).min(2).max(8),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 const scormOrderingSlideSchema = z.object({
   id: z.string().min(1),
@@ -218,6 +223,7 @@ const scormOrderingSlideSchema = z.object({
   instructions: z.string().max(300).optional().nullable(),
   items: z.array(z.string().min(1).max(200)).min(2).max(10),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 const scormHotspotSlideSchema = z.object({
   id: z.string().min(1),
@@ -226,6 +232,7 @@ const scormHotspotSlideSchema = z.object({
   imageUrl: z.string().url(),
   zones: z.array(z.object({ x: z.number().min(0).max(100), y: z.number().min(0).max(100), width: z.number().min(0).max(100), height: z.number().min(0).max(100) })).min(1),
   explanation: z.string().max(1000).optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
 });
 export const scormSlideSchema = z.discriminatedUnion("type", [
   scormContentSlideSchema,
@@ -237,10 +244,34 @@ export const scormSlideSchema = z.discriminatedUnion("type", [
   scormOrderingSlideSchema,
   scormHotspotSlideSchema,
 ]);
-export const scormAuthoredContentSchema = z.object({
-  slides: z.array(scormSlideSchema).min(1).max(50),
-  passingScore: z.number().min(0).max(100).default(70),
+// "Varios exámenes con pesos distintos dentro de un mismo SCORM" — cada
+// Sección agrupa preguntas con su propio peso; el motor de
+// @inkademy/shared (scorm-authoring.ts) calcula el puntaje final como el
+// promedio ponderado de las secciones ANTES de reportar el único
+// cmi.core.score.raw que el estándar SCORM permite. Opcional: sin
+// `sections`, el cálculo es el de siempre (aciertos/total sin ponderar).
+const scormSectionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(120),
+  weightPercent: z.number().min(0).max(100),
 });
+export const scormAuthoredContentSchema = z
+  .object({
+    slides: z.array(scormSlideSchema).min(1).max(50),
+    passingScore: z.number().min(0).max(100).default(70),
+    sections: z.array(scormSectionSchema).max(20).optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.sections || data.sections.length === 0) return true;
+      const totalWeight = data.sections.reduce((sum, s) => sum + s.weightPercent, 0);
+      if (Math.abs(totalWeight - 100) > 0.5) return false;
+      const sectionIds = new Set(data.sections.map((s) => s.id));
+      const questionSlides = data.slides.filter((s) => s.type !== "content");
+      return questionSlides.every((s) => (s as { sectionId?: string | null }).sectionId && sectionIds.has((s as { sectionId?: string | null }).sectionId as string));
+    },
+    { message: "Si defines secciones, sus pesos deben sumar 100% y cada pregunta debe pertenecer a una sección." },
+  );
 
 export const upsertMaterialSchema = z
   .object({
@@ -564,6 +595,13 @@ export const upsertAssessmentSchema = z.object({
   headerTextOverride: localizedTextSchema.optional().nullable(),
   footerTextOverride: localizedTextSchema.optional().nullable(),
   instructionsOverride: localizedTextSchema.optional().nullable(),
+  // "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — en vez
+  // de preguntas propias, este examen puede estar respaldado por el SCORM de
+  // una lección o de un material del mismo curso (nunca ambos a la vez —
+  // AssessmentService.assertScormBackingTarget lo valida, junto con que el
+  // curso no mezcle este modo con exámenes nativos). Ver Assessment.scormLessonId.
+  scormLessonId: z.string().uuid().optional().nullable(),
+  scormMaterialId: z.string().uuid().optional().nullable(),
 });
 export const updateAssessmentSchema = upsertAssessmentSchema.partial();
 

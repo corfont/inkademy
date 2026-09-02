@@ -834,7 +834,15 @@ export class AssessmentService {
     if (teacherUserId) await this.assertTeacherOwnsCourse(courseId, teacherUserId);
     return this.prisma.assessment.findMany({
       where: { courseId, ...(includeArchived ? {} : { archived: false }) },
-      include: { questions: { orderBy: { order: "asc" } }, _count: { select: { attempts: true } } },
+      include: {
+        questions: { orderBy: { order: "asc" } },
+        _count: { select: { attempts: true } },
+        // Para mostrar "Nota tomada del paquete SCORM de «X»" en la fila del
+        // admin sin una segunda consulta — scormLessonId/scormMaterialId ya
+        // viajan solos (columnas escalares), esto solo agrega el título.
+        scormLesson: { select: { title: true } },
+        scormMaterial: { select: { title: true } },
+      },
       // "No drag and drop" — reordenable por arrastre (AssessmentsSection,
       // ver reorderAssessments); antes ordenaba por `id` (UUID, sin ningún
       // significado), así que el arrastre parecía no persistir nunca.
@@ -861,8 +869,76 @@ export class AssessmentService {
     }
   }
 
+  /**
+   * "Dentro de un mismo curso nunca se mezclan los dos modos" (examen
+   * nativo vs respaldado por SCORM) — pedido explícito del usuario. Un
+   * curso puede usar cualquiera de los dos, pero no ambos a la vez: se
+   * revisa contra CUALQUIER Assessment no archivado ya existente del curso.
+   */
+  private async assertConsistentAssessmentMode(courseId: string, wantsScormBacked: boolean, excludeAssessmentId?: string | null): Promise<void> {
+    const existing = await this.prisma.assessment.findFirst({
+      where: { courseId, archived: false, ...(excludeAssessmentId ? { id: { not: excludeAssessmentId } } : {}) },
+      select: { scormLessonId: true, scormMaterialId: true },
+    });
+    if (!existing) return;
+    const existingIsScormBacked = Boolean(existing.scormLessonId || existing.scormMaterialId);
+    if (existingIsScormBacked !== wantsScormBacked) {
+      throw new BadRequestException(
+        existingIsScormBacked
+          ? "Este curso ya usa exámenes respaldados por SCORM — no se puede agregar un examen nativo. Crea el contenido calificable dentro del paquete SCORM del módulo."
+          : "Este curso ya usa exámenes nativos (con preguntas propias) — no se puede agregar un examen respaldado por SCORM. Usa el editor de preguntas normal.",
+      );
+    }
+  }
+
+  /**
+   * "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — valida
+   * que el SCORM elegido para respaldar este examen exista, pertenezca al
+   * MISMO curso (mismo criterio de dos caminos que
+   * AdminService.assertTeacherOwnsMaterial: lesson.module.courseId o
+   * material.lesson?.module.courseId ?? material.module?.courseId), y que
+   * no esté ya respaldando otro examen — el @unique en Assessment es el
+   * backstop real, esto es solo para dar un mensaje legible antes de llegar
+   * a un error crudo de constraint.
+   */
+  private async assertScormBackingTarget(
+    courseId: string,
+    scormLessonId?: string | null,
+    scormMaterialId?: string | null,
+    excludeAssessmentId?: string | null,
+  ): Promise<void> {
+    if (scormLessonId && scormMaterialId) {
+      throw new BadRequestException("Un examen no puede estar respaldado por una lección Y un material SCORM a la vez — elige uno solo.");
+    }
+    if (scormLessonId) {
+      const lesson = await this.prisma.lesson.findUnique({ where: { id: scormLessonId }, include: { module: true, scormBackedAssessment: { select: { id: true } } } });
+      if (!lesson) throw new NotFoundException("La lección elegida no existe");
+      if (lesson.module.courseId !== courseId) throw new BadRequestException("Esa lección pertenece a otro curso");
+      if (lesson.scormBackedAssessment && lesson.scormBackedAssessment.id !== excludeAssessmentId) {
+        throw new BadRequestException("Esa lección SCORM ya respalda otro examen");
+      }
+    }
+    if (scormMaterialId) {
+      const material = await this.prisma.material.findUnique({
+        where: { id: scormMaterialId },
+        include: { lesson: { include: { module: true } }, module: true, scormBackedAssessment: { select: { id: true } } },
+      });
+      if (!material) throw new NotFoundException("El material elegido no existe");
+      const materialCourseId = material.lesson?.module.courseId ?? material.module?.courseId;
+      if (materialCourseId !== courseId) throw new BadRequestException("Ese material pertenece a otro curso");
+      if (material.scormBackedAssessment && material.scormBackedAssessment.id !== excludeAssessmentId) {
+        throw new BadRequestException("Ese material SCORM ya respalda otro examen");
+      }
+    }
+  }
+
   async createAssessment(courseId: string, input: Record<string, unknown>, teacherUserId?: string) {
     if (teacherUserId) await this.assertTeacherCanEditCourse(courseId, teacherUserId);
+    const scormLessonId = input.scormLessonId as string | null | undefined;
+    const scormMaterialId = input.scormMaterialId as string | null | undefined;
+    const wantsScormBacked = Boolean(scormLessonId || scormMaterialId);
+    if (wantsScormBacked) await this.assertScormBackingTarget(courseId, scormLessonId, scormMaterialId);
+    await this.assertConsistentAssessmentMode(courseId, wantsScormBacked);
     if (Object.prototype.hasOwnProperty.call(input, "weightPercent") && input.weightPercent != null) {
       await this.assertWeightPercentFits(courseId, null, input.weightPercent as number);
     }
@@ -914,6 +990,15 @@ export class AssessmentService {
       if (!current) throw new NotFoundException("Evaluación no encontrada");
       const newWeight = (input.weightPercent as number | null | undefined) ?? 0;
       await this.assertWeightPercentFits(current.courseId, id, newWeight);
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "scormLessonId") || Object.prototype.hasOwnProperty.call(input, "scormMaterialId")) {
+      const current = await this.prisma.assessment.findUnique({ where: { id }, select: { courseId: true } });
+      if (!current) throw new NotFoundException("Evaluación no encontrada");
+      const scormLessonId = input.scormLessonId as string | null | undefined;
+      const scormMaterialId = input.scormMaterialId as string | null | undefined;
+      const wantsScormBacked = Boolean(scormLessonId || scormMaterialId);
+      if (wantsScormBacked) await this.assertScormBackingTarget(current.courseId, scormLessonId, scormMaterialId, id);
+      await this.assertConsistentAssessmentMode(current.courseId, wantsScormBacked, id);
     }
     return this.prisma.assessment.update({ where: { id }, data: input as never });
   }

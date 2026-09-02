@@ -511,6 +511,8 @@ model Lesson {
   materials       Material[]
   progress        LessonProgress[]
   notes           LessonNote[]
+  // Ver Assessment.scormLessonId — relación 1:1, un examen como mucho.
+  scormBackedAssessment Assessment?      @relation("AssessmentScormLesson")
 
   @@index([moduleId])
 }
@@ -574,6 +576,8 @@ model Material {
 
   progress    MaterialProgress[]
   scormProgress MaterialScormProgress[]
+  // Ver Assessment.scormMaterialId — relación 1:1, un examen como mucho.
+  scormBackedAssessment Assessment?     @relation("AssessmentScormMaterial")
 }
 
 model MaterialScormProgress {
@@ -1028,6 +1032,24 @@ model Assessment {
   headerTextOverride       Json?
   footerTextOverride       Json?
   instructionsOverride     Json?
+
+  // "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — este
+  // Assessment puede estar "respaldado por SCORM" en vez de tener preguntas
+  // propias: conserva moduleId/weightPercent/minScore con el mismo
+  // significado de siempre (desbloqueo por módulo + peso en la fórmula
+  // ponderada del curso), pero su puntaje se lee de
+  // LessonProgress.scormScoreRaw / MaterialScormProgress.scormScoreRaw en
+  // vez de AssessmentAttempt (ver course-score.ts resolveBestScore). @unique
+  // en ambos = relación 1:1 — un SCORM respalda como máximo un examen (varios
+  // "sub-exámenes" con peso DENTRO de un mismo paquete se resuelven con
+  // ScormAuthoredContent.sections, no con varios Assessment apuntando al
+  // mismo SCORM). Nunca se setean los dos a la vez (ver upsertAssessmentSchema).
+  // Un mismo curso nunca mezcla exámenes nativos con respaldados por SCORM
+  // (AssessmentService.assertConsistentAssessmentMode).
+  scormLessonId     String?                 @unique
+  scormLesson       Lesson?                 @relation("AssessmentScormLesson", fields: [scormLessonId], references: [id], onDelete: SetNull)
+  scormMaterialId   String?                 @unique
+  scormMaterial     Material?               @relation("AssessmentScormMaterial", fields: [scormMaterialId], references: [id], onDelete: SetNull)
 
   questions         Question[]
   attempts          AssessmentAttempt[]

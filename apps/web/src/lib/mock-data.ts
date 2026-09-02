@@ -392,6 +392,12 @@ export interface ClassroomAssessmentSummary {
   // para TODOS los exámenes; ahora uno con moduleId se desbloquea apenas
   // ESE módulo está completo.
   unlocked: boolean;
+  // "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — con
+  // alguno de los dos seteado, este examen NO tiene un intento nativo que
+  // rendir en /evaluacion/:id — su nota es la que ya reportó ese paquete
+  // SCORM (ver Assessment.scormLessonId/scormMaterialId).
+  scormLessonId?: string | null;
+  scormMaterialId?: string | null;
 }
 export interface ClassroomDetail {
   enrollmentId: string;

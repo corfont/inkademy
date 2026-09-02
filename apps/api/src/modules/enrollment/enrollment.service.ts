@@ -310,7 +310,14 @@ export class EnrollmentService {
             // ningún link en el aula para siquiera rendirlo. Ahora se listan
             // todas las evaluaciones reales (no archivadas) del curso.
             assessments: {
-              where: { archived: false, OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }] },
+              // "¿Cómo se calcula la nota si el examen vive DENTRO del
+              // SCORM?" — un examen respaldado por SCORM (scormLessonId/
+              // scormMaterialId) también es contenido real, aunque no tenga
+              // preguntas propias ni sourceFileAssetId (ver course-score.ts).
+              where: {
+                archived: false,
+                OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }, { scormLessonId: { not: null } }, { scormMaterialId: { not: null } }],
+              },
               // "¿Cómo sabe el orden de los exámenes?" — antes ordenaba por
               // `id` (UUID, sin ningún significado). Ahora usa el orden real
               // de autoría, reordenable por arrastre (AssessmentService.reorderAssessments).
@@ -323,6 +330,10 @@ export class EnrollmentService {
         certificate: true,
         lessonProgress: true,
         materialProgress: true,
+        // Puntaje de un examen respaldado por SCORM de tipo Material (ver
+        // course-score.ts resolveBestScore) — LessonProgress ya se cargaba
+        // arriba para el caso de lección.
+        materialScormProgress: true,
       },
     });
     if (!enrollment || enrollment.userId !== userId) {
@@ -337,6 +348,9 @@ export class EnrollmentService {
 
     const progressByLesson = new Map(enrollment.lessonProgress.map((p) => [p.lessonId, p]));
     const readMaterialIds = new Set(enrollment.materialProgress.map((p) => p.materialId));
+    // Puntaje de un examen respaldado por SCORM de tipo Material — mismo
+    // patrón que progressByLesson, para el mapeo de `assessments` de abajo.
+    const scormProgressByMaterial = new Map(enrollment.materialScormProgress.map((p) => [p.materialId, p]));
     // "Cuando agrego un link no se muestra... el usuario que tiene ese curso
     // no lo ve" — un material kind="link" no tiene assetId (nunca se subió
     // un archivo), así que su url viene de externalUrl tal cual.
@@ -401,7 +415,22 @@ export class EnrollmentService {
             weightPercent: a.weightPercent ?? null,
             minScore: a.minScore,
             maxAttempts: a.maxAttempts,
-            bestScore: a.attempts[0]?.score ?? null,
+            // "¿Cómo se calcula la nota si el examen vive DENTRO del
+            // SCORM?" — un examen respaldado por SCORM no tiene
+            // AssessmentAttempt propios; su puntaje es el que ese paquete ya
+            // reportó a LessonProgress/MaterialScormProgress (mismo origen
+            // que usa course-score.ts resolveBestScore, para no desincronizar
+            // lo que ve el alumno acá de lo que cuenta para el certificado).
+            bestScore: a.scormLessonId
+              ? progressByLesson.get(a.scormLessonId)?.scormScoreRaw ?? null
+              : a.scormMaterialId
+                ? scormProgressByMaterial.get(a.scormMaterialId)?.scormScoreRaw ?? null
+                : a.attempts[0]?.score ?? null,
+            // El frontend usa esto para saber que este examen no lleva botón
+            // "Iniciar intento" — la evaluación real ocurre jugando el SCORM
+            // de esa lección/material, no en /evaluacion/:id.
+            scormLessonId: a.scormLessonId,
+            scormMaterialId: a.scormMaterialId,
             unlocked: a.moduleId ? await this.isModuleComplete(a.moduleId, enrollment.id) : enrollment.progressPct >= 100,
             attemptsUsed: await this.prisma.assessmentAttempt.count({
               where: {

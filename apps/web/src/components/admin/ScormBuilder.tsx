@@ -12,6 +12,7 @@ import {
   buildScormContentHtml,
   type ScormSlide,
   type ScormAuthoredContent,
+  type ScormSection,
   type MatchingSlide,
   type OrderingSlide,
   type HotspotSlide,
@@ -19,6 +20,7 @@ import {
 } from "@inkademy/shared";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { getClientAccessToken } from "@/lib/auth";
+import { cn } from "@/lib/cn";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label, Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -411,9 +413,24 @@ function SlideTypeEditor({ slide, onChange }: { slide: ScormSlide; onChange: (s:
   }
 }
 
-function SlideRow({ slide, onChange, onDelete }: { slide: ScormSlide; onChange: (next: ScormSlide) => void; onDelete: () => void }) {
+function SlideRow({
+  slide,
+  sections,
+  onChange,
+  onDelete,
+}: {
+  slide: ScormSlide;
+  sections: ScormSection[];
+  onChange: (next: ScormSlide) => void;
+  onDelete: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: slide.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  // Un solo punto de inserción para "¿a qué sección pertenece?" — no hace
+  // falta tocar los 7 sub-editores por tipo. Nunca aplica a "content" (las
+  // diapositivas de contenido no se califican, no pertenecen a ninguna
+  // sección).
+  const isQuestion = slide.type !== "content";
 
   return (
     <div ref={setNodeRef} style={style} className="flex gap-2 rounded-md border border-paper-border bg-paper p-3">
@@ -427,6 +444,20 @@ function SlideRow({ slide, onChange, onDelete }: { slide: ScormSlide; onChange: 
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
+        {isQuestion && sections.length > 0 && (
+          <Select
+            className="h-7 w-56 text-xs"
+            value={(slide as { sectionId?: string | null }).sectionId ?? ""}
+            onChange={(e) => onChange({ ...slide, sectionId: e.target.value || null } as ScormSlide)}
+          >
+            <option value="">Elige una sección…</option>
+            {sections.map((sec) => (
+              <option key={sec.id} value={sec.id}>
+                {sec.title} ({sec.weightPercent}%)
+              </option>
+            ))}
+          </Select>
+        )}
         <SlideTypeEditor slide={slide} onChange={onChange} />
       </div>
     </div>
@@ -472,6 +503,8 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   const existing = owner.scormAuthoredContent;
   const [slides, setSlides] = useState<ScormSlide[]>(existing?.slides?.length ? existing.slides : [SLIDE_FACTORIES.content()]);
   const [passingScore, setPassingScore] = useState(existing?.passingScore ?? 70);
+  const [sections, setSections] = useState<ScormSection[]>(existing?.sections ?? []);
+  const sectionsWeightTotal = Math.round(sections.reduce((sum, s) => sum + s.weightPercent, 0) * 100) / 100;
   const [addType, setAddType] = useState<ScormSlide["type"]>("content");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -488,11 +521,11 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
 
   const previewHtml = useMemo(() => {
     try {
-      return buildScormContentHtml({ slides, passingScore }, "Vista previa");
+      return buildScormContentHtml({ slides, passingScore, sections }, "Vista previa");
     } catch {
       return null;
     }
-  }, [slides, passingScore]);
+  }, [slides, passingScore, sections]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -511,6 +544,19 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
     setSlides((ss) => (ss.length > 1 ? ss.filter((s) => s.id !== id) : ss));
   }
 
+  function addSection() {
+    setSections((secs) => [...secs, { id: uid(), title: `Sección ${secs.length + 1}`, weightPercent: 0 }]);
+  }
+  function updateSection(id: string, patch: Partial<ScormSection>) {
+    setSections((secs) => secs.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+  function deleteSection(id: string) {
+    setSections((secs) => secs.filter((s) => s.id !== id));
+    // Las preguntas que apuntaban a esta sección quedan sin asignar — se
+    // avisa en validate() antes de guardar, no se borran silenciosamente.
+    setSlides((ss) => ss.map((s) => (s.type !== "content" && (s as { sectionId?: string | null }).sectionId === id ? { ...s, sectionId: null } : s)));
+  }
+
   function validate(): string | null {
     for (const s of slides) {
       if (s.type === "content" && (!s.title.trim() || !s.body.trim())) return "Cada diapositiva de Contenido necesita título y texto.";
@@ -522,6 +568,16 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
       if (s.type === "matching" && s.pairs.some((p) => !p.left.trim() || !p.right.trim())) return "Completa ambos lados de cada par en Emparejar.";
       if (s.type === "ordering" && s.items.some((i) => !i.trim())) return "Completa todos los elementos de Ordenar.";
       if (s.type === "hotspot" && (!s.imageUrl || s.zones.length === 0)) return "Punto caliente necesita una imagen y al menos una zona marcada.";
+    }
+    // "Varios exámenes con pesos distintos dentro de un mismo SCORM" — si el
+    // admin definió secciones, tienen que sumar 100% (el motor las usa para
+    // ponderar el único puntaje final que SCORM puede reportar) y CADA
+    // pregunta debe pertenecer a una — de lo contrario, ¿con qué peso cuenta?
+    if (sections.length > 0) {
+      if (Math.abs(sectionsWeightTotal - 100) > 0.5) return `El peso de las secciones debe sumar 100% (hoy suma ${sectionsWeightTotal}%).`;
+      const sectionIds = new Set(sections.map((s) => s.id));
+      const unassigned = slides.some((s) => s.type !== "content" && !sectionIds.has((s as { sectionId?: string | null }).sectionId ?? ""));
+      if (unassigned) return "Todas las preguntas deben pertenecer a una sección — asígnalas en cada diapositiva.";
     }
     return null;
   }
@@ -535,7 +591,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
     setSaving(true);
     setError(null);
     try {
-      await buildPackage(owner.id, { slides, passingScore });
+      await buildPackage(owner.id, { slides, passingScore, sections: sections.length > 0 ? sections : undefined });
       setBuilt(true);
       onSaved();
       router.refresh();
@@ -580,11 +636,45 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
           </p>
           {error && <Callout variant="danger">{error}</Callout>}
 
+          {/* "Varios exámenes con pesos distintos dentro de un mismo SCORM"
+              — opcional: sin secciones, el paquete se sigue calificando
+              como siempre (aciertos/total). Con secciones, cada una pesa lo
+              que el admin defina y el puntaje final es su promedio
+              ponderado. */}
+          <div className="flex flex-col gap-2 rounded-md border border-paper-border bg-paper-muted p-3">
+            <div className="flex items-center justify-between">
+              <Label>Secciones (opcional — para ponderar tu examen)</Label>
+              <span className={cn("text-xs font-medium", sections.length > 0 && Math.abs(sectionsWeightTotal - 100) > 0.5 ? "text-danger" : "text-ash-500")}>
+                {sections.length > 0 ? `Total: ${sectionsWeightTotal}%` : "Sin secciones — se califica todo junto"}
+              </span>
+            </div>
+            {sections.map((sec) => (
+              <div key={sec.id} className="flex items-center gap-2">
+                <Input className="h-7 flex-1 text-xs" value={sec.title} onChange={(e) => updateSection(sec.id, { title: e.target.value })} placeholder="Nombre de la sección" />
+                <Input
+                  className="h-7 w-20 text-xs"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={sec.weightPercent}
+                  onChange={(e) => updateSection(sec.id, { weightPercent: Number(e.target.value) })}
+                />
+                <span className="text-xs text-ash-500">%</span>
+                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => deleteSection(sec.id)} aria-label="Quitar sección">
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+            <Button size="sm" variant="outline" className="self-start" onClick={addSection}>
+              + Agregar sección
+            </Button>
+          </div>
+
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col gap-2">
                 {slides.map((s) => (
-                  <SlideRow key={s.id} slide={s} onChange={(next) => updateSlide(s.id, next)} onDelete={() => deleteSlide(s.id)} />
+                  <SlideRow key={s.id} slide={s} sections={sections} onChange={(next) => updateSlide(s.id, next)} onDelete={() => deleteSlide(s.id)} />
                 ))}
               </div>
             </SortableContext>
