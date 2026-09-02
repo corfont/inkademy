@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AlertTriangle, TrendingUp, Users, UserX, Award, LifeBuoy, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, TrendingUp, Users, UserX, Award, LifeBuoy, CheckCircle2, MailWarning, VideoOff } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
@@ -44,6 +44,8 @@ const EXCEPTION_ICON = {
   COURSE_WITHOUT_TEACHER: UserX,
   COMPANY_SEATS_EXPIRING: AlertTriangle,
   EXAM_PENDING_REVIEW: LifeBuoy,
+  FAILED_NOTIFICATION: MailWarning,
+  LIVE_SESSION_STUCK: VideoOff,
 } as const;
 
 // Semaforización simple: cada KPI que admite un umbral de riesgo se pinta

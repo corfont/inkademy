@@ -16,14 +16,14 @@ const courseCardInclude = {
   area: true,
   staff: { include: { user: true } },
   liveSessions: { where: { status: "SCHEDULED" as const }, orderBy: { startsAt: "asc" as const } },
-  ratings: { select: { stars: true } },
+  ratings: { select: { stars: true, userId: true } },
 } as const;
 
 type CourseWithRelations = Course & {
   area: { slug: string };
-  staff: { role: string; user: { firstName: string; lastName: string } }[];
+  staff: { role: string; userId: string; user: { firstName: string; lastName: string } }[];
   liveSessions: { startsAt: Date }[];
-  ratings: { stars: number }[];
+  ratings: { stars: number; userId: string }[];
 };
 
 @Injectable()
@@ -36,6 +36,12 @@ export class CatalogService {
   toCourseCard(course: CourseWithRelations): CourseCardDTO {
     const teacher = course.staff.find((s) => s.role === "TEACHER")?.user;
     const nextLive = course.liveSessions.find((s) => s.startsAt.getTime() > Date.now());
+    // "¿El docente puede calificar su propio curso?" — nada se lo impide,
+    // pero esa autocalificación no es la opinión independiente de un alumno
+    // real; se excluye del promedio/conteo público (ver misma exclusión en
+    // AdminService.getRoyaltyCosts para las regalías).
+    const staffUserIds = new Set(course.staff.map((s) => s.userId));
+    const thirdPartyRatings = course.ratings.filter((r) => !staffUserIds.has(r.userId));
 
     // Descuento vigente: % configurado por el admin y (si tiene vencimiento)
     // todavía no vencido — se trata como "ya no hay oferta" sin necesidad de
@@ -80,8 +86,8 @@ export class CatalogService {
       // Se calcula siempre (igual que teacherName/nextLiveSessionAt) — es el
       // admin quien decide en AppearanceForm si CourseCard lo muestra, no
       // este servicio.
-      avgRating: course.ratings.length > 0 ? Math.round((course.ratings.reduce((sum, r) => sum + r.stars, 0) / course.ratings.length) * 10) / 10 : null,
-      ratingsCount: course.ratings.length,
+      avgRating: thirdPartyRatings.length > 0 ? Math.round((thirdPartyRatings.reduce((sum, r) => sum + r.stars, 0) / thirdPartyRatings.length) * 10) / 10 : null,
+      ratingsCount: thirdPartyRatings.length,
     };
   }
 
@@ -187,8 +193,14 @@ export class CatalogService {
     // Reseñas con comentario visible en la ficha del curso — courseCardInclude
     // solo trae `stars` (para el promedio, en todas las listas); acá se pide
     // aparte el detalle con comentario + nombre del autor, solo para la ficha.
+    // Excluye al propio CourseStaff del curso — mismo criterio que el
+    // promedio en toCourseCard, no es la reseña de un alumno independiente.
     const reviewRows = await this.prisma.courseRating.findMany({
-      where: { courseId: course.id, comment: { not: null } },
+      where: {
+        courseId: course.id,
+        comment: { not: null },
+        userId: { notIn: (course as unknown as CourseWithRelations).staff.map((s) => s.userId) },
+      },
       include: { user: true },
       orderBy: { createdAt: "desc" },
       take: 50,

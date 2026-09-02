@@ -192,11 +192,25 @@ export class CertificateService {
       },
     });
 
-    await this.certificateQueue.add(
-      CERTIFICATE_JOBS.GENERATE,
-      { certificateId: certificate.id },
-      { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true },
-    );
+    // El Certificate YA quedó creado arriba (fuente de verdad de "se emitió"
+    // — checkAndIssueIfEligible es idempotente por el chequeo de
+    // existingCertificate al inicio). Encolar el PDF y avisar por correo son
+    // efectos secundarios best-effort: si BullMQ/Redis tiene un problema
+    // transitorio acá, NO debe tumbar la acción del alumno que disparó esto
+    // (marcar una lección leída, terminar un examen) con un 500 — esa
+    // acción ya tuvo éxito antes de llegar a este método. Un log de error
+    // deja rastro para investigar; la fila de Certificate sin pdfAssetId
+    // (o el Notification en FAILED) queda visible para el admin, ver
+    // /admin/certificados y /admin/soporte → "Notificaciones fallidas".
+    try {
+      await this.certificateQueue.add(
+        CERTIFICATE_JOBS.GENERATE,
+        { certificateId: certificate.id },
+        { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true, removeOnFail: 100 },
+      );
+    } catch (err) {
+      this.logger.error(`No se pudo encolar la generación del PDF del certificado ${certificate.id}: ${(err as Error).message}`);
+    }
 
     const courseTitle = ((enrollment.course?.title as Record<string, string>) ?? {}).es ?? "tu curso";
     const verificationUrl = this.verificationUrl(certificate.code);
@@ -210,7 +224,11 @@ export class CertificateService {
       recipients.push(...admins.map((m) => m.user.email));
     }
     for (const email of recipients) {
-      await this.notifications.sendCertificateReady(email, courseTitle, verificationUrl, enrollment.userId);
+      try {
+        await this.notifications.sendCertificateReady(email, courseTitle, verificationUrl, enrollment.userId);
+      } catch (err) {
+        this.logger.error(`No se pudo avisar por correo el certificado ${certificate.id} a ${email}: ${(err as Error).message}`);
+      }
     }
   }
 
@@ -231,7 +249,7 @@ export class CertificateService {
     await this.certificateQueue.add(
       CERTIFICATE_JOBS.GENERATE,
       { certificateId },
-      { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true },
+      { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true, removeOnFail: 100 },
     );
     return { regenerating: true };
   }

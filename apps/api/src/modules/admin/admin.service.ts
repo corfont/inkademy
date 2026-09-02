@@ -267,6 +267,51 @@ export class AdminService {
       });
     }
 
+    // 6) FAILED_NOTIFICATION — un correo (bienvenida, certificado listo,
+    // recordatorio, etc.) que agotó sus 3 reintentos y quedó definitivamente
+    // sin entregarse. El reintento y el estado (Notification.status) ya
+    // existían desde antes, pero ninguna pantalla del admin los mostraba —
+    // un envío fallido quedaba invisible para siempre, sin que nadie se
+    // enterara de que el alumno nunca recibió el aviso.
+    const failedNotifications = await this.prisma.notification.findMany({
+      where: { status: "FAILED" },
+      include: { user: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    for (const n of failedNotifications) {
+      exceptions.push({
+        id: `FAILED_NOTIFICATION:${n.id}`,
+        type: "FAILED_NOTIFICATION",
+        severity: "MEDIUM",
+        message: `No se pudo entregar el correo "${n.template}" a ${n.user.email}`,
+        entityId: n.id,
+        createdAt: n.createdAt.toISOString(),
+      });
+    }
+
+    // 7) LIVE_SESSION_STUCK — clase que terminó hace más de 48h y sigue
+    // como "programada". El sweep del worker (sweepEndedLiveSessionsForRecording,
+    // cada 15 min) ya reintenta sincronizar asistencia/grabación y marcar
+    // COMPLETED, pero deliberadamente deja de intentarlo pasadas 48h (para
+    // no reintentar para siempre una reunión que nunca se creó bien en
+    // Zoom/Teams, o una clase cancelada a último momento sin avisar acá) —
+    // ese caso residual antes quedaba trabado en silencio para siempre.
+    const stuckSessions = await this.prisma.liveSession.findMany({
+      where: { status: "SCHEDULED", endsAt: { lt: new Date(now.getTime() - 48 * 60 * 60 * 1000) } },
+      include: { course: true },
+    });
+    for (const session of stuckSessions) {
+      exceptions.push({
+        id: `LIVE_SESSION_STUCK:${session.id}`,
+        type: "LIVE_SESSION_STUCK",
+        severity: "MEDIUM",
+        message: `La clase "${(session.course.title as Record<string, string>).es}" del ${session.startsAt.toLocaleString("es-PE")} terminó hace más de 48h y sigue como "programada" — revisa si la reunión se creó bien en Zoom/Teams`,
+        entityId: session.id,
+        createdAt: session.endsAt.toISOString(),
+      });
+    }
+
     return exceptions.sort((a, b) => {
       const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
       return order[a.severity] - order[b.severity];
@@ -386,6 +431,20 @@ export class AdminService {
   private async assertTeacherOwnsCourse(courseId: string, teacherUserId: string) {
     const membership = await this.prisma.courseStaff.findFirst({ where: { courseId, userId: teacherUserId } });
     if (!membership) throw new ForbiddenException("No tienes asignado este curso");
+  }
+
+  /**
+   * "¿Puede el docente matricularse en su propio curso y contar dos veces?"
+   * — nada le impide matricularse (y calificarlo, ver CatalogService), así
+   * que su matrícula/certificado/calificación no debe alimentar métricas
+   * que generan un pago real (regalías, convenios institucionales) ni la
+   * calificación pública que ven futuros alumnos — no es un alumno
+   * independiente. Se usa como filtro `NOT IN`, nunca como bloqueo: sigue
+   * pudiendo matricularse para revisar su propio curso como cualquier QA.
+   */
+  private async getCourseStaffUserIds(courseId: string): Promise<string[]> {
+    const staff = await this.prisma.courseStaff.findMany({ where: { courseId }, select: { userId: true } });
+    return staff.map((s) => s.userId);
   }
 
   /**
@@ -963,13 +1022,19 @@ export class AdminService {
       if (p.partnerInstitution.billingType === "FIXED") {
         amount = fee; // carga mensual constante, mismo criterio que PlatformExpense MONTHLY
       } else if (p.partnerInstitution.billingType === "PER_COURSE") {
+        const staffUserIds = await this.getCourseStaffUserIds(p.courseId);
         const count = await this.prisma.certificate.count({
-          where: { courseId: p.courseId, issuedAt: { gte: params.from, lte: params.to } },
+          where: { courseId: p.courseId, issuedAt: { gte: params.from, lte: params.to }, userId: { notIn: staffUserIds } },
         });
         amount = fee * count;
       } else if (p.partnerInstitution.billingType === "PER_ENROLLMENT") {
+        // Excluye CANCELLED (misma razón que en getRoyaltyCosts) y a los
+        // propios CourseStaff del curso — si el docente se matricula en su
+        // propio curso, esa matrícula no es un alumno real que el convenio
+        // deba facturar.
+        const staffUserIds = await this.getCourseStaffUserIds(p.courseId);
         const count = await this.prisma.enrollment.count({
-          where: { courseId: p.courseId, enrolledAt: { gte: params.from, lte: params.to } },
+          where: { courseId: p.courseId, enrolledAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" }, userId: { notIn: staffUserIds } },
         });
         amount = fee * count;
       } else if (p.partnerInstitution.billingType === "PER_PERIOD") {
@@ -1003,14 +1068,19 @@ export class AdminService {
       let amount = 0;
       if (r.royaltyRecipient.billingType === "PER_ENROLLMENT") {
         // Excluye CANCELLED (p.ej. una orden de prueba retrotraída en zona de
-        // pruebas) — de otro modo se le seguía pagando al socio por una
-        // matrícula que nunca llegó a ser real.
+        // pruebas) y a los propios CourseStaff del curso — si el docente (o
+        // un co-docente/moderador) se matricula en su propio curso, esa
+        // matrícula no genera una regalía real que pagarle a nadie.
+        const staffUserIds = await this.getCourseStaffUserIds(r.courseId);
         const count = await this.prisma.enrollment.count({
-          where: { courseId: r.courseId, enrolledAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" } },
+          where: { courseId: r.courseId, enrolledAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" }, userId: { notIn: staffUserIds } },
         });
         amount = count; // % se aplica sobre un monto fijo por matrícula — ver feePercent como "soles por matrícula" en este caso simplificado
       } else if (r.royaltyRecipient.billingType === "PER_COMPLETION") {
-        const count = await this.prisma.certificate.count({ where: { courseId: r.courseId, issuedAt: { gte: params.from, lte: params.to } } });
+        const staffUserIds = await this.getCourseStaffUserIds(r.courseId);
+        const count = await this.prisma.certificate.count({
+          where: { courseId: r.courseId, issuedAt: { gte: params.from, lte: params.to }, userId: { notIn: staffUserIds } },
+        });
         amount = count;
       } else if (r.royaltyRecipient.billingType === "PER_REFERRAL") {
         const orders = await this.prisma.order.findMany({

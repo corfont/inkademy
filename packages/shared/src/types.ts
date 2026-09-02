@@ -269,7 +269,9 @@ export interface AdminExceptionDTO {
     | "STUDENT_WITHOUT_ACCESS_BEFORE_CLASS"
     | "COURSE_WITHOUT_TEACHER"
     | "COMPANY_SEATS_EXPIRING"
-    | "EXAM_PENDING_REVIEW";
+    | "EXAM_PENDING_REVIEW"
+    | "FAILED_NOTIFICATION"
+    | "LIVE_SESSION_STUCK";
   severity: "LOW" | "MEDIUM" | "HIGH";
   message: string;
   entityId: string;
