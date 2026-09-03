@@ -76,3 +76,36 @@ export function renderCourseRecommendation(data: { firstName: string; courseTitl
   const html = `<p>Hola ${data.firstName},</p><p>Basado en tu progreso, te recomendamos continuar con <strong>${data.courseTitle}</strong>.</p>${button("Ver curso", data.courseUrl)}`;
   return { subject: "Un curso pensado para ti", html: layout("Recomendación para ti", html), text: `Te recomendamos el curso ${data.courseTitle}.` };
 }
+
+// --- Módulo de notificaciones (convenios / sugerencias / licencias) ---
+// A diferencia de renderDeadlineReminder (offset fijo "3d"|"24h"), estos 3
+// usan un plazo de anticipación CONFIGURABLE desde /admin/notificaciones
+// (partnershipExpiringLeadDays/etc.), así que reciben "daysLeft" como
+// número libre en vez de un union de offsets fijos.
+
+export function renderPartnershipExpiring(data: { firstName: string; institutionName: string; courseTitle: string; endsAt: string; daysLeft: number; url: string }): RenderedEmail {
+  const html = `<p>Hola ${data.firstName},</p><p>El convenio con <strong>${data.institutionName}</strong> para el curso <strong>${data.courseTitle}</strong> vence el ${data.endsAt} (en ${data.daysLeft} días).</p>${button("Ver convenios", data.url)}`;
+  return {
+    subject: `Convenio por vencer: ${data.institutionName}`,
+    html: layout("Convenio institucional por vencer", html),
+    text: `El convenio con ${data.institutionName} (${data.courseTitle}) vence el ${data.endsAt}.`,
+  };
+}
+
+export function renderSuggestionUnanswered(data: { title: string; hoursOpen: number; url: string }): RenderedEmail {
+  const html = `<p>Hay una sugerencia de curso sin responder hace más de ${data.hoursOpen} horas: <strong>${data.title}</strong>.</p>${button("Ver sugerencia", data.url)}`;
+  return {
+    subject: `Sugerencia sin responder: ${data.title}`,
+    html: layout("Sugerencia de curso sin responder", html),
+    text: `Sugerencia sin responder hace ${data.hoursOpen}h: ${data.title}.`,
+  };
+}
+
+export function renderPlatformLicenseExpiring(data: { clientName: string; endsAt: string; daysLeft: number; url: string }): RenderedEmail {
+  const html = `<p>La licencia de arriendo del sistema de <strong>${data.clientName}</strong> vence el ${data.endsAt} (en ${data.daysLeft} días).</p>${button("Ver licencias", data.url)}`;
+  return {
+    subject: `Licencia por vencer: ${data.clientName}`,
+    html: layout("Licencia de plataforma por vencer", html),
+    text: `La licencia de ${data.clientName} vence el ${data.endsAt}.`,
+  };
+}

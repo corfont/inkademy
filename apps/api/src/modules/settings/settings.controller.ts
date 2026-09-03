@@ -11,11 +11,13 @@ import {
   upsertSettingsSchema,
   upsertSunatSettingsSchema,
   upsertEmailServerSettingsSchema,
+  upsertNotificationSettingsSchema,
 } from "../../common/validation/local-schemas";
 import { SettingsService } from "./settings.service";
 import { SunatSettingsService } from "./sunat-settings.service";
 import { ChatbotSettingsService } from "./chatbot-settings.service";
 import { EmailServerSettingsService } from "./email-server-settings.service";
+import { NotificationSettingsService } from "./notification-settings.service";
 
 @ApiTags("settings")
 @Controller()
@@ -25,6 +27,7 @@ export class SettingsController {
     private readonly sunatSettingsService: SunatSettingsService,
     private readonly chatbotSettingsService: ChatbotSettingsService,
     private readonly emailServerSettingsService: EmailServerSettingsService,
+    private readonly notificationSettingsService: NotificationSettingsService,
   ) {}
 
   @Public()
@@ -95,5 +98,23 @@ export class SettingsController {
   @ApiOperation({ summary: "Actualiza la configuración del servidor SMTP" })
   updateEmailServerSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertEmailServerSettingsSchema)) dto: any) {
     return this.emailServerSettingsService.update(dto, user.id);
+  }
+
+  @Get("admin/notification-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Qué notificaciones se envían y por qué canal(es) (correo/in-app), por tipo de evento" })
+  getNotificationSettings() {
+    return this.notificationSettingsService.get();
+  }
+
+  @Patch("admin/notification-settings")
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Actualiza qué notificaciones se envían y por qué canal(es)" })
+  updateNotificationSettings(@Body(new ZodValidationPipe(upsertNotificationSettingsSchema)) dto: any) {
+    return this.notificationSettingsService.update(dto);
   }
 }

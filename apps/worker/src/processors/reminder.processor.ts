@@ -9,12 +9,22 @@ import {
   type LiveSessionUpcomingJobData,
   type CourseAccessExpiringJobData,
   type AssessmentDueJobData,
+  type PartnershipExpiringJobData,
+  type SuggestionUnansweredJobData,
+  type PlatformLicenseExpiringJobData,
   type LiveSessionOffset,
   type DeadlineOffset,
 } from "../queues";
 import { reminderQueue, attendanceSyncQueue } from "../lib/queue-client";
-import { notifyByEmail } from "../lib/notify";
-import { renderCourseStartReminder, renderLiveClassReminder, renderDeadlineReminder } from "../templates/email-templates";
+import { notifyByEmail, notifyUser, getNotificationSettings } from "../lib/notify";
+import {
+  renderCourseStartReminder,
+  renderLiveClassReminder,
+  renderDeadlineReminder,
+  renderPartnershipExpiring,
+  renderSuggestionUnanswered,
+  renderPlatformLicenseExpiring,
+} from "../templates/email-templates";
 import { runEmailCampaignSweep } from "./email-campaign.processor";
 import { createLogger } from "../lib/logger";
 
@@ -183,6 +193,77 @@ async function sweepEndedLiveSessionsForRecording(): Promise<void> {
   }
 }
 
+/**
+ * Convenio "por vencer": una alerta por institución socia (no por curso —
+ * un convenio con 10 cursos no debe mandar 10 avisos), disparada por el
+ * CoursePartnership.endDate MÁS PRÓXIMO entre sus cursos activos. Notifica
+ * a todo ADMIN (gestión interna — el contacto externo de la institución no
+ * recibe nada automático). Plazo de anticipación configurable vía
+ * NotificationSettings.partnershipExpiringLeadDays.
+ */
+async function sweepPartnershipExpiring(): Promise<void> {
+  const settings = await getNotificationSettings();
+  const leadMs = settings.partnershipExpiringLeadDays * DAY_MS;
+  const institutions = await prisma.partnerInstitution.findMany({
+    where: { active: true, courses: { some: { endDate: { gt: new Date() } } } },
+    select: { id: true, courses: { where: { endDate: { gt: new Date() } }, orderBy: { endDate: "asc" }, take: 1, select: { endDate: true } } },
+  });
+
+  for (const institution of institutions) {
+    const soonest = institution.courses[0];
+    if (!soonest?.endDate) continue;
+    const delay = soonest.endDate.getTime() - leadMs - Date.now();
+    if (delay <= 0) continue;
+    await reminderQueue().add(
+      REMINDER_JOBS.PARTNERSHIP_EXPIRING,
+      { partnerInstitutionId: institution.id } satisfies PartnershipExpiringJobData,
+      // BullMQ exige que un jobId con ":" tenga EXACTAMENTE 3 partes (compat
+      // con la convención vieja de jobs repetibles) o ninguno — un jobId de
+      // 2 partes como "reminder.partnership-expiring:<uuid>" revienta con
+      // "Custom Id cannot contain :". Se usa "-" como separador en su lugar.
+      { jobId: `${REMINDER_JOBS.PARTNERSHIP_EXPIRING}-${institution.id}`, delay, removeOnComplete: true, removeOnFail: 200 },
+    );
+  }
+}
+
+/** Sugerencia de curso sin respuesta del admin/soporte pasado un umbral configurable. */
+async function sweepSuggestionsUnanswered(): Promise<void> {
+  const settings = await getNotificationSettings();
+  const thresholdMs = settings.suggestionUnansweredAfterHours * HOUR_MS;
+  const suggestions = await prisma.courseSuggestion.findMany({
+    where: { respondedAt: null },
+    select: { id: true, createdAt: true },
+  });
+  for (const s of suggestions) {
+    const delay = s.createdAt.getTime() + thresholdMs - Date.now();
+    if (delay <= 0) continue;
+    await reminderQueue().add(
+      REMINDER_JOBS.SUGGESTION_UNANSWERED,
+      { suggestionId: s.id } satisfies SuggestionUnansweredJobData,
+      { jobId: `${REMINDER_JOBS.SUGGESTION_UNANSWERED}-${s.id}`, delay, removeOnComplete: true, removeOnFail: 200 },
+    );
+  }
+}
+
+/** Licencia de arriendo de plataforma por vencer — mismo patrón que convenios, para el módulo de licenciamiento. */
+async function sweepPlatformLicenseExpiring(): Promise<void> {
+  const settings = await getNotificationSettings();
+  const leadMs = settings.platformLicenseExpiringLeadDays * DAY_MS;
+  const licenses = await prisma.platformLicense.findMany({
+    where: { status: { in: ["ACTIVE", "EXPIRING_SOON"] }, endsAt: { gt: new Date() } },
+    select: { id: true, endsAt: true },
+  });
+  for (const license of licenses) {
+    const delay = license.endsAt.getTime() - leadMs - Date.now();
+    if (delay <= 0) continue;
+    await reminderQueue().add(
+      REMINDER_JOBS.PLATFORM_LICENSE_EXPIRING,
+      { platformLicenseId: license.id } satisfies PlatformLicenseExpiringJobData,
+      { jobId: `${REMINDER_JOBS.PLATFORM_LICENSE_EXPIRING}-${license.id}`, delay, removeOnComplete: true, removeOnFail: 200 },
+    );
+  }
+}
+
 async function runSweep(): Promise<void> {
   const results = await Promise.allSettled([
     sweepLiveSessions(),
@@ -190,6 +271,9 @@ async function runSweep(): Promise<void> {
     sweepExpireAccess(),
     sweepAssessmentDue(),
     sweepEndedLiveSessionsForRecording(),
+    sweepPartnershipExpiring(),
+    sweepSuggestionsUnanswered(),
+    sweepPlatformLicenseExpiring(),
   ]);
   results.forEach((r, i) => {
     if (r.status === "rejected") {
@@ -229,11 +313,11 @@ async function sendLiveSessionUpcoming(data: LiveSessionUpcomingJobData): Promis
           joinUrl: session.joinUrl ?? "",
         });
 
-    await notifyByEmail({
+    await notifyUser({
       userId: enrollment.userId,
-      to: enrollment.user.email,
-      template: WORKER_EMAIL_JOBS.LIVE_SESSION_UPCOMING,
-      ...rendered,
+      type: "LIVE_SESSION_UPCOMING",
+      email: { to: enrollment.user.email, template: WORKER_EMAIL_JOBS.LIVE_SESSION_UPCOMING, ...rendered },
+      inApp: { template: WORKER_EMAIL_JOBS.LIVE_SESSION_UPCOMING, title: rendered.subject, body: rendered.text, url: `${appUrl()}/cursos/${session.course.slug}` },
     });
   }
 }
@@ -252,11 +336,11 @@ async function sendAccessExpiring(data: CourseAccessExpiringJobData): Promise<vo
     url: `${appUrl()}/campus`,
   });
 
-  await notifyByEmail({
+  await notifyUser({
     userId: enrollment.userId,
-    to: enrollment.user.email,
-    template: WORKER_EMAIL_JOBS.COURSE_ACCESS_EXPIRING,
-    ...rendered,
+    type: "COURSE_ACCESS_EXPIRING",
+    email: { to: enrollment.user.email, template: WORKER_EMAIL_JOBS.COURSE_ACCESS_EXPIRING, ...rendered },
+    inApp: { template: WORKER_EMAIL_JOBS.COURSE_ACCESS_EXPIRING, title: rendered.subject, body: rendered.text, url: `${appUrl()}/campus` },
   });
 }
 
@@ -274,12 +358,90 @@ async function sendAssessmentDue(data: AssessmentDueJobData): Promise<void> {
     url: `${appUrl()}/cursos/${assessment.course.slug}`,
   });
 
-  await notifyByEmail({
+  await notifyUser({
     userId: enrollment.userId,
-    to: enrollment.user.email,
-    template: WORKER_EMAIL_JOBS.ASSESSMENT_DUE,
-    ...rendered,
+    type: "ASSESSMENT_DUE",
+    email: { to: enrollment.user.email, template: WORKER_EMAIL_JOBS.ASSESSMENT_DUE, ...rendered },
+    inApp: { template: WORKER_EMAIL_JOBS.ASSESSMENT_DUE, title: rendered.subject, body: rendered.text, url: `${appUrl()}/cursos/${assessment.course.slug}` },
   });
+}
+
+async function sendPartnershipExpiring(data: PartnershipExpiringJobData): Promise<void> {
+  const institution = await prisma.partnerInstitution.findUnique({
+    where: { id: data.partnerInstitutionId },
+    include: { courses: { where: { endDate: { gt: new Date() } }, orderBy: { endDate: "asc" }, take: 1, include: { course: true } } },
+  });
+  if (!institution || !institution.active || institution.courses.length === 0) return;
+  const soonest = institution.courses[0];
+  if (!soonest.endDate) return;
+
+  const settings = await getNotificationSettings();
+  const daysLeft = Math.max(0, Math.round((soonest.endDate.getTime() - Date.now()) / DAY_MS));
+  const admins = await prisma.user.findMany({ where: { globalRole: "ADMIN" }, select: { id: true, email: true, firstName: true } });
+
+  for (const admin of admins) {
+    const rendered = renderPartnershipExpiring({
+      firstName: admin.firstName,
+      institutionName: institution.name,
+      courseTitle: pickEs(soonest.course.title),
+      endsAt: soonest.endDate.toLocaleDateString("es-PE"),
+      daysLeft,
+      url: `${appUrl()}/admin/convenios`,
+    });
+    await notifyUser({
+      userId: admin.id,
+      type: "PARTNERSHIP_EXPIRING",
+      email: settings.partnershipExpiringEmail ? { to: admin.email, template: "email.partnership-expiring", ...rendered } : undefined,
+      inApp: { template: "email.partnership-expiring", title: rendered.subject, body: rendered.text, url: "/admin/convenios" },
+    });
+  }
+}
+
+async function sendSuggestionUnanswered(data: SuggestionUnansweredJobData): Promise<void> {
+  const suggestion = await prisma.courseSuggestion.findUnique({ where: { id: data.suggestionId } });
+  if (!suggestion || suggestion.respondedAt) return; // ya la respondieron mientras esperaba el delayed job
+
+  const settings = await getNotificationSettings();
+  const preview = suggestion.message.length > 80 ? `${suggestion.message.slice(0, 80)}…` : suggestion.message;
+  const rendered = renderSuggestionUnanswered({
+    title: preview,
+    hoursOpen: settings.suggestionUnansweredAfterHours,
+    url: `${appUrl()}/admin/sugerencias`,
+  });
+
+  const staff = await prisma.user.findMany({ where: { globalRole: { in: ["ADMIN", "SUPPORT"] } }, select: { id: true, email: true } });
+  for (const person of staff) {
+    await notifyUser({
+      userId: person.id,
+      type: "SUGGESTION_UNANSWERED",
+      email: settings.suggestionUnansweredEmail ? { to: person.email, template: "email.suggestion-unanswered", ...rendered } : undefined,
+      inApp: { template: "email.suggestion-unanswered", title: rendered.subject, body: rendered.text, url: "/admin/sugerencias" },
+    });
+  }
+}
+
+async function sendPlatformLicenseExpiring(data: PlatformLicenseExpiringJobData): Promise<void> {
+  const license = await prisma.platformLicense.findUnique({ where: { id: data.platformLicenseId } });
+  if (!license || license.status === "CANCELLED" || license.status === "EXPIRED") return;
+
+  const settings = await getNotificationSettings();
+  const daysLeft = Math.max(0, Math.round((license.endsAt.getTime() - Date.now()) / DAY_MS));
+  const rendered = renderPlatformLicenseExpiring({
+    clientName: license.clientName,
+    endsAt: license.endsAt.toLocaleDateString("es-PE"),
+    daysLeft,
+    url: `${appUrl()}/admin/licencias`,
+  });
+
+  const admins = await prisma.user.findMany({ where: { globalRole: "ADMIN" }, select: { id: true, email: true } });
+  for (const admin of admins) {
+    await notifyUser({
+      userId: admin.id,
+      type: "PLATFORM_LICENSE_EXPIRING",
+      email: settings.platformLicenseExpiringEmail ? { to: admin.email, template: "email.platform-license-expiring", ...rendered } : undefined,
+      inApp: { template: "email.platform-license-expiring", title: rendered.subject, body: rendered.text, url: "/admin/licencias" },
+    });
+  }
 }
 
 export async function processReminderJob(job: Job): Promise<void> {
@@ -294,6 +456,12 @@ export async function processReminderJob(job: Job): Promise<void> {
       return sendAccessExpiring(job.data as CourseAccessExpiringJobData);
     case REMINDER_JOBS.ASSESSMENT_DUE:
       return sendAssessmentDue(job.data as AssessmentDueJobData);
+    case REMINDER_JOBS.PARTNERSHIP_EXPIRING:
+      return sendPartnershipExpiring(job.data as PartnershipExpiringJobData);
+    case REMINDER_JOBS.SUGGESTION_UNANSWERED:
+      return sendSuggestionUnanswered(job.data as SuggestionUnansweredJobData);
+    case REMINDER_JOBS.PLATFORM_LICENSE_EXPIRING:
+      return sendPlatformLicenseExpiring(job.data as PlatformLicenseExpiringJobData);
     default:
       logger.warn("job.name desconocido en cola reminder, se ignora", { jobName: job.name, jobId: job.id });
   }

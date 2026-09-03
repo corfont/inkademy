@@ -5,6 +5,7 @@ import type { Queue } from "bullmq";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { EMAIL_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
+import { NotificationSettingsService } from "../settings/notification-settings.service";
 
 export interface EmailJobPayload {
   to: string;
@@ -29,6 +30,7 @@ export class NotificationService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @InjectQueue(QUEUE_NAMES.EMAIL) private readonly emailQueue: Queue,
     private readonly config: ConfigService,
+    private readonly notificationSettings: NotificationSettingsService,
   ) {}
 
   private async enqueueEmail(jobName: string, payload: EmailJobPayload, userId?: string) {
@@ -213,8 +215,8 @@ export class NotificationService {
     );
   }
 
-  sendSupportTicketUpdate(to: string, subject: string, userId: string) {
-    return this.enqueueEmail(
+  async sendSupportTicketUpdate(to: string, subject: string, userId: string, ticketId?: string) {
+    await this.enqueueEmail(
       EMAIL_JOBS.SUPPORT_TICKET_UPDATE,
       {
         to,
@@ -223,6 +225,26 @@ export class NotificationService {
       },
       userId,
     );
+    // Módulo de notificaciones: además del correo (arriba, sin cambios),
+    // esto gana la campana in-app — gateado por NotificationSettings, a
+    // diferencia del correo que siempre se manda (comportamiento previo
+    // intacto).
+    const settings = await this.notificationSettings.get();
+    if (settings.supportTicketUpdateInApp) {
+      await this.prisma.notification.create({
+        data: {
+          userId,
+          channel: "IN_APP",
+          template: EMAIL_JOBS.SUPPORT_TICKET_UPDATE,
+          type: "SUPPORT_TICKET_UPDATE",
+          title: `Actualización en tu ticket: ${subject}`,
+          body: `Hay una nueva respuesta en tu ticket de soporte "${subject}".`,
+          url: ticketId ? `/campus/soporte/${ticketId}` : undefined,
+          status: "SENT",
+          sentAt: new Date(),
+        },
+      });
+    }
   }
 
   /**

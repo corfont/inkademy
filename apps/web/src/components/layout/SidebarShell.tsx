@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Menu, X, ArrowLeft, Home } from "lucide-react";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
+import { NotificationBell } from "./NotificationBell";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { cn } from "@/lib/cn";
 
@@ -217,15 +218,18 @@ export function SidebarShell({
               <BrandLogo maxHeightPx={28} className="max-w-full" />
             </Link>
           </div>
-          <button
-            type="button"
-            aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
-            aria-expanded={mobileOpen}
-            onClick={() => setMobileOpen((v) => !v)}
-            className="p-2 text-ink-800"
-          >
-            {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
+          <div className="flex flex-none items-center gap-1">
+            <NotificationBell />
+            <button
+              type="button"
+              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen((v) => !v)}
+              className="p-2 text-ink-800"
+            >
+              {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
         </header>
         {mobileOpen && (
           <div className="border-b border-paper-border bg-ink-900 p-4 text-paper lg:hidden" style={sidebarColor ? { backgroundColor: sidebarColor } : undefined}>
@@ -258,6 +262,7 @@ export function SidebarShell({
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <ThemeToggle />
             <LocaleSwitcher />
           </div>

@@ -34,6 +34,8 @@ import {
   AlertTriangle,
   DatabaseBackup,
   History,
+  Bell,
+  KeyRound,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
@@ -113,6 +115,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           { href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock, colorClassName: "bg-slate-400/20 text-slate-300" },
           { href: "/admin/backups", label: "Backups", icon: DatabaseBackup, colorClassName: "bg-violet-400/20 text-violet-300" },
           { href: "/admin/auditoria", label: "Auditoría", icon: History, colorClassName: "bg-orange-400/20 text-orange-300" },
+          { href: "/admin/notificaciones", label: "Notificaciones", icon: Bell, colorClassName: "bg-violet-400/20 text-violet-300" },
+          { href: "/admin/licencias", label: "Licencias de arriendo", icon: KeyRound, colorClassName: "bg-amber-400/20 text-amber-300" },
           { href: "/admin/zona-de-pruebas", label: "Zona de pruebas", icon: AlertTriangle, colorClassName: "bg-red-400/20 text-red-300" },
         ]
       : []),

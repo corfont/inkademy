@@ -147,7 +147,7 @@ export class SupportService {
 
     if (isReplyFromStaff) {
       const creator = await this.prisma.user.findUnique({ where: { id: ticket.createdById } });
-      if (creator) await this.notifications.sendSupportTicketUpdate(creator.email, ticket.subject, creator.id);
+      if (creator) await this.notifications.sendSupportTicketUpdate(creator.email, ticket.subject, creator.id, ticket.id);
     }
 
     // El email de notificación tarda (cola); el push por socket es

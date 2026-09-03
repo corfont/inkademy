@@ -20,6 +20,7 @@ import { CertificateModule } from "./modules/certificate/certificate.module";
 import { LiveSessionModule } from "./modules/live-session/live-session.module";
 import { CalendarModule } from "./modules/calendar/calendar.module";
 import { NotificationModule } from "./modules/notification/notification.module";
+import { PlatformLicenseModule } from "./modules/platform-license/platform-license.module";
 import { SupportModule } from "./modules/support/support.module";
 import { CompaniesModule } from "./modules/companies/companies.module";
 import { AdminModule } from "./modules/admin/admin.module";
@@ -62,6 +63,7 @@ import { ScormModule } from "./modules/scorm/scorm.module";
     LiveSessionModule,
     CalendarModule,
     NotificationModule,
+    PlatformLicenseModule,
     SupportModule,
     CompaniesModule,
     AdminModule,

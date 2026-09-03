@@ -120,6 +120,11 @@ export const REMINDER_JOBS = {
   LIVE_SESSION_UPCOMING: "reminder.live-session-upcoming",
   COURSE_ACCESS_EXPIRING: "reminder.course-access-expiring",
   ASSESSMENT_DUE: "reminder.assessment-due",
+  // Nuevos — módulo de notificaciones configurable (NotificationSettings).
+  // Mismo patrón sweep→delayed job→envío que los 3 de arriba.
+  PARTNERSHIP_EXPIRING: "reminder.partnership-expiring",
+  SUGGESTION_UNANSWERED: "reminder.suggestion-unanswered",
+  PLATFORM_LICENSE_EXPIRING: "reminder.platform-license-expiring",
 } as const;
 
 /** Job interno del worker, no forma parte del contrato de apps/api. */
@@ -151,6 +156,18 @@ export interface AssessmentDueJobData {
   assessmentId: string;
   enrollmentId: string;
   offset: DeadlineOffset;
+}
+
+export interface PartnershipExpiringJobData {
+  partnerInstitutionId: string;
+}
+
+export interface SuggestionUnansweredJobData {
+  suggestionId: string;
+}
+
+export interface PlatformLicenseExpiringJobData {
+  platformLicenseId: string;
 }
 
 // ---------------------------------------------------------------------------

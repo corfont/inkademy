@@ -5,7 +5,10 @@ import { SESSION_COOKIE } from "@/lib/auth";
 // exige un usuario autenticado (@CurrentUser), y sin este guard un visitante
 // sin cuenta podía llenar los datos de tarjeta y recién enterarse del 401 al
 // final, en vez de que se le pida iniciar sesión antes de escribir nada.
-const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/docente", "/checkout"];
+// "/notificaciones" es una sola ruta compartida por los 4 roles (la API ya
+// filtra por el userId del token) — no vive dentro de ningún route group
+// con su propio layout/guard, así que necesita su propia entrada acá.
+const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/docente", "/checkout", "/notificaciones"];
 
 // Pantallas cuyas rutas de API detrás son @Roles("ADMIN") puro (nunca
 // SUPPORT) — Configuración avanzada/Zona de pruebas ya se ocultaban del
@@ -26,6 +29,8 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/liquidaciones",
   "/admin/backups",
   "/admin/auditoria",
+  "/admin/notificaciones",
+  "/admin/licencias",
 ];
 
 export function middleware(request: NextRequest) {

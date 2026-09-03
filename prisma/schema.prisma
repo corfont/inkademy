@@ -50,25 +50,25 @@ enum ExperienceLevel {
 }
 
 model User {
-  id                    String   @id @default(uuid())
-  email                 String   @unique
-  passwordHash          String? // null si solo usa OAuth
-  firstName             String
-  lastName              String
-  displayName           String?
-  avatarUrl             String?
-  globalRole            GlobalRole @default(STUDENT)
+  id               String       @id @default(uuid())
+  email            String       @unique
+  passwordHash     String? // null si solo usa OAuth
+  firstName        String
+  lastName         String
+  displayName      String?
+  avatarUrl        String?
+  globalRole       GlobalRole   @default(STUDENT)
   // Roles adicionales — "un docente podría ser también alumno, administrador
   // y soporte al mismo tiempo". globalRole sigue siendo el rol PRINCIPAL
   // (decide a qué panel entra por defecto al iniciar sesión y qué muestra
   // el sidebar); secondaryRoles solo AMPLÍA qué otras áreas puede visitar
   // (los guards de la API validan globalRole+secondaryRoles juntos, ver
   // RequestUser.roles en jwt.strategy.ts).
-  secondaryRoles        GlobalRole[] @default([])
-  locale                String   @default("es")
-  timezone              String   @default("America/Lima")
-  emailVerifiedAt       DateTime?
-  status                String   @default("active") // active | disabled
+  secondaryRoles   GlobalRole[] @default([])
+  locale           String       @default("es")
+  timezone         String       @default("America/Lima")
+  emailVerifiedAt  DateTime?
+  status           String       @default("active") // active | disabled
   // "Al iniciar sesión, generar un session_uuid único y guardarlo; en cada
   // petición contrastar el del token con el de la base — si no coinciden,
   // destruir la sesión actual (inicio de sesión concurrente en otro
@@ -76,44 +76,44 @@ model User {
   // este campo (o token emitido antes de este cambio, sin `sid`) — en ese
   // caso NO se exige el chequeo, para no invalidar de golpe todas las
   // sesiones activas al desplegar esto. Ver JwtStrategy/AuthService.
-  currentSessionId      String?
+  currentSessionId String?
 
   // Perfil progresivo (persona natural) — se completa antes de pago/certificado.
-  documentType          String? // DNI, CE, PASSPORT, RUC... (según país)
-  documentNumber        String?
-  country               String? // ISO-3166 alpha-2
-  city                  String?
-  address               String?
-  birthDate             DateTime?
-  phone                 String?
-  jobTitle              String?
-  companyFreeText       String?
-  sector                String?
-  interests             String[] @default([])
-  experienceLevel       ExperienceLevel?
+  documentType    String? // DNI, CE, PASSPORT, RUC... (según país)
+  documentNumber  String?
+  country         String? // ISO-3166 alpha-2
+  city            String?
+  address         String?
+  birthDate       DateTime?
+  phone           String?
+  jobTitle        String?
+  companyFreeText String?
+  sector          String?
+  interests       String[]         @default([])
+  experienceLevel ExperienceLevel?
   // Redes sociales — objeto libre con claves conocidas (linkedin, instagram,
   // facebook, twitter, tiktok); ver socialLinksSchema en packages/shared.
-  socialLinks           Json?
+  socialLinks     Json?
 
   // Firma manuscrita/imagen del docente (PNG/JPG, idealmente fondo
   // transparente) — se usa al generar el certificado si la plantilla
   // incluye el tag {{teacherSignature}}. Solo tiene sentido para docentes,
   // pero se guarda en User (no en un modelo aparte) porque el docente ya
   // es un User con globalRole=TEACHER.
-  signatureAssetId      String?
+  signatureAssetId         String?
   // "Los docentes deberán poder registrar su número de cuenta bancaria,
   // CCI y banco" — para que el admin sepa a dónde transferir la
   // liquidación. Mismo criterio que signatureAssetId: vive en User (no en
   // un modelo aparte) porque el docente ya es un User con globalRole=TEACHER.
-  bankName              String?
-  bankAccountNumber     String?
-  bankAccountCci        String?
-  marketingConsentEmail    Boolean @default(false)
-  marketingConsentWhatsapp Boolean @default(false)
-  profileCompletedAt    DateTime?
+  bankName                 String?
+  bankAccountNumber        String?
+  bankAccountCci           String?
+  marketingConsentEmail    Boolean   @default(false)
+  marketingConsentWhatsapp Boolean   @default(false)
+  profileCompletedAt       DateTime?
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   oauthAccounts         OAuthAccount[]
   companyMemberships    CompanyMembership[]
@@ -134,20 +134,20 @@ model User {
   backupsTriggered      BackupRecord[]
   calendarEvents        CalendarEvent[]
   notifications         Notification[]
-  supportTicketsCreated SupportTicket[]      @relation("TicketCreatedBy")
+  supportTicketsCreated SupportTicket[]         @relation("TicketCreatedBy")
   supportMessages       SupportMessage[]
   courseSuggestions     CourseSuggestion[]
-  suggestionResponses   CourseSuggestion[]   @relation("SuggestionRespondedBy")
+  suggestionResponses   CourseSuggestion[]      @relation("SuggestionRespondedBy")
   recommendations       Recommendation[]
   auditLogs             AuditLog[]
   teachingCourses       CourseStaff[]
-  gradedAnswers         Answer[]             @relation("GradedBy")
-  taughtLiveSessions    LiveSession[]        @relation("LiveSessionTeacher")
+  gradedAnswers         Answer[]                @relation("GradedBy")
+  taughtLiveSessions    LiveSession[]           @relation("LiveSessionTeacher")
   emailCampaignsCreated EmailCampaign[]
-  teacherRates          TeacherRate[]        @relation("TeacherRateOwner")
-  activityLogs          TeacherActivityLog[] @relation("TeacherActivityOwner")
-  advances              TeacherAdvance[]     @relation("TeacherAdvanceOwner")
-  liquidations          TeacherLiquidation[] @relation("TeacherLiquidationOwner")
+  teacherRates          TeacherRate[]           @relation("TeacherRateOwner")
+  activityLogs          TeacherActivityLog[]    @relation("TeacherActivityOwner")
+  advances              TeacherAdvance[]        @relation("TeacherAdvanceOwner")
+  liquidations          TeacherLiquidation[]    @relation("TeacherLiquidationOwner")
 
   @@index([email])
 }
@@ -174,18 +174,18 @@ enum CompanySize {
 }
 
 model Company {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   legalName      String
-  taxIdType      String   // RUC, NIT, EIN, ...
+  taxIdType      String // RUC, NIT, EIN, ...
   taxId          String
   country        String
   billingAddress String?
   sector         String?
   size           CompanySize?
-  interests      String[] @default([])
-  status         String   @default("active") // active | suspended
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  interests      String[]     @default([])
+  status         String       @default("active") // active | suspended
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // "El administrador puede escoger si quiere que los certificados le
   // lleguen al administrador, al usuario o a ambos" — el COMPANY_ADMIN de
@@ -240,21 +240,21 @@ model CompanyMembership {
 // ---------------------------------------------------------------------------
 
 model Area {
-  id        String     @id @default(uuid())
-  slug      String     @unique
-  name      Json // { "es": "Gestión", "en": "Management" }
-  icon      String?
-  order     Int        @default(0)
-  subareas  Subarea[]
-  courses   Course[]
+  id       String    @id @default(uuid())
+  slug     String    @unique
+  name     Json // { "es": "Gestión", "en": "Management" }
+  icon     String?
+  order    Int       @default(0)
+  subareas Subarea[]
+  courses  Course[]
 }
 
 model Subarea {
-  id     String  @id @default(uuid())
-  slug   String  @unique
-  name   Json
-  areaId String
-  area   Area    @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  id      String   @id @default(uuid())
+  slug    String   @unique
+  name    Json
+  areaId  String
+  area    Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
   courses Course[]
 }
 
@@ -305,89 +305,89 @@ enum DurationUnit {
 }
 
 model Course {
-  id                     String                @id @default(uuid())
-  slug                   String                @unique
-  title                  Json // { es, en }
-  subtitle               Json? // beneficio ("Aprende a liderar equipos remotos")
-  description            Json?
-  areaId                 String
-  area                   Area                  @relation(fields: [areaId], references: [id])
-  subareaId              String?
-  subarea                Subarea?              @relation(fields: [subareaId], references: [id])
-  modality               OfferingModality
-  type                   OfferingType          @default(COURSE)
-  level                  OfferingLevel
-  language               String                @default("es")
-  subtitleLanguages      String[]              @default([])
-  durationHours          Float
-  durationUnit           DurationUnit          @default(HOURS)
-  coverImageAssetId      String?
-  syllabusAssetId        String? // sílabo del curso (PDF/Word) — visible para el alumno en el aula
-  priceAmount            Decimal               @db.Decimal(10, 2)
-  priceCurrency          String                @default("PEN")
-  certificationIncluded  Boolean               @default(true)
-  accessDurationPolicy   AccessDurationPolicy  @default(PERMANENT)
-  status                 OfferingStatus        @default(DRAFT)
-  b2bAvailable           Boolean               @default(true)
-  b2bPriceAmount          Decimal?             @db.Decimal(10, 2)
+  id                    String               @id @default(uuid())
+  slug                  String               @unique
+  title                 Json // { es, en }
+  subtitle              Json? // beneficio ("Aprende a liderar equipos remotos")
+  description           Json?
+  areaId                String
+  area                  Area                 @relation(fields: [areaId], references: [id])
+  subareaId             String?
+  subarea               Subarea?             @relation(fields: [subareaId], references: [id])
+  modality              OfferingModality
+  type                  OfferingType         @default(COURSE)
+  level                 OfferingLevel
+  language              String               @default("es")
+  subtitleLanguages     String[]             @default([])
+  durationHours         Float
+  durationUnit          DurationUnit         @default(HOURS)
+  coverImageAssetId     String?
+  syllabusAssetId       String? // sílabo del curso (PDF/Word) — visible para el alumno en el aula
+  priceAmount           Decimal              @db.Decimal(10, 2)
+  priceCurrency         String               @default("PEN")
+  certificationIncluded Boolean              @default(true)
+  accessDurationPolicy  AccessDurationPolicy @default(PERMANENT)
+  status                OfferingStatus       @default(DRAFT)
+  b2bAvailable          Boolean              @default(true)
+  b2bPriceAmount        Decimal?             @db.Decimal(10, 2)
 
   // "El sistema no debe permitir que el usuario pueda descargar la clase
   // principal" — bloquea el atributo/enlace de descarga del video marcado
   // como Lesson.isMainContent (el material complementario sigue permitido).
   // Configurable por admin: se puede desactivar si el curso lo requiere.
-  blockMainVideoDownload Boolean               @default(true)
+  blockMainVideoDownload Boolean @default(true)
 
   // Descuento/oferta — % sobre priceAmount, con vencimiento opcional. Si
   // discountExpiresAt ya pasó, se trata como si no hubiera descuento (ver
   // catalog.service.ts) sin necesidad de un job que lo "apague" solo.
-  discountPercent        Float?
-  discountExpiresAt      DateTime?
+  discountPercent   Float?
+  discountExpiresAt DateTime?
 
   // Plantilla de certificado específica para este curso. Si es null, el
   // emisor de certificados cae al comportamiento anterior (la plantilla
   // activa más reciente que coincida con el locale del alumno) — ver
   // CertificateService.checkAndIssueIfEligible.
-  certificateTemplateId  String?
-  certificateTemplate    CertificateTemplate?  @relation(fields: [certificateTemplateId], references: [id])
+  certificateTemplateId String?
+  certificateTemplate   CertificateTemplate? @relation(fields: [certificateTemplateId], references: [id])
 
   // Rutas progresivas / recomendación
-  prerequisiteCourseIds  String[]              @default([])
-  nextRecommendedCourseIds String[]            @default([])
+  prerequisiteCourseIds    String[] @default([])
+  nextRecommendedCourseIds String[] @default([])
 
   // "El administrador podría crear secciones en la página — tal vez un
   // curso diga a quién va dirigido, tal vez no" — secciones libres y
   // opcionales que el admin arma por curso (a diferencia de `description`,
   // que es un solo bloque fijo). Shape: [{ id, title: {es,en?}, body: {es,en?} }].
   // Null/[] = el curso no muestra ninguna sección extra en su ficha pública.
-  detailSections         Json?
+  detailSections Json?
 
   // Plantilla de cabecera/pie/instrucciones para TODOS los exámenes de este
   // curso — "voy a hacer 10 exámenes para un curso, sería ilógico copiar la
   // cabecera cada vez". Cada Assessment puede personalizar la suya con sus
   // propios *Override (null = hereda esto); ver Assessment más abajo y
   // AssessmentService.getForStudent, que resuelve override ?? este valor.
-  examHeaderText         Json?
-  examFooterText         Json?
-  examInstructionsText   Json?
+  examHeaderText       Json?
+  examFooterText       Json?
+  examInstructionsText Json?
 
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  modules                CourseModule[]
-  liveSessions           LiveSession[]
-  assessments            Assessment[]
-  enrollments            Enrollment[]
-  staff                  CourseStaff[]
-  programCourses         ProgramCourse[]
-  certificates           Certificate[]
-  ratings                CourseRating[]
-  seatPools              CompanySeatPool[]
-  partnerships           CoursePartnership[]
-  royalties              CourseRoyalty[]
-  teacherRates           TeacherRate[]
-  activityLogs           TeacherActivityLog[]
-  calendarEvents         CalendarEvent[]
-  savedBy                SavedCourse[]
+  modules        CourseModule[]
+  liveSessions   LiveSession[]
+  assessments    Assessment[]
+  enrollments    Enrollment[]
+  staff          CourseStaff[]
+  programCourses ProgramCourse[]
+  certificates   Certificate[]
+  ratings        CourseRating[]
+  seatPools      CompanySeatPool[]
+  partnerships   CoursePartnership[]
+  royalties      CourseRoyalty[]
+  teacherRates   TeacherRate[]
+  activityLogs   TeacherActivityLog[]
+  calendarEvents CalendarEvent[]
+  savedBy        SavedCourse[]
 
   @@index([areaId])
   @@index([status])
@@ -417,15 +417,15 @@ model CourseStaff {
 }
 
 model CourseModule {
-  id        String     @id @default(uuid())
-  courseId  String
-  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  order     Int
-  title     Json
-  lessons   Lesson[]
+  id          String       @id @default(uuid())
+  courseId    String
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order       Int
+  title       Json
+  lessons     Lesson[]
   // Lecturas/documentos del módulo (no de una lección puntual) — principales
   // o complementarias, ver Material.category.
-  materials Material[]
+  materials   Material[]
   // Exámenes vinculados a este módulo puntual (ver Assessment.moduleId) —
   // se desbloquean apenas el módulo se completa, no con todo el curso.
   assessments Assessment[]
@@ -444,41 +444,41 @@ enum LessonContentType {
 }
 
 model Lesson {
-  id              String             @id @default(uuid())
-  moduleId        String
-  module          CourseModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  order           Int
-  title           Json
-  contentType     LessonContentType
-  videoAssetId    String?
+  id               String            @id @default(uuid())
+  moduleId         String
+  module           CourseModule      @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  order            Int
+  title            Json
+  contentType      LessonContentType
+  videoAssetId     String?
   // "¿Se puede crear... material audiovisual?" — contentType="AUDIO":
   // misma mecánica que VIDEO (subida, reproductor con controles nativos,
   // progreso/reanudar por segundo, bloqueo de adelantar sin haber
   // escuchado) pero sin las piezas que son específicamente de video
   // (marca de agua superpuesta, preguntas-checkpoint sobre el frame) — no
   // pedidas para audio y sin una superficie visual natural donde vivir.
-  audioAssetId    String?
+  audioAssetId     String?
   // "Pongo un link para que se ejecute al inicio... no funciona" — bug real
   // confirmado: contentType=LINK se podía elegir al crear una lección, pero
   // no existía NINGÚN campo para guardar a qué URL apunta, y el reproductor
   // del alumno no tenía ninguna rama para mostrarlo — la lección quedaba
   // completamente inutilizable, con o sin "inicia el curso" marcado.
-  externalUrl     String?
-  durationMinutes Int?
-  isFreePreview   Boolean            @default(false)
+  externalUrl      String?
+  durationMinutes  Int?
+  isFreePreview    Boolean           @default(false)
   // "El administrador debe indicar si ese video inicia el curso o es
   // material complementario" — la lección marcada como iniciadora es la
   // que se reproduce inline apenas el alumno entra al curso (en vez de
   // asumir siempre "la primera por orden"). Como mucho una por curso —
   // se valida en AdminService, no a nivel de esquema.
-  isCourseStarter Boolean            @default(false)
+  isCourseStarter  Boolean           @default(false)
   // Subtítulos/transcripción automática (Fase 2) — generados con Gemini
   // (ya integrado para el asistente de IA, sin credenciales nuevas):
   // transcribe el audio real del video y devuelve un WebVTT con marcas de
   // tiempo. NONE = nunca se pidió; PROCESSING = job encolado/corriendo;
   // READY = subtitlesAssetId tiene el .vtt listo; FAILED = ver subtitlesError.
   subtitlesAssetId String?
-  subtitlesStatus  String             @default("NONE")
+  subtitlesStatus  String            @default("NONE")
   subtitlesError   String?
 
   // "Me gustaría implementar módulos SCORM" — contentType="SCORM". El .zip
@@ -490,9 +490,9 @@ model Lesson {
   // ese prefijo. scormVersion viene del schemaversion del manifest ("1.2" o
   // "2004"), usado para saber qué shim de API exponer (window.API vs
   // window.API_1484_11) — ver ScormService.
-  scormPackagePrefix String?
-  scormEntryPath     String?
-  scormVersion       String?
+  scormPackagePrefix   String?
+  scormEntryPath       String?
+  scormVersion         String?
   // "Me gustaría poder crear un paquete SCORM en este sistema" — editor de
   // autoría (diapositivas de contenido/pregunta) DENTRO de Inkademy, en vez
   // de solo subir un .zip ya armado en Articulate/iSpring. Esta es la
@@ -510,11 +510,11 @@ model Lesson {
   // Assessment/ApprovalRule). Shape: { questions: [{ id, text, options[],
   // correctIndex, explanation? }] }. Null = lección normal sin quiz
   // formativo. Ver formativeQuizSchema en local-schemas.ts.
-  formativeQuiz   Json?
+  formativeQuiz Json?
 
-  materials       Material[]
-  progress        LessonProgress[]
-  notes           LessonNote[]
+  materials             Material[]
+  progress              LessonProgress[]
+  notes                 LessonNote[]
   // Ver Assessment.scormLessonId — relación 1:1, un examen como mucho.
   scormBackedAssessment Assessment?      @relation("AssessmentScormLesson")
 
@@ -528,32 +528,32 @@ enum MaterialCategory {
 }
 
 model Material {
-  id          String            @id @default(uuid())
+  id            String           @id @default(uuid())
   // Un material cuelga de una lección puntual O de un módulo entero (lectura
   // general del módulo) — nunca de ambos. Antes solo existía a nivel de
   // lección.
-  lessonId    String?
-  lesson      Lesson?           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  moduleId    String?
-  module      CourseModule?     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  title       String
+  lessonId      String?
+  lesson        Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  moduleId      String?
+  module        CourseModule?    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title         String
   // Nullable — un material kind="link" no tiene ningún archivo subido, solo
   // externalUrl. Todo lo demás (pdf/slide/doc/sheet/image/video/template)
   // sigue requiriendo un assetId real.
-  assetId     String?
-  externalUrl String?
-  kind        String // pdf | slide | doc | sheet | image | video | audio | template | link
+  assetId       String?
+  externalUrl   String?
+  kind          String // pdf | slide | doc | sheet | image | video | audio | template | link
   // "Si hay tres videos, ¿cómo sabe el sistema cuál es primero?" — antes
   // los materiales solo se ordenaban por fecha de subida (createdAt), sin
   // forma de reordenarlos después. Ahora tienen su propio orden explícito,
   // independiente por categoría (MAIN se lee primero que SUPPLEMENTARY,
   // y dentro de cada una manda este número) — ver botones de mover
   // arriba/abajo en CourseEditor.tsx.
-  order       Int               @default(0)
-  category    MaterialCategory  @default(MAIN)
+  order         Int              @default(0)
+  category      MaterialCategory @default(MAIN)
   // Si es false, el material queda cargado pero oculto para el alumno (el
   // admin/docente lo sigue viendo) — por defecto todo se ve.
-  visible     Boolean           @default(true)
+  visible       Boolean          @default(true)
   // "El admin/docente dueño de su curso podrá marcar si quiere que el
   // material pueda descargarse, visualizarse, o ambos" — mismo criterio
   // honesto que Course.blockMainVideoDownload: sin descarga significa sin
@@ -561,9 +561,9 @@ model Material {
   // significa que el enlace siempre descarga en vez de abrir una vista
   // previa; ninguno de los dos es DRM real, solo lo que el navegador
   // permite sin descargar el archivo primero.
-  allowDownload Boolean         @default(true)
-  allowView     Boolean         @default(true)
-  createdAt   DateTime          @default(now())
+  allowDownload Boolean          @default(true)
+  allowView     Boolean          @default(true)
+  createdAt     DateTime         @default(now())
 
   // "SCORM ya existe pero solo como contenido principal de la lección, no
   // como material" — kind="scorm": mismos 4 campos que Lesson (ver arriba),
@@ -573,31 +573,31 @@ model Material {
   // MaterialProgress — así "aprobar el SCORM" no toca el cálculo de avance/
   // certificado, que sigue contando únicamente la fila de MaterialProgress
   // (creada por el mismo botón manual "Marcar como leído" de siempre).
-  scormPackagePrefix String?
-  scormEntryPath     String?
-  scormVersion       String?
+  scormPackagePrefix   String?
+  scormEntryPath       String?
+  scormVersion         String?
   scormAuthoredContent Json?
 
-  progress    MaterialProgress[]
-  scormProgress MaterialScormProgress[]
+  progress              MaterialProgress[]
+  scormProgress         MaterialScormProgress[]
   // Ver Assessment.scormMaterialId — relación 1:1, un examen como mucho.
-  scormBackedAssessment Assessment?     @relation("AssessmentScormMaterial")
+  scormBackedAssessment Assessment?             @relation("AssessmentScormMaterial")
 }
 
 model MaterialScormProgress {
-  id           String     @id @default(uuid())
-  enrollmentId String
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  materialId   String
-  material     Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String     @id @default(uuid())
+  enrollmentId          String
+  enrollment            Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  materialId            String
+  material              Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   scormCompletionStatus String?
   scormScoreRaw         Float?
   scormInteractions     Json?
   scormLessonLocation   String?
   scormSuspendData      String?
-  updatedAt    DateTime   @updatedAt
+  updatedAt             DateTime   @updatedAt
 
   @@unique([enrollmentId, materialId])
 }
@@ -633,38 +633,38 @@ enum VirtualClassroomProviderType {
 }
 
 model LiveSession {
-  id               String                       @id @default(uuid())
-  courseId         String
-  course           Course                       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  title            Json?
-  startsAt         DateTime
-  endsAt           DateTime
-  timezone         String                       @default("America/Lima")
-  capacity         Int?
-  status           LiveSessionStatus            @default(SCHEDULED)
+  id       String            @id @default(uuid())
+  courseId String
+  course   Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title    Json?
+  startsAt DateTime
+  endsAt   DateTime
+  timezone String            @default("America/Lima")
+  capacity Int?
+  status   LiveSessionStatus @default(SCHEDULED)
 
   // Docente que dicta esta sesión puntual — antes solo se sabía el curso,
   // no quién específicamente. Necesario para detectar choques de horario
   // (un mismo docente no puede tener dos sesiones que se solapen).
-  teacherId        String?
-  teacher          User?                        @relation("LiveSessionTeacher", fields: [teacherId], references: [id])
+  teacherId String?
+  teacher   User?   @relation("LiveSessionTeacher", fields: [teacherId], references: [id])
   // Agrupa las sesiones generadas de una sola vez como "repetir cada semana
   // hasta completar la duración del curso" — permite reprogramar/cancelar
   // la serie completa desde una sola referencia si hace falta.
-  seriesId         String?
+  seriesId  String?
 
   // Integración de aula virtual (Microsoft Teams vía Graph API)
-  provider         VirtualClassroomProviderType @default(TEAMS)
+  provider          VirtualClassroomProviderType @default(TEAMS)
   providerMeetingId String?
-  joinUrl          String?
-  organizerUpn     String?
-  recordingUrl     String?
+  joinUrl           String?
+  organizerUpn      String?
+  recordingUrl      String?
 
-  createdAt        DateTime                     @default(now())
-  updatedAt        DateTime                     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  attendances      Attendance[]
-  calendarEvents   CalendarEvent[]
+  attendances    Attendance[]
+  calendarEvents CalendarEvent[]
 
   @@index([courseId])
   @@index([startsAt])
@@ -673,25 +673,25 @@ model LiveSession {
 }
 
 model Program {
-  id                    String          @id @default(uuid())
-  slug                  String          @unique
+  id                    String               @id @default(uuid())
+  slug                  String               @unique
   title                 Json
   description           Json?
-  type                  OfferingType    @default(PROGRAM) // PROGRAM | DIPLOMA
+  type                  OfferingType         @default(PROGRAM) // PROGRAM | DIPLOMA
   coverImageAssetId     String?
-  priceAmount           Decimal         @db.Decimal(10, 2)
-  priceCurrency         String          @default("PEN")
-  certificationIncluded Boolean         @default(true)
-  status                OfferingStatus  @default(DRAFT)
+  priceAmount           Decimal              @db.Decimal(10, 2)
+  priceCurrency         String               @default("PEN")
+  certificationIncluded Boolean              @default(true)
+  status                OfferingStatus       @default(DRAFT)
   certificateTemplateId String?
   certificateTemplate   CertificateTemplate? @relation(fields: [certificateTemplateId], references: [id])
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
-  courses               ProgramCourse[]
-  enrollments           Enrollment[]
-  certificates          Certificate[]
-  seatPools             CompanySeatPool[]
+  courses      ProgramCourse[]
+  enrollments  Enrollment[]
+  certificates Certificate[]
+  seatPools    CompanySeatPool[]
 }
 
 model ProgramCourse {
@@ -756,12 +756,12 @@ model Enrollment {
   // la puerta indefinidamente.
   materialResetAt DateTime?
 
-  lessonProgress   LessonProgress[]
-  materialProgress MaterialProgress[]
+  lessonProgress        LessonProgress[]
+  materialProgress      MaterialProgress[]
   materialScormProgress MaterialScormProgress[]
-  attempts        AssessmentAttempt[]
-  certificate     Certificate?
-  rating          CourseRating?
+  attempts              AssessmentAttempt[]
+  certificate           Certificate?
+  rating                CourseRating?
 
   @@index([userId])
   @@index([companyId])
@@ -819,14 +819,14 @@ model SavedCourse {
 // patrón que la verificación pública de certificados).
 // ---------------------------------------------------------------------------
 model NpsSurvey {
-  id        String   @id @default("default")
-  question  Json // { es, en } — la pregunta principal (0-10) la redacta el admin
+  id            String   @id @default("default")
+  question      Json // { es, en } — la pregunta principal (0-10) la redacta el admin
   // "Aparte una pregunta cualitativa que el administrador puede redactar" —
   // la segunda pregunta (el comentario abierto) también la puede editar el
   // admin ahora, antes era un texto fijo en código.
   commentPrompt Json?
-  active    Boolean  @default(true)
-  updatedAt DateTime @updatedAt
+  active        Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
 
   responses NpsSurveyResponse[]
 }
@@ -850,15 +850,15 @@ model NpsSurveyResponse {
 }
 
 model LessonProgress {
-  id           String     @id @default(uuid())
-  enrollmentId String
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  lessonId     String
-  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  completed    Boolean    @default(false)
-  lastPositionSeconds Int @default(0)
+  id                    String     @id @default(uuid())
+  enrollmentId          String
+  enrollment            Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId              String
+  lesson                Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completed             Boolean    @default(false)
+  lastPositionSeconds   Int        @default(0)
   // Reportado por el shim SCORM (cmi.core.lesson_status / cmi.completion_status
   // según la versión del paquete) — completed/passed marca `completed=true`
   // arriba también, para que el resto del sistema (avance del curso, etc.)
@@ -881,7 +881,7 @@ model LessonProgress {
   // diapositiva correcta pero las respuestas previas se perdían al terminar
   // (contaban como no respondidas en el puntaje final).
   scormSuspendData      String?
-  updatedAt    DateTime   @updatedAt
+  updatedAt             DateTime   @updatedAt
 
   @@unique([enrollmentId, lessonId])
 }
@@ -958,7 +958,7 @@ model Question {
   // backfill (no hay createdAt del que derivar el orden real de creación).
   order          Int           @default(0)
 
-  answers        Answer[]
+  answers Answer[]
 }
 
 enum AssessmentQuestionOrder {
@@ -974,38 +974,38 @@ enum AssessmentDisplayMode {
 }
 
 model Assessment {
-  id                String                  @id @default(uuid())
-  courseId          String
-  course            Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  id                  String                  @id @default(uuid())
+  courseId            String
+  course              Course                  @relation(fields: [courseId], references: [id], onDelete: Cascade)
   // "¿Cómo sabe cuál examen tomar en cada módulo?" — null = examen final del
   // curso (exige el curso completo, ver AssessmentService.createAttempt);
   // con valor = examen de ESE módulo puntual, se desbloquea apenas ese
   // módulo se completa (EnrollmentService.isModuleComplete), no todo el
   // curso. onDelete SetNull: borrar el módulo no borra el examen, solo lo
   // deja como "sin módulo" (pasa a examen final) para no perder su historial.
-  moduleId          String?
-  module            CourseModule?           @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  moduleId            String?
+  module              CourseModule?           @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   // Orden real de autoría/presentación — antes no existía y getMineDetail
   // ordenaba por `id` (UUID, sin ningún significado). Reordenable por
   // arrastre en el admin (ver AssessmentService.reorderAssessments).
-  order             Int                     @default(0)
-  title             Json
-  type              String                  @default("quiz") // quiz | exam | assignment
-  minScore          Float                   @default(70)
-  maxAttempts       Int                     @default(3)
-  timeLimitMinutes  Int?
-  displayMode       AssessmentDisplayMode   @default(ALL_AT_ONCE)
-  questionOrder     AssessmentQuestionOrder @default(FIXED)
-  randomizeOptions  Boolean                 @default(false)
+  order               Int                     @default(0)
+  title               Json
+  type                String                  @default("quiz") // quiz | exam | assignment
+  minScore            Float                   @default(70)
+  maxAttempts         Int                     @default(3)
+  timeLimitMinutes    Int?
+  displayMode         AssessmentDisplayMode   @default(ALL_AT_ONCE)
+  questionOrder       AssessmentQuestionOrder @default(FIXED)
+  randomizeOptions    Boolean                 @default(false)
   questionsPerAttempt Int? // selección aleatoria desde banco
-  availableFrom     DateTime?
-  availableUntil    DateTime?
+  availableFrom       DateTime?
+  availableUntil      DateTime?
 
   // Examen "cualitativo" — en vez de preguntas tipeadas, el docente sube un
   // archivo (Word/Excel/PPT/imagen/PDF) que el alumno descarga, completa
   // offline y sube de vuelta; el docente lo califica a mano viendo el
   // archivo (no hay Question/Answer involucrados en este modo).
-  sourceFileAssetId String?
+  sourceFileAssetId  String?
   sourceFileMimeType String?
 
   // "Hay cursos, por ejemplo un diplomado, que van a tener varios exámenes y
@@ -1016,26 +1016,26 @@ model Assessment {
   // updateAssessment SÍ rechaza guardar si la suma de los pesos del curso
   // (sin contar archivados) superaría 100 — "no puede exceder"; que falte
   // ponderar (<100) sí se permite, se avisa en el editor mientras se arma.
-  weightPercent     Float?
+  weightPercent Float?
 
   // "Se debe de poder grabar para editarlo, eliminarlo, archivarlo" —
   // eliminar (hard delete) sigue bloqueado para siempre una vez que hay
   // intentos de alumnos (ver AssessmentService.deleteAssessment); archivar
   // es la salida real para ese caso: oculta el examen a los alumnos
   // (getForStudent/createAttempt lo rechazan) sin borrar el historial.
-  archived          Boolean                 @default(false)
+  archived Boolean @default(false)
 
   // Tipografía del título del examen (curada, ver BRAND_FONT_OPTIONS en el
   // frontend) — null usa la tipografía de encabezados de PlatformSettings.
-  titleFontFamily   String?
+  titleFontFamily String?
 
   // Cabecera/pie/instrucciones propias de ESTE examen — null hereda la
   // plantilla del curso (Course.examHeaderText/examFooterText/
   // examInstructionsText). Ver AssessmentService.getForStudent, que resuelve
   // override ?? valor del curso.
-  headerTextOverride       Json?
-  footerTextOverride       Json?
-  instructionsOverride     Json?
+  headerTextOverride   Json?
+  footerTextOverride   Json?
+  instructionsOverride Json?
 
   // "¿Cómo se calcula la nota si el examen vive DENTRO del SCORM?" — este
   // Assessment puede estar "respaldado por SCORM" en vez de tener preguntas
@@ -1050,13 +1050,13 @@ model Assessment {
   // mismo SCORM). Nunca se setean los dos a la vez (ver upsertAssessmentSchema).
   // Un mismo curso nunca mezcla exámenes nativos con respaldados por SCORM
   // (AssessmentService.assertConsistentAssessmentMode).
-  scormLessonId     String?                 @unique
-  scormLesson       Lesson?                 @relation("AssessmentScormLesson", fields: [scormLessonId], references: [id], onDelete: SetNull)
-  scormMaterialId   String?                 @unique
-  scormMaterial     Material?               @relation("AssessmentScormMaterial", fields: [scormMaterialId], references: [id], onDelete: SetNull)
+  scormLessonId   String?   @unique
+  scormLesson     Lesson?   @relation("AssessmentScormLesson", fields: [scormLessonId], references: [id], onDelete: SetNull)
+  scormMaterialId String?   @unique
+  scormMaterial   Material? @relation("AssessmentScormMaterial", fields: [scormMaterialId], references: [id], onDelete: SetNull)
 
-  questions         Question[]
-  attempts          AssessmentAttempt[]
+  questions Question[]
+  attempts  AssessmentAttempt[]
 
   @@index([courseId])
   @@index([moduleId])
@@ -1071,29 +1071,29 @@ enum AttemptStatus {
 }
 
 model AssessmentAttempt {
-  id            String        @id @default(uuid())
-  assessmentId  String
-  assessment    Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  enrollmentId  String
-  enrollment    Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  userId        String
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  attemptNumber Int
-  startedAt     DateTime      @default(now())
-  submittedAt   DateTime?
-  durationSeconds Int? // submittedAt - startedAt, calculado al enviar (ver AssessmentService.submitAttempt)
-  score         Float?
-  status        AttemptStatus @default(IN_PROGRESS)
+  id                 String        @id @default(uuid())
+  assessmentId       String
+  assessment         Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  enrollmentId       String
+  enrollment         Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attemptNumber      Int
+  startedAt          DateTime      @default(now())
+  submittedAt        DateTime?
+  durationSeconds    Int? // submittedAt - startedAt, calculado al enviar (ver AssessmentService.submitAttempt)
+  score              Float?
+  status             AttemptStatus @default(IN_PROGRESS)
   // Solo para exámenes "cualitativos" (Assessment.sourceFileAssetId) — el
   // archivo que el alumno subió como su respuesta completa, pendiente de
   // que el docente lo revise y califique a mano.
-  submissionAssetId   String?
-  submissionMimeType  String?
+  submissionAssetId  String?
+  submissionMimeType String?
   // Alerta heurística de posible uso de IA/trampa: nota alta + tiempo de
   // resolución muy por debajo del mínimo esperado para leer y pensar el
   // examen. No es una acusación automática — el admin/empresa decide qué
   // hacer, ver AssessmentService.SUSPICIOUS_* y el reporte de empresa.
-  flaggedSuspicious Boolean     @default(false)
+  flaggedSuspicious  Boolean       @default(false)
   // "El temporizador sigue corriendo en el servidor aunque el alumno cierre
   // la pestaña o se desconecte; al enviar las respuestas, verificar que no
   // haya excedido la duración máxima" — durationSeconds ya se calcula
@@ -1101,35 +1101,35 @@ model AssessmentAttempt {
   // si ese tiempo real superó el límite del examen (con margen de red) —
   // el intento igual se califica normalmente, pero queda auditado como
   // fuera de tiempo (mismo criterio no-bloqueante que flaggedSuspicious).
-  timedOut          Boolean     @default(false)
+  timedOut           Boolean       @default(false)
 
-  answers       Answer[]
+  answers Answer[]
 
   @@index([assessmentId, userId])
 }
 
 model Answer {
-  id           String             @id @default(uuid())
-  attemptId    String
-  attempt      AssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  questionId   String
-  question     Question           @relation(fields: [questionId], references: [id])
-  response     Json
-  isCorrect    Boolean?
-  score        Float?
-  gradedById   String?
-  gradedBy     User?              @relation("GradedBy", fields: [gradedById], references: [id])
-  gradedAt     DateTime?
+  id         String            @id @default(uuid())
+  attemptId  String
+  attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question          @relation(fields: [questionId], references: [id])
+  response   Json
+  isCorrect  Boolean?
+  score      Float?
+  gradedById String?
+  gradedBy   User?             @relation("GradedBy", fields: [gradedById], references: [id])
+  gradedAt   DateTime?
 
   @@unique([attemptId, questionId])
 }
 
 // Reglas de habilitación de certificado por curso.
 model ApprovalRule {
-  id                 String  @id @default(uuid())
-  courseId           String  @unique
-  minProgressPct     Float   @default(100)
-  minAttendancePct   Float?  // solo aplica si el curso tiene sesiones en vivo
+  id                   String  @id @default(uuid())
+  courseId             String  @unique
+  minProgressPct       Float   @default(100)
+  minAttendancePct     Float? // solo aplica si el curso tiene sesiones en vivo
   // "El administrador puede poner un plazo de conexión mínima, por ejemplo
   // 20 min; si el alumno ha estado 20 min o más se le considera presente" —
   // umbral de minutos POR SESIÓN para contar como "asistió" (distinto de
@@ -1137,15 +1137,15 @@ model ApprovalRule {
   // null = cualquier conexión (joinedAt != null) cuenta, comportamiento de
   // siempre.
   minConnectionMinutes Int?
-  minScore           Float   @default(70)
-  requiresAssignment Boolean @default(false)
+  minScore             Float   @default(70)
+  requiresAssignment   Boolean @default(false)
   // BEST_ATTEMPT (default): la nota final es la mejor nota entre todos los
   // exámenes del curso — sirve para el caso normal (un examen, o varios
   // exámenes intercambiables). WEIGHTED_AVERAGE: la nota final es el
   // promedio ponderado de Assessment.weightPercent — para diplomados con
   // varios exámenes que pesan distinto. Ver computeCourseScore en
   // apps/api/src/modules/assessment/course-score.ts.
-  scoreMode          String  @default("BEST_ATTEMPT")
+  scoreMode            String  @default("BEST_ATTEMPT")
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,9 +1155,9 @@ model ApprovalRule {
 // ---------------------------------------------------------------------------
 
 enum PartnerBillingType {
-  FIXED         // monto fijo (p.ej. mensual/único) independiente de cuántos cursos/certificados
-  PER_COURSE    // se cobra feeAmount por cada certificado emitido bajo un curso del convenio
-  PER_PERIOD    // se cobra feeAmount una vez por el rango startDate–endDate completo
+  FIXED // monto fijo (p.ej. mensual/único) independiente de cuántos cursos/certificados
+  PER_COURSE // se cobra feeAmount por cada certificado emitido bajo un curso del convenio
+  PER_PERIOD // se cobra feeAmount una vez por el rango startDate–endDate completo
   PER_ENROLLMENT // se cobra feeAmount por cada alumno matriculado (sin exigir que termine/certifique)
 }
 
@@ -1168,7 +1168,7 @@ enum PartnerBillingType {
 /// AdminService.getProfitAndLoss — el costo del convenio se trata como un
 /// gasto más).
 model PartnerInstitution {
-  id               String              @id @default(uuid())
+  id               String             @id @default(uuid())
   name             String
   contactEmail     String?
   // Quién firma por la institución socia en el certificado — mismo patrón
@@ -1177,21 +1177,21 @@ model PartnerInstitution {
   signerName       String?
   signerTitle      String?
   signatureAssetId String?
-  billingType      PartnerBillingType  @default(FIXED)
-  feeAmount        Decimal?            @db.Decimal(10, 2)
-  feeCurrency      String              @default("PEN")
+  billingType      PartnerBillingType @default(FIXED)
+  feeAmount        Decimal?           @db.Decimal(10, 2)
+  feeCurrency      String             @default("PEN")
   // Si es true, la institución socia emite ELLA MISMA el comprobante SUNAT
   // al cliente final (con su propia serie/RUC) y transfiere el neto a
   // Inkapitales después — "podría pasar que la institución nos diga que
   // los que van a facturar son ellos y nos transfieren después". Cuando es
   // true, Inkapitales NO emite boleta/factura para las órdenes de los
   // cursos de este convenio (ver checkout/order finalize).
-  invoicesDirectly Boolean             @default(false)
-  active           Boolean             @default(true)
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  invoicesDirectly Boolean            @default(false)
+  active           Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
-  courses          CoursePartnership[]
+  courses CoursePartnership[]
 }
 
 /// Asocia un curso concreto a un convenio, opcionalmente acotado a un rango
@@ -1210,6 +1210,43 @@ model CoursePartnership {
   @@unique([courseId, partnerInstitutionId])
   @@index([courseId])
   @@index([partnerInstitutionId])
+}
+
+enum PlatformLicenseStatus {
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+/// Registro de NEGOCIO de Inkapitales sobre terceros que arriendan el
+/// sistema completo como instancia aislada/marca blanca (arriendo
+/// aislado: cada arrendatario corre su propio despliegue con su propia
+/// base de datos — ver docs/aprovisionar-instancia-arrendada.md — esto
+/// NO es un tenant dentro de esta misma base de datos). Vive acá para que
+/// Inkapitales gestione sus contratos de arriendo desde su propio panel,
+/// no para que el sistema opere multi-tenant sobre esta tabla.
+model PlatformLicense {
+  id            String                @id @default(uuid())
+  clientName    String
+  domain        String?
+  deploymentUrl String?
+  billingCycle  BillingCycle
+  priceAmount   Decimal               @db.Decimal(10, 2)
+  currency      String                @default("PEN")
+  startsAt      DateTime
+  endsAt        DateTime
+  status        PlatformLicenseStatus @default(ACTIVE)
+  notes         String?               @db.Text
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status, endsAt])
 }
 
 // HTML: la plantilla es un documento HTML con tags {{tag}} (ver
@@ -1238,12 +1275,12 @@ model CertificateTemplate {
   backgroundMimeType String? // application/pdf | image/png | image/jpeg
   // Tamaño de página en puntos PDF (72pt = 1 pulgada). Si el fondo es un PDF,
   // se ignoran y se usa el tamaño real de esa página.
-  pageWidthPt  Float? @default(841.89) // A4 horizontal
-  pageHeightPt Float? @default(595.28)
+  pageWidthPt        Float?                        @default(841.89) // A4 horizontal
+  pageHeightPt       Float?                        @default(595.28)
   // [{ tag, xPercent, yPercent, fontSizePt?, color?, align?, widthPercent?, heightPercent? }]
   // Posición de cada tag relativa a la página (0-100%, origen arriba-izquierda,
   // igual que en la vista previa) — solo aplica si sourceType=BACKGROUND.
-  tagPositions Json?
+  tagPositions       Json?
 
   certificates Certificate[]
   courses      Course[]
@@ -1251,32 +1288,32 @@ model CertificateTemplate {
 }
 
 model Certificate {
-  id               String               @id @default(uuid())
-  code             String               @unique @default(cuid())
+  id               String              @id @default(uuid())
+  code             String              @unique @default(cuid())
   userId           String
-  user             User                 @relation(fields: [userId], references: [id])
+  user             User                @relation(fields: [userId], references: [id])
   courseId         String?
-  course           Course?              @relation(fields: [courseId], references: [id])
+  course           Course?             @relation(fields: [courseId], references: [id])
   programId        String?
-  program          Program?             @relation(fields: [programId], references: [id])
-  enrollmentId     String               @unique
-  enrollment       Enrollment           @relation(fields: [enrollmentId], references: [id])
+  program          Program?            @relation(fields: [programId], references: [id])
+  enrollmentId     String              @unique
+  enrollment       Enrollment          @relation(fields: [enrollmentId], references: [id])
   templateId       String
-  template         CertificateTemplate  @relation(fields: [templateId], references: [id])
+  template         CertificateTemplate @relation(fields: [templateId], references: [id])
   templateVersion  Int
   finalScore       Float?
-  issuedAt         DateTime             @default(now())
+  issuedAt         DateTime            @default(now())
   pdfAssetId       String?
   qrUrl            String?
   criteriaSnapshot Json // reglas cumplidas al momento de emitir, para trazabilidad
-  revoked          Boolean              @default(false)
+  revoked          Boolean             @default(false)
   // A quién se envió realmente el correo al emitirse (STUDENT | COMPANY_ADMIN
   // | BOTH) — snapshot del momento de emisión, igual que criteriaSnapshot:
   // si la empresa cambia su preferencia después, los certificados ya
   // emitidos no deben "cambiar de historia". El alumno lo ve en /campus/certificados
   // para saber a dónde llegó (o no) el correo — la descarga directa nunca
   // depende de este valor.
-  deliveredTo      String               @default("STUDENT")
+  deliveredTo      String              @default("STUDENT")
 
   @@index([userId])
   @@index([code])
@@ -1295,19 +1332,19 @@ enum OrderStatus {
 }
 
 model Order {
-  id          String      @id @default(uuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
-  companyId   String?
-  company     Company?    @relation(fields: [companyId], references: [id])
-  subtotal    Decimal     @db.Decimal(10, 2)
-  discount    Decimal     @default(0) @db.Decimal(10, 2)
-  tax         Decimal     @default(0) @db.Decimal(10, 2)
-  total       Decimal     @db.Decimal(10, 2)
-  currency    String      @default("PEN")
-  status      OrderStatus @default(PENDING)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  companyId String?
+  company   Company?    @relation(fields: [companyId], references: [id])
+  subtotal  Decimal     @db.Decimal(10, 2)
+  discount  Decimal     @default(0) @db.Decimal(10, 2)
+  tax       Decimal     @default(0) @db.Decimal(10, 2)
+  total     Decimal     @db.Decimal(10, 2)
+  currency  String      @default("PEN")
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   // Datos del comprador para la boleta/factura electrónica (SUNAT). Se
   // capturan en el checkout (ver checkoutSchema) y se guardan en la orden —
@@ -1321,8 +1358,8 @@ model Order {
   buyerLegalName      String?
   buyerCountry        String?
 
-  items       OrderItem[]
-  payments    Payment[]
+  items             OrderItem[]
+  payments          Payment[]
   electronicInvoice ElectronicInvoice?
   electronicNotes   ElectronicNote[]
 }
@@ -1373,7 +1410,7 @@ model ElectronicInvoice {
 
 enum ElectronicNoteType {
   CREDIT // Nota de crédito — catálogo 09 SUNAT (anulación, descuento, etc.)
-  DEBIT  // Nota de débito — catálogo 10 SUNAT (intereses, aumento de valor, etc.)
+  DEBIT // Nota de débito — catálogo 10 SUNAT (intereses, aumento de valor, etc.)
 }
 
 /// Nota de crédito/débito SUNAT, ligada a la ElectronicInvoice original que
@@ -1411,15 +1448,15 @@ model ElectronicNote {
 }
 
 model OrderItem {
-  id         String   @id @default(uuid())
-  orderId    String
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id           String       @id @default(uuid())
+  orderId      String
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   offeringKind OfferingKind
-  courseId   String?
-  programId  String?
-  seatPoolQty Int? // si la compra es de cupos B2B
-  unitPrice  Decimal  @db.Decimal(10, 2)
-  quantity   Int      @default(1)
+  courseId     String?
+  programId    String?
+  seatPoolQty  Int? // si la compra es de cupos B2B
+  unitPrice    Decimal      @db.Decimal(10, 2)
+  quantity     Int          @default(1)
 }
 
 enum PaymentProviderType {
@@ -1442,14 +1479,14 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id          String              @id @default(uuid())
-  orderId     String
-  order       Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  provider    PaymentProviderType
-  providerRef String? // charge id / payment intent id
-  status      PaymentStatus       @default(PENDING)
-  amount      Decimal             @db.Decimal(10, 2)
-  currency    String
+  id            String              @id @default(uuid())
+  orderId       String
+  order         Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider      PaymentProviderType
+  providerRef   String? // charge id / payment intent id
+  status        PaymentStatus       @default(PENDING)
+  amount        Decimal             @db.Decimal(10, 2)
+  currency      String
   // Método real dentro del proveedor — p.ej. Culqi devuelve `source.type`
   // ("card", "yape", "plin", ...) en la respuesta del cargo. Permite
   // diferenciar el % de comisión de cada billetera (PlatformSettings.
@@ -1457,24 +1494,24 @@ model Payment {
   // del de tarjeta dentro del mismo proveedor CULQI. Null si no se pudo
   // determinar (p.ej. cargos simulados en modo dev sin secret key).
   paymentMethod String?
-  receiptUrl  String?
-  paidAt      DateTime?
-  createdAt   DateTime            @default(now())
+  receiptUrl    String?
+  paidAt        DateTime?
+  createdAt     DateTime            @default(now())
 }
 
 model CompanySeatPool {
-  id            String    @id @default(uuid())
-  companyId     String
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  offeringKind  OfferingKind
-  courseId      String?
-  course        Course?   @relation(fields: [courseId], references: [id])
-  programId     String?
-  program       Program?  @relation(fields: [programId], references: [id])
+  id             String       @id @default(uuid())
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  offeringKind   OfferingKind
+  courseId       String?
+  course         Course?      @relation(fields: [courseId], references: [id])
+  programId      String?
+  program        Program?     @relation(fields: [programId], references: [id])
   seatsPurchased Int
-  seatsUsed      Int      @default(0)
-  expiresAt     DateTime?
-  createdAt     DateTime  @default(now())
+  seatsUsed      Int          @default(0)
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
 
   @@index([companyId])
 }
@@ -1490,7 +1527,7 @@ model Quote {
   id                  String      @id @default(uuid())
   companyId           String
   company             Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  requestedByUserId    String
+  requestedByUserId   String
   offeringDescription String      @db.Text
   status              QuoteStatus @default(REQUESTED)
   salesOwner          String?
@@ -1565,18 +1602,79 @@ enum NotificationStatus {
   FAILED
 }
 
+/// Tipo de evento que originó la notificación — usado para filtrar/agrupar
+/// en la bandeja in-app y para el on/off por tipo+canal en
+/// NotificationSettings. COURSE_ACCESS_EXPIRING/LIVE_SESSION_UPCOMING/
+/// ASSESSMENT_DUE ya tenían su sweep (reminder.processor.ts) enviando solo
+/// correo — ahora ganan el canal IN_APP. PARTNERSHIP_EXPIRING (convenio por
+/// vencer) y SUGGESTION_UNANSWERED son sweeps nuevos. PLATFORM_LICENSE_EXPIRING
+/// es del módulo de licencias de arriendo. GENERIC cubre cualquier aviso
+/// puntual sin tipo específico (no se lista en NotificationSettings).
+enum NotificationType {
+  COURSE_ACCESS_EXPIRING
+  LIVE_SESSION_UPCOMING
+  ASSESSMENT_DUE
+  PARTNERSHIP_EXPIRING
+  SUPPORT_TICKET_UPDATE
+  SUGGESTION_UNANSWERED
+  PLATFORM_LICENSE_EXPIRING
+  GENERIC
+}
+
 model Notification {
-  id        String               @id @default(uuid())
+  id        String              @id @default(uuid())
   userId    String
-  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel   NotificationChannel
   template  String
+  type      NotificationType    @default(GENERIC)
+  title     String?
+  body      String?             @db.Text
+  url       String?
   payload   Json?
-  status    NotificationStatus   @default(PENDING)
+  status    NotificationStatus  @default(PENDING)
+  readAt    DateTime?
   sentAt    DateTime?
-  createdAt DateTime             @default(now())
+  createdAt DateTime            @default(now())
 
   @@index([userId])
+  @@index([userId, readAt])
+}
+
+/// Configuración de qué notificaciones se envían y por qué canal(es),
+/// editable desde /admin/notificaciones. Mismo patrón singleton que
+/// ChatbotSettings (id fijo "default"). Cada tipo con sweep real (ver
+/// NotificationType) tiene su par enabled/email + enabled/inApp — todos
+/// arrancan en true para no cambiar el comportamiento actual de los 3
+/// sweeps que ya mandaban correo antes de este módulo.
+model NotificationSettings {
+  id String @id @default("default")
+
+  courseAccessExpiringEmail Boolean @default(true)
+  courseAccessExpiringInApp Boolean @default(true)
+
+  liveSessionUpcomingEmail Boolean @default(true)
+  liveSessionUpcomingInApp Boolean @default(true)
+
+  assessmentDueEmail Boolean @default(true)
+  assessmentDueInApp Boolean @default(true)
+
+  partnershipExpiringEmail    Boolean @default(true)
+  partnershipExpiringInApp    Boolean @default(true)
+  partnershipExpiringLeadDays Int     @default(30)
+
+  supportTicketUpdateEmail Boolean @default(true)
+  supportTicketUpdateInApp Boolean @default(true)
+
+  suggestionUnansweredEmail      Boolean @default(false)
+  suggestionUnansweredInApp      Boolean @default(true)
+  suggestionUnansweredAfterHours Int     @default(48)
+
+  platformLicenseExpiringEmail    Boolean @default(true)
+  platformLicenseExpiringInApp    Boolean @default(true)
+  platformLicenseExpiringLeadDays Int     @default(30)
+
+  updatedAt DateTime @updatedAt
 }
 
 enum TicketPriority {
@@ -1595,38 +1693,38 @@ enum TicketStatus {
 }
 
 model SupportTicket {
-  id          String          @id @default(uuid())
+  id          String         @id @default(uuid())
   createdById String
-  createdBy   User            @relation("TicketCreatedBy", fields: [createdById], references: [id])
+  createdBy   User           @relation("TicketCreatedBy", fields: [createdById], references: [id])
   companyId   String?
-  company     Company?        @relation(fields: [companyId], references: [id])
+  company     Company?       @relation(fields: [companyId], references: [id])
   category    String
-  priority    TicketPriority  @default(MEDIUM)
-  status      TicketStatus    @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
   subject     String
-  channel     String          @default("web") // web | whatsapp
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  channel     String         @default("web") // web | whatsapp
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  messages    SupportMessage[]
+  messages SupportMessage[]
 
   @@index([companyId])
   @@index([status])
 }
 
 model SupportMessage {
-  id         String        @id @default(uuid())
-  ticketId   String
-  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  id                String        @id @default(uuid())
+  ticketId          String
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   // Nullable: un mensaje puede venir de la IA (isAiGenerated=true) sin
   // ningún User real detrás — "si la IA puede resolver el caso lo debe
   // hacer inmediatamente ayudando al usuario".
-  authorId   String?
-  author     User?         @relation(fields: [authorId], references: [id])
-  isAiGenerated Boolean    @default(false)
-  body       String        @db.Text
+  authorId          String?
+  author            User?         @relation(fields: [authorId], references: [id])
+  isAiGenerated     Boolean       @default(false)
+  body              String        @db.Text
   attachmentAssetId String?
-  createdAt  DateTime      @default(now())
+  createdAt         DateTime      @default(now())
 }
 
 /// Sugerencias libres de los usuarios (ej. "me gustaría un curso de X") —
@@ -1674,28 +1772,28 @@ model Recommendation {
 // ---------------------------------------------------------------------------
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  actorId    String?
-  actor      User?    @relation(fields: [actorId], references: [id])
-  companyId  String?
-  company    Company? @relation(fields: [companyId], references: [id])
-  action     String
-  entity     String
-  entityId   String?
-  before     Json?
-  after      Json?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
 
   @@index([entity, entityId])
 }
 
 model CountryConfig {
-  id           String   @id @default(uuid())
-  country      String   @unique // ISO-3166 alpha-2
-  documentTypes Json    // [{ code: "DNI", label: {...}, length: 8 }, ...]
-  currency     String
-  phonePrefix  String
-  taxIdLabel   String? // "RUC", "NIT", ...
+  id            String  @id @default(uuid())
+  country       String  @unique // ISO-3166 alpha-2
+  documentTypes Json // [{ code: "DNI", label: {...}, length: 8 }, ...]
+  currency      String
+  phonePrefix   String
+  taxIdLabel    String? // "RUC", "NIT", ...
 }
 
 /// Fila única (id fijo "default") con la identidad visual editable desde
@@ -1703,26 +1801,26 @@ model CountryConfig {
 /// El modo claro/oscuro/automático NO vive aquí — es preferencia de cada
 /// visitante (localStorage), no una configuración global de la plataforma.
 model PlatformSettings {
-  id                  String   @id @default("default")
-  logoUrl             String?
-  logoHeightPx        Int      @default(64)
-  headingFontFamily   String   @default("Outfit")
-  bodyFontFamily      String   @default("Work Sans")
-  backgroundColor     String? // hex, sobreescribe el token --paper
-  backgroundImageUrl  String?
+  id                 String  @id @default("default")
+  logoUrl            String?
+  logoHeightPx       Int     @default(64)
+  headingFontFamily  String  @default("Outfit")
+  bodyFontFamily     String  @default("Work Sans")
+  backgroundColor    String? // hex, sobreescribe el token --paper
+  backgroundImageUrl String?
 
   // Datos de contacto mostrados en el pie de página y en /ayuda — antes
   // estaban hardcodeados en Footer.tsx.
-  contactEmail        String?
-  contactPhone        String?
-  contactAddress      String?
+  contactEmail   String?
+  contactPhone   String?
+  contactAddress String?
 
   // Qué información se muestra en las tarjetas de curso del catálogo
   // público, a nivel global (no por curso individual). Claves usadas por
   // CourseCard.tsx: showTeacher, showDuration, showNextLiveSession,
   // showCertificationBadge. Si una clave no está presente, se asume true
   // (comportamiento anterior, sin este control) — ver DEFAULT_COURSE_CARD_FIELDS.
-  courseCardFields    Json?
+  courseCardFields Json?
 
   // Firma institucional para certificados (p.ej. Gerente General/Responsable
   // de Inkapitales) — se usa si la plantilla incluye
@@ -1739,8 +1837,8 @@ model PlatformSettings {
   // 3.44% es la tarifa publicada de Culqi para tarjeta nacional + Yape/Plin
   // (+ IGV) — antes decía 3.99%, que es la tarifa de tarjeta INTERNACIONAL
   // (ver stripeFeePercent, que sí corresponde a compradores extranjeros).
-  culqiFeePercent     Float    @default(3.44)
-  stripeFeePercent    Float    @default(4.99)
+  culqiFeePercent  Float @default(3.44)
+  stripeFeePercent Float @default(4.99)
   // "Las comisiones de Yape/Plin son separadas, no juntas" — corrección
   // explícita del admin: SÍ es un costo real para Inkapitales (el
   // comercio), no del comprador — BCP cobra por recibir Yape en cuenta
@@ -1752,8 +1850,8 @@ model PlatformSettings {
   // Payment.paymentMethod ("yape" vs "plin") en vez de tratarlos como una
   // sola billetera. Cada uno en 0 por defecto hasta que el admin cargue la
   // tasa real que le confirmó su banco.
-  yapeFeePercent      Float    @default(0)
-  plinFeePercent      Float    @default(0)
+  yapeFeePercent   Float @default(0)
+  plinFeePercent   Float @default(0)
 
   // Detracción SUNAT (Sistema de Pago de Obligaciones Tributarias) — la
   // tabla de reglas depende de qué tipo de comprobante recibe el
@@ -1766,10 +1864,10 @@ model PlatformSettings {
   //   detractionRucEmpresaPercent siempre.
   // detractionEnabled es el interruptor maestro — si la SUNAT alguna vez
   // suspende la detracción por completo, se apaga acá sin tocar los %.
-  detractionEnabled              Boolean @default(true)
-  detractionRucNaturalPercent    Float   @default(12)
-  detractionRucNaturalThreshold  Float   @default(700)
-  detractionRucEmpresaPercent    Float   @default(12)
+  detractionEnabled             Boolean @default(true)
+  detractionRucNaturalPercent   Float   @default(12)
+  detractionRucNaturalThreshold Float   @default(700)
+  detractionRucEmpresaPercent   Float   @default(12)
 
   // "Aunque la factura sea en dólares, se debe pagar la detracción con el
   // tipo de cambio del dólar del día" — la detracción de una venta en USD
@@ -1782,22 +1880,22 @@ model PlatformSettings {
   // es el link de referencia que el admin ve al lado del campo para
   // consultar el tipo de cambio del día antes de actualizarlo — configurable
   // porque "esa página podría variar".
-  usdExchangeRate      Float   @default(3.75)
+  usdExchangeRate       Float   @default(3.75)
   exchangeRateSourceUrl String? @default("https://www.sbs.gob.pe/app/pp/sistip_portal/paginas/publicacion/tipocambiopromedio.aspx")
 
   // Sello de agua (logo) mostrado sobre las pantallas — "para que figure en
   // las pantallas" (pedido explícito). Opacidad/tamaño calibrables; sin
   // watermarkAssetId no se muestra nada (comportamiento anterior).
   watermarkAssetId     String?
-  watermarkOpacityPct  Int      @default(15) // 0-100
-  watermarkSizePercent Int      @default(30) // 0-100, ancho relativo a la pantalla
+  watermarkOpacityPct  Int     @default(15) // 0-100
+  watermarkSizePercent Int     @default(30) // 0-100, ancho relativo a la pantalla
 
   // Menús (barra lateral): color de fondo, tipografía/tamaño/color del texto
   // — antes fijos en el CSS (bg-ink-900, la tipografía global del sitio).
-  sidebarColor    String?
-  menuFontFamily  String?
-  menuFontSizePx  Int?
-  menuFontColor   String?
+  sidebarColor   String?
+  menuFontFamily String?
+  menuFontSizePx Int?
+  menuFontColor  String?
 
   // Colores primario/de acento de marca (manual de marca Inkapitales:
   // #586BD8 primario, #D8B26C acento dorado) — ya son el default real
@@ -1814,12 +1912,12 @@ model PlatformSettings {
   // {{courseTitle}}/{{verificationUrl}} que ya resuelve
   // notification.service.ts al armar el correo. null = usa el texto por
   // defecto de siempre.
-  certificateEmailText      Json?
+  certificateEmailText       Json?
   certificateEmailFontFamily String?
-  certificateEmailTextAlign String? @default("left") // left | center | right | justify
-  certificateEmailTextColor String?
+  certificateEmailTextAlign  String? @default("left") // left | center | right | justify
+  certificateEmailTextColor  String?
 
-  updatedAt           DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
 
 /// Gastos que el admin registra a mano (hosting, marketing, nómina de
@@ -1884,12 +1982,12 @@ model SunatSettings {
 /// `hasApiKey`. Si no hay fila o `apiKey` viene vacío, se cae a la variable
 /// de entorno GEMINI_API_KEY (mismo patrón "DB primero, env de respaldo").
 model ChatbotSettings {
-  id            String   @id @default("default")
-  enabled       Boolean  @default(false)
-  provider      String   @default("gemini") // por ahora solo "gemini" (Google AI Studio, capa gratuita)
-  model         String   @default("gemini-2.5-flash")
-  apiKey        String? // nunca se devuelve tal cual al frontend
-  systemPrompt  String?  @db.Text
+  id           String  @id @default("default")
+  enabled      Boolean @default(false)
+  provider     String  @default("gemini") // por ahora solo "gemini" (Google AI Studio, capa gratuita)
+  model        String  @default("gemini-2.5-flash")
+  apiKey       String? // nunca se devuelve tal cual al frontend
+  systemPrompt String? @db.Text
 
   // Respuesta automática a sugerencias — "parametrizarse si se quiere de
   // manera automática o si se quiere un paso extra donde el administrador
@@ -1900,7 +1998,7 @@ model ChatbotSettings {
   suggestionAutoRespond             Boolean @default(false)
   suggestionAutoRespondDelayMinutes Int     @default(30)
 
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
 
 /// Documentos que el admin sube (PDF/TXT/MD, p.ej. el manual de ayuda de la
@@ -2103,13 +2201,13 @@ model TeacherLiquidation {
   // Quién generó / aprobó / pagó / perdonó la deducción — antes ninguna de
   // estas cuatro acciones (las de más impacto financiero/legal de todo el
   // sistema) dejaba rastro de qué admin la hizo (hallazgo de auditoría).
-  createdById          String?
-  approvedById         String?
-  paidById             String?
-  waivedById           String?
-  waivedAt             DateTime?
+  createdById  String?
+  approvedById String?
+  paidById     String?
+  waivedById   String?
+  waivedAt     DateTime?
 
-  advances             TeacherAdvance[]
+  advances TeacherAdvance[]
 }
 
 // ---------------------------------------------------------------------------
@@ -2122,7 +2220,7 @@ model TeacherLiquidation {
 enum RoyaltyBillingType {
   PER_ENROLLMENT // por cada alumno matriculado
   PER_COMPLETION // por cada alumno que termina el curso
-  PER_REFERRAL   // % de lo que paga cada alumno que esa persona trajo
+  PER_REFERRAL // % de lo que paga cada alumno que esa persona trajo
 }
 
 model RoyaltyRecipient {
@@ -2144,7 +2242,7 @@ model RoyaltyRecipient {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
-  courses      CourseRoyalty[]
+  courses CourseRoyalty[]
 }
 
 // "¿Puedo poner colores, tipos de letra, tamaño?" — brand kit reutilizable
