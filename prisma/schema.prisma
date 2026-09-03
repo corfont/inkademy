@@ -281,6 +281,7 @@ enum OfferingLevel {
 }
 
 enum AccessDurationPolicy {
+  DAYS_7
   DAYS_30
   MONTHS_6
   PERMANENT

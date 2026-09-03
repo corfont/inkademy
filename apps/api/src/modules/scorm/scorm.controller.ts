@@ -19,6 +19,34 @@ const scormProgressSchema = z.object({
 });
 
 /**
+ * "Layout de imagen dentro de una diapositiva de Contenido" / preguntas
+ * `hotspot` — ambas referencian una imagen subida al storage (S3/MinIO),
+ * que vive en OTRO origen (p.ej. `http://localhost:9000` en dev, o un
+ * bucket/CDN real en producción). La CSP de abajo tenía `default-src
+ * 'self'` sin ningún `img-src` propio — sin querer, esto bloqueaba
+ * CUALQUIER imagen de contenido subida por el admin (confirmado en vivo:
+ * `<img>` con `complete:true, naturalWidth:0` — la carga fue bloqueada por
+ * CSP, no un 404). Se agrega `img-src` explícito con el origen real del
+ * storage configurado, sin tocar `default-src`/`script-src` (que sigue
+ * restringido a 'self'/inline/eval — la protección real contra scripts de
+ * terceros, que nunca fue el problema acá).
+ */
+function scormContentSecurityPolicy(): string {
+  const imageOrigins = [process.env.S3_PUBLIC_BASE_URL, process.env.S3_ENDPOINT]
+    .filter((url): url is string => Boolean(url))
+    .map((url) => {
+      try {
+        return new URL(url).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter((origin): origin is string => Boolean(origin));
+  const imgSrc = ["'self'", "data:", "blob:", ...new Set(imageOrigins)].join(" ");
+  return `default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; img-src ${imgSrc}; frame-ancestors *`;
+}
+
+/**
  * "player"/"content" quedan bajo /scorm y son deliberadamente públicos
  * (@Public(), sin JwtAuthGuard): un iframe no manda el Authorization header
  * del alumno, así que la autorización real es el `token` de sesión firmado
@@ -61,7 +89,7 @@ export class ScormController {
       // propio shim) no pasan por nuestro bundler — es contenido de
       // terceros ejecutando JS por diseño. 'self' en default-src igual
       // evita que ese JS cargue o llame a orígenes externos arbitrarios.
-      "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors *",
+      "Content-Security-Policy": scormContentSecurityPolicy(),
       "X-Content-Type-Options": "nosniff",
     });
     res.send(html);
@@ -80,7 +108,7 @@ export class ScormController {
     const { buffer, contentType } = await this.scorm.getContentFile(token, path);
     res.set({
       "Content-Type": contentType,
-      "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors *",
+      "Content-Security-Policy": scormContentSecurityPolicy(),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=3600",
     });

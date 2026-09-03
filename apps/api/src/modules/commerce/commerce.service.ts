@@ -43,6 +43,10 @@ interface GrantFreeAccessInput {
 
 function computeAccessExpiresAt(policy: AccessDurationPolicy, from: Date): Date | null {
   const date = new Date(from);
+  if (policy === "DAYS_7") {
+    date.setDate(date.getDate() + 7);
+    return date;
+  }
   if (policy === "DAYS_30") {
     date.setDate(date.getDate() + 30);
     return date;

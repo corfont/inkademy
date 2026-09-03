@@ -71,12 +71,18 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
     }
   }
 
-  const accessLabel =
-    course.accessDurationPolicy === "PERMANENT"
-      ? t("accessPermanent")
-      : course.accessDurationPolicy === "DAYS_30"
-        ? t("access30Days")
-        : t("access6Months");
+  // Antes esto era un ternario en cadena que trataba CUALQUIER valor que no
+  // fuera PERMANENT/DAYS_30 como "6 meses" — con DAYS_7 recién agregado
+  // (curso con acceso de 7 días) mostraba "Acceso por 6 meses", un dato
+  // real incorrecto para el alumno. Un mapa explícito no puede caer en ese
+  // mismo bug con el próximo valor que se agregue al enum.
+  const ACCESS_LABEL_KEY: Record<string, string> = {
+    PERMANENT: "accessPermanent",
+    DAYS_7: "access7Days",
+    DAYS_30: "access30Days",
+    MONTHS_6: "access6Months",
+  };
+  const accessLabel = t(ACCESS_LABEL_KEY[course.accessDurationPolicy] ?? "access6Months");
 
   const related = MOCK_COURSES.filter((c) => course.nextRecommendedCourseIds?.includes(c.id));
   const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0);

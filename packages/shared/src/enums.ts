@@ -25,7 +25,7 @@ export type OfferingLevel = (typeof OFFERING_LEVELS)[number];
 export const OFFERING_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
 export type OfferingStatus = (typeof OFFERING_STATUSES)[number];
 
-export const ACCESS_DURATION_POLICIES = ["DAYS_30", "MONTHS_6", "PERMANENT"] as const;
+export const ACCESS_DURATION_POLICIES = ["DAYS_7", "DAYS_30", "MONTHS_6", "PERMANENT"] as const;
 export type AccessDurationPolicy = (typeof ACCESS_DURATION_POLICIES)[number];
 
 export const ENROLLMENT_SOURCES = ["B2C_PURCHASE", "B2B_SEAT", "FREE", "ADMIN_GRANTED"] as const;
