@@ -4,7 +4,7 @@ import { InjectQueue } from "@nestjs/bullmq";
 import type { Queue } from "bullmq";
 import * as argon2 from "argon2";
 import type { PrismaClient } from "@inkademy/db";
-import type { AdminExceptionDTO } from "@inkademy/shared";
+import type { AdminExceptionDTO, ScormLocale } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { QUEUE_NAMES, SUBTITLES_JOBS, BACKUP_JOBS } from "../../common/queues/queue.constants";
@@ -3188,8 +3188,9 @@ export class AdminService {
    * primer uso real es Course.title, ver CourseEditor.tsx). Devuelve el
    * texto traducido sin persistir nada; el admin lo revisa antes de guardar.
    */
-  async translateText(text: string, from: "es" | "en", to: "es" | "en"): Promise<{ translated: string }> {
-    const langName = (l: string) => (l === "es" ? "español" : "inglés");
+  async translateText(text: string, from: ScormLocale, to: ScormLocale): Promise<{ translated: string }> {
+    const langName = (l: ScormLocale) =>
+      ({ es: "español", en: "inglés", it: "italiano", fr: "francés", pt: "portugués" })[l];
     const systemPrompt = `Traduce el siguiente texto de ${langName(from)} a ${langName(to)}. Responde ÚNICAMENTE con la traducción, sin comillas ni explicaciones.`;
     const translated = await callGeminiOnce(this.prisma, systemPrompt, text, { maxOutputTokens: 256 });
     return { translated };

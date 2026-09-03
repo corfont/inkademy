@@ -18,6 +18,7 @@ import {
   adminResetPasswordSchema,
   bulkIdsSchema,
   scormAuthoredContentSchema,
+  translateTextSchema,
   upsertScormThemePresetSchema,
   createExpenseSchema,
   createTeacherActivityLogSchema,
@@ -62,7 +63,7 @@ import {
   upsertProgramSchema,
   upsertQuestionSchema,
 } from "../../common/validation/local-schemas";
-import { respondToQuoteSchema } from "@inkademy/shared";
+import { respondToQuoteSchema, type ScormLocale } from "@inkademy/shared";
 import { AssessmentService } from "../assessment/assessment.service";
 import { EnrollmentService } from "../enrollment/enrollment.service";
 import { CompaniesService } from "../companies/companies.service";
@@ -1326,8 +1327,8 @@ export class AdminController {
 
   @Post("translate")
   @Roles("ADMIN", "TEACHER")
-  @ApiOperation({ summary: "Traduce un texto con IA (es<->en) — no persiste nada" })
-  translateText(@Body() dto: { text: string; from: "es" | "en"; to: "es" | "en" }) {
+  @ApiOperation({ summary: "Traduce un texto con IA entre es/en/it/fr/pt — no persiste nada" })
+  translateText(@Body(new ZodValidationPipe(translateTextSchema)) dto: { text: string; from: ScormLocale; to: ScormLocale }) {
     return this.adminService.translateText(dto.text, dto.from, dto.to);
   }
 }

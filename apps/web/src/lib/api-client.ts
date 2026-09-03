@@ -15,6 +15,7 @@ import type {
   SupportTicketSummaryDTO,
   AdminExceptionDTO,
   LocalizedText,
+  ScormLocale,
 } from "@inkademy/shared";
 import { getClientAccessToken, setClientAccessToken, clearClientAccessToken } from "./auth";
 
@@ -1213,8 +1214,8 @@ export const adminApi = {
     );
   },
 
-  // --- Traducción asistida (es <-> en) ---
-  translateText: (input: { text: string; from: "es" | "en"; to: "es" | "en" }, accessToken?: string | null) =>
+  // --- Traducción asistida (es/en/it/fr/pt) ---
+  translateText: (input: { text: string; from: ScormLocale; to: ScormLocale }, accessToken?: string | null) =>
     apiFetch<{ translated: string }>("/admin/translate", { method: "POST", body: JSON.stringify(input), accessToken }),
 };
 
@@ -1266,4 +1267,97 @@ export const npsPublicApi = {
     ),
   submit: (token: string, score: number, comment?: string) =>
     apiFetch<{ saved: boolean }>(`/nps/${token}`, { method: "POST", body: JSON.stringify({ score, comment }) }),
+};
+
+// ---------------------------------------------------------------------------
+// Módulo de notificaciones — bandeja in-app (campana del layout) + qué se
+// envía y por qué canal (NotificationSettings, singleton editable en
+// /admin/notificaciones).
+// ---------------------------------------------------------------------------
+export interface NotificationDTO {
+  id: string;
+  type: string;
+  title: string | null;
+  body: string | null;
+  url: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+export interface NotificationSettingsDTO {
+  courseAccessExpiringEmail: boolean;
+  courseAccessExpiringInApp: boolean;
+  liveSessionUpcomingEmail: boolean;
+  liveSessionUpcomingInApp: boolean;
+  assessmentDueEmail: boolean;
+  assessmentDueInApp: boolean;
+  partnershipExpiringEmail: boolean;
+  partnershipExpiringInApp: boolean;
+  partnershipExpiringLeadDays: number;
+  supportTicketUpdateEmail: boolean;
+  supportTicketUpdateInApp: boolean;
+  suggestionUnansweredEmail: boolean;
+  suggestionUnansweredInApp: boolean;
+  suggestionUnansweredAfterHours: number;
+  platformLicenseExpiringEmail: boolean;
+  platformLicenseExpiringInApp: boolean;
+  platformLicenseExpiringLeadDays: number;
+  updatedAt: string | null;
+}
+
+export const notificationsApi = {
+  mine: (params: { page?: number; pageSize?: number } = {}, accessToken?: string | null) =>
+    apiFetch<{ rows: NotificationDTO[]; total: number; page: number; pageSize: number; unreadCount: number }>("/notifications/mine", {
+      accessToken,
+      query: { page: params.page, pageSize: params.pageSize },
+      cache: "no-store",
+    }),
+  unreadCount: (accessToken?: string | null) => apiFetch<{ count: number }>("/notifications/unread-count", { accessToken, cache: "no-store" }),
+  markRead: (id: string, accessToken?: string | null) => apiFetch<{ ok: boolean }>(`/notifications/${id}/read`, { method: "PATCH", accessToken }),
+  markAllRead: (accessToken?: string | null) => apiFetch<{ ok: boolean }>("/notifications/read-all", { method: "POST", accessToken }),
+
+  settings: (accessToken?: string | null) =>
+    apiFetch<NotificationSettingsDTO>("/admin/notification-settings", { accessToken, cache: "no-store" }),
+  updateSettings: (input: Partial<NotificationSettingsDTO>, accessToken?: string | null) =>
+    apiFetch<NotificationSettingsDTO>("/admin/notification-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+};
+
+// ---------------------------------------------------------------------------
+// Licencias de arriendo de plataforma (instancia aislada / marca blanca) —
+// registro de negocio de Inkapitales, ver PlatformLicense en schema.prisma.
+// ---------------------------------------------------------------------------
+export interface PlatformLicenseDTO {
+  id: string;
+  clientName: string;
+  domain: string | null;
+  deploymentUrl: string | null;
+  billingCycle: "MONTHLY" | "ANNUAL";
+  priceAmount: string;
+  currency: string;
+  startsAt: string;
+  endsAt: string;
+  status: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "CANCELLED";
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export type UpsertPlatformLicenseInput = {
+  clientName: string;
+  domain?: string | null;
+  deploymentUrl?: string | null;
+  billingCycle: "MONTHLY" | "ANNUAL";
+  priceAmount: number;
+  currency?: string;
+  startsAt: string;
+  endsAt: string;
+  status?: PlatformLicenseDTO["status"];
+  notes?: string | null;
+};
+
+export const platformLicenseApi = {
+  list: (accessToken?: string | null) => apiFetch<PlatformLicenseDTO[]>("/admin/licenses", { accessToken, cache: "no-store" }),
+  create: (input: UpsertPlatformLicenseInput, accessToken?: string | null) =>
+    apiFetch<PlatformLicenseDTO>("/admin/licenses", { method: "POST", body: JSON.stringify(input), accessToken }),
+  update: (id: string, input: Partial<UpsertPlatformLicenseInput>, accessToken?: string | null) =>
+    apiFetch<PlatformLicenseDTO>(`/admin/licenses/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  remove: (id: string, accessToken?: string | null) => apiFetch<{ ok: boolean }>(`/admin/licenses/${id}`, { method: "DELETE", accessToken }),
 };

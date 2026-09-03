@@ -173,17 +173,55 @@ export const updateLessonSchema = upsertLessonSchema.partial();
 // hotspot, %) solo aplica a "image-background", arrastrable/redimensionable
 // en el editor. Sin `layout`, el render es el legado (imagen al final) —
 // ver packages/shared/scorm-authoring.ts renderContent.
+// Los 5 idiomas del selector de idioma del reproductor SCORM (también
+// reutilizado por /admin/translate, que traduce hacia/desde cualquiera de
+// ellos — no solo es<->en).
+export const scormLocaleSchema = z.enum(["es", "en", "it", "fr", "pt"]);
 const scormImageBoxSchema = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
   width: z.number().min(0).max(100),
   height: z.number().min(0).max(100),
 });
+// "Selector de idioma en el reproductor" — español es el único obligatorio;
+// en/it/fr/pt son traducciones opcionales (fallback a español en el
+// reproductor si faltan, ver L() en scorm-authoring.ts). El builder del
+// front (ScormBuilder.tsx) ya normaliza contenido legado (string plano) a
+// este formato ANTES de mandar el POST — acá NO se acepta el formato legado.
+// Requiere `es` no vacío (hasta `max` caracteres); en/it/fr/pt son opcionales
+// (mismo tope de longitud si están presentes).
+const scormLocalizedTextSchema = (max: number) =>
+  z.object({
+    es: z.string().min(1).max(max),
+    en: z.string().max(max).optional(),
+    it: z.string().max(max).optional(),
+    fr: z.string().max(max).optional(),
+    pt: z.string().max(max).optional(),
+  });
+// Igual pero `es` puede venir vacío (para textos opcionales como el cuerpo de
+// una diapositiva de Contenido, que hoy no exige contenido no-vacío).
+const scormLocalizedOptionalTextSchema = (max: number) =>
+  z.object({
+    es: z.string().max(max),
+    en: z.string().max(max).optional(),
+    it: z.string().max(max).optional(),
+    fr: z.string().max(max).optional(),
+    pt: z.string().max(max).optional(),
+  });
+// Cada blank de "Completar espacio" trae, por idioma, la lista de respuestas
+// aceptadas (al menos una en español; en/it/fr/pt opcionales).
+const scormLocalizedStringListSchema = z.object({
+  es: z.array(z.string().min(1).max(200)).min(1),
+  en: z.array(z.string().min(1).max(200)).optional(),
+  it: z.array(z.string().min(1).max(200)).optional(),
+  fr: z.array(z.string().min(1).max(200)).optional(),
+  pt: z.array(z.string().min(1).max(200)).optional(),
+});
 const scormContentSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("content"),
-  title: z.string().min(1).max(200),
-  body: z.string().max(5000),
+  title: scormLocalizedTextSchema(200),
+  body: scormLocalizedOptionalTextSchema(5000),
   imageUrl: z.string().url().optional().nullable(),
   layout: z.enum(["text", "image-top", "image-bottom", "image-left", "image-right", "image-background"]).optional(),
   imageBox: scormImageBoxSchema.optional().nullable(),
@@ -191,60 +229,60 @@ const scormContentSlideSchema = z.object({
 const scormTrueFalseSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("true_false"),
-  question: z.string().min(1).max(1000),
+  question: scormLocalizedTextSchema(1000),
   correctAnswer: z.boolean(),
-  explanation: z.string().max(1000).optional().nullable(),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 const scormSingleChoiceSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("single_choice"),
-  question: z.string().min(1).max(1000),
-  options: z.array(z.string().min(1).max(300)).min(2).max(6),
+  question: scormLocalizedTextSchema(1000),
+  options: z.array(scormLocalizedTextSchema(300)).min(2).max(6),
   correctIndex: z.number().int().min(0),
-  explanation: z.string().max(1000).optional().nullable(),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 const scormMultipleChoiceSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("multiple_choice"),
-  question: z.string().min(1).max(1000),
-  options: z.array(z.string().min(1).max(300)).min(2).max(6),
+  question: scormLocalizedTextSchema(1000),
+  options: z.array(scormLocalizedTextSchema(300)).min(2).max(6),
   correctIndexes: z.array(z.number().int().min(0)).min(1),
-  explanation: z.string().max(1000).optional().nullable(),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 const scormFillBlankSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("fill_blank"),
-  text: z.string().min(1).max(2000),
-  blanks: z.array(z.array(z.string().min(1).max(200)).min(1)).min(1),
-  explanation: z.string().max(1000).optional().nullable(),
+  text: scormLocalizedTextSchema(2000),
+  blanks: z.array(scormLocalizedStringListSchema).min(1),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 const scormMatchingSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("matching"),
-  instructions: z.string().max(300).optional().nullable(),
-  pairs: z.array(z.object({ left: z.string().min(1).max(200), right: z.string().min(1).max(200) })).min(2).max(8),
-  explanation: z.string().max(1000).optional().nullable(),
+  instructions: scormLocalizedOptionalTextSchema(300).optional().nullable(),
+  pairs: z.array(z.object({ left: scormLocalizedTextSchema(200), right: scormLocalizedTextSchema(200) })).min(2).max(8),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 const scormOrderingSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("ordering"),
-  instructions: z.string().max(300).optional().nullable(),
-  items: z.array(z.string().min(1).max(200)).min(2).max(10),
-  explanation: z.string().max(1000).optional().nullable(),
+  instructions: scormLocalizedOptionalTextSchema(300).optional().nullable(),
+  items: z.array(scormLocalizedTextSchema(200)).min(2).max(10),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 const scormHotspotSlideSchema = z.object({
   id: z.string().min(1),
   type: z.literal("hotspot"),
-  question: z.string().min(1).max(1000),
+  question: scormLocalizedTextSchema(1000),
   imageUrl: z.string().url(),
   zones: z.array(z.object({ x: z.number().min(0).max(100), y: z.number().min(0).max(100), width: z.number().min(0).max(100), height: z.number().min(0).max(100) })).min(1),
-  explanation: z.string().max(1000).optional().nullable(),
+  explanation: scormLocalizedOptionalTextSchema(1000).optional().nullable(),
   sectionId: z.string().min(1).optional().nullable(),
 });
 export const scormSlideSchema = z.discriminatedUnion("type", [
@@ -265,7 +303,7 @@ export const scormSlideSchema = z.discriminatedUnion("type", [
 // `sections`, el cálculo es el de siempre (aciertos/total sin ponderar).
 const scormSectionSchema = z.object({
   id: z.string().min(1),
-  title: z.string().min(1).max(120),
+  title: scormLocalizedTextSchema(120),
   weightPercent: z.number().min(0).max(100),
 });
 // "¿Colores, tipos de letra, tamaño?" — ver ScormTheme en
@@ -773,6 +811,26 @@ export const upsertChatbotSettingsSchema = z.object({
   suggestionAutoRespondDelayMinutes: z.number().int().min(1).max(1440).optional(),
 });
 
+export const upsertNotificationSettingsSchema = z.object({
+  courseAccessExpiringEmail: z.boolean().optional(),
+  courseAccessExpiringInApp: z.boolean().optional(),
+  liveSessionUpcomingEmail: z.boolean().optional(),
+  liveSessionUpcomingInApp: z.boolean().optional(),
+  assessmentDueEmail: z.boolean().optional(),
+  assessmentDueInApp: z.boolean().optional(),
+  partnershipExpiringEmail: z.boolean().optional(),
+  partnershipExpiringInApp: z.boolean().optional(),
+  partnershipExpiringLeadDays: z.number().int().min(1).max(365).optional(),
+  supportTicketUpdateEmail: z.boolean().optional(),
+  supportTicketUpdateInApp: z.boolean().optional(),
+  suggestionUnansweredEmail: z.boolean().optional(),
+  suggestionUnansweredInApp: z.boolean().optional(),
+  suggestionUnansweredAfterHours: z.number().int().min(1).max(720).optional(),
+  platformLicenseExpiringEmail: z.boolean().optional(),
+  platformLicenseExpiringInApp: z.boolean().optional(),
+  platformLicenseExpiringLeadDays: z.number().int().min(1).max(365).optional(),
+});
+
 export const upsertEmailServerSettingsSchema = z.object({
   host: z.string().optional().nullable(),
   port: z.number().int().min(1).max(65535).optional().nullable(),
@@ -982,4 +1040,13 @@ export const upsertSettingsSchema = z.object({
   certificateEmailFontFamily: z.string().optional().nullable(),
   certificateEmailTextAlign: z.enum(["left", "center", "right", "justify"]).optional(),
   certificateEmailTextColor: z.string().optional().nullable(),
+});
+
+// "Traducción asistida" — genérico (POST /admin/translate), hoy usado tanto
+// por Course.title como por el botón "Traducir con IA" del editor SCORM
+// (ScormBuilder.tsx). Cubre los 5 idiomas del selector de idioma SCORM.
+export const translateTextSchema = z.object({
+  text: z.string().min(1).max(5000),
+  from: scormLocaleSchema,
+  to: scormLocaleSchema,
 });

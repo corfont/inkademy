@@ -13,13 +13,18 @@ import {
   SCORM_EMBEDDABLE_FONTS,
   BUILTIN_SCORM_THEME_PRESETS,
   DEFAULT_SCORM_THEME,
+  SCORM_LOCALES,
+  SCORM_LOCALE_LABEL,
   buildScormContentHtml,
+  normalizeScormAuthoredContent,
   type ScormSlide,
   type ScormAuthoredContent,
   type ScormSection,
   type ScormTheme,
   type ScormThemePresetSummary,
   type ContentSlideLayout,
+  type ScormLocale,
+  type ScormLocalizedText,
   type MatchingSlide,
   type OrderingSlide,
   type HotspotSlide,
@@ -39,15 +44,18 @@ function uid(): string {
   return crypto.randomUUID();
 }
 
+function emptyText(): ScormLocalizedText {
+  return { es: "" };
+}
 const SLIDE_FACTORIES: Record<ScormSlide["type"], () => ScormSlide> = {
-  content: () => ({ id: uid(), type: "content", title: "", body: "" }),
-  true_false: () => ({ id: uid(), type: "true_false", question: "", correctAnswer: true }),
-  single_choice: () => ({ id: uid(), type: "single_choice", question: "", options: ["", ""], correctIndex: 0 }),
-  multiple_choice: () => ({ id: uid(), type: "multiple_choice", question: "", options: ["", ""], correctIndexes: [] }),
-  fill_blank: () => ({ id: uid(), type: "fill_blank", text: "", blanks: [] }),
-  matching: () => ({ id: uid(), type: "matching", pairs: [{ left: "", right: "" }, { left: "", right: "" }] }),
-  ordering: () => ({ id: uid(), type: "ordering", items: ["", ""] }),
-  hotspot: () => ({ id: uid(), type: "hotspot", question: "", imageUrl: "", zones: [] }),
+  content: () => ({ id: uid(), type: "content", title: emptyText(), body: emptyText() }),
+  true_false: () => ({ id: uid(), type: "true_false", question: emptyText(), correctAnswer: true }),
+  single_choice: () => ({ id: uid(), type: "single_choice", question: emptyText(), options: [emptyText(), emptyText()], correctIndex: 0 }),
+  multiple_choice: () => ({ id: uid(), type: "multiple_choice", question: emptyText(), options: [emptyText(), emptyText()], correctIndexes: [] }),
+  fill_blank: () => ({ id: uid(), type: "fill_blank", text: emptyText(), blanks: [] }),
+  matching: () => ({ id: uid(), type: "matching", pairs: [{ left: emptyText(), right: emptyText() }, { left: emptyText(), right: emptyText() }] }),
+  ordering: () => ({ id: uid(), type: "ordering", items: [emptyText(), emptyText()] }),
+  hotspot: () => ({ id: uid(), type: "hotspot", question: emptyText(), imageUrl: "", zones: [] }),
 };
 const SLIDE_TYPES = Object.keys(SLIDE_FACTORIES) as ScormSlide["type"][];
 
@@ -167,6 +175,7 @@ function ImageBoxEditor({
 
 function OptionsEditor({
   options,
+  editLocale,
   correctSet,
   multi,
   onToggleCorrect,
@@ -174,7 +183,8 @@ function OptionsEditor({
   onAddOption,
   onRemoveOption,
 }: {
-  options: string[];
+  options: ScormLocalizedText[];
+  editLocale: ScormLocale;
   correctSet: Set<number>;
   multi: boolean;
   onToggleCorrect: (idx: number) => void;
@@ -192,7 +202,12 @@ function OptionsEditor({
             onChange={() => onToggleCorrect(idx)}
             title="Marcar como respuesta correcta"
           />
-          <Input className="h-7 flex-1 text-xs" placeholder={`Opción ${idx + 1}`} value={opt} onChange={(e) => onChangeOption(idx, e.target.value)} />
+          <Input
+            className="h-7 flex-1 text-xs"
+            placeholder={`Opción ${idx + 1}`}
+            value={opt[editLocale] ?? ""}
+            onChange={(e) => onChangeOption(idx, e.target.value)}
+          />
           {options.length > 2 && (
             <button type="button" className="text-ash-400 hover:text-danger" onClick={() => onRemoveOption(idx)} aria-label="Quitar opción">
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -209,13 +224,38 @@ function OptionsEditor({
   );
 }
 
-function ExplanationField({ value, onChange }: { value: string | null | undefined; onChange: (v: string | null) => void }) {
+function ExplanationField({
+  value,
+  editLocale,
+  onChange,
+}: {
+  value: ScormLocalizedText | null | undefined;
+  editLocale: ScormLocale;
+  onChange: (v: ScormLocalizedText | null) => void;
+}) {
   return (
-    <Input className="h-7 text-xs" placeholder="Explicación al responder (opcional)" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />
+    <Input
+      className="h-7 text-xs"
+      placeholder="Explicación al responder (opcional)"
+      value={value?.[editLocale] ?? ""}
+      onChange={(e) => {
+        const next: ScormLocalizedText = { ...(value ?? { es: "" }), [editLocale]: e.target.value };
+        const allEmpty = Object.values(next).every((v) => !v || !String(v).trim());
+        onChange(allEmpty ? null : next);
+      }}
+    />
   );
 }
 
-function ContentSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { type: "content" }>; onChange: (s: ScormSlide) => void }) {
+function ContentSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: Extract<ScormSlide, { type: "content" }>;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   const [uploading, setUploading] = useState(false);
   async function handleImageUpload(file: File) {
     setUploading(true);
@@ -237,8 +277,19 @@ function ContentSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { 
   }
   return (
     <>
-      <Input className="h-8 text-xs" placeholder="Título" value={slide.title} onChange={(e) => onChange({ ...slide, title: e.target.value })} />
-      <Textarea className="text-xs" rows={3} placeholder="Texto de la diapositiva" value={slide.body} onChange={(e) => onChange({ ...slide, body: e.target.value })} />
+      <Input
+        className="h-8 text-xs"
+        placeholder="Título"
+        value={slide.title[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, title: { ...slide.title, [editLocale]: e.target.value } })}
+      />
+      <Textarea
+        className="text-xs"
+        rows={3}
+        placeholder="Texto de la diapositiva"
+        value={slide.body[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, body: { ...slide.body, [editLocale]: e.target.value } })}
+      />
       <div className="flex items-center gap-2 text-xs text-ash-600">
         {slide.imageUrl ? <span>Imagen cargada</span> : <span>Sin imagen (opcional)</span>}
         <DropLabel accept="image/*" busy={uploading} label={slide.imageUrl ? "Reemplazar imagen" : "Subir imagen"} small onFile={handleImageUpload} />
@@ -278,10 +329,24 @@ function ContentSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { 
   );
 }
 
-function TrueFalseSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { type: "true_false" }>; onChange: (s: ScormSlide) => void }) {
+function TrueFalseSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: Extract<ScormSlide, { type: "true_false" }>;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   return (
     <>
-      <Textarea className="text-xs" rows={2} placeholder="Enunciado" value={slide.question} onChange={(e) => onChange({ ...slide, question: e.target.value })} />
+      <Textarea
+        className="text-xs"
+        rows={2}
+        placeholder="Enunciado"
+        value={slide.question[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, question: { ...slide.question, [editLocale]: e.target.value } })}
+      />
       <div className="flex gap-4 text-xs">
         <label className="flex items-center gap-1.5">
           <input type="radio" checked={slide.correctAnswer} onChange={() => onChange({ ...slide, correctAnswer: true })} /> Verdadero
@@ -290,40 +355,70 @@ function TrueFalseSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, 
           <input type="radio" checked={!slide.correctAnswer} onChange={() => onChange({ ...slide, correctAnswer: false })} /> Falso
         </label>
       </div>
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
-function SingleChoiceSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { type: "single_choice" }>; onChange: (s: ScormSlide) => void }) {
+function SingleChoiceSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: Extract<ScormSlide, { type: "single_choice" }>;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   return (
     <>
-      <Textarea className="text-xs" rows={2} placeholder="Enunciado de la pregunta" value={slide.question} onChange={(e) => onChange({ ...slide, question: e.target.value })} />
+      <Textarea
+        className="text-xs"
+        rows={2}
+        placeholder="Enunciado de la pregunta"
+        value={slide.question[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, question: { ...slide.question, [editLocale]: e.target.value } })}
+      />
       <OptionsEditor
         options={slide.options}
+        editLocale={editLocale}
         correctSet={new Set([slide.correctIndex])}
         multi={false}
         onToggleCorrect={(idx) => onChange({ ...slide, correctIndex: idx })}
-        onChangeOption={(idx, v) => onChange({ ...slide, options: slide.options.map((o, i) => (i === idx ? v : o)) })}
-        onAddOption={() => onChange({ ...slide, options: [...slide.options, ""] })}
+        onChangeOption={(idx, v) => onChange({ ...slide, options: slide.options.map((o, i) => (i === idx ? { ...o, [editLocale]: v } : o)) })}
+        onAddOption={() => onChange({ ...slide, options: [...slide.options, emptyText()] })}
         onRemoveOption={(idx) => {
           const options = slide.options.filter((_, i) => i !== idx);
           const correctIndex = slide.correctIndex === idx ? 0 : slide.correctIndex > idx ? slide.correctIndex - 1 : slide.correctIndex;
           onChange({ ...slide, options, correctIndex });
         }}
       />
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
-function MultipleChoiceSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { type: "multiple_choice" }>; onChange: (s: ScormSlide) => void }) {
+function MultipleChoiceSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: Extract<ScormSlide, { type: "multiple_choice" }>;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   const correctSet = new Set(slide.correctIndexes);
   return (
     <>
-      <Textarea className="text-xs" rows={2} placeholder="Enunciado (varias respuestas correctas)" value={slide.question} onChange={(e) => onChange({ ...slide, question: e.target.value })} />
+      <Textarea
+        className="text-xs"
+        rows={2}
+        placeholder="Enunciado (varias respuestas correctas)"
+        value={slide.question[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, question: { ...slide.question, [editLocale]: e.target.value } })}
+      />
       <OptionsEditor
         options={slide.options}
+        editLocale={editLocale}
         correctSet={correctSet}
         multi
         onToggleCorrect={(idx) => {
@@ -332,25 +427,36 @@ function MultipleChoiceSlideEditor({ slide, onChange }: { slide: Extract<ScormSl
           else next.add(idx);
           onChange({ ...slide, correctIndexes: Array.from(next).sort() });
         }}
-        onChangeOption={(idx, v) => onChange({ ...slide, options: slide.options.map((o, i) => (i === idx ? v : o)) })}
-        onAddOption={() => onChange({ ...slide, options: [...slide.options, ""] })}
+        onChangeOption={(idx, v) => onChange({ ...slide, options: slide.options.map((o, i) => (i === idx ? { ...o, [editLocale]: v } : o)) })}
+        onAddOption={() => onChange({ ...slide, options: [...slide.options, emptyText()] })}
         onRemoveOption={(idx) => {
           const options = slide.options.filter((_, i) => i !== idx);
           const correctIndexes = slide.correctIndexes.filter((c) => c !== idx).map((c) => (c > idx ? c - 1 : c));
           onChange({ ...slide, options, correctIndexes });
         }}
       />
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
 /** El admin escribe "___" donde va cada espacio — se cuentan y se piden las respuestas aceptadas por cada uno. */
-function FillBlankSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, { type: "fill_blank" }>; onChange: (s: ScormSlide) => void }) {
-  const blankCount = (slide.text.match(/___/g) || []).length;
+function FillBlankSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: Extract<ScormSlide, { type: "fill_blank" }>;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
+  // El conteo de espacios ("___") se basa SIEMPRE en el texto en español —
+  // la estructura de la frase (cuántos blanks hay) es la misma en todos los
+  // idiomas, solo cambian las palabras.
+  const blankCount = (slide.text.es.match(/___/g) || []).length;
   useEffect(() => {
     if (slide.blanks.length !== blankCount) {
-      const next = Array.from({ length: blankCount }, (_, i) => slide.blanks[i] ?? []);
+      const next = Array.from({ length: blankCount }, (_, i) => slide.blanks[i] ?? { es: [] });
       onChange({ ...slide, blanks: next });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -361,8 +467,8 @@ function FillBlankSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, 
         className="text-xs"
         rows={2}
         placeholder="Escribe la frase usando ___ (tres guiones bajos) donde va cada espacio"
-        value={slide.text}
-        onChange={(e) => onChange({ ...slide, text: e.target.value })}
+        value={slide.text[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, text: { ...slide.text, [editLocale]: e.target.value } })}
       />
       <p className="text-[11px] text-ash-500">{blankCount} espacio(s) detectado(s).</p>
       {slide.blanks.map((accepted, i) => (
@@ -370,28 +476,59 @@ function FillBlankSlideEditor({ slide, onChange }: { slide: Extract<ScormSlide, 
           key={i}
           className="h-7 text-xs"
           placeholder={`Espacio ${i + 1}: respuestas aceptadas separadas por coma`}
-          value={accepted.join(", ")}
+          value={(accepted[editLocale] ?? []).join(", ")}
           onChange={(e) => {
-            const blanks = slide.blanks.map((b, bi) => (bi === i ? e.target.value.split(",").map((s) => s.trim()).filter(Boolean) : b));
+            const values = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+            const blanks = slide.blanks.map((b, bi) => (bi === i ? { ...b, [editLocale]: values } : b));
             onChange({ ...slide, blanks });
           }}
         />
       ))}
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
-function MatchingSlideEditor({ slide, onChange }: { slide: MatchingSlide; onChange: (s: ScormSlide) => void }) {
+/** Escribe/lee la clave `editLocale` de un ScormLocalizedText opcional; guarda `null` si TODOS los idiomas quedan vacíos. */
+function setLocalizedOptional(value: ScormLocalizedText | null | undefined, editLocale: ScormLocale, text: string): ScormLocalizedText | null {
+  const next: ScormLocalizedText = { ...(value ?? { es: "" }), [editLocale]: text };
+  const allEmpty = Object.values(next).every((v) => !v || !String(v).trim());
+  return allEmpty ? null : next;
+}
+
+function MatchingSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: MatchingSlide;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   return (
     <>
-      <Input className="h-7 text-xs" placeholder="Instrucciones (opcional)" value={slide.instructions ?? ""} onChange={(e) => onChange({ ...slide, instructions: e.target.value || null })} />
+      <Input
+        className="h-7 text-xs"
+        placeholder="Instrucciones (opcional)"
+        value={slide.instructions?.[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, instructions: setLocalizedOptional(slide.instructions, editLocale, e.target.value) })}
+      />
       <div className="flex flex-col gap-1.5">
         {slide.pairs.map((pair, idx) => (
           <div key={idx} className="flex items-center gap-2">
-            <Input className="h-7 flex-1 text-xs" placeholder="Elemento" value={pair.left} onChange={(e) => onChange({ ...slide, pairs: slide.pairs.map((p, i) => (i === idx ? { ...p, left: e.target.value } : p)) })} />
+            <Input
+              className="h-7 flex-1 text-xs"
+              placeholder="Elemento"
+              value={pair.left[editLocale] ?? ""}
+              onChange={(e) => onChange({ ...slide, pairs: slide.pairs.map((p, i) => (i === idx ? { ...p, left: { ...p.left, [editLocale]: e.target.value } } : p)) })}
+            />
             <span className="text-ash-400">↔</span>
-            <Input className="h-7 flex-1 text-xs" placeholder="Su pareja" value={pair.right} onChange={(e) => onChange({ ...slide, pairs: slide.pairs.map((p, i) => (i === idx ? { ...p, right: e.target.value } : p)) })} />
+            <Input
+              className="h-7 flex-1 text-xs"
+              placeholder="Su pareja"
+              value={pair.right[editLocale] ?? ""}
+              onChange={(e) => onChange({ ...slide, pairs: slide.pairs.map((p, i) => (i === idx ? { ...p, right: { ...p.right, [editLocale]: e.target.value } } : p)) })}
+            />
             {slide.pairs.length > 2 && (
               <button type="button" className="text-ash-400 hover:text-danger" onClick={() => onChange({ ...slide, pairs: slide.pairs.filter((_, i) => i !== idx) })} aria-label="Quitar par">
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -400,26 +537,48 @@ function MatchingSlideEditor({ slide, onChange }: { slide: MatchingSlide; onChan
           </div>
         ))}
         {slide.pairs.length < 8 && (
-          <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => onChange({ ...slide, pairs: [...slide.pairs, { left: "", right: "" }] })}>
+          <button
+            type="button"
+            className="self-start text-[11px] font-medium text-ink-700 hover:underline"
+            onClick={() => onChange({ ...slide, pairs: [...slide.pairs, { left: emptyText(), right: emptyText() }] })}
+          >
             + Agregar par
           </button>
         )}
       </div>
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
-function OrderingSlideEditor({ slide, onChange }: { slide: OrderingSlide; onChange: (s: ScormSlide) => void }) {
+function OrderingSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: OrderingSlide;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   return (
     <>
-      <Input className="h-7 text-xs" placeholder="Instrucciones (opcional)" value={slide.instructions ?? ""} onChange={(e) => onChange({ ...slide, instructions: e.target.value || null })} />
+      <Input
+        className="h-7 text-xs"
+        placeholder="Instrucciones (opcional)"
+        value={slide.instructions?.[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, instructions: setLocalizedOptional(slide.instructions, editLocale, e.target.value) })}
+      />
       <p className="text-[11px] text-ash-500">Escribe los elementos en el ORDEN CORRECTO — se mostrarán desordenados al alumno.</p>
       <div className="flex flex-col gap-1.5">
         {slide.items.map((item, idx) => (
           <div key={idx} className="flex items-center gap-2">
             <span className="w-4 text-xs text-ash-400">{idx + 1}.</span>
-            <Input className="h-7 flex-1 text-xs" placeholder={`Elemento ${idx + 1}`} value={item} onChange={(e) => onChange({ ...slide, items: slide.items.map((it, i) => (i === idx ? e.target.value : it)) })} />
+            <Input
+              className="h-7 flex-1 text-xs"
+              placeholder={`Elemento ${idx + 1}`}
+              value={item[editLocale] ?? ""}
+              onChange={(e) => onChange({ ...slide, items: slide.items.map((it, i) => (i === idx ? { ...it, [editLocale]: e.target.value } : it)) })}
+            />
             {slide.items.length > 2 && (
               <button type="button" className="text-ash-400 hover:text-danger" onClick={() => onChange({ ...slide, items: slide.items.filter((_, i) => i !== idx) })} aria-label="Quitar elemento">
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -428,18 +587,26 @@ function OrderingSlideEditor({ slide, onChange }: { slide: OrderingSlide; onChan
           </div>
         ))}
         {slide.items.length < 10 && (
-          <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => onChange({ ...slide, items: [...slide.items, ""] })}>
+          <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => onChange({ ...slide, items: [...slide.items, emptyText()] })}>
             + Agregar elemento
           </button>
         )}
       </div>
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
 /** Dibuja zonas correctas arrastrando sobre la imagen (coordenadas en % para que funcionen a cualquier tamaño). */
-function HotspotSlideEditor({ slide, onChange }: { slide: HotspotSlide; onChange: (s: ScormSlide) => void }) {
+function HotspotSlideEditor({
+  slide,
+  editLocale,
+  onChange,
+}: {
+  slide: HotspotSlide;
+  editLocale: ScormLocale;
+  onChange: (s: ScormSlide) => void;
+}) {
   const [uploading, setUploading] = useState(false);
   const [drawing, setDrawing] = useState<{ startX: number; startY: number; x: number; y: number; width: number; height: number } | null>(null);
 
@@ -493,7 +660,13 @@ function HotspotSlideEditor({ slide, onChange }: { slide: HotspotSlide; onChange
 
   return (
     <>
-      <Textarea className="text-xs" rows={2} placeholder="Pregunta (¿dónde está...?)" value={slide.question} onChange={(e) => onChange({ ...slide, question: e.target.value })} />
+      <Textarea
+        className="text-xs"
+        rows={2}
+        placeholder="Pregunta (¿dónde está...?)"
+        value={slide.question[editLocale] ?? ""}
+        onChange={(e) => onChange({ ...slide, question: { ...slide.question, [editLocale]: e.target.value } })}
+      />
       <div className="flex items-center gap-2 text-xs text-ash-600">
         {slide.imageUrl ? <span>Imagen cargada</span> : <span>Sube una imagen primero</span>}
         <DropLabel accept="image/*" busy={uploading} label={slide.imageUrl ? "Reemplazar imagen" : "Subir imagen"} small onFile={handleImageUpload} />
@@ -537,40 +710,42 @@ function HotspotSlideEditor({ slide, onChange }: { slide: HotspotSlide; onChange
           </div>
         </>
       )}
-      <ExplanationField value={slide.explanation} onChange={(v) => onChange({ ...slide, explanation: v })} />
+      <ExplanationField value={slide.explanation} editLocale={editLocale} onChange={(v) => onChange({ ...slide, explanation: v })} />
     </>
   );
 }
 
-function SlideTypeEditor({ slide, onChange }: { slide: ScormSlide; onChange: (s: ScormSlide) => void }) {
+function SlideTypeEditor({ slide, editLocale, onChange }: { slide: ScormSlide; editLocale: ScormLocale; onChange: (s: ScormSlide) => void }) {
   switch (slide.type) {
     case "content":
-      return <ContentSlideEditor slide={slide} onChange={onChange} />;
+      return <ContentSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "true_false":
-      return <TrueFalseSlideEditor slide={slide} onChange={onChange} />;
+      return <TrueFalseSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "single_choice":
-      return <SingleChoiceSlideEditor slide={slide} onChange={onChange} />;
+      return <SingleChoiceSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "multiple_choice":
-      return <MultipleChoiceSlideEditor slide={slide} onChange={onChange} />;
+      return <MultipleChoiceSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "fill_blank":
-      return <FillBlankSlideEditor slide={slide} onChange={onChange} />;
+      return <FillBlankSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "matching":
-      return <MatchingSlideEditor slide={slide} onChange={onChange} />;
+      return <MatchingSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "ordering":
-      return <OrderingSlideEditor slide={slide} onChange={onChange} />;
+      return <OrderingSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
     case "hotspot":
-      return <HotspotSlideEditor slide={slide} onChange={onChange} />;
+      return <HotspotSlideEditor slide={slide} editLocale={editLocale} onChange={onChange} />;
   }
 }
 
 function SlideRow({
   slide,
   sections,
+  editLocale,
   onChange,
   onDelete,
 }: {
   slide: ScormSlide;
   sections: ScormSection[];
+  editLocale: ScormLocale;
   onChange: (next: ScormSlide) => void;
   onDelete: () => void;
 }) {
@@ -603,19 +778,29 @@ function SlideRow({
             <option value="">Elige una sección…</option>
             {sections.map((sec) => (
               <option key={sec.id} value={sec.id}>
-                {sec.title} ({sec.weightPercent}%)
+                {sec.title[editLocale] || sec.title.es} ({sec.weightPercent}%)
               </option>
             ))}
           </Select>
         )}
-        <SlideTypeEditor slide={slide} onChange={onChange} />
+        <SlideTypeEditor slide={slide} editLocale={editLocale} onChange={onChange} />
       </div>
     </div>
   );
 }
 
 /** Fila de sección arrastrable — mismo patrón de drag handle que SlideRow. */
-function SortableSectionRow({ section, onChange, onDelete }: { section: ScormSection; onChange: (patch: Partial<ScormSection>) => void; onDelete: () => void }) {
+function SortableSectionRow({
+  section,
+  editLocale,
+  onChange,
+  onDelete,
+}: {
+  section: ScormSection;
+  editLocale: ScormLocale;
+  onChange: (patch: Partial<ScormSection>) => void;
+  onDelete: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   return (
@@ -623,7 +808,12 @@ function SortableSectionRow({ section, onChange, onDelete }: { section: ScormSec
       <button type="button" className="flex-none cursor-grab touch-none text-ash-400 hover:text-ash-600" aria-label="Arrastrar para reordenar" {...attributes} {...listeners}>
         <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
-      <Input className="h-7 flex-1 text-xs" value={section.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Nombre de la sección" />
+      <Input
+        className="h-7 flex-1 text-xs"
+        value={section.title[editLocale] ?? ""}
+        onChange={(e) => onChange({ title: { ...section.title, [editLocale]: e.target.value } })}
+        placeholder="Nombre de la sección"
+      />
       <Input className="h-7 w-20 text-xs" type="number" min={0} max={100} value={section.weightPercent} onChange={(e) => onChange({ weightPercent: Number(e.target.value) })} />
       <span className="text-xs text-ash-500">%</span>
       <button type="button" className="text-ash-400 hover:text-danger" onClick={onDelete} aria-label="Quitar sección">
@@ -669,10 +859,18 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   const previewSession = owner.type === "lesson" ? adminApi.scormPreviewSession : adminApi.materialScormPreviewSession;
   const downloadPackage = owner.type === "lesson" ? adminApi.downloadScormPackage : adminApi.downloadMaterialScormPackage;
 
-  const existing = owner.scormAuthoredContent;
+  // "Migración perezosa" — un curso viejo (100% string plano en vez de
+  // ScormLocalizedText) se normaliza EN MEMORIA al abrir el editor, nunca
+  // con un script sobre la base de datos.
+  const existing = owner.scormAuthoredContent ? normalizeScormAuthoredContent(owner.scormAuthoredContent) : null;
   const [slides, setSlides] = useState<ScormSlide[]>(existing?.slides?.length ? existing.slides : [SLIDE_FACTORIES.content()]);
   const [passingScore, setPassingScore] = useState(existing?.passingScore ?? 70);
   const [sections, setSections] = useState<ScormSection[]>(existing?.sections ?? []);
+  // "Selector de idioma en el reproductor" — idioma en el que el admin está
+  // escribiendo AHORA MISMO (no confundir con el idioma del reproductor
+  // en tiempo de ejecución). Español es el único obligatorio.
+  const [editLocale, setEditLocale] = useState<ScormLocale>("es");
+  const [translating, setTranslating] = useState<{ done: number; total: number } | null>(null);
   const sectionsWeightTotal = Math.round(sections.reduce((sum, s) => sum + s.weightPercent, 0) * 100) / 100;
   const [theme, setTheme] = useState<ScormTheme>(existing?.theme ?? DEFAULT_SCORM_THEME);
   const [savedPresets, setSavedPresets] = useState<ScormThemePresetSummary[]>([]);
@@ -762,7 +960,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   }
 
   function addSection() {
-    setSections((secs) => [...secs, { id: uid(), title: `Sección ${secs.length + 1}`, weightPercent: 0 }]);
+    setSections((secs) => [...secs, { id: uid(), title: { es: `Sección ${secs.length + 1}` }, weightPercent: 0 }]);
   }
   function updateSection(id: string, patch: Partial<ScormSection>) {
     setSections((secs) => secs.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -775,15 +973,18 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   }
 
   function validate(): string | null {
+    // "Traducción parcial permitida" — solo se EXIGE español; en/it/fr/pt
+    // pueden quedar vacíos sin bloquear el guardado (fallback a español en
+    // el reproductor, ver L() en scorm-authoring.ts).
     for (const s of slides) {
-      if (s.type === "content" && (!s.title.trim() || !s.body.trim())) return "Cada diapositiva de Contenido necesita título y texto.";
-      if ((s.type === "true_false" || s.type === "single_choice" || s.type === "multiple_choice") && !s.question.trim()) return "Cada pregunta necesita su enunciado.";
-      if (s.type === "fill_blank" && !s.text.trim()) return "Completar espacio necesita su frase.";
-      if ((s.type === "single_choice" || s.type === "multiple_choice") && s.options.some((o) => !o.trim())) return "Completa todas las opciones.";
+      if (s.type === "content" && (!s.title.es?.trim() || !s.body.es?.trim())) return "Cada diapositiva de Contenido necesita título y texto (en español).";
+      if ((s.type === "true_false" || s.type === "single_choice" || s.type === "multiple_choice") && !s.question.es?.trim()) return "Cada pregunta necesita su enunciado (en español).";
+      if (s.type === "fill_blank" && !s.text.es?.trim()) return "Completar espacio necesita su frase (en español).";
+      if ((s.type === "single_choice" || s.type === "multiple_choice") && s.options.some((o) => !o.es?.trim())) return "Completa todas las opciones (en español).";
       if (s.type === "multiple_choice" && s.correctIndexes.length === 0) return "Marca al menos una respuesta correcta en cada Opción múltiple.";
-      if (s.type === "fill_blank" && (s.blanks.length === 0 || s.blanks.some((b) => b.length === 0))) return "Define las respuestas aceptadas de cada espacio.";
-      if (s.type === "matching" && s.pairs.some((p) => !p.left.trim() || !p.right.trim())) return "Completa ambos lados de cada par en Emparejar.";
-      if (s.type === "ordering" && s.items.some((i) => !i.trim())) return "Completa todos los elementos de Ordenar.";
+      if (s.type === "fill_blank" && (s.blanks.length === 0 || s.blanks.some((b) => b.es.length === 0))) return "Define las respuestas aceptadas de cada espacio (en español).";
+      if (s.type === "matching" && s.pairs.some((p) => !p.left.es?.trim() || !p.right.es?.trim())) return "Completa ambos lados de cada par en Emparejar (en español).";
+      if (s.type === "ordering" && s.items.some((i) => !i.es?.trim())) return "Completa todos los elementos de Ordenar (en español).";
       if (s.type === "hotspot" && (!s.imageUrl || s.zones.length === 0)) return "Punto caliente necesita una imagen y al menos una zona marcada.";
     }
     // "Varios exámenes con pesos distintos dentro de un mismo SCORM" — si el
@@ -797,6 +998,96 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
       if (unassigned) return "Todas las preguntas deben pertenecer a una sección — asígnalas en cada diapositiva.";
     }
     return null;
+  }
+
+  /**
+   * "Traducir con IA a [idioma activo]" — recorre TODOS los campos de texto
+   * de todas las diapositivas/secciones, toma el valor `.es` y llama a
+   * adminApi.translateText en paralelo con concurrencia limitada. SOLO
+   * rellena el campo en `editLocale` si estaba vacío — nunca sobreescribe
+   * una traducción que el admin ya haya escrito a mano. Trabaja sobre un
+   * clon en memoria y recién actualiza el estado real al terminar, así una
+   * traducción a medias (o que falla) no deja el editor en un estado raro.
+   */
+  async function handleTranslateAll() {
+    if (editLocale === "es" || translating) return;
+    const clonedSlides: ScormSlide[] = JSON.parse(JSON.stringify(slides));
+    const clonedSections: ScormSection[] = JSON.parse(JSON.stringify(sections));
+
+    const tasks: { es: string; apply: (v: string) => void }[] = [];
+    function addTask(obj: ScormLocalizedText | null | undefined, applyToObj: (next: ScormLocalizedText) => void) {
+      if (!obj || !obj.es?.trim()) return;
+      if (obj[editLocale]?.trim()) return; // no sobreescribir traducción existente
+      tasks.push({ es: obj.es, apply: (translated) => applyToObj({ ...obj, [editLocale]: translated }) });
+    }
+
+    for (const s of clonedSlides) {
+      switch (s.type) {
+        case "content":
+          addTask(s.title, (v) => (s.title = v));
+          addTask(s.body, (v) => (s.body = v));
+          break;
+        case "true_false":
+          addTask(s.question, (v) => (s.question = v));
+          addTask(s.explanation, (v) => (s.explanation = v));
+          break;
+        case "single_choice":
+        case "multiple_choice":
+          addTask(s.question, (v) => (s.question = v));
+          s.options.forEach((opt, i) => addTask(opt, (v) => (s.options[i] = v)));
+          addTask(s.explanation, (v) => (s.explanation = v));
+          break;
+        case "fill_blank":
+          // El texto sí se traduce; las respuestas aceptadas (`blanks`) NO —
+          // son respuestas exactas por idioma, no prosa, y quedan a mano del admin.
+          addTask(s.text, (v) => (s.text = v));
+          addTask(s.explanation, (v) => (s.explanation = v));
+          break;
+        case "matching":
+          addTask(s.instructions, (v) => (s.instructions = v));
+          s.pairs.forEach((p, i) => {
+            addTask(p.left, (v) => (s.pairs[i].left = v));
+            addTask(p.right, (v) => (s.pairs[i].right = v));
+          });
+          addTask(s.explanation, (v) => (s.explanation = v));
+          break;
+        case "ordering":
+          addTask(s.instructions, (v) => (s.instructions = v));
+          s.items.forEach((it, i) => addTask(it, (v) => (s.items[i] = v)));
+          addTask(s.explanation, (v) => (s.explanation = v));
+          break;
+        case "hotspot":
+          addTask(s.question, (v) => (s.question = v));
+          addTask(s.explanation, (v) => (s.explanation = v));
+          break;
+      }
+    }
+    for (const sec of clonedSections) {
+      addTask(sec.title, (v) => (sec.title = v));
+    }
+
+    if (tasks.length === 0) return;
+    setTranslating({ done: 0, total: tasks.length });
+    let doneCount = 0;
+    let nextIdx = 0;
+    const CONCURRENCY = 3;
+    async function worker() {
+      while (nextIdx < tasks.length) {
+        const task = tasks[nextIdx++];
+        try {
+          const { translated } = await adminApi.translateText({ text: task.es, from: "es", to: editLocale });
+          task.apply(translated);
+        } catch {
+          // Deja el campo vacío en este idioma si falla — el admin puede reintentar o traducir a mano.
+        }
+        doneCount++;
+        setTranslating({ done: doneCount, total: tasks.length });
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, worker));
+    setSlides(clonedSlides);
+    setSections(clonedSections);
+    setTranslating(null);
   }
 
   async function handleSave() {
@@ -851,6 +1142,39 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
           <p className="text-xs text-ash-500">
             Secuencia lineal (Siguiente/Atrás) — sin ramificación condicional. Al terminar se califica según las preguntas contra la nota mínima.
           </p>
+
+          {/* "Selector de idioma en el reproductor" — idioma de EDICIÓN: en
+              qué idioma se están escribiendo los campos de texto de abajo.
+              Español es el único obligatorio; el resto es traducción
+              opcional (fallback a español en el reproductor si falta). */}
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-paper-border bg-paper-muted p-2.5">
+            <Label className="text-xs">Editando en</Label>
+            <div className="flex items-center gap-1">
+              {SCORM_LOCALES.map((loc) => (
+                <button
+                  key={loc}
+                  type="button"
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[11px]",
+                    editLocale === loc ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper",
+                  )}
+                  onClick={() => setEditLocale(loc)}
+                >
+                  {SCORM_LOCALE_LABEL[loc]}
+                </button>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={editLocale === "es" || Boolean(translating)}
+              onClick={handleTranslateAll}
+              className="ml-auto"
+            >
+              {translating ? `Traduciendo ${translating.done}/${translating.total}…` : `Traducir con IA a ${SCORM_LOCALE_LABEL[editLocale]}`}
+            </Button>
+          </div>
+
           {error && <Callout variant="danger">{error}</Callout>}
 
           {/* "Varios exámenes con pesos distintos dentro de un mismo SCORM"
@@ -869,7 +1193,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
               <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
                 <div className="flex flex-col gap-1.5">
                   {sections.map((sec) => (
-                    <SortableSectionRow key={sec.id} section={sec} onChange={(patch) => updateSection(sec.id, patch)} onDelete={() => deleteSection(sec.id)} />
+                    <SortableSectionRow key={sec.id} section={sec} editLocale={editLocale} onChange={(patch) => updateSection(sec.id, patch)} onDelete={() => deleteSection(sec.id)} />
                   ))}
                 </div>
               </SortableContext>
@@ -1034,7 +1358,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
             <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col gap-2">
                 {slides.map((s) => (
-                  <SlideRow key={s.id} slide={s} sections={sections} onChange={(next) => updateSlide(s.id, next)} onDelete={() => deleteSlide(s.id)} />
+                  <SlideRow key={s.id} slide={s} sections={sections} editLocale={editLocale} onChange={(next) => updateSlide(s.id, next)} onDelete={() => deleteSlide(s.id)} />
                 ))}
               </div>
             </SortableContext>

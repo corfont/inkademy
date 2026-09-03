@@ -14,6 +14,34 @@
  * <iframe srcDoc>) — cero duplicación de la lógica de render/calificación.
  */
 
+// "Selector de idioma en el reproductor" — cada texto de autoría (título,
+// enunciado, opciones, instrucciones...) puede tener una traducción por
+// idioma; español es el único obligatorio (fallback silencioso para
+// cualquier otro que falte, ver L() en el runtime del reproductor).
+export type ScormLocale = "es" | "en" | "it" | "fr" | "pt";
+export const SCORM_LOCALES: ScormLocale[] = ["es", "en", "it", "fr", "pt"];
+export const SCORM_LOCALE_LABEL: Record<ScormLocale, string> = {
+  es: "Español",
+  en: "English",
+  it: "Italiano",
+  fr: "Français",
+  pt: "Português",
+};
+export interface ScormLocalizedText {
+  es: string;
+  en?: string;
+  it?: string;
+  fr?: string;
+  pt?: string;
+}
+export interface ScormLocalizedStringList {
+  es: string[];
+  en?: string[];
+  it?: string[];
+  fr?: string[];
+  pt?: string[];
+}
+
 // "¿Colores, tipografía, tamaño?" — layout de la imagen dentro de una
 // diapositiva de Contenido. Sin `layout` (todo paquete generado antes de
 // esto), el render es "image-bottom" — EXACTAMENTE el comportamiento
@@ -25,8 +53,8 @@ export type ContentSlideLayout = "text" | "image-top" | "image-bottom" | "image-
 export interface ContentSlide {
   id: string;
   type: "content";
-  title: string;
-  body: string;
+  title: ScormLocalizedText;
+  body: ScormLocalizedText;
   imageUrl?: string | null;
   layout?: ContentSlideLayout;
   imageBox?: { x: number; y: number; width: number; height: number } | null;
@@ -34,54 +62,54 @@ export interface ContentSlide {
 export interface TrueFalseSlide {
   id: string;
   type: "true_false";
-  question: string;
+  question: ScormLocalizedText;
   correctAnswer: boolean;
-  explanation?: string | null;
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export interface SingleChoiceSlide {
   id: string;
   type: "single_choice";
-  question: string;
-  options: string[];
+  question: ScormLocalizedText;
+  options: ScormLocalizedText[];
   correctIndex: number;
-  explanation?: string | null;
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export interface MultipleChoiceSlide {
   id: string;
   type: "multiple_choice";
-  question: string;
-  options: string[];
+  question: ScormLocalizedText;
+  options: ScormLocalizedText[];
   correctIndexes: number[];
-  explanation?: string | null;
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export interface FillBlankSlide {
   id: string;
   type: "fill_blank";
   // Contiene "___" (tres guiones bajos) por cada espacio a completar.
-  text: string;
-  // Una entrada por cada "___" en `text`, cada una con sus respuestas aceptadas.
-  blanks: string[][];
-  explanation?: string | null;
+  text: ScormLocalizedText;
+  // Una entrada por cada "___" en `text`, cada una con sus respuestas aceptadas por idioma.
+  blanks: ScormLocalizedStringList[];
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export interface MatchingSlide {
   id: string;
   type: "matching";
-  instructions?: string | null;
-  pairs: { left: string; right: string }[];
-  explanation?: string | null;
+  instructions?: ScormLocalizedText | null;
+  pairs: { left: ScormLocalizedText; right: ScormLocalizedText }[];
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export interface OrderingSlide {
   id: string;
   type: "ordering";
-  instructions?: string | null;
+  instructions?: ScormLocalizedText | null;
   // En el ORDEN CORRECTO — se muestra desordenado en tiempo de reproducción.
-  items: string[];
-  explanation?: string | null;
+  items: ScormLocalizedText[];
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export interface HotspotZone {
@@ -93,10 +121,10 @@ export interface HotspotZone {
 export interface HotspotSlide {
   id: string;
   type: "hotspot";
-  question: string;
+  question: ScormLocalizedText;
   imageUrl: string;
   zones: HotspotZone[];
-  explanation?: string | null;
+  explanation?: ScormLocalizedText | null;
   sectionId?: string | null;
 }
 export type ScormSlide =
@@ -119,7 +147,7 @@ export type ScormSlide =
 // cero riesgo para contenido ya existente.
 export interface ScormSection {
   id: string;
-  title: string;
+  title: ScormLocalizedText;
   weightPercent: number;
 }
 // "¿Puedo poner colores, tipos de letra, tamaño, como lo hacen los
@@ -230,6 +258,85 @@ export interface ScormAuthoredContent {
   theme?: ScormTheme;
 }
 
+// "Migración perezosa" — contenido creado ANTES del selector de idioma tiene
+// sus campos de texto como `string` plano en vez de ScormLocalizedText. En
+// vez de una migración de base de datos, se normaliza EN MEMORIA cada vez
+// que se lee/renderiza (buildScormContentHtml la llama como primera línea).
+// Idempotente: si ya viene como { es: ... }, se deja tal cual.
+function wrapText(v: unknown): ScormLocalizedText | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "string") return { es: v };
+  if (typeof v === "object" && v !== null && "es" in (v as Record<string, unknown>)) return v as ScormLocalizedText;
+  // Forma inesperada (ni string ni ya-localizado) — se envuelve como string vacío para no reventar el render.
+  return { es: "" };
+}
+function wrapTextRequired(v: unknown): ScormLocalizedText {
+  return wrapText(v) ?? { es: "" };
+}
+function wrapList(v: unknown): ScormLocalizedStringList {
+  if (Array.isArray(v)) return { es: v as string[] };
+  if (typeof v === "object" && v !== null && "es" in (v as Record<string, unknown>)) return v as ScormLocalizedStringList;
+  return { es: [] };
+}
+
+export function normalizeScormAuthoredContent(raw: any): ScormAuthoredContent {
+  if (!raw || typeof raw !== "object") return raw;
+  const slides: ScormSlide[] = Array.isArray(raw.slides)
+    ? raw.slides.map((slide: any) => {
+        if (!slide || typeof slide !== "object") return slide;
+        switch (slide.type) {
+          case "content":
+            return { ...slide, title: wrapTextRequired(slide.title), body: wrapTextRequired(slide.body) };
+          case "true_false":
+            return { ...slide, question: wrapTextRequired(slide.question), explanation: slide.explanation != null ? wrapText(slide.explanation) : slide.explanation };
+          case "single_choice":
+          case "multiple_choice":
+            return {
+              ...slide,
+              question: wrapTextRequired(slide.question),
+              options: Array.isArray(slide.options) ? slide.options.map((o: unknown) => wrapTextRequired(o)) : slide.options,
+              explanation: slide.explanation != null ? wrapText(slide.explanation) : slide.explanation,
+            };
+          case "fill_blank":
+            return {
+              ...slide,
+              text: wrapTextRequired(slide.text),
+              blanks: Array.isArray(slide.blanks) ? slide.blanks.map((b: unknown) => wrapList(b)) : slide.blanks,
+              explanation: slide.explanation != null ? wrapText(slide.explanation) : slide.explanation,
+            };
+          case "matching":
+            return {
+              ...slide,
+              instructions: slide.instructions != null ? wrapText(slide.instructions) : slide.instructions,
+              pairs: Array.isArray(slide.pairs)
+                ? slide.pairs.map((p: any) => ({ left: wrapTextRequired(p?.left), right: wrapTextRequired(p?.right) }))
+                : slide.pairs,
+              explanation: slide.explanation != null ? wrapText(slide.explanation) : slide.explanation,
+            };
+          case "ordering":
+            return {
+              ...slide,
+              instructions: slide.instructions != null ? wrapText(slide.instructions) : slide.instructions,
+              items: Array.isArray(slide.items) ? slide.items.map((it: unknown) => wrapTextRequired(it)) : slide.items,
+              explanation: slide.explanation != null ? wrapText(slide.explanation) : slide.explanation,
+            };
+          case "hotspot":
+            return {
+              ...slide,
+              question: wrapTextRequired(slide.question),
+              explanation: slide.explanation != null ? wrapText(slide.explanation) : slide.explanation,
+            };
+          default:
+            return slide;
+        }
+      })
+    : raw.slides;
+  const sections: ScormSection[] | undefined = Array.isArray(raw.sections)
+    ? raw.sections.map((sec: any) => ({ ...sec, title: wrapTextRequired(sec.title) }))
+    : raw.sections;
+  return { ...raw, slides, sections };
+}
+
 export const SCORM_SLIDE_TYPE_LABEL: Record<ScormSlide["type"], string> = {
   content: "Contenido",
   true_false: "Verdadero/Falso",
@@ -317,6 +424,7 @@ export function buildScormManifestXml(lessonId: string, title: string): string {
  * funcionando igual: todo apiCall(...) es no-op seguro.
  */
 export function buildScormContentHtml(content: ScormAuthoredContent, title: string, embeddedFontFaceCss?: string | null): string {
+  content = normalizeScormAuthoredContent(content);
   const dataJson = safeJsonForScript(content);
   const safeTitle = escapeHtml(title);
   const theme = content.theme ?? DEFAULT_SCORM_THEME;
@@ -382,6 +490,8 @@ ${fontFaceHtml}
   .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 96px; }
   .bar { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: var(--scorm-border); z-index: 50; }
   .bar-fill { height: 100%; background: var(--scorm-primary); transition: width .3s; }
+  .locale-bar { position: fixed; top: 8px; right: 10px; z-index: 51; }
+  .locale-select { font: inherit; font-size: calc(.8rem * var(--scorm-scale)); border: 1px solid var(--scorm-border); border-radius: var(--scorm-radius-sm); background: var(--scorm-card); color: var(--scorm-text); padding: 4px 8px; cursor: pointer; }
   h1 { font-size: calc(1.4rem * var(--scorm-scale)); margin: 0 0 12px; }
   p { line-height: 1.6; white-space: pre-wrap; }
   img.slide-image { max-width: 100%; border-radius: var(--scorm-radius); margin-top: 12px; }
@@ -439,6 +549,7 @@ ${fontFaceHtml}
 <body>
 ${headerHtml}
 <div class="bar"><div class="bar-fill" id="bar-fill" style="width:0%"></div></div>
+<div class="locale-bar"><select id="locale-select" class="locale-select" aria-label="Idioma / Language"></select></div>
 <div class="wrap"><div class="card" id="app">Cargando…</div></div>
 <script>
 (function () {
@@ -451,6 +562,101 @@ ${headerHtml}
   var revealed = {};
   var finished = false;
   var interactionLog = {}; // slideId -> { id, type, response, correct }
+
+  // ============ Selector de idioma (es/en/it/fr/pt) ============
+  // Diccionario fijo de UI (no viene de DATA — son las mismas 15 frases del
+  // reproductor en sí, no contenido de autoría). "es" es el único con
+  // garantía de estar completo; L() más abajo cae a español si algo falta.
+  var UI_STRINGS = {
+    es: { next: "Siguiente", finish: "Finalizar", verify: "Verificar", back: "Atrás",
+          correct: "✓ Correcto.", incorrect: "✗ Incorrecto.", result: "Resultado",
+          passed: "Aprobado.", failedTpl: "No alcanzaste la nota mínima ({{score}}%).",
+          scoreOfTpl: "{{correct}} de {{total}} respuestas correctas.",
+          trueLabel: "Verdadero", falseLabel: "Falso",
+          defaultMatchingInstructions: "Arrastra cada elemento de la derecha sobre su pareja.",
+          defaultOrderingInstructions: "Arrastra para poner los elementos en el orden correcto.",
+          loading: "Cargando…" },
+    en: { next: "Next", finish: "Finish", verify: "Check", back: "Back",
+          correct: "✓ Correct.", incorrect: "✗ Incorrect.", result: "Result",
+          passed: "Passed.", failedTpl: "You did not reach the minimum score ({{score}}%).",
+          scoreOfTpl: "{{correct}} of {{total}} correct answers.",
+          trueLabel: "True", falseLabel: "False",
+          defaultMatchingInstructions: "Drag each item on the right onto its match.",
+          defaultOrderingInstructions: "Drag to put the items in the correct order.",
+          loading: "Loading…" },
+    it: { next: "Avanti", finish: "Termina", verify: "Verifica", back: "Indietro",
+          correct: "✓ Corretto.", incorrect: "✗ Errato.", result: "Risultato",
+          passed: "Superato.", failedTpl: "Non hai raggiunto il punteggio minimo ({{score}}%).",
+          scoreOfTpl: "{{correct}} risposte corrette su {{total}}.",
+          trueLabel: "Vero", falseLabel: "Falso",
+          defaultMatchingInstructions: "Trascina ogni elemento a destra sulla sua coppia.",
+          defaultOrderingInstructions: "Trascina per mettere gli elementi nell'ordine corretto.",
+          loading: "Caricamento…" },
+    fr: { next: "Suivant", finish: "Terminer", verify: "Vérifier", back: "Retour",
+          correct: "✓ Correct.", incorrect: "✗ Incorrect.", result: "Résultat",
+          passed: "Réussi.", failedTpl: "Vous n'avez pas atteint la note minimale ({{score}}%).",
+          scoreOfTpl: "{{correct}} réponses correctes sur {{total}}.",
+          trueLabel: "Vrai", falseLabel: "Faux",
+          defaultMatchingInstructions: "Faites glisser chaque élément de droite vers sa paire.",
+          defaultOrderingInstructions: "Faites glisser pour remettre les éléments dans le bon ordre.",
+          loading: "Chargement…" },
+    pt: { next: "Próximo", finish: "Concluir", verify: "Verificar", back: "Voltar",
+          correct: "✓ Correto.", incorrect: "✗ Incorreto.", result: "Resultado",
+          passed: "Aprovado.", failedTpl: "Você não atingiu a nota mínima ({{score}}%).",
+          scoreOfTpl: "{{correct}} de {{total}} respostas corretas.",
+          trueLabel: "Verdadeiro", falseLabel: "Falso",
+          defaultMatchingInstructions: "Arraste cada item da direita para o seu par.",
+          defaultOrderingInstructions: "Arraste para colocar os itens na ordem correta.",
+          loading: "Carregando…" },
+  };
+  var LOCALE_LABEL = { es: "Español", en: "English", it: "Italiano", fr: "Français", pt: "Português" };
+  var LOCALE_ORDER = ["es", "en", "it", "fr", "pt"];
+  var localeMemory = null; // respaldo en memoria si localStorage no está disponible (iframe sandbox sin allow-same-origin)
+  var locale = "es";
+
+  function readStoredLocale() {
+    try {
+      return window.localStorage.getItem("inkademy_scorm_locale");
+    } catch (e) {
+      return localeMemory;
+    }
+  }
+  function writeStoredLocale(v) {
+    try {
+      window.localStorage.setItem("inkademy_scorm_locale", v);
+    } catch (e) {
+      localeMemory = v;
+    }
+  }
+  // Fallback silencioso a español si el idioma activo no tiene esa traducción.
+  function L(loc) {
+    if (typeof loc === "string") return loc;
+    return (loc && locale && loc[locale]) || (loc && loc.es) || "";
+  }
+  function initLocaleSelector() {
+    var select = document.getElementById("locale-select");
+    if (!select) return;
+    select.innerHTML = "";
+    LOCALE_ORDER.forEach(function (loc) {
+      var opt = document.createElement("option");
+      opt.value = loc;
+      opt.textContent = LOCALE_LABEL[loc];
+      select.appendChild(opt);
+    });
+    select.value = locale;
+    select.addEventListener("change", function () { setLocale(this.value); });
+  }
+  function setLocale(newLocale) {
+    if (!UI_STRINGS[newLocale]) return;
+    locale = newLocale;
+    document.documentElement.lang = locale;
+    writeStoredLocale(locale);
+    var select = document.getElementById("locale-select");
+    if (select) select.value = locale;
+    saveLocation();
+    render();
+  }
+  window.__setLocale = setLocale;
 
   function findAPI(win) {
     var attempts = 0;
@@ -501,13 +707,25 @@ ${headerHtml}
       if (!isNaN(idx) && idx >= 0 && idx < slides.length) current = idx;
     }
     var suspend = apiCall("GetValue", "LMSGetValue", [SUSPEND_DATA_KEY]);
+    var suspendLocale = null;
     if (suspend) {
       try {
         var state = JSON.parse(suspend);
         answers = state.answers || {};
         revealed = state.revealed || {};
+        suspendLocale = state.locale || null;
       } catch (e) {}
     }
+    // Orden de resolución: cmi.suspend_data.locale (si hay LMS y trae algo)
+    // -> localStorage (si accesible) -> "es".
+    if (suspendLocale && UI_STRINGS[suspendLocale]) {
+      locale = suspendLocale;
+    } else {
+      var stored = readStoredLocale();
+      locale = stored && UI_STRINGS[stored] ? stored : "es";
+    }
+    document.documentElement.lang = locale;
+    writeStoredLocale(locale);
     // El objeto cmi se reinicia en cada carga de página — sin re-emitir esto,
     // la analítica (cmi.interactions.n.*) perdería lo respondido antes de
     // cerrar/recargar aunque el puntaje final ya se calcule bien.
@@ -517,7 +735,7 @@ ${headerHtml}
   }
   function saveLocation() {
     apiCall("SetValue", "LMSSetValue", [locationKey, String(current)]);
-    apiCall("SetValue", "LMSSetValue", [SUSPEND_DATA_KEY, JSON.stringify({ answers: answers, revealed: revealed })]);
+    apiCall("SetValue", "LMSSetValue", [SUSPEND_DATA_KEY, JSON.stringify({ answers: answers, revealed: revealed, locale: locale })]);
     apiCall("Commit", "LMSCommit", [""]);
   }
 
@@ -563,7 +781,9 @@ ${headerHtml}
       case "fill_blank": {
         for (var i = 0; i < s.blanks.length; i++) {
           var given = normalizeText((a && a[i]) || "");
-          var accepted = s.blanks[i].map(normalizeText);
+          // Lista de respuestas aceptadas del idioma activo, con fallback a español si ese blank no tiene ese idioma.
+          var acceptedList = s.blanks[i][locale] || s.blanks[i].es || [];
+          var accepted = acceptedList.map(normalizeText);
           if (accepted.indexOf(given) === -1) return false;
         }
         return true;
@@ -589,9 +809,9 @@ ${headerHtml}
   function responseText(s) {
     var a = answers[s.id];
     switch (s.type) {
-      case "true_false": return a === 0 ? "Verdadero" : "Falso";
-      case "single_choice": return s.options[a] || "";
-      case "multiple_choice": return (a || []).map(function (i) { return s.options[i]; }).join(" | ");
+      case "true_false": return a === 0 ? UI_STRINGS[locale].trueLabel : UI_STRINGS[locale].falseLabel;
+      case "single_choice": return L(s.options[a]) || "";
+      case "multiple_choice": return (a || []).map(function (i) { return L(s.options[i]); }).join(" | ");
       case "fill_blank": return (a || []).join(" | ");
       case "matching": {
         // answers[s.id] es un OBJETO { leftIndex: rightIndex } (asignaciones
@@ -599,11 +819,11 @@ ${headerHtml}
         var pairsText = [];
         for (var pi = 0; pi < s.pairs.length; pi++) {
           var assignedRight = a ? a[pi] : undefined;
-          pairsText.push(s.pairs[pi].left + "=" + (assignedRight != null ? s.pairs[assignedRight].right : "?"));
+          pairsText.push(L(s.pairs[pi].left) + "=" + (assignedRight != null ? L(s.pairs[assignedRight].right) : "?"));
         }
         return pairsText.join(", ");
       }
-      case "ordering": return (a || []).map(function (i) { return s.items[i]; }).join(" > ");
+      case "ordering": return (a || []).map(function (i) { return L(s.items[i]); }).join(" > ");
       case "hotspot": return a ? Math.round(a.x) + "%," + Math.round(a.y) + "%" : "";
       default: return "";
     }
@@ -636,8 +856,8 @@ ${headerHtml}
   // diapositiva de Contenido. Sin layout (paquetes generados antes de
   // esto), el comportamiento es EXACTAMENTE el legado: imagen al final.
   function renderContent(s) {
-    var titleHtml = '<h1>' + escapeHtml(s.title) + '</h1>';
-    var bodyHtml = '<p>' + escapeHtml(s.body) + '</p>';
+    var titleHtml = '<h1>' + escapeHtml(L(s.title)) + '</h1>';
+    var bodyHtml = '<p>' + escapeHtml(L(s.body)) + '</p>';
     var layout = s.layout || (s.imageUrl ? "image-bottom" : "text");
     if (!s.imageUrl || layout === "text") return titleHtml + bodyHtml;
     var img = '<img class="slide-image" src="' + escapeHtml(s.imageUrl) + '" alt="" />';
@@ -674,26 +894,26 @@ ${headerHtml}
       var handler = isMulti
         ? "window.__toggleMulti('" + s.id + "'," + idx + ")"
         : "window.__onAnswer('" + s.id + "'," + idx + ")";
-      return '<label class="' + cls + '"><input type="' + inputType + '" name="q-' + s.id + '" value="' + idx + '" ' + checked + ' ' + disabled + ' onchange="' + handler + '" />' + escapeHtml(opt) + '</label>';
+      return '<label class="' + cls + '"><input type="' + inputType + '" name="q-' + s.id + '" value="' + idx + '" ' + checked + ' ' + disabled + ' onchange="' + handler + '" />' + escapeHtml(L(opt)) + '</label>';
     }).join("");
     return buildQuestionBlock(s, questionText, optsHtml, isRevealed, selected !== undefined && (!isMulti || selectedSet.length > 0));
   }
 
   function renderTrueFalse(s) {
-    return renderOptionsQuestion(s, s.question, ["Verdadero", "Falso"], false);
+    return renderOptionsQuestion(s, L(s.question), [UI_STRINGS[locale].trueLabel, UI_STRINGS[locale].falseLabel], false);
   }
   function renderSingleChoice(s) {
-    return renderOptionsQuestion(s, s.question, s.options, false);
+    return renderOptionsQuestion(s, L(s.question), s.options, false);
   }
   function renderMultipleChoice(s) {
-    return renderOptionsQuestion(s, s.question, s.options, true);
+    return renderOptionsQuestion(s, L(s.question), s.options, true);
   }
 
   function renderFillBlank(s) {
     var isRevealed = !!revealed[s.id];
     var current_ = answers[s.id] || [];
     var blankIdx = 0;
-    var parts = s.text.split("___");
+    var parts = L(s.text).split("___");
     var html = parts.map(function (part, i) {
       var piece = escapeHtml(part);
       if (i === parts.length - 1) return piece;
@@ -701,7 +921,8 @@ ${headerHtml}
       var val = current_[bi] || "";
       var cls = "blank-input";
       if (isRevealed) {
-        var accepted = s.blanks[bi].map(normalizeText);
+        var acceptedList = s.blanks[bi][locale] || s.blanks[bi].es || [];
+        var accepted = acceptedList.map(normalizeText);
         cls += accepted.indexOf(normalizeText(val)) !== -1 ? " correct" : " wrong";
       }
       var disabled = isRevealed ? "disabled" : "";
@@ -722,17 +943,17 @@ ${headerHtml}
       var cls = "match-slot" + (filled ? " filled" : "");
       if (isRevealed && filled) cls += (ri === li ? " correct" : " wrong");
       var slotContent = filled
-        ? escapeHtml(s.pairs[ri].right) + (isRevealed ? "" : ' <span class="remove-x" onclick="window.__unmatch(\\'' + s.id + '\\',' + li + ')">×</span>')
+        ? escapeHtml(L(s.pairs[ri].right)) + (isRevealed ? "" : ' <span class="remove-x" onclick="window.__unmatch(\\'' + s.id + '\\',' + li + ')">×</span>')
         : "";
-      return '<div class="match-row"><div class="match-left">' + escapeHtml(pair.left) + '</div>' +
+      return '<div class="match-row"><div class="match-left">' + escapeHtml(L(pair.left)) + '</div>' +
         '<div class="' + cls + '" data-drop-left="' + li + '">' + slotContent + '</div></div>';
     }).join("");
     var poolItems = s.pairs.map(function (pair, ri) { return { ri: ri, text: pair.right }; }).filter(function (item) { return !placedRight[item.ri]; });
     var pool = isRevealed ? "" : '<div class="match-pool" id="pool-' + s.id + '">' +
-      poolItems.map(function (item) { return '<div class="chip" data-right-index="' + item.ri + '" data-slide="' + s.id + '">' + escapeHtml(item.text) + '</div>'; }).join("") +
+      poolItems.map(function (item) { return '<div class="chip" data-right-index="' + item.ri + '" data-slide="' + s.id + '">' + escapeHtml(L(item.text)) + '</div>'; }).join("") +
       '</div>';
     var allPlaced = Object.keys(placements).length === s.pairs.length;
-    return buildQuestionBlock(s, s.instructions || "Arrastra cada elemento de la derecha sobre su pareja.", rows + pool, isRevealed, allPlaced);
+    return buildQuestionBlock(s, L(s.instructions) || UI_STRINGS[locale].defaultMatchingInstructions, rows + pool, isRevealed, allPlaced);
   }
 
   function renderOrdering(s) {
@@ -743,9 +964,9 @@ ${headerHtml}
       var correctHere = origIdx === pos;
       var cls = "order-item" + (isRevealed ? (correctHere ? " correct" : " wrong") : "");
       var handle = isRevealed ? "" : '<span class="drag-handle" data-order-slide="' + s.id + '">☰</span>';
-      return '<li class="' + cls + '" data-pos="' + pos + '">' + handle + '<span>' + escapeHtml(s.items[origIdx]) + '</span></li>';
+      return '<li class="' + cls + '" data-pos="' + pos + '">' + handle + '<span>' + escapeHtml(L(s.items[origIdx])) + '</span></li>';
     }).join("");
-    return buildQuestionBlock(s, s.instructions || "Arrastra para poner los elementos en el orden correcto.", '<ul class="order-list" id="order-' + s.id + '">' + items + '</ul>', isRevealed, true);
+    return buildQuestionBlock(s, L(s.instructions) || UI_STRINGS[locale].defaultOrderingInstructions, '<ul class="order-list" id="order-' + s.id + '">' + items + '</ul>', isRevealed, true);
   }
 
   function renderHotspot(s) {
@@ -756,20 +977,20 @@ ${headerHtml}
       return '<div class="hotspot-zone" style="left:' + z.x + '%;top:' + z.y + '%;width:' + z.width + '%;height:' + z.height + '%"></div>';
     }).join("") : "";
     var img = '<div class="hotspot-wrap" id="hotspot-' + s.id + '"><img src="' + escapeHtml(s.imageUrl) + '" alt="" draggable="false" />' + marker + zonesHtml + '</div>';
-    return buildQuestionBlock(s, s.question, img, isRevealed, !!a);
+    return buildQuestionBlock(s, L(s.question), img, isRevealed, !!a);
   }
 
   function buildQuestionBlock(s, questionText, bodyHtml, isRevealed, canVerify) {
     var feedback = "";
     if (isRevealed) {
       var ok = isCorrect(s);
-      feedback = '<p class="feedback ' + (ok ? "ok" : "bad") + '">' + (ok ? "✓ Correcto." : "✗ Incorrecto.") + (s.explanation ? " " + escapeHtml(s.explanation) : "") + '</p>';
+      feedback = '<p class="feedback ' + (ok ? "ok" : "bad") + '">' + (ok ? UI_STRINGS[locale].correct : UI_STRINGS[locale].incorrect) + (s.explanation ? " " + escapeHtml(L(s.explanation)) : "") + '</p>';
     }
     var isLast = current === slides.length - 1;
     var nav = isRevealed
-      ? '<div class="nav">' + (current > 0 ? '<button class="ghost" onclick="window.__prev()">Atrás</button>' : '<span></span>') +
-        '<button class="primary" onclick="window.__next()">' + (isLast ? "Finalizar" : "Siguiente") + '</button></div>'
-      : '<div class="nav"><span></span><button class="primary" ' + (canVerify ? "" : "disabled") + ' onclick="window.__verify(\\'' + s.id + '\\')">Verificar</button></div>';
+      ? '<div class="nav">' + (current > 0 ? '<button class="ghost" onclick="window.__prev()">' + escapeHtml(UI_STRINGS[locale].back) + '</button>' : '<span></span>') +
+        '<button class="primary" onclick="window.__next()">' + escapeHtml(isLast ? UI_STRINGS[locale].finish : UI_STRINGS[locale].next) + '</button></div>'
+      : '<div class="nav"><span></span><button class="primary" ' + (canVerify ? "" : "disabled") + ' onclick="window.__verify(\\'' + s.id + '\\')">' + escapeHtml(UI_STRINGS[locale].verify) + '</button></div>';
     var q = questionText ? '<h1>' + escapeHtml(questionText) + '</h1>' : "";
     return q + bodyHtml + feedback + nav;
   }
@@ -812,12 +1033,16 @@ ${headerHtml}
     var sections = DATA.sections || [];
     var breakdown = sections.length > 0
       ? '<ul class="section-breakdown">' + sectionScores().map(function (sec) {
-          return '<li>' + escapeHtml(sec.title) + ': ' + sec.correct + '/' + sec.total + ' (' + sec.score + '%, peso ' + sec.weightPercent + '%)</li>';
+          return '<li>' + escapeHtml(L(sec.title)) + ': ' + sec.correct + '/' + sec.total + ' (' + sec.score + '%, peso ' + sec.weightPercent + '%)</li>';
         }).join("") + '</ul>'
       : "";
-    return '<h1>Resultado</h1><p class="result-score ' + (passed ? "pass" : "fail") + '">' + score + '%</p>' +
+    var scoreOfLine = sections.length === 0 && total > 0
+      ? UI_STRINGS[locale].scoreOfTpl.replace("{{correct}}", String(correct)).replace("{{total}}", String(total)) + " "
+      : "";
+    var statusLine = passed ? UI_STRINGS[locale].passed : UI_STRINGS[locale].failedTpl.replace("{{score}}", String(passingScore));
+    return '<h1>' + escapeHtml(UI_STRINGS[locale].result) + '</h1><p class="result-score ' + (passed ? "pass" : "fail") + '">' + score + '%</p>' +
       breakdown +
-      '<p>' + (sections.length === 0 && total > 0 ? correct + ' de ' + total + ' respuestas correctas. ' : "") + (passed ? "Aprobado." : "No alcanzaste la nota mínima (" + passingScore + "%).") + '</p>';
+      '<p>' + escapeHtml(scoreOfLine) + escapeHtml(statusLine) + '</p>';
   }
 
   function canAdvance() {
@@ -838,26 +1063,38 @@ ${headerHtml}
       return;
     }
 
-    var s = slides[current];
-    var body;
-    switch (s.type) {
-      case "content": body = renderContent(s); break;
-      case "true_false": body = renderTrueFalse(s); break;
-      case "single_choice": body = renderSingleChoice(s); break;
-      case "multiple_choice": body = renderMultipleChoice(s); break;
-      case "fill_blank": body = renderFillBlank(s); break;
-      case "matching": body = renderMatching(s); break;
-      case "ordering": body = renderOrdering(s); break;
-      case "hotspot": body = renderHotspot(s); break;
-      default: body = "";
+    // Bug real encontrado en vivo: sin este try/catch, un slide con datos
+    // malformados (p.ej. "options" ausente en una pregunta) lanzaba una
+    // excepción no capturada acá dentro — el DOM se quedaba congelado en el
+    // slide ANTERIOR, sin ningún error visible para el alumno ("la pregunta
+    // no aparece"). Ahora se ve un mensaje explícito en vez de una pantalla
+    // muda, y el resto del reproductor (barra de progreso, etc.) no queda
+    // en un estado a medias.
+    try {
+      var s = slides[current];
+      var body;
+      switch (s.type) {
+        case "content": body = renderContent(s); break;
+        case "true_false": body = renderTrueFalse(s); break;
+        case "single_choice": body = renderSingleChoice(s); break;
+        case "multiple_choice": body = renderMultipleChoice(s); break;
+        case "fill_blank": body = renderFillBlank(s); break;
+        case "matching": body = renderMatching(s); break;
+        case "ordering": body = renderOrdering(s); break;
+        case "hotspot": body = renderHotspot(s); break;
+        default: body = "";
+      }
+      if (s.type === "content") {
+        var isLast = current === slides.length - 1;
+        body += '<div class="nav">' + (current > 0 ? '<button class="ghost" onclick="window.__prev()">' + escapeHtml(UI_STRINGS[locale].back) + '</button>' : '<span></span>') +
+          '<button class="primary" onclick="window.__next()">' + escapeHtml(isLast ? UI_STRINGS[locale].finish : UI_STRINGS[locale].next) + '</button></div>';
+      }
+      app.innerHTML = body;
+      wireInteractiveWidgets(s);
+    } catch (err) {
+      app.innerHTML = '<div class="card"><p>No se pudo cargar esta pregunta — contacta a soporte.</p></div>';
+      if (window.console && window.console.error) window.console.error("[scorm] error al renderizar slide", current, err);
     }
-    if (s.type === "content") {
-      var isLast = current === slides.length - 1;
-      body += '<div class="nav">' + (current > 0 ? '<button class="ghost" onclick="window.__prev()">Atrás</button>' : '<span></span>') +
-        '<button class="primary" onclick="window.__next()">' + (isLast ? "Finalizar" : "Siguiente") + '</button></div>';
-    }
-    app.innerHTML = body;
-    wireInteractiveWidgets(s);
   }
 
   // ============ Handlers globales (llamados desde HTML inline) ============
@@ -887,9 +1124,12 @@ ${headerHtml}
   window.__verify = function (slideId) { revealed[slideId] = true; var s = slides.find(function (sl) { return sl.id === slideId; }); recordInteraction(s); render(); };
   window.__next = function () {
     if (!canAdvance()) return;
+    // Bug real: antes se guardaba la ubicación ANTES de avanzar "current",
+    // así que cmi.location quedaba un slide atrás del real. Si la sesión
+    // terminaba justo ahí sin pasar por beforeunload (que sí vuelve a
+    // guardar la posición correcta), un reanudo empezaba un slide atrás.
+    if (current === slides.length - 1) { finished = true; } else { current++; }
     saveLocation();
-    if (current === slides.length - 1) { finished = true; }
-    else { current++; }
     render();
   };
   window.__prev = function () { if (current > 0) { current--; saveLocation(); render(); } };
@@ -1022,6 +1262,7 @@ ${headerHtml}
   });
 
   restoreState();
+  initLocaleSelector();
   render();
 })();
 </script>
