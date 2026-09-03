@@ -1,5 +1,5 @@
 import { rgb } from "pdf-lib";
-import { createReport, drawTitle, drawSubtitle, drawKpiRow, drawComboChart, drawDonutChart, drawParagraph, finalizeReport } from "./reports/report-kit";
+import { createReport, drawTitle, drawSubtitle, drawKpiRow, drawComboChart, drawDonutChart, drawParagraph, drawCallout, finalizeReport } from "./reports/report-kit";
 
 /**
  * "Tiene que ser como un dashboard en PDF, profesional y ejecutivo" —
@@ -38,11 +38,19 @@ const EXPENSE_ORIGIN_COLORS = {
   manual: rgb(0.55, 0.56, 0.6), // gris — Manuales
 };
 
-export async function buildFinancialReportPdf(summary: any, pnl: any, logoBytes?: Buffer | null): Promise<Buffer> {
+export async function buildFinancialReportPdf(summary: any, pnl: any, logoBytes?: Buffer | null, aiSummary?: string | null): Promise<Buffer> {
   const ctx = await createReport({ title: "Estado financiero", watermarkText: "INKADEMY", logoBytes });
 
   drawTitle(ctx, "Estado financiero");
   drawSubtitle(ctx, `Periodo: ${new Date(summary.from).toLocaleDateString("es-PE")} — ${new Date(summary.to).toLocaleDateString("es-PE")}.`);
+
+  // "Resumen ejecutivo con IA" — nunca bloquea el reporte: si el asistente
+  // está apagado o Gemini falla, admin.service.ts ya resolvió aiSummary a
+  // null antes de llegar acá, y el PDF sale exactamente igual que siempre.
+  // Sin emoji en la etiqueta: las fuentes estándar de pdf-lib (Helvetica/
+  // Trebuchet, codificación WinAnsi) no tienen glifo para "✨" — salía como
+  // un cuadro "tofu" en el PDF (sí funciona en HTML, ver EmailCampaignManager).
+  if (aiSummary) drawCallout(ctx, { label: "RESUMEN GENERADO CON IA", text: aiSummary });
 
   for (const row of summary.rows as any[]) {
     drawSubtitle(ctx, `Balance en ${row.currency}`, { gapAfter: 8 });

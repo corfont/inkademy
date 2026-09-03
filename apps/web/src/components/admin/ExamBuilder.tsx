@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2, Pencil, Eye, Archive, ArchiveRestore, X } from "lucide-react";
+import { GripVertical, Trash2, Pencil, Eye, Archive, ArchiveRestore, X, Sparkles } from "lucide-react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Dialog } from "@/components/ui/Dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
@@ -301,6 +301,153 @@ function SortableQuestionRow({
  * cabecera/pie/instrucciones (heredadas del curso u override propio),
  * preguntas reordenables por drag-and-drop, y vista previa.
  */
+const AI_QUESTION_TYPES = ["SINGLE_CHOICE", "MULTI_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "OPEN", "ORDERING"];
+
+/**
+ * "Generación de preguntas con IA" — un diálogo separado del formulario de
+ * creación manual, a propósito: los borradores de Gemini se muestran para
+ * revisión (tema/tipo/texto/opciones), el admin los ajusta con el MISMO
+ * formulario de edición que ya existe por pregunta antes de guardar cada
+ * uno — nunca se crean solos. Reusa createQuestion existente en un loop,
+ * no hay endpoint de "bulk create" nuevo.
+ */
+function AiSuggestQuestionsDialog({ assessmentId, onDone }: { assessmentId: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [count, setCount] = useState(5);
+  const [types, setTypes] = useState<string[]>(["SINGLE_CHOICE", "TRUE_FALSE"]);
+  const [drafts, setDrafts] = useState<any[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggleType(t: string) {
+    setTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
+
+  async function handleGenerate() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await adminApi.suggestQuestions(assessmentId, { topic, count, types });
+      setDrafts(result);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos generar preguntas. Intenta de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveOne(index: number) {
+    if (!drafts) return;
+    setSavingIndex(index);
+    setError(null);
+    try {
+      await adminApi.createQuestion(assessmentId, drafts[index]);
+      setDrafts((prev) => (prev ? prev.filter((_, i) => i !== index) : prev));
+      onDone();
+    } catch {
+      setError("No se pudo guardar esa pregunta.");
+    } finally {
+      setSavingIndex(null);
+    }
+  }
+
+  async function handleSaveAll() {
+    if (!drafts) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const draft of drafts) await adminApi.createQuestion(assessmentId, draft);
+      setDrafts([]);
+      onDone();
+      setOpen(false);
+    } catch {
+      setError("Algunas preguntas no se pudieron guardar — revisa las que quedan en la lista.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="self-start border-violet-300 text-violet-700 hover:bg-violet-50">
+        <Sparkles className="h-4 w-4" aria-hidden="true" />
+        Generar con IA
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Generar preguntas con IA">
+        <div className="flex flex-col gap-4">
+          {error && <Callout variant="danger">{error}</Callout>}
+          {!drafts && (
+            <>
+              <div>
+                <Label htmlFor="ai-topic">Tema</Label>
+                <Input id="ai-topic" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ej. Fundamentos de agentes de IA" />
+              </div>
+              <div>
+                <Label htmlFor="ai-count">Cantidad de preguntas</Label>
+                <Input id="ai-count" type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+              </div>
+              <div>
+                <Label>Tipos a incluir</Label>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {AI_QUESTION_TYPES.map((t) => (
+                    <label key={t} className={cn("flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs", types.includes(t) ? "border-violet-400 bg-violet-50 text-violet-800" : "border-paper-border text-ash-600")}>
+                      <input type="checkbox" checked={types.includes(t)} onChange={() => toggleType(t)} />
+                      {QUESTION_TYPE_LABEL[t]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <Button disabled={busy || !topic.trim() || types.length === 0} onClick={handleGenerate}>
+                {busy ? "Generando…" : "Generar borradores"}
+              </Button>
+            </>
+          )}
+          {drafts && (
+            <>
+              {drafts.length === 0 ? (
+                <p className="text-sm text-ash-500">Ya guardaste todas las preguntas generadas.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {drafts.map((d, i) => (
+                    <div key={i} className="rounded-md border border-paper-border p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="mb-1 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                            {QUESTION_TYPE_LABEL[d.type] ?? d.type}
+                          </span>
+                          <p className="text-sm text-ink-900">{d.text?.es ?? ""}</p>
+                          {Array.isArray(d.options) && (
+                            <ul className="mt-1 list-inside list-disc text-xs text-ash-600">
+                              {d.options.map((o: any) => (
+                                <li key={o.id}>{o.text}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <Button size="sm" disabled={savingIndex === i} onClick={() => handleSaveOne(i)}>
+                          {savingIndex === i ? "Guardando…" : "Guardar"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button variant="outline" disabled={busy} onClick={handleSaveAll}>
+                    Guardar todas
+                  </Button>
+                </div>
+              )}
+              <Button variant="ghost" onClick={() => setDrafts(null)}>
+                Generar de nuevo
+              </Button>
+            </>
+          )}
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
 export function ExamBuilder({
   assessment,
   course,
@@ -617,9 +764,12 @@ export function ExamBuilder({
                     onCancel={() => setAddingQuestion(false)}
                   />
                 ) : (
-                  <Button size="sm" variant="outline" onClick={() => setAddingQuestion(true)} className="self-start">
-                    + Agregar pregunta
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setAddingQuestion(true)} className="self-start">
+                      + Agregar pregunta
+                    </Button>
+                    <AiSuggestQuestionsDialog assessmentId={assessment.id} onDone={onChange} />
+                  </div>
                 )}
               </div>
             )}

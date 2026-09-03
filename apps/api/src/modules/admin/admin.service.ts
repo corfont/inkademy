@@ -12,6 +12,7 @@ import { logAudit } from "./audit-log.util";
 import { StorageService } from "../../storage/storage.service";
 import { NotificationService } from "../notification/notification.service";
 import { buildFinancialReportPdf } from "./finance-report.pdf";
+import { callGeminiOnce } from "../../common/ai/gemini-text.util";
 
 @Injectable()
 export class AdminService {
@@ -2453,6 +2454,32 @@ export class AdminService {
     }
   }
 
+  /**
+   * "Resumen ejecutivo con IA" — 2-3 oraciones en lenguaje natural sobre
+   * summary/pnl (ya calculados en buildFinancialReport). Nunca bloquea el
+   * reporte: si el asistente está apagado o Gemini falla, se omite en
+   * silencio (null) y el PDF sale exactamente igual que sin esta feature.
+   */
+  private async buildFinancialAiSummary(summary: any, pnl: any): Promise<string | null> {
+    try {
+      const systemPrompt = [
+        "Eres un analista financiero. Redacta un resumen ejecutivo de 2 a 3 oraciones, en español, para un dueño de negocio sin formación contable.",
+        "Sé concreto y directo — sin inventar cifras que no te doy, sin recomendaciones genéricas de relleno.",
+        "Responde ÚNICAMENTE con el texto del resumen, sin encabezados ni comillas.",
+      ].join("\n");
+      const userText = JSON.stringify({
+        balances: (summary.rows as any[]).map((r) => ({ currency: r.currency, income: r.income, balance: r.balance })),
+        puntoEquilibrioMensual: pnl.breakEvenIncome,
+        crecimientoMensualPromedioPct: pnl.avgGrowthPct,
+        proyeccionProximoMes: pnl.forecastNextMonth,
+        estado: pnl.status,
+      });
+      return await callGeminiOnce(this.prisma, systemPrompt, userText, { maxOutputTokens: 300 });
+    } catch {
+      return null;
+    }
+  }
+
   /** Arma el PDF del estado financiero para el periodo pedido — reutilizado por descarga directa y por envío a correo. */
   private async buildFinancialReport(params: { from?: string; to?: string; period?: string; year?: number; months?: number }) {
     const [summary, pnl, logoBytes] = await Promise.all([
@@ -2468,7 +2495,8 @@ export class AdminService {
           : params.period === "year" && params.year
             ? `año ${params.year}`
             : "últimos 30 días";
-    const pdf = await buildFinancialReportPdf(summary, pnl, logoBytes);
+    const aiSummary = await this.buildFinancialAiSummary(summary, pnl);
+    const pdf = await buildFinancialReportPdf(summary, pnl, logoBytes, aiSummary);
     return { pdf, periodLabel };
   }
 
@@ -3153,5 +3181,17 @@ export class AdminService {
       this.prisma.auditLog.count({ where }),
     ]);
     return { rows, total, page, pageSize };
+  }
+
+  /**
+   * "Traducción asistida" — genérico, no específico de curso (aunque el
+   * primer uso real es Course.title, ver CourseEditor.tsx). Devuelve el
+   * texto traducido sin persistir nada; el admin lo revisa antes de guardar.
+   */
+  async translateText(text: string, from: "es" | "en", to: "es" | "en"): Promise<{ translated: string }> {
+    const langName = (l: string) => (l === "es" ? "español" : "inglés");
+    const systemPrompt = `Traduce el siguiente texto de ${langName(from)} a ${langName(to)}. Responde ÚNICAMENTE con la traducción, sin comillas ni explicaciones.`;
+    const translated = await callGeminiOnce(this.prisma, systemPrompt, text, { maxOutputTokens: 256 });
+    return { translated };
   }
 }

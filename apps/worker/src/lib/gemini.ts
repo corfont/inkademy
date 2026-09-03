@@ -42,7 +42,14 @@ export async function callGeminiIfEnabled(systemPrompt: string, userMessage: str
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: userMessage }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { maxOutputTokens: 512, temperature: 0.4 },
+        // thinkingBudget:0 — mismo hallazgo que en apps/api/src/common/ai/
+        // gemini-text.util.ts: gemini-2.5-flash reserva parte de
+        // maxOutputTokens para "pensar" antes de responder, con gasto MUY
+        // variable (confirmado en vivo: entre 166 y 604 tokens para el
+        // mismo prompt) — sin esto, el JSON estricto que piden draftWithAI/
+        // draftReengagement salía cortado a mitad y fallaba el parseo
+        // ("la IA no devolvió JSON válido"), confirmado en vivo también.
+        generationConfig: { maxOutputTokens: 512, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
     if (!response.ok) {

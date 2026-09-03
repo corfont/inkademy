@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical, Pencil } from "lucide-react";
+import { Trash2, Radio, ChevronUp, ChevronDown, Download, Eye, Lock, LockOpen, GripVertical, Pencil, Sparkles } from "lucide-react";
 import { adminApi, liveSessionApi, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -155,6 +155,27 @@ function MetadataSection({
   onSave: (patch: Record<string, unknown>) => void;
 }) {
   const [titleEs, setTitleEs] = useState(course.title?.es ?? "");
+  const [titleEn, setTitleEn] = useState(course.title?.en ?? "");
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+
+  // "Traducción asistida" — hoy solo existía input para `es` pese a que
+  // Course.title ya guarda {es, en} en el schema. Llena `en` a partir de lo
+  // que haya en `es`; el admin lo revisa/edita antes de guardar (no se
+  // persiste solo).
+  async function handleTranslateTitle() {
+    if (!titleEs.trim()) return;
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      const { translated } = await adminApi.translateText({ text: titleEs, from: "es", to: "en" });
+      setTitleEn(translated);
+    } catch {
+      setTranslateError("No se pudo traducir. Intenta de nuevo.");
+    } finally {
+      setTranslating(false);
+    }
+  }
   const [priceAmount, setPriceAmount] = useState(String(course.priceAmount ?? "0"));
   const [priceCurrency, setPriceCurrency] = useState(course.priceCurrency ?? "PEN");
   const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
@@ -246,8 +267,26 @@ function MetadataSection({
         <h2 className="font-serif text-lg font-semibold text-ink-900">Datos generales</h2>
         <div className="grid gap-4 sm:grid-cols-[1fr_8rem_6rem]">
           <div>
-            <Label htmlFor="edit-title">Título</Label>
+            <Label htmlFor="edit-title">Título (español)</Label>
             <Input id="edit-title" value={titleEs} onChange={(e) => setTitleEs(e.target.value)} />
+          </div>
+          <div className="sm:col-span-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-title-en">Título (inglés)</Label>
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                disabled={translating || !titleEs.trim()}
+                onClick={handleTranslateTitle}
+                className="border-violet-300 text-violet-700 hover:bg-violet-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                {translating ? "Traduciendo…" : "Traducir con IA"}
+              </Button>
+            </div>
+            <Input id="edit-title-en" value={titleEn} onChange={(e) => setTitleEn(e.target.value)} placeholder="(opcional)" />
+            {translateError && <p className="mt-1 text-xs text-danger">{translateError}</p>}
           </div>
           <div>
             <Label htmlFor="edit-price">Precio</Label>
@@ -296,6 +335,7 @@ function MetadataSection({
           <Label htmlFor="edit-access-policy">Plazo de acceso (cursos grabados)</Label>
           <Select id="edit-access-policy" value={accessDurationPolicy} onChange={(e) => setAccessDurationPolicy(e.target.value)}>
             <option value="PERMANENT">Abierto — sin fecha de término</option>
+            <option value="DAYS_7">7 días desde la matrícula</option>
             <option value="DAYS_30">30 días desde la matrícula</option>
             <option value="MONTHS_6">6 meses desde la matrícula</option>
           </Select>
@@ -417,7 +457,7 @@ function MetadataSection({
             disabled={busy}
             onClick={() =>
               onSave({
-                title: { ...course.title, es: titleEs },
+                title: { ...course.title, es: titleEs, ...(titleEn.trim() ? { en: titleEn } : {}) },
                 priceAmount: Number(priceAmount),
                 priceCurrency,
                 certificateTemplateId: certificateTemplateId || null,

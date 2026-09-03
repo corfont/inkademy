@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminApi } from "@/lib/api-client";
+import { Sparkles } from "lucide-react";
+import { adminApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label } from "@/components/ui/Input";
@@ -14,6 +15,8 @@ export function GradeAnswerDialog({ attemptId, answerId, questionText, studentAn
   const [score, setScore] = useState(70);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestedFeedback, setSuggestedFeedback] = useState<string | null>(null);
 
   async function handleGrade(isCorrect: boolean) {
     setSubmitting(true);
@@ -26,6 +29,23 @@ export function GradeAnswerDialog({ attemptId, answerId, questionText, studentAn
       setError("No pudimos guardar la calificación. Intenta nuevamente.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // "Corrección asistida" — sugerencia efímera de la IA, nunca se guarda
+  // sola: solo precarga el puntaje y muestra el feedback para que el que
+  // corrige lo edite/descarte antes de confirmar con los botones de abajo.
+  async function handleSuggest() {
+    setSuggesting(true);
+    setError(null);
+    try {
+      const { score: suggested, feedback } = await adminApi.suggestAnswerGrade(attemptId, answerId);
+      setScore(suggested);
+      setSuggestedFeedback(feedback);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos obtener una sugerencia de la IA.");
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -44,6 +64,20 @@ export function GradeAnswerDialog({ attemptId, answerId, questionText, studentAn
           <div>
             <p className="text-sm font-medium text-ash-700">Respuesta del alumno</p>
             <p className="mt-1 rounded-md bg-paper-muted p-3 text-sm text-ash-800">{studentAnswer}</p>
+          </div>
+          <div>
+            <Button size="sm" variant="outline" disabled={suggesting} onClick={handleSuggest} className="border-violet-300 text-violet-700 hover:bg-violet-50">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              {suggesting ? "Pensando…" : "Sugerir con IA"}
+            </Button>
+            {suggestedFeedback && (
+              <div className="mt-2 rounded-md border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
+                <p className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-violet-600">
+                  <Sparkles className="h-3 w-3" aria-hidden="true" /> Sugerencia de la IA
+                </p>
+                {suggestedFeedback}
+              </div>
+            )}
           </div>
           <div>
             <Label htmlFor="score">Puntaje (0-100)</Label>

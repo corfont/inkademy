@@ -484,6 +484,13 @@ export class AdminController {
     return this.assessmentService.createQuestion(assessmentId, dto, teacherScopeId(user));
   }
 
+  @Post("assessments/:assessmentId/questions/suggest")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Genera borradores de preguntas con IA sobre un tema — no crea nada, solo sugiere" })
+  suggestQuestions(@Body() dto: { topic: string; count: number; types?: string[] }) {
+    return this.assessmentService.suggestQuestions({ topic: dto.topic, count: dto.count, types: dto.types ?? [] });
+  }
+
   // "Hacer pregunta por pregunta es pesado... ¿se puede armar una plantilla
   // en Excel?" — plantilla descargable (con instrucciones + ejemplos por
   // tipo de pregunta) y su importación en lote.
@@ -609,6 +616,13 @@ export class AdminController {
     @Body(new ZodValidationPipe(gradeAnswerSchema)) dto: { score: number; isCorrect: boolean },
   ) {
     return this.assessmentService.gradeAnswer(attemptId, answerId, user.id, dto, teacherScopeId(user));
+  }
+
+  @Post("attempts/:attemptId/answers/:answerId/suggest-grade")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Sugiere con IA un puntaje/feedback para una respuesta abierta — no persiste nada, el humano confirma" })
+  suggestAnswerGrade(@CurrentUser() user: RequestUser, @Param("attemptId") attemptId: string, @Param("answerId") answerId: string) {
+    return this.assessmentService.suggestAnswerGrade(attemptId, answerId, teacherScopeId(user));
   }
 
   @Get("attempts/pending-file-reviews")
@@ -1306,5 +1320,14 @@ export class AdminController {
       Number(page) || undefined,
       Number(pageSize) || undefined,
     );
+  }
+
+  // --- Traducción asistida ---
+
+  @Post("translate")
+  @Roles("ADMIN", "TEACHER")
+  @ApiOperation({ summary: "Traduce un texto con IA (es<->en) — no persiste nada" })
+  translateText(@Body() dto: { text: string; from: "es" | "en"; to: "es" | "en" }) {
+    return this.adminService.translateText(dto.text, dto.from, dto.to);
   }
 }

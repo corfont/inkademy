@@ -226,6 +226,33 @@ export function drawParagraph(ctx: ReportContext, text: string, opts: { size?: n
   ctx.y -= opts.gapAfter ?? 6;
 }
 
+/**
+ * "Resumen ejecutivo con IA" — un párrafo generado por Gemini necesita
+ * distinguirse visualmente de un párrafo normal del reporte (texto plano
+ * generado a mano) para que quede claro que es un resumen de IA, no un
+ * dato duro más — franja de color a la izquierda + fondo tenue + etiqueta,
+ * mismo lenguaje visual "violeta = IA" que el resto de la plataforma (ver
+ * SidebarShell.tsx). Reusable por cualquier reporte, no solo el financiero.
+ */
+export function drawCallout(ctx: ReportContext, opts: { label: string; text: string; color?: { r: number; g: number; b: number } }) {
+  const color = opts.color ?? { r: 0.42, g: 0.32, b: 0.85 }; // violeta
+  const size = 10;
+  const lineHeight = size * 1.35;
+  const lines = wrapWords(ctx.fonts.regular, opts.text, size, CONTENT_WIDTH - 24);
+  const boxHeight = 20 + lines.length * lineHeight + 10;
+  ensureSpace(ctx, boxHeight + 8);
+  const topY = ctx.y;
+  ctx.page.drawRectangle({ x: MARGIN, y: topY - boxHeight, width: CONTENT_WIDTH, height: boxHeight, color: rgb(color.r, color.g, color.b), opacity: 0.08 });
+  ctx.page.drawRectangle({ x: MARGIN, y: topY - boxHeight, width: 3, height: boxHeight, color: rgb(color.r, color.g, color.b) });
+  ctx.page.drawText(opts.label, { x: MARGIN + 14, y: topY - 16, size: 8, font: ctx.fonts.bold, color: rgb(color.r, color.g, color.b) });
+  let lineY = topY - 30;
+  for (const words of lines) {
+    ctx.page.drawText(words.join(" "), { x: MARGIN + 14, y: lineY, size, font: ctx.fonts.regular, color: rgb(0.15, 0.16, 0.2) });
+    lineY -= lineHeight;
+  }
+  ctx.y = topY - boxHeight - 10;
+}
+
 export interface TableColumn {
   header: string;
   width: number; // proporción relativa — se normaliza automáticamente

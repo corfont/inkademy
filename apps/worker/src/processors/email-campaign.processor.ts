@@ -171,6 +171,62 @@ async function coursesForGoal(goal: string, interestKey?: string) {
   });
 }
 
+/**
+ * "Detección de riesgo de abandono + reenganche personalizado" — a
+ * diferencia de coursesForGoal (agrupa por interés), esto es POR ALUMNO:
+ * entre sus matrículas ACTIVE, la que tiene la actividad de LessonProgress
+ * más antigua (o nunca tuvo ninguna — usa enrolledAt). null si no tiene
+ * ninguna matrícula activa (no debería pasar si la audiencia ya se filtró
+ * por enrollmentStatus:HAS_ACTIVE, pero por si acaso).
+ */
+async function mostAtRiskEnrollment(userId: string): Promise<{ courseTitle: string; progressPct: number; daysSinceLastActivity: number } | null> {
+  const enrollments = await prisma.enrollment.findMany({
+    where: { userId, status: "ACTIVE", offeringKind: "COURSE" },
+    include: { course: { select: { title: true } } },
+  });
+  if (enrollments.length === 0) return null;
+
+  const withActivity = await Promise.all(
+    enrollments.map(async (e) => {
+      const last = await prisma.lessonProgress.findFirst({
+        where: { enrollmentId: e.id },
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true },
+      });
+      return { enrollment: e, lastActivity: last?.updatedAt ?? e.enrolledAt };
+    }),
+  );
+  withActivity.sort((a, b) => a.lastActivity.getTime() - b.lastActivity.getTime());
+  const target = withActivity[0];
+  return {
+    courseTitle: pickEs(target.enrollment.course?.title),
+    progressPct: Math.round(target.enrollment.progressPct),
+    daysSinceLastActivity: Math.floor((Date.now() - target.lastActivity.getTime()) / (24 * 60 * 60 * 1000)),
+  };
+}
+
+/** Correo 1:1 de reenganche — mismo `callGeminiIfEnabled`, prompt distinto (menciona el curso puntual del alumno, no una lista genérica). null si Gemini no responde (mismo criterio que draftWithAI: el grupo/alumno se omite, se loguea). */
+async function draftReengagement(atRisk: { courseTitle: string; progressPct: number; daysSinceLastActivity: number }): Promise<{ subject: string; html: string } | null> {
+  const systemPrompt = [
+    "Eres el equipo de Inkademy, una plataforma peruana de cursos y capacitación online.",
+    `Redacta un correo breve, cálido y personal (no genérico) para un alumno que lleva ${atRisk.daysSinceLastActivity} días sin avanzar en el curso "${atRisk.courseTitle}", donde ya completó ${atRisk.progressPct}% del contenido.`,
+    "El tono es de acompañamiento, no de regaño ni presión de venta — anímalo a retomar donde se quedó, sin inventar descuentos ni datos que no te doy.",
+    "Responde ÚNICAMENTE con JSON válido de la forma {\"subject\": \"...\", \"html\": \"...\"} sin texto adicional ni bloques de código.",
+    "El HTML debe ser simple (1-2 párrafos cortos), en español.",
+  ].join("\n");
+  const reply = await callGeminiIfEnabled(systemPrompt, `Curso: ${atRisk.courseTitle}. Avance: ${atRisk.progressPct}%. Días de inactividad: ${atRisk.daysSinceLastActivity}.`);
+  if (!reply) return null;
+  try {
+    const cleaned = reply.trim().replace(/^```(json)?/i, "").replace(/```$/, "");
+    const parsed = JSON.parse(cleaned) as { subject?: string; html?: string };
+    if (!parsed.subject || !parsed.html) return null;
+    return { subject: parsed.subject, html: parsed.html };
+  } catch {
+    logger.warn("la IA no devolvió JSON válido para el reenganche, se omite este alumno");
+    return null;
+  }
+}
+
 async function draftWithAI(campaign: { goal: string | null }, courses: Array<{ slug: string; title: unknown }>): Promise<{ subject: string; html: string } | null> {
   const courseList = courses.map((c) => `- ${pickEs(c.title)} (${appUrl()}/cursos/${c.slug})`).join("\n");
   const goalInstruction: Record<string, string> = {
@@ -253,6 +309,27 @@ async function processOneCampaign(campaign: {
 
   if (campaign.mode === "MANUAL") {
     totalSent = await sendCampaignToRecipients(campaign, campaign.subject || campaign.name, campaign.bodyHtml || "", recipients);
+  } else if (campaign.goal === "AT_RISK_REENGAGEMENT") {
+    // A diferencia del resto de goals (un correo por GRUPO de interés, ver
+    // bucketByInterest), acá la personalización real es el punto — un
+    // correo 1:1 por alumno mencionando su curso puntual y hace cuánto no
+    // avanza. Escala peor (una llamada a Gemini por destinatario en vez de
+    // por grupo), deliberado: agrupar perdería exactamente lo que se pidió.
+    // Pausa corta entre llamadas: confirmado en vivo que 6 llamadas
+    // seguidas sin espera chocan con el rate-limit de Gemini (HTTP 429) —
+    // esto no elimina el riesgo a listas grandes, pero lo reduce bastante
+    // para el uso real esperado (decenas, no miles, de alumnos en riesgo).
+    for (const [index, r] of recipients.entries()) {
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, 600));
+      const atRisk = await mostAtRiskEnrollment(r.id);
+      if (!atRisk) continue;
+      const draft = await draftReengagement(atRisk);
+      if (!draft) {
+        logger.warn("no se pudo redactar el reenganche con IA — alumno omitido", { campaignId: campaign.id, userId: r.id });
+        continue;
+      }
+      totalSent += await sendCampaignToRecipients(campaign, draft.subject, draft.html, [r]);
+    }
   } else {
     // AUTOMATIC_AI: un correo por grupo de interés (ver bucketByInterest).
     const buckets = bucketByInterest(recipients);

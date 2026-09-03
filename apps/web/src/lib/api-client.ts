@@ -782,6 +782,8 @@ export const adminApi = {
       body: JSON.stringify(input),
       accessToken,
     }),
+  suggestAnswerGrade: (attemptId: string, answerId: string, accessToken?: string | null) =>
+    apiFetch<{ score: number; feedback: string }>(`/admin/attempts/${attemptId}/answers/${answerId}/suggest-grade`, { method: "POST", accessToken }),
   // --- Exámenes "cualitativos" (archivo) pendientes de calificar ---
   pendingFileReviews: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-file-reviews", { accessToken }),
   gradeFileAttempt: (attemptId: string, input: { score: number; passed: boolean }, accessToken?: string | null) =>
@@ -1023,6 +1025,8 @@ export const adminApi = {
     apiFetch<any>(`/admin/assessments/${id}`, { method: "DELETE", accessToken }),
   createQuestion: (assessmentId: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/assessments/${assessmentId}/questions`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  suggestQuestions: (assessmentId: string, input: { topic: string; count: number; types?: string[] }, accessToken?: string | null) =>
+    apiFetch<any[]>(`/admin/assessments/${assessmentId}/questions/suggest`, { method: "POST", body: JSON.stringify(input), accessToken }),
   updateQuestion: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/questions/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   deleteQuestion: (id: string, accessToken?: string | null) =>
@@ -1208,6 +1212,10 @@ export const adminApi = {
       { accessToken, cache: "no-store" },
     );
   },
+
+  // --- Traducción asistida (es <-> en) ---
+  translateText: (input: { text: string; from: "es" | "en"; to: "es" | "en" }, accessToken?: string | null) =>
+    apiFetch<{ translated: string }>("/admin/translate", { method: "POST", body: JSON.stringify(input), accessToken }),
 };
 
 // ---------------------------------------------------------------------------

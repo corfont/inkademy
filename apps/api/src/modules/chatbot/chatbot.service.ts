@@ -1,6 +1,7 @@
-import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
+import { callGeminiRaw, resolveGeminiConfig } from "../../common/ai/gemini-text.util";
 import { ChatbotDocumentsService } from "./chatbot-documents.service";
 
 const SETTINGS_ID = "default";
@@ -30,7 +31,7 @@ export class ChatbotService {
 
   async sendMessage(message: string, history: Array<{ role: "user" | "assistant"; content: string }> = []) {
     const basePrompt =
-      (await this.getSettingsOrThrow()).systemPrompt ||
+      (await resolveGeminiConfig(this.prisma)).row.systemPrompt ||
       "Eres el asistente virtual de Inkademy, una plataforma peruana de cursos y capacitación online. Responde en español, de forma breve y cordial, y si no sabes algo específico de la cuenta del usuario, sugiere contactar a soporte desde /campus/soporte.";
 
     // Documentos que el admin subió (p.ej. el manual de ayuda, o tickets de
@@ -53,7 +54,7 @@ export class ChatbotService {
       { role: "user", parts: [{ text: message }] },
     ];
 
-    const reply = await this.callGemini(systemPrompt, contents);
+    const reply = await callGeminiRaw(this.prisma, systemPrompt, contents);
     return { reply };
   }
 
@@ -78,7 +79,7 @@ export class ChatbotService {
       .filter(Boolean)
       .join("\n");
 
-    const reply = await this.callGemini(systemPrompt, [{ role: "user", parts: [{ text: input.conversation }] }]);
+    const reply = await callGeminiRaw(this.prisma, systemPrompt, [{ role: "user", parts: [{ text: input.conversation }] }]);
     return { draft: reply };
   }
 
@@ -107,68 +108,12 @@ export class ChatbotService {
         .filter(Boolean)
         .join("\n");
 
-      const reply = await this.callGemini(systemPrompt, [{ role: "user", parts: [{ text: input.message }] }]);
+      const reply = await callGeminiRaw(this.prisma, systemPrompt, [{ role: "user", parts: [{ text: input.message }] }]);
       if (!reply.trim() || reply.includes(NO_RESOLVE)) return { resolved: false };
       return { resolved: true, reply: reply.trim() };
     } catch (err) {
       this.logger.warn(`No se pudo intentar auto-resolver el ticket: ${(err as Error).message}`);
       return { resolved: false };
     }
-  }
-
-  private async getSettingsOrThrow() {
-    const row = await this.prisma.chatbotSettings.findUnique({ where: { id: SETTINGS_ID } });
-    if (!row?.enabled) {
-      throw new BadRequestException("El asistente de IA no está habilitado. Actívalo desde /admin/asistente-ia.");
-    }
-    if (!(row.apiKey || process.env.GEMINI_API_KEY)) {
-      throw new BadRequestException("Falta configurar la API key del asistente en /admin/asistente-ia.");
-    }
-    return row;
-  }
-
-  private async callGemini(systemPrompt: string, contents: Array<{ role: string; parts: Array<{ text: string }> }>): Promise<string> {
-    const row = await this.getSettingsOrThrow();
-    const apiKey = row.apiKey || process.env.GEMINI_API_KEY;
-    const model = row.model || "gemini-2.5-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey!)}`;
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents,
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: { maxOutputTokens: 512, temperature: 0.4 },
-        }),
-      });
-    } catch (err) {
-      this.logger.error(`No se pudo contactar a Gemini: ${(err as Error).message}`);
-      throw new BadRequestException("No pudimos contactar al asistente de IA. Intenta de nuevo en un momento.");
-    }
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      this.logger.warn(`Gemini respondió ${response.status}: ${body.slice(0, 500)}`);
-      // 400 con API key inválida es el caso más común al recién configurar —
-      // mensaje explícito en vez de un genérico "algo salió mal".
-      if (response.status === 400 || response.status === 403) {
-        throw new BadRequestException(
-          "El asistente de IA rechazó la solicitud — probablemente la API key configurada en /admin/asistente-ia no es válida. Genera una nueva en https://aistudio.google.com/apikey.",
-        );
-      }
-      throw new BadRequestException("El asistente de IA no pudo responder en este momento.");
-    }
-
-    const data = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const reply = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-    if (!reply.trim()) {
-      throw new BadRequestException("El asistente no generó una respuesta. Intenta reformular tu pregunta.");
-    }
-    return reply.trim();
   }
 }

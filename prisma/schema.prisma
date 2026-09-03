@@ -1950,6 +1950,11 @@ enum EmailCampaignGoal {
   NEW_COURSES
   DISCOUNTED_COURSES
   BY_INTEREST
+  // "Detección de riesgo de abandono + reenganche" — a diferencia de los
+  // demás goals (un correo por grupo de interés, ver bucketByInterest en
+  // email-campaign.processor.ts), este redacta un correo 1:1 por alumno
+  // mencionando SU curso puntual y hace cuánto no avanza.
+  AT_RISK_REENGAGEMENT
 }
 
 enum EmailCampaignStatus {

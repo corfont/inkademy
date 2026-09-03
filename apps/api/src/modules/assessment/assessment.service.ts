@@ -13,6 +13,7 @@ import type { PrismaClient, Question } from "@inkademy/db";
 import type { AssessmentAttemptSubmission, AssessmentResultDTO } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { QUEUE_NAMES, ASSESSMENT_EXPIRY_JOBS } from "../../common/queues/queue.constants";
+import { callGeminiOnce } from "../../common/ai/gemini-text.util";
 import { CertificateService } from "../certificate/certificate.service";
 import { StorageService } from "../../storage/storage.service";
 import { EnrollmentService } from "../enrollment/enrollment.service";
@@ -710,6 +711,45 @@ export class AssessmentService {
     });
   }
 
+  /**
+   * "Corrección asistida de exámenes de desarrollo" — sugerencia efímera
+   * (nunca se persiste nada acá, ver gradeAnswer para eso) que precarga el
+   * diálogo de calificación del docente/admin. A diferencia de
+   * attemptAutoResolve en soporte, acá el humano SIEMPRE confirma — más
+   * peso académico/legal que un ticket de soporte. Alcance: solo respuestas
+   * de texto (OPEN/SHORT_ANSWER) — el examen "cualitativo" de archivo
+   * completo (gradeFileAttempt) queda fuera, ver el plan de esta feature.
+   */
+  async suggestAnswerGrade(attemptId: string, answerId: string, teacherUserId?: string): Promise<{ score: number; feedback: string }> {
+    const answer = await this.prisma.answer.findUnique({ where: { id: answerId }, include: { attempt: true, question: true } });
+    if (!answer || answer.attemptId !== attemptId) throw new NotFoundException("Respuesta no encontrada");
+    if (teacherUserId) await this.assertTeacherOwnsAssessment(answer.attempt.assessmentId, teacherUserId);
+
+    const questionText = ((answer.question.text as Record<string, string> | null) ?? {}).es ?? "";
+    // Answer.response es Json, pero para OPEN/SHORT_ANSWER el cliente
+    // siempre manda un string plano (ver AssessmentRunner.tsx) — no hay
+    // nada que "parsear", solo tratarlo como texto.
+    const studentAnswer = typeof answer.response === "string" ? answer.response : JSON.stringify(answer.response);
+    const maxPoints = answer.question.points;
+
+    const systemPrompt = [
+      "Eres un docente calificando la respuesta abierta de un examen.",
+      `La pregunta vale ${maxPoints} punto(s). Da un puntaje de 0 a 100 (porcentaje del máximo) y un feedback breve (1-2 oraciones) para el alumno.`,
+      "Responde ÚNICAMENTE con JSON válido de la forma {\"score\": number, \"feedback\": \"...\"} sin texto adicional ni bloques de código.",
+    ].join("\n");
+    const userText = `Pregunta: ${questionText}\n\nRespuesta del alumno: ${studentAnswer}`;
+
+    const reply = await callGeminiOnce(this.prisma, systemPrompt, userText);
+    try {
+      const cleaned = reply.trim().replace(/^```(json)?/i, "").replace(/```$/, "");
+      const parsed = JSON.parse(cleaned) as { score?: number; feedback?: string };
+      if (typeof parsed.score !== "number" || !parsed.feedback) throw new Error("forma inesperada");
+      return { score: Math.max(0, Math.min(100, Math.round(parsed.score))), feedback: parsed.feedback };
+    } catch {
+      throw new BadRequestException("El asistente no devolvió una sugerencia válida. Intenta de nuevo.");
+    }
+  }
+
   async gradeAnswer(
     attemptId: string,
     answerId: string,
@@ -1011,6 +1051,42 @@ export class AssessmentService {
     }
     await this.prisma.assessment.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /**
+   * "Generación de preguntas con IA" — devuelve un array de borradores con
+   * la MISMA forma que upsertQuestionSchema, para revisar/ajustar en el
+   * builder antes de guardar una por una con createQuestion (sin endpoint
+   * de "bulk create" nuevo). Ojo con la asimetría de localización:
+   * Question.text es {es,en} (localizedTextSchema), pero
+   * Question.options[].text es string plano, NO localizado — el prompt
+   * ya lo deja explícito para que Gemini no confunda ambos campos.
+   */
+  async suggestQuestions(input: { topic: string; count: number; types: string[] }): Promise<
+    Array<{ type: string; text: { es: string }; options?: { id: string; text: string }[]; correctAnswer?: string | string[]; points: number }>
+  > {
+    const typeList = input.types.length ? input.types : ["SINGLE_CHOICE", "TRUE_FALSE"];
+    const systemPrompt = [
+      "Eres un docente redactando preguntas de examen en español.",
+      `Redacta exactamente ${input.count} pregunta(s) sobre el tema indicado, usando SOLO estos tipos (repártelos como tenga sentido): ${typeList.join(", ")}.`,
+      "Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni bloques de código, donde cada elemento tiene esta forma EXACTA según el tipo:",
+      '- SINGLE_CHOICE/MULTI_CHOICE: {"type":"SINGLE_CHOICE","text":{"es":"..."},"options":[{"id":"a","text":"..."},{"id":"b","text":"..."}],"correctAnswer":"a","points":1} (MULTI_CHOICE: "correctAnswer" es un array de ids)',
+      '- TRUE_FALSE: {"type":"TRUE_FALSE","text":{"es":"..."},"options":[{"id":"true","text":"Verdadero"},{"id":"false","text":"Falso"}],"correctAnswer":"true","points":1}',
+      '- SHORT_ANSWER: {"type":"SHORT_ANSWER","text":{"es":"..."},"correctAnswer":"...","points":1}',
+      '- OPEN: {"type":"OPEN","text":{"es":"..."},"points":1} (sin "correctAnswer" — se corrige a mano)',
+      '- ORDERING: {"type":"ORDERING","text":{"es":"..."},"options":[{"id":"1","text":"paso 1"},{"id":"2","text":"paso 2"}],"correctAnswer":["1","2"],"points":1} (correctAnswer = ids en el orden correcto)',
+      'IMPORTANTE: "text" es un objeto {"es": "..."} (localizado), pero "options[].text" es un string plano — no lo envuelvas en {"es":...}.',
+    ].join("\n");
+
+    const reply = await callGeminiOnce(this.prisma, systemPrompt, `Tema: ${input.topic}`, { maxOutputTokens: 2048 });
+    try {
+      const cleaned = reply.trim().replace(/^```(json)?/i, "").replace(/```$/, "");
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) throw new Error("no es un array");
+      return parsed;
+    } catch {
+      throw new BadRequestException("El asistente no devolvió preguntas válidas. Intenta de nuevo o reformula el tema.");
+    }
   }
 
   async createQuestion(assessmentId: string, input: Record<string, unknown>, teacherUserId?: string) {

@@ -15,6 +15,10 @@ const GOAL_LABEL: Record<string, string> = {
   NEW_COURSES: "Cursos nuevos del catálogo",
   DISCOUNTED_COURSES: "Cursos con descuento",
   BY_INTEREST: "Según su área de interés",
+  // "Detección de riesgo de abandono" — a diferencia de los demás goals
+  // (agrupados por interés), este redacta un correo 1:1 por alumno
+  // mencionando su curso puntual — ver worker/email-campaign.processor.ts.
+  AT_RISK_REENGAGEMENT: "✨ Alumnos en riesgo de abandono (reenganche personalizado con IA)",
 };
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "outline" | "danger"> = {

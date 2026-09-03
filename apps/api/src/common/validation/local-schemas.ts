@@ -95,7 +95,7 @@ export const upsertCourseSchema = z.object({
   priceAmount: z.number().nonnegative(),
   priceCurrency: z.string().optional(),
   certificationIncluded: z.boolean().optional(),
-  accessDurationPolicy: z.enum(["DAYS_30", "MONTHS_6", "PERMANENT"]).optional(),
+  accessDurationPolicy: z.enum(["DAYS_7", "DAYS_30", "MONTHS_6", "PERMANENT"]).optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
   b2bAvailable: z.boolean().optional(),
   b2bPriceAmount: z.number().nonnegative().optional(),
@@ -815,7 +815,7 @@ export const upsertEmailCampaignSchema = z
   .object({
     name: z.string().min(1),
     mode: z.enum(["AUTOMATIC_AI", "MANUAL"]),
-    goal: z.enum(["RELATED_COURSES", "NEW_COURSES", "DISCOUNTED_COURSES", "BY_INTEREST"]).optional().nullable(),
+    goal: z.enum(["RELATED_COURSES", "NEW_COURSES", "DISCOUNTED_COURSES", "BY_INTEREST", "AT_RISK_REENGAGEMENT"]).optional().nullable(),
     subject: z.string().optional().nullable(),
     bodyHtml: z.string().optional().nullable(),
     audienceFilter: emailAudienceFilterSchema,

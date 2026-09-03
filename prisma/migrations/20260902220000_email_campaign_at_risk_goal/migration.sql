@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "EmailCampaignGoal" ADD VALUE 'AT_RISK_REENGAGEMENT';
