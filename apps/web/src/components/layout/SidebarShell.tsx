@@ -46,6 +46,16 @@ export interface SidebarNavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /**
+   * "Los íconos podrían tener colores... todo lo has hecho como si fuera
+   * una web de los 2000" — clases Tailwind para el chip que envuelve el
+   * ícono (fondo + color de texto), p.ej. `"bg-emerald-400/20 text-emerald-300"`.
+   * Pensadas para el fondo OSCURO de la barra (`bg-ink-800`/`bg-ink-900`) —
+   * por eso usan tintes con opacidad de la paleta completa de Tailwind
+   * (violet/emerald/sky/...) y no los tokens de marca (ink/ash/success/
+   * warning/danger), que están pensados para fondo claro.
+   */
+  colorClassName?: string;
   /** Contador opcional (p.ej. tickets de soporte pendientes) — se muestra como una burbuja roja junto al ítem. */
   badgeCount?: number;
   /**
@@ -149,7 +159,14 @@ export function SidebarShell({
                 active ? "bg-ink-800 text-paper" : "text-ink-100/80 hover:bg-ink-800/60 hover:text-paper",
               )}
             >
-              <item.icon className="h-4 w-4 flex-none" />
+              <span
+                className={cn(
+                  "flex h-7 w-7 flex-none items-center justify-center rounded-md transition-colors",
+                  item.colorClassName ?? "bg-white/5 text-ink-100/70",
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+              </span>
               <span className="flex-1">{item.label}</span>
               {Boolean(item.badgeCount) && (
                 <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">
