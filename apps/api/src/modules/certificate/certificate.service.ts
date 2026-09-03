@@ -417,6 +417,12 @@ export class CertificateService {
     if (!certificate.pdfAssetId) {
       throw new NotFoundException("El PDF del certificado todavía se está generando");
     }
-    return this.storage.getSignedUrl(certificate.pdfAssetId);
+    // Bug real encontrado en vivo: esto usaba getSignedUrl a secas, construida
+    // sobre S3_ENDPOINT (host interno, p.ej. "http://minio:9000" dentro de
+    // docker-compose) — inalcanzable desde el navegador del alumno en cuanto
+    // S3_ENDPOINT difiere de S3_PUBLIC_BASE_URL. El resto del servicio
+    // (listMine/listAll/listForCompany/verifyByCode, y sendCopyToSelf arriba)
+    // ya usa getPublicUrl con este mismo fallback — se alinea acá también.
+    return this.storage.getPublicUrl(certificate.pdfAssetId) ?? (await this.storage.getSignedUrl(certificate.pdfAssetId));
   }
 }

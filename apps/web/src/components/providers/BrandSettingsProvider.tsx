@@ -32,6 +32,9 @@ export function useBrandSettings(): PlatformSettingsDTO {
       contactPhone: "+51 1 234 5678",
       contactAddress: "Lima, Perú",
       courseCardFields: { showTeacher: true, showDuration: true, showNextLiveSession: true, showCertificationBadge: true, showRating: false },
+      watermarkUrl: null,
+      watermarkOpacityPct: 15,
+      watermarkSizePercent: 30,
     };
   }
   return ctx;

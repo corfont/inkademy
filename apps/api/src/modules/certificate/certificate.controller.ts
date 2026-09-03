@@ -24,12 +24,14 @@ export class CertificateController {
   // alumno como XML sin envolver — antes el frontend enlazaba DIRECTO a la
   // URL pública del storage (this.storage.getPublicUrl, sin pasar por acá
   // en absoluto: este endpoint nunca se llamaba, código muerto). Ahora el
-  // frontend pide esta URL firmada primero (con el mismo chequeo de dueño
+  // frontend pide la URL de descarga primero (con el mismo chequeo de dueño
   // de siempre) y recién ahí navega — cualquier hipo del storage lo ve
-  // Nest, no el navegador del alumno directo contra el bucket.
+  // Nest, no el navegador del alumno directo contra el bucket. La URL en sí
+  // es pública (S3_PUBLIC_BASE_URL) con fallback a firmada si no hay base
+  // pública configurada — ver el comentario en getDownloadRedirectUrl.
   @ApiBearerAuth()
   @Get("certificates/:id/pdf")
-  @ApiOperation({ summary: "URL firmada del PDF del certificado (el frontend navega a esa URL después)" })
+  @ApiOperation({ summary: "URL de descarga del PDF del certificado (el frontend navega a esa URL después)" })
   async downloadPdf(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     const url = await this.certificateService.getDownloadRedirectUrl(
       id,

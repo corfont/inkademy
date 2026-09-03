@@ -67,11 +67,25 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = await getLocale();
   const messages = await getMessages();
 
-  // La marca (logo/tipografía/fondo) se define en /admin/apariencia y se
-  // sirve pública en GET /settings — pero el layout raíz se renderiza en
-  // TODA página, así que si la API no responde caemos a la marca real de
-  // Inkapitales (DEFAULT_SETTINGS) en vez de romper el sitio entero.
-  const settings = await settingsApi.get().catch(() => DEFAULT_SETTINGS);
+  // La marca (logo/tipografía/fondo/SELLO DE AGUA) se define en
+  // /admin/apariencia y se sirve pública en GET /settings — pero el layout
+  // raíz se renderiza en TODA página, en cada request (cache:"no-store"),
+  // así que un hipo transitorio de la API (un restart de "nest start
+  // --watch" en dev, un cold start en prod) hacía desaparecer TODA la
+  // personalización — sello de agua incluido — en silencio, sin ningún
+  // rastro en logs, para cualquiera que cargara una página justo en ese
+  // instante. Bug real encontrado al investigar un reporte de "el sello de
+  // agua no aparece": esto explica una desaparición intermitente mucho
+  // mejor que un bug de CSS/z-index. Un reintento corto + un log explícito
+  // en el fallback final lo hacen visible en vez de silencioso, sin
+  // arriesgar romper el sitio si la API de verdad está caída.
+  const settings = await settingsApi.get().catch(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return settingsApi.get().catch((err) => {
+      console.error("[layout] GET /settings falló 2 veces seguidas, usando DEFAULT_SETTINGS (branding/sello de agua deshabilitados para esta carga):", err);
+      return DEFAULT_SETTINGS;
+    });
+  });
 
   const headingFont: BrandFont = isCuratedFont(settings.headingFontFamily) ? settings.headingFontFamily : "Outfit";
   const bodyFont: BrandFont = isCuratedFont(settings.bodyFontFamily) ? settings.bodyFontFamily : "Work Sans";
