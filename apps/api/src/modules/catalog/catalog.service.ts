@@ -319,8 +319,16 @@ export class CatalogService {
    */
   async getSections() {
     const publishedWhere = { status: "PUBLISHED" as const };
+    // Tope razonable para la heurística "de qué cursos elegir cada sección
+    // de la home" — sin esto se traía TODO el catálogo publicado, sin
+    // límite (ver REVIEW.md #4.6). 500 cursos publicados cubre con holgura
+    // cualquier catálogo real de la plataforma hoy; si algún día se supera,
+    // la home simplemente deja de considerar los cursos más allá del tope
+    // para estas 3 secciones heurísticas (featured/new siguen sin este
+    // límite porque ya traían `take: 8` directo de la base de datos).
+    const MAX_PUBLISHED_COURSES_FOR_SECTIONS = 500;
 
-    const [featuredRaw, newRaw, allPublished] = await Promise.all([
+    const [featuredRaw, newRaw, allPublishedLight] = await Promise.all([
       this.prisma.course.findMany({
         where: publishedWhere,
         include: { ...courseCardInclude, _count: { select: { enrollments: true } } },
@@ -333,20 +341,37 @@ export class CatalogService {
         orderBy: { createdAt: "desc" },
         take: 8,
       }),
-      this.prisma.course.findMany({ where: publishedWhere, include: courseCardInclude }),
+      // Versión LIVIANA — antes esto era `courseCardInclude` completo (trae
+      // `staff.user` entero y TODAS las `ratings` de CADA curso publicado)
+      // solo para filtrar/ordenar en memoria cuáles entran en
+      // upcomingLive/recommendedPaths/mostDemanded (ver REVIEW.md #4.6). Acá
+      // solo se piden los campos que ese filtrado realmente usa; los datos
+      // completos para armar la tarjeta (`toCourseCard`) se piden después,
+      // en una sola query más, SOLO para los cursos que de verdad quedaron
+      // seleccionados en alguna sección (a lo más 24, no todo el catálogo).
+      this.prisma.course.findMany({
+        where: publishedWhere,
+        select: {
+          id: true,
+          nextRecommendedCourseIds: true,
+          liveSessions: { where: { status: "SCHEDULED" }, orderBy: { startsAt: "asc" }, take: 1, select: { startsAt: true } },
+        },
+        take: MAX_PUBLISHED_COURSES_FOR_SECTIONS,
+      }),
     ]);
 
-    const upcomingLiveRaw = allPublished
-      .filter((c) => (c as unknown as CourseWithRelations).liveSessions.length > 0)
-      .sort((a, b) => {
-        const aNext = (a as unknown as CourseWithRelations).liveSessions[0]?.startsAt.getTime() ?? Infinity;
-        const bNext = (b as unknown as CourseWithRelations).liveSessions[0]?.startsAt.getTime() ?? Infinity;
-        return aNext - bNext;
-      })
+    // Mismo criterio de selección y de ORDEN que antes: upcomingLive se
+    // reordena explícitamente por la próxima sesión más cercana;
+    // recommendedPaths/mostDemanded se quedan en el orden en que
+    // `allPublishedLight` los trajo (igual que el `allPublished.filter(...)`
+    // original, que tampoco los reordenaba por ranking).
+    const upcomingLiveCourses = allPublishedLight
+      .filter((c) => c.liveSessions.length > 0)
+      .sort((a, b) => (a.liveSessions[0]?.startsAt.getTime() ?? Infinity) - (b.liveSessions[0]?.startsAt.getTime() ?? Infinity))
       .slice(0, 8);
 
-    const recommendedIds = new Set(allPublished.flatMap((c) => c.nextRecommendedCourseIds));
-    const recommendedPathsRaw = allPublished.filter((c) => recommendedIds.has(c.id)).slice(0, 8);
+    const recommendedIds = new Set(allPublishedLight.flatMap((c) => c.nextRecommendedCourseIds));
+    const recommendedPathsCourses = allPublishedLight.filter((c) => recommendedIds.has(c.id)).slice(0, 8);
 
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const mostDemandedCounts = await this.prisma.enrollment.groupBy({
@@ -357,14 +382,28 @@ export class CatalogService {
       take: 8,
     });
     const mostDemandedIds = mostDemandedCounts.map((c) => c.courseId).filter(Boolean) as string[];
-    const mostDemandedRaw = allPublished.filter((c) => mostDemandedIds.includes(c.id));
+    const mostDemandedCourses = allPublishedLight.filter((c) => mostDemandedIds.includes(c.id));
+
+    // Ahora sí, UNA sola query con `courseCardInclude` completo, pero solo
+    // para los cursos que de verdad quedaron seleccionados en alguna de las
+    // 3 secciones heurísticas (deduplicados — un curso puede calificar para
+    // más de una sección a la vez).
+    const extraIds = Array.from(
+      new Set([...upcomingLiveCourses.map((c) => c.id), ...recommendedPathsCourses.map((c) => c.id), ...mostDemandedCourses.map((c) => c.id)]),
+    );
+    const extraFull = extraIds.length ? await this.prisma.course.findMany({ where: { id: { in: extraIds } }, include: courseCardInclude }) : [];
+    const extraFullById = new Map(extraFull.map((c) => [c.id, c as unknown as CourseWithRelations]));
+    const toCardOrNull = (id: string) => {
+      const c = extraFullById.get(id);
+      return c ? this.toCourseCard(c) : null;
+    };
 
     return {
       featured: featuredRaw.map((c) => this.toCourseCard(c as unknown as CourseWithRelations)),
-      upcomingLive: upcomingLiveRaw.map((c) => this.toCourseCard(c as unknown as CourseWithRelations)),
+      upcomingLive: upcomingLiveCourses.map((c) => toCardOrNull(c.id)).filter((c): c is NonNullable<typeof c> => c !== null),
       new: newRaw.map((c) => this.toCourseCard(c as unknown as CourseWithRelations)),
-      recommendedPaths: recommendedPathsRaw.map((c) => this.toCourseCard(c as unknown as CourseWithRelations)),
-      mostDemanded: mostDemandedRaw.map((c) => this.toCourseCard(c as unknown as CourseWithRelations)),
+      recommendedPaths: recommendedPathsCourses.map((c) => toCardOrNull(c.id)).filter((c): c is NonNullable<typeof c> => c !== null),
+      mostDemanded: mostDemandedCourses.map((c) => toCardOrNull(c.id)).filter((c): c is NonNullable<typeof c> => c !== null),
     };
   }
 }

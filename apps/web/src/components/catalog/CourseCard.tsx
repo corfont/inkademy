@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import type { CourseCardDTO } from "@inkademy/shared";
 import { useTranslations, useLocale } from "next-intl";
@@ -26,10 +27,20 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
 
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-lg border border-paper-border bg-paper shadow-card transition-shadow hover:shadow-raised">
-      <Link href={href} className="relative block focus-visible:outline-2 focus-visible:outline-ink-500">
+      <Link href={href} className="relative block h-40 w-full overflow-hidden focus-visible:outline-2 focus-visible:outline-ink-500">
         {course.coverImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={course.coverImageUrl} alt="" className="h-40 w-full object-cover" />
+          // Portada de cada tarjeta del catálogo — varias por página, sin
+          // `priority` (lazy loading por defecto es lo correcto acá, ver
+          // REVIEW.md #4.9). `fill` porque el diseño de la tarjeta es
+          // responsivo (ancho variable según el grid); el contenedor Link ya
+          // trae la altura fija (h-40) que antes tenía la propia <img>.
+          <Image
+            src={course.coverImageUrl}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="object-cover"
+          />
         ) : (
           <div
             className="flex h-40 items-center justify-center bg-gradient-to-br from-ink-700 to-ink-900 text-paper"
@@ -42,7 +53,7 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
           </div>
         )}
         {isOnSale && countdown.label && (
-          <span className="absolute left-2 top-2 rounded-full bg-ink-950/85 px-2 py-0.5 text-[0.65rem] font-semibold text-white shadow-md">
+          <span className="absolute left-2 top-2 rounded-full bg-ink-950/85 px-2 py-0.5 text-2xs font-semibold text-white shadow-md">
             ⏳ {countdown.label}
           </span>
         )}
@@ -137,7 +148,7 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
                 {formatPrice(isOnSale ? course.priceAmount : (course.originalPriceAmount ?? course.priceAmount), course.priceCurrency, locale)}
               </span>
               {isOnSale && countdown.label && (
-                <span className="font-mono text-[0.7rem] font-semibold text-danger">
+                <span className="font-mono text-2xs font-semibold text-danger">
                   {locale === "en" ? "Offer ends in" : "Oferta finaliza en"} {countdown.label}
                 </span>
               )}

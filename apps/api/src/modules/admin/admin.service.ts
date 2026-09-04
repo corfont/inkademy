@@ -7,6 +7,7 @@ import type { PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO, ScormLocale } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
+import { normalizePage } from "../../common/utils/pagination";
 import { QUEUE_NAMES, SUBTITLES_JOBS, BACKUP_JOBS } from "../../common/queues/queue.constants";
 import { logAudit } from "./audit-log.util";
 import { StorageService } from "../../storage/storage.service";
@@ -183,16 +184,28 @@ export class AdminService {
       },
       include: { course: true },
     });
+    // Batch (ver REVIEW.md #4.4): un solo findMany agrupado por courseId en
+    // vez de un enrollment.findMany por cada sesión próxima — el filtro
+    // "acceso vencido/por vencer ANTES de esta clase" (que depende de
+    // session.startsAt, distinto por sesión) se aplica en memoria después.
+    const upcomingSessionCourseIds = Array.from(new Set(upcomingSessions.map((s) => s.courseId)));
+    const candidateEnrollments = upcomingSessionCourseIds.length
+      ? await this.prisma.enrollment.findMany({
+          where: { courseId: { in: upcomingSessionCourseIds }, offeringKind: "COURSE", status: { not: "CANCELLED" } },
+          include: { user: true },
+        })
+      : [];
+    const candidateEnrollmentsByCourseId = new Map<string, typeof candidateEnrollments>();
+    for (const e of candidateEnrollments) {
+      if (!e.courseId) continue;
+      const list = candidateEnrollmentsByCourseId.get(e.courseId) ?? [];
+      list.push(e);
+      candidateEnrollmentsByCourseId.set(e.courseId, list);
+    }
     for (const session of upcomingSessions) {
-      const affected = await this.prisma.enrollment.findMany({
-        where: {
-          courseId: session.courseId,
-          offeringKind: "COURSE",
-          status: { not: "CANCELLED" },
-          OR: [{ status: "EXPIRED" }, { accessExpiresAt: { lte: session.startsAt } }],
-        },
-        include: { user: true },
-      });
+      const affected = (candidateEnrollmentsByCourseId.get(session.courseId) ?? []).filter(
+        (e) => e.status === "EXPIRED" || (e.accessExpiresAt !== null && e.accessExpiresAt <= session.startsAt),
+      );
       for (const enrollment of affected) {
         exceptions.push({
           id: `STUDENT_WITHOUT_ACCESS_BEFORE_CLASS:${enrollment.id}:${session.id}`,
@@ -337,12 +350,11 @@ export class AdminService {
 
   /** `teacherUserId`: si viene, acota a los cursos donde ese usuario es CourseStaff (panel de docente). */
   async listCourses(params: { page?: number; pageSize?: number }, teacherUserId?: string) {
-    const page = Math.max(1, params.page ?? 1);
-    const pageSize = Math.min(100, params.pageSize ?? 20);
+    const { skip, take } = normalizePage(params);
     const courses = await this.prisma.course.findMany({
       where: teacherUserId ? { staff: { some: { userId: teacherUserId } } } : undefined,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip,
+      take,
       orderBy: { createdAt: "desc" },
       include: { area: true },
     });
@@ -448,6 +460,80 @@ export class AdminService {
   private async getCourseStaffUserIds(courseId: string): Promise<string[]> {
     const staff = await this.prisma.courseStaff.findMany({ where: { courseId }, select: { userId: true } });
     return staff.map((s) => s.userId);
+  }
+
+  /**
+   * Versión en batch de `getCourseStaffUserIds` — usada por
+   * `getPartnerInstitutionCosts`/`getRoyaltyCosts` para traer los
+   * CourseStaff de TODOS los convenios/regalías del periodo en una sola
+   * query (agrupados por courseId), en vez de una query por cada convenio
+   * que comparte el mismo curso (ver REVIEW.md #4.3). Mismo resultado que
+   * llamar `getCourseStaffUserIds` una vez por cada courseId distinto.
+   */
+  private async batchGetCourseStaffUserIds(courseIds: string[]): Promise<Map<string, string[]>> {
+    const uniqueCourseIds = Array.from(new Set(courseIds));
+    const staff = uniqueCourseIds.length
+      ? await this.prisma.courseStaff.findMany({ where: { courseId: { in: uniqueCourseIds } }, select: { courseId: true, userId: true } })
+      : [];
+    const map = new Map<string, string[]>();
+    for (const s of staff) {
+      const list = map.get(s.courseId) ?? [];
+      list.push(s.userId);
+      map.set(s.courseId, list);
+    }
+    return map;
+  }
+
+  /**
+   * Versión en batch de `findTeacherRate` — resuelve la tarifa de varios
+   * pares (teacherId, courseId) de una sola vez (2 queries en total en vez
+   * de hasta 2 por sesión, ver REVIEW.md #4.3). Mismo criterio de
+   * resolución que el original: tarifa específica del curso si existe, si
+   * no la global (courseId=null) de ese docente.
+   */
+  private async batchFindTeacherRates(pairs: { teacherId: string; courseId: string }[]) {
+    const teacherIds = Array.from(new Set(pairs.map((p) => p.teacherId)));
+    const courseIds = Array.from(new Set(pairs.map((p) => p.courseId)));
+    const rates = teacherIds.length
+      ? await this.prisma.teacherRate.findMany({
+          where: { teacherId: { in: teacherIds }, OR: [{ courseId: null }, { courseId: { in: courseIds } }] },
+        })
+      : [];
+    const exactByKey = new Map<string, (typeof rates)[number]>();
+    const globalByTeacher = new Map<string, (typeof rates)[number]>();
+    for (const r of rates) {
+      if (r.courseId) {
+        if (!exactByKey.has(`${r.teacherId}:${r.courseId}`)) exactByKey.set(`${r.teacherId}:${r.courseId}`, r);
+      } else if (!globalByTeacher.has(r.teacherId)) {
+        globalByTeacher.set(r.teacherId, r);
+      }
+    }
+    const result = new Map<string, (typeof rates)[number] | null>();
+    for (const p of pairs) {
+      const key = `${p.teacherId}:${p.courseId}`;
+      result.set(key, exactByKey.get(key) ?? globalByTeacher.get(p.teacherId) ?? null);
+    }
+    return result;
+  }
+
+  /**
+   * Versión en batch de `attendance.findUnique({liveSessionId_userId})` —
+   * usada por `getTeachingHoursCost`/`listTeacherSessionHours` para traer
+   * la asistencia del docente de TODAS las sesiones del periodo en una
+   * sola query (ver REVIEW.md #4.3). El key `${liveSessionId}:${userId}`
+   * reproduce exactamente el selector compuesto único de Attendance, así
+   * que no hay riesgo de mezclar asistencia de otra persona/sesión.
+   */
+  private async batchFindAttendanceByLiveSessionAndUser(pairs: { liveSessionId: string; userId: string }[]) {
+    const liveSessionIds = Array.from(new Set(pairs.map((p) => p.liveSessionId)));
+    const userIds = Array.from(new Set(pairs.map((p) => p.userId)));
+    const rows =
+      liveSessionIds.length && userIds.length
+        ? await this.prisma.attendance.findMany({ where: { liveSessionId: { in: liveSessionIds }, userId: { in: userIds } } })
+        : [];
+    const map = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) map.set(`${r.liveSessionId}:${r.userId}`, r);
+    return map;
   }
 
   /**
@@ -1031,6 +1117,10 @@ export class AdminService {
     const partnerships = await this.prisma.coursePartnership.findMany({
       include: { partnerInstitution: true },
     });
+    // Batch (ver REVIEW.md #4.3): un solo findMany agrupado por courseId en
+    // vez de un getCourseStaffUserIds por cada convenio — varios convenios
+    // pueden compartir el mismo curso.
+    const staffUserIdsByCourse = await this.batchGetCourseStaffUserIds(partnerships.map((p) => p.courseId));
     const byCurrency = new Map<string, number>();
     const breakdown: Array<{ partnerName: string; courseId: string; billingType: string; amount: number; currency: string }> = [];
     for (const p of partnerships) {
@@ -1041,7 +1131,7 @@ export class AdminService {
       if (p.partnerInstitution.billingType === "FIXED") {
         amount = fee; // carga mensual constante, mismo criterio que PlatformExpense MONTHLY
       } else if (p.partnerInstitution.billingType === "PER_COURSE") {
-        const staffUserIds = await this.getCourseStaffUserIds(p.courseId);
+        const staffUserIds = staffUserIdsByCourse.get(p.courseId) ?? [];
         const count = await this.prisma.certificate.count({
           where: { courseId: p.courseId, issuedAt: { gte: params.from, lte: params.to }, userId: { notIn: staffUserIds } },
         });
@@ -1051,7 +1141,7 @@ export class AdminService {
         // propios CourseStaff del curso — si el docente se matricula en su
         // propio curso, esa matrícula no es un alumno real que el convenio
         // deba facturar.
-        const staffUserIds = await this.getCourseStaffUserIds(p.courseId);
+        const staffUserIds = staffUserIdsByCourse.get(p.courseId) ?? [];
         const count = await this.prisma.enrollment.count({
           where: { courseId: p.courseId, enrolledAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" }, userId: { notIn: staffUserIds } },
         });
@@ -1077,6 +1167,9 @@ export class AdminService {
    */
   async getRoyaltyCosts(params: { from: Date; to: Date }) {
     const royalties = await this.prisma.courseRoyalty.findMany({ include: { royaltyRecipient: true } });
+    // Batch (ver REVIEW.md #4.3): un solo findMany agrupado por courseId en
+    // vez de un getCourseStaffUserIds por cada regalía.
+    const staffUserIdsByCourse = await this.batchGetCourseStaffUserIds(royalties.map((r) => r.courseId));
     const byCurrency = new Map<string, number>();
     const breakdown: Array<{ recipientName: string; courseId: string; billingType: string; amount: number; currency: string }> = [];
     for (const r of royalties) {
@@ -1090,13 +1183,13 @@ export class AdminService {
         // pruebas) y a los propios CourseStaff del curso — si el docente (o
         // un co-docente/moderador) se matricula en su propio curso, esa
         // matrícula no genera una regalía real que pagarle a nadie.
-        const staffUserIds = await this.getCourseStaffUserIds(r.courseId);
+        const staffUserIds = staffUserIdsByCourse.get(r.courseId) ?? [];
         const count = await this.prisma.enrollment.count({
           where: { courseId: r.courseId, enrolledAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" }, userId: { notIn: staffUserIds } },
         });
         amount = count; // % se aplica sobre un monto fijo por matrícula — ver feePercent como "soles por matrícula" en este caso simplificado
       } else if (r.royaltyRecipient.billingType === "PER_COMPLETION") {
-        const staffUserIds = await this.getCourseStaffUserIds(r.courseId);
+        const staffUserIds = staffUserIdsByCourse.get(r.courseId) ?? [];
         const count = await this.prisma.certificate.count({
           where: { courseId: r.courseId, issuedAt: { gte: params.from, lte: params.to }, userId: { notIn: staffUserIds } },
         });
@@ -1156,15 +1249,19 @@ export class AdminService {
       where: { startsAt: { gte: params.from, lte: params.to }, status: { not: "CANCELLED" }, course: { modality: { not: "RECORDED" } } },
       include: { course: true },
     });
+    const sessionsWithTeacher = sessions.filter((s): s is typeof s & { teacherId: string } => Boolean(s.teacherId));
+    // Batch (ver REVIEW.md #4.3): tarifas y asistencia de TODAS las sesiones
+    // en 2 queries en vez de hasta 3 por sesión.
+    const [rateByKey, attendanceByKey] = await Promise.all([
+      this.batchFindTeacherRates(sessionsWithTeacher.map((s) => ({ teacherId: s.teacherId, courseId: s.courseId }))),
+      this.batchFindAttendanceByLiveSessionAndUser(sessionsWithTeacher.map((s) => ({ liveSessionId: s.id, userId: s.teacherId }))),
+    ]);
     const byCurrency = new Map<string, number>();
     let totalMinutes = 0;
-    for (const session of sessions) {
-      if (!session.teacherId) continue;
-      const rate = await this.findTeacherRate(session.teacherId, session.courseId);
+    for (const session of sessionsWithTeacher) {
+      const rate = rateByKey.get(`${session.teacherId}:${session.courseId}`);
       if (!rate || !rate.active || Number(rate.hourlyRateTeaching) <= 0) continue;
-      const attendance = await this.prisma.attendance.findUnique({
-        where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
-      });
+      const attendance = attendanceByKey.get(`${session.id}:${session.teacherId}`) ?? null;
       const { payableMinutes } = this.computeSessionPayableMinutes(session, attendance, rate.toleranceStartMinutes, rate.toleranceEndMinutes);
       const amount = (payableMinutes / 60) * Number(rate.hourlyRateTeaching);
       byCurrency.set(rate.currency, (byCurrency.get(rate.currency) ?? 0) + amount);
@@ -1196,13 +1293,20 @@ export class AdminService {
       take: 500,
     });
 
+    const sessionsWithTeacher = sessions.filter(
+      (s): s is typeof s & { teacherId: string; teacher: NonNullable<(typeof s)["teacher"]> } => Boolean(s.teacherId && s.teacher),
+    );
+    // Batch (ver REVIEW.md #4.3): mismo patrón que getTeachingHoursCost —
+    // asistencia y tarifas de TODAS las sesiones en 2 queries.
+    const [attendanceByKey, rateByKey] = await Promise.all([
+      this.batchFindAttendanceByLiveSessionAndUser(sessionsWithTeacher.map((s) => ({ liveSessionId: s.id, userId: s.teacherId }))),
+      this.batchFindTeacherRates(sessionsWithTeacher.map((s) => ({ teacherId: s.teacherId, courseId: s.courseId }))),
+    ]);
+
     const rows = [];
-    for (const session of sessions) {
-      if (!session.teacherId || !session.teacher) continue;
-      const attendance = await this.prisma.attendance.findUnique({
-        where: { liveSessionId_userId: { liveSessionId: session.id, userId: session.teacherId } },
-      });
-      const rate = await this.findTeacherRate(session.teacherId, session.courseId);
+    for (const session of sessionsWithTeacher) {
+      const attendance = attendanceByKey.get(`${session.id}:${session.teacherId}`) ?? null;
+      const rate = rateByKey.get(`${session.teacherId}:${session.courseId}`) ?? null;
       const toleranceStartMinutes = rate?.toleranceStartMinutes ?? 10;
       const toleranceEndMinutes = rate?.toleranceEndMinutes ?? 10;
       const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(session, attendance, toleranceStartMinutes, toleranceEndMinutes);
@@ -1772,13 +1876,17 @@ export class AdminService {
       toleranceEndMinutes: number;
     }> = [];
 
+    // Batch (ver REVIEW.md #9/#4.11): asistencia del docente en TODAS las
+    // sesiones del periodo en una sola query, en vez de un findUnique por
+    // sesión.
+    const attendanceByKey = await this.batchFindAttendanceByLiveSessionAndUser(
+      sessions.map((session) => ({ liveSessionId: session.id, userId: input.teacherId })),
+    );
     for (const session of sessions) {
       const rate = rateByCourse.get(session.courseId) ?? globalRate;
       if (!rate) continue;
       currency = rate.currency;
-      const attendance = await this.prisma.attendance.findUnique({
-        where: { liveSessionId_userId: { liveSessionId: session.id, userId: input.teacherId } },
-      });
+      const attendance = attendanceByKey.get(`${session.id}:${input.teacherId}`) ?? null;
       const { scheduledMinutes, payableMinutes, latenessMinutes, earlinessMinutes } = this.computeSessionPayableMinutes(
         session,
         attendance,
@@ -2373,7 +2481,20 @@ export class AdminService {
     const to = params.to ? new Date(params.to) : new Date();
     const from = params.from ? new Date(params.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const bucketExpr = { day: "day", week: "week", month: "month", year: "year" }[params.groupBy];
+    // Hallazgo de auditoría (REVIEW.md #2.7): bucketExpr se interpola
+    // directo en SQL crudo ($queryRawUnsafe) más abajo — hoy protegido
+    // porque el controller (admin.controller.ts) valida `groupBy` contra
+    // este mismo allowlist antes de llamar acá, pero la validación vivía
+    // SOLO en el caller. Se repite explícitamente acá (con .includes, no
+    // el lookup por objeto de antes — un lookup tipo `{}[key]` puede
+    // resolver a través del prototype chain para claves como
+    // "constructor") para que este service sea seguro por sí mismo,
+    // sin depender de que el único caller de hoy siga siendo el único mañana.
+    const ALLOWED_BUCKETS = ["day", "week", "month", "year"] as const;
+    if (!ALLOWED_BUCKETS.includes(params.groupBy)) {
+      throw new BadRequestException("groupBy inválido");
+    }
+    const bucketExpr = params.groupBy;
 
     const [incomeBuckets, expenseBuckets, expensesByCategory] = await Promise.all([
       this.prisma.$queryRawUnsafe<Array<{ bucket: Date; currency: string; total: string }>>(

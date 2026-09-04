@@ -195,44 +195,309 @@ export class EnrollmentService {
       ).map((c) => c.courseId),
     );
 
-    return Promise.all(
-      enrollments.map(async (e) => {
-        const offering = e.course ?? e.program;
-        const approval =
-          e.offeringKind === "COURSE" && e.courseId
-            ? await this.computeApprovalMissing(e.courseId, e.id)
-            : { missing: [], checklist: [], ratingRequired: false, readyForRatingPrompt: false };
-        const nextActionLabel =
-          e.offeringKind === "COURSE" && e.courseId
-            ? await this.nextActionLabel(e.courseId, e.id)
-            : null;
-        return {
-          id: e.id,
-          offeringKind: e.offeringKind,
-          courseId: e.courseId,
-          programId: e.programId,
-          title: (offering?.title as Record<string, string>) ?? {},
-          // "Que el alumno vea bonito cada curso... con su imagen" — antes
-          // solo se resolvía para offeringKind COURSE; un programa/diplomado
-          // matriculado se quedaba siempre sin portada aunque sí tuviera una
-          // configurada.
-          coverImageUrl: e.course?.coverImageAssetId
-            ? this.storage.getPublicUrl(e.course.coverImageAssetId)
-            : e.program?.coverImageAssetId
-              ? this.storage.getPublicUrl(e.program.coverImageAssetId)
-              : null,
-          progressPct: e.progressPct,
-          status: e.status,
-          source: e.source,
-          accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,
-          nextActionLabel,
-          certificateAvailable: Boolean((e.certificate && !e.certificate.revoked) || (e.courseId && certifiedCourseIds.has(e.courseId))),
-          approvalMissing: approval.missing,
-          readyForRatingPrompt: approval.readyForRatingPrompt,
-          enrolledAt: e.enrolledAt.toISOString(),
-        };
-      }),
+    // --- Batch loading (perf) ---
+    // Todo lo que `computeApprovalMissing`/`nextActionLabel`/`computeCourseScore`
+    // pedían UNA POR MATRÍCULA dentro del loop de abajo se resuelve acá arriba
+    // con `findMany({courseId/enrollmentId: {in: [...]}})` — el loop final solo
+    // LEE de los Maps ya armados, sin ningún await nuevo. Mismo resultado por
+    // matrícula, solo menos queries (ver REVIEW.md #4.2). No se tocó
+    // `computeApprovalMissing`/`nextActionLabel` en sí — otros callers
+    // (getMineDetail, recomputeProgress, refreshCompletionStatus) siguen
+    // usando la versión de a una, que sigue siendo correcta para un solo curso.
+    const courseEnrollments = enrollments.filter(
+      (e): e is typeof e & { courseId: string } => e.offeringKind === "COURSE" && Boolean(e.courseId),
     );
+    const courseIds = Array.from(new Set(courseEnrollments.map((e) => e.courseId)));
+    const enrollmentIds = courseEnrollments.map((e) => e.id);
+
+    const approvalRules = courseIds.length
+      ? await this.prisma.approvalRule.findMany({ where: { courseId: { in: courseIds } } })
+      : [];
+    const approvalRuleByCourseId = new Map(approvalRules.map((r) => [r.courseId, r]));
+
+    const liveSessionCounts = courseIds.length
+      ? await this.prisma.liveSession.groupBy({ by: ["courseId"], where: { courseId: { in: courseIds } }, _count: { _all: true } })
+      : [];
+    const liveSessionCountByCourseId = new Map(liveSessionCounts.map((r) => [r.courseId, r._count._all]));
+
+    // Mismo criterio cross-matrícula que antes (findFirst por (userId, courseId));
+    // como `listMine` es siempre de UN solo usuario, un solo findMany con ese
+    // mismo userId + courseId:in cubre exactamente los mismos registros.
+    const ratings = courseIds.length
+      ? await this.prisma.courseRating.findMany({ where: { userId, courseId: { in: courseIds } } })
+      : [];
+    const ratingByCourseId = new Map<string, (typeof ratings)[number]>();
+    for (const r of ratings) {
+      if (r.courseId && !ratingByCourseId.has(r.courseId)) ratingByCourseId.set(r.courseId, r);
+    }
+
+    const scorableAssessments = courseIds.length
+      ? await this.prisma.assessment.findMany({
+          where: {
+            courseId: { in: courseIds },
+            OR: [{ questions: { some: {} } }, { sourceFileAssetId: { not: null } }, { scormLessonId: { not: null } }, { scormMaterialId: { not: null } }],
+          },
+          select: { id: true, courseId: true, weightPercent: true, scormLessonId: true, scormMaterialId: true },
+        })
+      : [];
+    const assessmentsByCourseId = new Map<string, typeof scorableAssessments>();
+    for (const a of scorableAssessments) {
+      if (!a.courseId) continue;
+      const list = assessmentsByCourseId.get(a.courseId) ?? [];
+      list.push(a);
+      assessmentsByCourseId.set(a.courseId, list);
+    }
+
+    const scormLessonIds = Array.from(new Set(scorableAssessments.map((a) => a.scormLessonId).filter((id): id is string => Boolean(id))));
+    const scormMaterialIds = Array.from(new Set(scorableAssessments.map((a) => a.scormMaterialId).filter((id): id is string => Boolean(id))));
+    const nativeAssessmentIds = scorableAssessments.filter((a) => !a.scormLessonId && !a.scormMaterialId).map((a) => a.id);
+
+    const scormLessonProgress =
+      scormLessonIds.length && enrollmentIds.length
+        ? await this.prisma.lessonProgress.findMany({
+            where: { enrollmentId: { in: enrollmentIds }, lessonId: { in: scormLessonIds } },
+            select: { enrollmentId: true, lessonId: true, scormScoreRaw: true },
+          })
+        : [];
+    const scormLessonScoreByKey = new Map(scormLessonProgress.map((p) => [`${p.enrollmentId}:${p.lessonId}`, p.scormScoreRaw ?? null]));
+
+    const scormMaterialProgress =
+      scormMaterialIds.length && enrollmentIds.length
+        ? await this.prisma.materialScormProgress.findMany({
+            where: { enrollmentId: { in: enrollmentIds }, materialId: { in: scormMaterialIds } },
+            select: { enrollmentId: true, materialId: true, scormScoreRaw: true },
+          })
+        : [];
+    const scormMaterialScoreByKey = new Map(scormMaterialProgress.map((p) => [`${p.enrollmentId}:${p.materialId}`, p.scormScoreRaw ?? null]));
+
+    const nativeAttempts =
+      nativeAssessmentIds.length && enrollmentIds.length
+        ? await this.prisma.assessmentAttempt.findMany({
+            where: { enrollmentId: { in: enrollmentIds }, assessmentId: { in: nativeAssessmentIds }, score: { not: null } },
+            orderBy: { score: "desc" },
+            select: { enrollmentId: true, assessmentId: true, score: true },
+          })
+        : [];
+    const bestNativeScoreByKey = new Map<string, number>();
+    for (const at of nativeAttempts) {
+      const key = `${at.enrollmentId}:${at.assessmentId}`;
+      // Ordenado desc — la primera vez que aparece cada key ya es la mejor nota.
+      if (!bestNativeScoreByKey.has(key) && at.score !== null) bestNativeScoreByKey.set(key, at.score);
+    }
+
+    const resolveBestScoreFromMaps = (enrollmentId: string, a: (typeof scorableAssessments)[number]): number | null => {
+      if (a.scormLessonId) return scormLessonScoreByKey.get(`${enrollmentId}:${a.scormLessonId}`) ?? null;
+      if (a.scormMaterialId) return scormMaterialScoreByKey.get(`${enrollmentId}:${a.scormMaterialId}`) ?? null;
+      return bestNativeScoreByKey.get(`${enrollmentId}:${a.id}`) ?? null;
+    };
+
+    const computeCourseScoreFromMaps = (enrollmentId: string, courseId: string, scoreMode: string) => {
+      const assessments = assessmentsByCourseId.get(courseId) ?? [];
+      if (assessments.length === 0) return { hasAssessments: false, finalScore: null as number | null };
+      const weighted = assessments.filter((a) => (a.weightPercent ?? 0) > 0);
+      const useWeighted = scoreMode === "WEIGHTED_AVERAGE" && weighted.length > 0;
+      if (!useWeighted) {
+        let best: number | null = null;
+        for (const a of assessments) {
+          const score = resolveBestScoreFromMaps(enrollmentId, a);
+          if (score !== null && (best === null || score > best)) best = score;
+        }
+        return { hasAssessments: true, finalScore: best };
+      }
+      const totalWeight = weighted.reduce((sum, a) => sum + (a.weightPercent ?? 0), 0);
+      let weightedSum = 0;
+      let anyAttempted = false;
+      for (const a of weighted) {
+        const best = resolveBestScoreFromMaps(enrollmentId, a);
+        if (best !== null) anyAttempted = true;
+        weightedSum += (best ?? 0) * (a.weightPercent ?? 0);
+      }
+      return { hasAssessments: true, finalScore: anyAttempted && totalWeight > 0 ? weightedSum / totalWeight : null };
+    };
+
+    // Asistencia — solo hace falta traer filas para cursos con
+    // minAttendancePct configurado Y que de verdad tienen sesiones en vivo
+    // (mismo gate que el código original).
+    const coursesNeedingAttendance = courseIds.filter((cid) => {
+      const rule = approvalRuleByCourseId.get(cid);
+      return rule?.minAttendancePct != null && (liveSessionCountByCourseId.get(cid) ?? 0) > 0;
+    });
+    const attendanceRows = coursesNeedingAttendance.length
+      ? await this.prisma.attendance.findMany({
+          where: { userId, liveSession: { courseId: { in: coursesNeedingAttendance } } },
+          select: { durationMin: true, joinedAt: true, liveSession: { select: { courseId: true } } },
+        })
+      : [];
+    const attendanceRowsByCourseId = new Map<string, typeof attendanceRows>();
+    for (const row of attendanceRows) {
+      const cid = row.liveSession.courseId;
+      const list = attendanceRowsByCourseId.get(cid) ?? [];
+      list.push(row);
+      attendanceRowsByCourseId.set(cid, list);
+    }
+
+    // requiresAssignment — solo hace falta buscar respuesta OPEN aprobada
+    // para las matrículas de cursos que de verdad exigen tarea/asignación.
+    const coursesRequiringAssignment = new Set(courseIds.filter((cid) => approvalRuleByCourseId.get(cid)?.requiresAssignment));
+    const enrollmentIdsRequiringAssignment = courseEnrollments.filter((e) => coursesRequiringAssignment.has(e.courseId)).map((e) => e.id);
+    const gradedAssignmentAnswers = enrollmentIdsRequiringAssignment.length
+      ? await this.prisma.answer.findMany({
+          where: { attempt: { enrollmentId: { in: enrollmentIdsRequiringAssignment } }, question: { type: "OPEN" }, isCorrect: true },
+          select: { attempt: { select: { enrollmentId: true } } },
+        })
+      : [];
+    const enrollmentIdsWithGradedAssignment = new Set(gradedAssignmentAnswers.map((a) => a.attempt.enrollmentId));
+
+    // nextActionLabel — próxima clase en vivo por curso.
+    const upcomingSessions = courseIds.length
+      ? await this.prisma.liveSession.findMany({
+          where: { courseId: { in: courseIds }, startsAt: { gt: new Date() }, status: "SCHEDULED" },
+          orderBy: { startsAt: "asc" },
+        })
+      : [];
+    const upcomingSessionByCourseId = new Map<string, (typeof upcomingSessions)[number]>();
+    for (const s of upcomingSessions) {
+      if (!upcomingSessionByCourseId.has(s.courseId)) upcomingSessionByCourseId.set(s.courseId, s);
+    }
+
+    // nextActionLabel — próxima lección sin completar, solo para los cursos
+    // sin próxima clase en vivo (mismo criterio "prioriza clase en vivo" del
+    // original). El orden lección/módulo es por curso; lo que varía por
+    // matrícula es el set de lecciones ya completadas.
+    const coursesNeedingNextLesson = courseIds.filter((cid) => !upcomingSessionByCourseId.has(cid));
+    const lessonsForNextAction = coursesNeedingNextLesson.length
+      ? await this.prisma.lesson.findMany({
+          where: { module: { courseId: { in: coursesNeedingNextLesson } } },
+          include: { module: true },
+          orderBy: [{ module: { order: "asc" } }, { order: "asc" }],
+        })
+      : [];
+    const lessonsByCourseId = new Map<string, typeof lessonsForNextAction>();
+    for (const l of lessonsForNextAction) {
+      const cid = l.module.courseId;
+      const list = lessonsByCourseId.get(cid) ?? [];
+      list.push(l);
+      lessonsByCourseId.set(cid, list);
+    }
+    const enrollmentIdsNeedingNextLesson = courseEnrollments.filter((e) => coursesNeedingNextLesson.includes(e.courseId)).map((e) => e.id);
+    const completedLessonProgress = enrollmentIdsNeedingNextLesson.length
+      ? await this.prisma.lessonProgress.findMany({
+          where: { enrollmentId: { in: enrollmentIdsNeedingNextLesson }, completed: true },
+          select: { enrollmentId: true, lessonId: true },
+        })
+      : [];
+    const completedLessonIdsByEnrollment = new Map<string, Set<string>>();
+    for (const p of completedLessonProgress) {
+      const set = completedLessonIdsByEnrollment.get(p.enrollmentId) ?? new Set<string>();
+      set.add(p.lessonId);
+      completedLessonIdsByEnrollment.set(p.enrollmentId, set);
+    }
+
+    const nextActionLabelFromMaps = (courseId: string, enrollmentId: string): string | null => {
+      const upcoming = upcomingSessionByCourseId.get(courseId);
+      if (upcoming) return `Próxima clase: ${upcoming.startsAt.toLocaleString("es-PE")}`;
+      const lessons = lessonsByCourseId.get(courseId) ?? [];
+      const completedIds = completedLessonIdsByEnrollment.get(enrollmentId);
+      const nextLesson = lessons.find((l) => !completedIds?.has(l.id));
+      if (nextLesson) return `Continúa en el Módulo ${nextLesson.module.order}`;
+      return null;
+    };
+
+    // Réplica exacta de `computeApprovalMissing`, leyendo de los Maps de
+    // arriba en vez de hacer un await por matrícula — ver comentario grande
+    // al inicio de este bloque.
+    const computeApprovalMissingFromMaps = (courseId: string, enrollment: (typeof courseEnrollments)[number]) => {
+      const rule = approvalRuleByCourseId.get(courseId) ?? {
+        minProgressPct: 100,
+        minAttendancePct: null as number | null,
+        minConnectionMinutes: null as number | null,
+        minScore: 70,
+        requiresAssignment: false,
+        scoreMode: "BEST_ATTEMPT",
+      };
+      const rating = ratingByCourseId.get(courseId) ?? null;
+      const { hasAssessments, finalScore: bestScore } = computeCourseScoreFromMaps(enrollment.id, courseId, rule.scoreMode ?? "BEST_ATTEMPT");
+
+      const checklist: { label: string; done: boolean }[] = [];
+      const progressDone = enrollment.progressPct >= rule.minProgressPct;
+      checklist.push({
+        label: progressDone
+          ? `Completaste el ${rule.minProgressPct}% del curso`
+          : `Completa el ${rule.minProgressPct}% del curso (llevas ${Math.round(enrollment.progressPct)}%)`,
+        done: progressDone,
+      });
+      const liveSessionCount = liveSessionCountByCourseId.get(courseId) ?? 0;
+      if (rule.minAttendancePct !== null && liveSessionCount > 0) {
+        const rows = attendanceRowsByCourseId.get(courseId) ?? [];
+        const attended = rows.filter((row) =>
+          rule.minConnectionMinutes !== null ? (row.durationMin ?? 0) >= rule.minConnectionMinutes : row.joinedAt !== null,
+        ).length;
+        const attendancePct = (attended / liveSessionCount) * 100;
+        const attendanceDone = attendancePct >= rule.minAttendancePct;
+        checklist.push({
+          label: attendanceDone
+            ? `Alcanzaste ${rule.minAttendancePct}% de asistencia a clases en vivo`
+            : `Alcanza ${rule.minAttendancePct}% de asistencia a clases en vivo (llevas ${Math.round(attendancePct)}%)`,
+          done: attendanceDone,
+        });
+      }
+      if (hasAssessments) {
+        const scoreDone = bestScore !== null && bestScore >= rule.minScore;
+        const label = rule.scoreMode === "WEIGHTED_AVERAGE" ? "tu nota ponderada actual" : "tu mejor nota";
+        checklist.push({
+          label: scoreDone
+            ? `Aprobaste ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}/100 (${label}: ${bestScore!.toFixed(1)}/100)`
+            : `Aprueba ${rule.scoreMode === "WEIGHTED_AVERAGE" ? "el promedio ponderado de las evaluaciones" : "una evaluación"} con nota mínima ${rule.minScore}/100${bestScore !== null ? ` (${label}: ${bestScore.toFixed(1)}/100)` : ""}`,
+          done: scoreDone,
+        });
+      }
+      if (rule.requiresAssignment) {
+        const gradedAssignment = enrollmentIdsWithGradedAssignment.has(enrollment.id);
+        checklist.push({
+          label: gradedAssignment ? "Entregaste y aprobaste la tarea/asignación del curso" : "Entrega y aprueba la tarea/asignación del curso",
+          done: gradedAssignment,
+        });
+      }
+      const ratingRequired = !rating;
+      const readyForRatingPrompt = ratingRequired && checklist.every((c) => c.done);
+      checklist.push({ label: "Califica el curso con estrellas y un comentario", done: !ratingRequired });
+      const missing = checklist.filter((c) => !c.done).map((c) => c.label);
+      return { missing, checklist, ratingRequired, readyForRatingPrompt };
+    };
+
+    return enrollments.map((e) => {
+      const offering = e.course ?? e.program;
+      const approval =
+        e.offeringKind === "COURSE" && e.courseId
+          ? computeApprovalMissingFromMaps(e.courseId, e as (typeof courseEnrollments)[number])
+          : { missing: [], checklist: [], ratingRequired: false, readyForRatingPrompt: false };
+      const nextActionLabel = e.offeringKind === "COURSE" && e.courseId ? nextActionLabelFromMaps(e.courseId, e.id) : null;
+      return {
+        id: e.id,
+        offeringKind: e.offeringKind,
+        courseId: e.courseId,
+        programId: e.programId,
+        title: (offering?.title as Record<string, string>) ?? {},
+        // "Que el alumno vea bonito cada curso... con su imagen" — antes
+        // solo se resolvía para offeringKind COURSE; un programa/diplomado
+        // matriculado se quedaba siempre sin portada aunque sí tuviera una
+        // configurada.
+        coverImageUrl: e.course?.coverImageAssetId
+          ? this.storage.getPublicUrl(e.course.coverImageAssetId)
+          : e.program?.coverImageAssetId
+            ? this.storage.getPublicUrl(e.program.coverImageAssetId)
+            : null,
+        progressPct: e.progressPct,
+        status: e.status,
+        source: e.source,
+        accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,
+        nextActionLabel,
+        certificateAvailable: Boolean((e.certificate && !e.certificate.revoked) || (e.courseId && certifiedCourseIds.has(e.courseId))),
+        approvalMissing: approval.missing,
+        readyForRatingPrompt: approval.readyForRatingPrompt,
+        enrolledAt: e.enrolledAt.toISOString(),
+      };
+    });
   }
 
   /**

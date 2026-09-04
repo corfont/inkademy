@@ -767,6 +767,7 @@ model Enrollment {
   @@index([companyId])
   @@index([courseId])
   @@index([programId])
+  @@index([status, accessExpiresAt])
 }
 
 // "Una vez que el alumno termina el curso debería aparecerle un mensaje
@@ -884,6 +885,7 @@ model LessonProgress {
   updatedAt             DateTime   @updatedAt
 
   @@unique([enrollmentId, lessonId])
+  @@index([updatedAt])
 }
 
 // "Las notas del alumno en el reproductor de video se guardaban solo en
@@ -1106,6 +1108,7 @@ model AssessmentAttempt {
   answers Answer[]
 
   @@index([assessmentId, userId])
+  @@index([enrollmentId, assessmentId])
 }
 
 model Answer {
@@ -1362,6 +1365,10 @@ model Order {
   payments          Payment[]
   electronicInvoice ElectronicInvoice?
   electronicNotes   ElectronicNote[]
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([status, createdAt])
 }
 
 enum ElectronicDocumentType {
@@ -1497,6 +1504,10 @@ model Payment {
   receiptUrl    String?
   paidAt        DateTime?
   createdAt     DateTime            @default(now())
+
+  @@index([orderId])
+  @@index([providerRef])
+  @@index([status, createdAt])
 }
 
 model CompanySeatPool {
@@ -1551,6 +1562,8 @@ model Quote {
   convertedSeatPoolId String?     @unique
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
+
+  @@index([companyId])
 }
 
 // ---------------------------------------------------------------------------
@@ -1638,7 +1651,7 @@ model Notification {
   createdAt DateTime            @default(now())
 
   @@index([userId])
-  @@index([userId, readAt])
+  @@index([userId, channel, readAt, createdAt])
 }
 
 /// Configuración de qué notificaciones se envían y por qué canal(es),

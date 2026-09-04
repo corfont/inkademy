@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, BookOpen, CalendarClock, Clock, GraduationCap, Globe2, Layers, Radio, Star, Target } from "lucide-react";
@@ -93,7 +94,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const keyFacts = [
     { icon: Layers, label: MODALITY_LABEL[course.modality]?.[locale as "es" | "en"] ?? course.modality },
     { icon: Clock, label: formatDuration(course.durationHours, course.durationUnit, locale as "es" | "en") },
-    { icon: BookOpen, label: t("lessonsCount", { count: totalLessons }) },
+    { icon: BookOpen, label: totalLessons === 1 ? t("lessonCountOne") : t("lessonsCount", { count: totalLessons }) },
     { icon: Globe2, label: course.language === "en" ? "Inglés" : course.language === "pt" ? "Portugués" : "Español" },
     ...(course.liveSessions?.[0]
       ? [{ icon: CalendarClock, label: formatDateTime(course.liveSessions[0].startsAt, locale, course.liveSessions[0].timezone) }]
@@ -114,8 +115,12 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
           intencional, no como un hueco vacío. */}
       <section className="relative overflow-hidden border-b border-paper-border bg-ink-950">
         {course.coverImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={course.coverImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" />
+          // Probable LCP de esta página (hero a pantalla completa) — `fill`
+          // porque el contenedor (`section` de arriba) es `relative` con
+          // tamaño definido por su contenido, no por dimensiones fijas de
+          // imagen; `priority` + `sizes="100vw"` para que se cargue con
+          // prioridad alta a la resolución real del viewport (ver REVIEW.md #4.9).
+          <Image src={course.coverImageUrl} alt="" fill priority sizes="100vw" className="object-cover opacity-30" />
         )}
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/90 via-ink-950/95 to-ink-950" />
         <div className="container relative py-14 sm:py-20">
@@ -202,7 +207,9 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
                   <details key={mod.id} className="group p-4 open:bg-paper-muted/50">
                     <summary className="flex cursor-pointer list-none items-center justify-between font-medium text-ink-900">
                       <span>{localize(mod.title, locale)}</span>
-                      <span className="text-sm text-ash-500">{t("lessonsCount", { count: mod.lessons.length })}</span>
+                      <span className="text-sm text-ash-500">
+                        {mod.lessons.length === 1 ? t("lessonCountOne") : t("lessonsCount", { count: mod.lessons.length })}
+                      </span>
                     </summary>
                     <ul className="mt-3 flex flex-col gap-2 pl-1">
                       {mod.lessons.map((lesson) => (

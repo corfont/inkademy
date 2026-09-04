@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -48,10 +49,19 @@ export function EnrollmentCard({
   return (
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-4 p-0 sm:flex-row sm:items-stretch">
-        <Link href={`/campus/cursos/${enrollment.id}`} className="block flex-none sm:w-48">
+        <Link
+          href={`/campus/cursos/${enrollment.id}`}
+          className="relative block h-32 w-full flex-none overflow-hidden sm:h-auto sm:w-48"
+        >
           {enrollment.coverImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={enrollment.coverImageUrl} alt="" className="h-32 w-full object-cover sm:h-full" />
+            // Portada de "Mis cursos" — mismo tratamiento que CourseCard
+            // (fill + lazy loading por defecto, sin priority, ver REVIEW.md
+            // #4.9). En sm+ el Link es un item de un flex row con
+            // `items-stretch` (ver CardContent más abajo), así que su altura
+            // ya viene dada por esa fila — `fill` la respeta sin necesitar
+            // una altura fija ahí; en mobile sí se fija h-32 (mismo alto que
+            // tenía la <img> antes).
+            <Image src={enrollment.coverImageUrl} alt="" fill sizes="(min-width: 640px) 12rem, 100vw" className="object-cover" />
           ) : (
             <div
               className="flex h-32 w-full items-center justify-center bg-gradient-to-br from-ink-700 to-ink-900 text-paper sm:h-full"

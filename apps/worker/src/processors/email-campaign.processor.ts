@@ -171,6 +171,8 @@ async function coursesForGoal(goal: string, interestKey?: string) {
   });
 }
 
+type AtRisk = { courseTitle: string; progressPct: number; daysSinceLastActivity: number };
+
 /**
  * "Detección de riesgo de abandono + reenganche personalizado" — a
  * diferencia de coursesForGoal (agrupa por interés), esto es POR ALUMNO:
@@ -178,31 +180,69 @@ async function coursesForGoal(goal: string, interestKey?: string) {
  * más antigua (o nunca tuvo ninguna — usa enrolledAt). null si no tiene
  * ninguna matrícula activa (no debería pasar si la audiencia ya se filtró
  * por enrollmentStatus:HAS_ACTIVE, pero por si acaso).
+ *
+ * Versión en BATCH (ver REVIEW.md #4.5) — antes esto era una función por
+ * userId, llamada una vez POR DESTINATARIO dentro de un `for` secuencial
+ * (una campaña a 3000 usuarios inactivos disparaba ~9000 queries
+ * secuenciales), y encima con un `findFirst` de LessonProgress por cada
+ * matrícula. Ahora se resuelve para TODOS los userIds de una campaña con 2
+ * queries totales (`enrollment.findMany` con `userId:{in:[...]}` +
+ * `lessonProgress.findMany` con `enrollmentId:{in:[...]}`), devolviendo un
+ * Map que `processOneCampaign` solo LEE — el `for` de Gemini que sigue
+ * (ver más abajo) queda intacto con su pausa/rate-limit entre llamadas, que
+ * es una limitación real de la API de Gemini, no de la base de datos.
  */
-async function mostAtRiskEnrollment(userId: string): Promise<{ courseTitle: string; progressPct: number; daysSinceLastActivity: number } | null> {
+async function batchMostAtRiskEnrollment(userIds: string[]): Promise<Map<string, AtRisk | null>> {
+  const result = new Map<string, AtRisk | null>();
+  if (userIds.length === 0) return result;
+
   const enrollments = await prisma.enrollment.findMany({
-    where: { userId, status: "ACTIVE", offeringKind: "COURSE" },
+    where: { userId: { in: userIds }, status: "ACTIVE", offeringKind: "COURSE" },
     include: { course: { select: { title: true } } },
   });
-  if (enrollments.length === 0) return null;
+  const enrollmentIds = enrollments.map((e) => e.id);
 
-  const withActivity = await Promise.all(
-    enrollments.map(async (e) => {
-      const last = await prisma.lessonProgress.findFirst({
-        where: { enrollmentId: e.id },
+  // Última actividad (LessonProgress más reciente) por matrícula, en una
+  // sola query en vez de un findFirst por cada una.
+  const lastActivityRows = enrollmentIds.length
+    ? await prisma.lessonProgress.findMany({
+        where: { enrollmentId: { in: enrollmentIds } },
         orderBy: { updatedAt: "desc" },
-        select: { updatedAt: true },
-      });
-      return { enrollment: e, lastActivity: last?.updatedAt ?? e.enrolledAt };
-    }),
-  );
-  withActivity.sort((a, b) => a.lastActivity.getTime() - b.lastActivity.getTime());
-  const target = withActivity[0];
-  return {
-    courseTitle: pickEs(target.enrollment.course?.title),
-    progressPct: Math.round(target.enrollment.progressPct),
-    daysSinceLastActivity: Math.floor((Date.now() - target.lastActivity.getTime()) / (24 * 60 * 60 * 1000)),
-  };
+        select: { enrollmentId: true, updatedAt: true },
+      })
+    : [];
+  const lastActivityByEnrollmentId = new Map<string, Date>();
+  for (const row of lastActivityRows) {
+    // Ordenado desc — la primera vez que aparece cada enrollmentId ya es la más reciente.
+    if (!lastActivityByEnrollmentId.has(row.enrollmentId)) lastActivityByEnrollmentId.set(row.enrollmentId, row.updatedAt);
+  }
+
+  const enrollmentsByUserId = new Map<string, typeof enrollments>();
+  for (const e of enrollments) {
+    const list = enrollmentsByUserId.get(e.userId) ?? [];
+    list.push(e);
+    enrollmentsByUserId.set(e.userId, list);
+  }
+
+  for (const userId of userIds) {
+    const userEnrollments = enrollmentsByUserId.get(userId) ?? [];
+    if (userEnrollments.length === 0) {
+      result.set(userId, null);
+      continue;
+    }
+    const withActivity = userEnrollments.map((e) => ({
+      enrollment: e,
+      lastActivity: lastActivityByEnrollmentId.get(e.id) ?? e.enrolledAt,
+    }));
+    withActivity.sort((a, b) => a.lastActivity.getTime() - b.lastActivity.getTime());
+    const target = withActivity[0];
+    result.set(userId, {
+      courseTitle: pickEs(target.enrollment.course?.title),
+      progressPct: Math.round(target.enrollment.progressPct),
+      daysSinceLastActivity: Math.floor((Date.now() - target.lastActivity.getTime()) / (24 * 60 * 60 * 1000)),
+    });
+  }
+  return result;
 }
 
 /** Correo 1:1 de reenganche — mismo `callGeminiIfEnabled`, prompt distinto (menciona el curso puntual del alumno, no una lista genérica). null si Gemini no responde (mismo criterio que draftWithAI: el grupo/alumno se omite, se loguea). */
@@ -319,9 +359,14 @@ async function processOneCampaign(campaign: {
     // seguidas sin espera chocan con el rate-limit de Gemini (HTTP 429) —
     // esto no elimina el riesgo a listas grandes, pero lo reduce bastante
     // para el uso real esperado (decenas, no miles, de alumnos en riesgo).
+    // Se mantiene intacto (no es un N+1 de base de datos, es un límite real
+    // de la API de Gemini) — lo único que se batchea es la resolución de
+    // `atRisk` de TODOS los destinatarios, hecha una sola vez ANTES de este
+    // `for`, para no volver a golpear la base de datos en cada iteración.
+    const atRiskByUserId = await batchMostAtRiskEnrollment(recipients.map((r) => r.id));
     for (const [index, r] of recipients.entries()) {
       if (index > 0) await new Promise((resolve) => setTimeout(resolve, 600));
-      const atRisk = await mostAtRiskEnrollment(r.id);
+      const atRisk = atRiskByUserId.get(r.id) ?? null;
       if (!atRisk) continue;
       const draft = await draftReengagement(atRisk);
       if (!draft) {
