@@ -1,13 +1,17 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { z } from "zod";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
+import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { ChatbotDocumentsService } from "./chatbot-documents.service";
 import { fileMimeFilter } from "../../common/utils/file-filter";
 
 // PDF/TXT/MD — lo único que ChatbotDocumentsService sabe extraer como texto.
 const CHATBOT_DOC_MIME_PREFIXES = ["application/pdf", "text/plain", "text/markdown"];
+
+const updateChatbotDocumentSchema = z.object({ active: z.boolean().optional() });
 
 @ApiTags("chatbot")
 @ApiBearerAuth()
@@ -37,7 +41,7 @@ export class ChatbotDocumentsController {
   @Patch(":id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Activa/desactiva un documento (sin borrarlo)" })
-  update(@Param("id") id: string, @Body() dto: { active?: boolean }) {
+  update(@Param("id") id: string, @Body(new ZodValidationPipe(updateChatbotDocumentSchema)) dto: { active?: boolean }) {
     return this.documents.update(id, dto);
   }
 

@@ -254,13 +254,26 @@ export class CommerceService {
     });
 
     const provider = this.resolveProvider(input.paymentProvider);
-    const chargeResult = await provider.charge({
-      amountInMinorUnits: Math.round(total * 100),
-      currency: input.currency,
-      token: input.paymentMethodToken,
-      description: `Inkademy — Orden ${order.id}`,
-      email: user.email,
-    });
+    let chargeResult: Awaited<ReturnType<typeof provider.charge>>;
+    try {
+      chargeResult = await provider.charge({
+        amountInMinorUnits: Math.round(total * 100),
+        currency: input.currency,
+        token: input.paymentMethodToken,
+        description: `Inkademy — Orden ${order.id}`,
+        email: user.email,
+      });
+    } catch (err) {
+      // Defensa en profundidad: cada provider ya debería devolver
+      // {success:false} en vez de lanzar, pero si de todos modos lanza
+      // (bug en un provider, error inesperado), la Order ya creada como
+      // PENDING no debe quedar huérfana — se marca FAILED igual que el
+      // camino normal de rechazo, para que el cliente reciba una
+      // respuesta consistente en vez de un 500.
+      this.logger.error(`El provider de pago lanzó una excepción al cobrar la orden ${order.id}: ${(err as Error).message}`, (err as Error).stack);
+      await this.prisma.order.update({ where: { id: order.id }, data: { status: "FAILED" } });
+      return { orderId: order.id, status: "FAILED", enrollmentIds: [], receiptUrl: null };
+    }
 
     await this.prisma.payment.create({
       data: {

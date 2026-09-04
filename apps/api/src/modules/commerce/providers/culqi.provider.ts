@@ -25,31 +25,37 @@ export class CulqiProvider implements PaymentProvider {
       return { success: true, providerRef: `sim_culqi_${Date.now()}` };
     }
 
-    const res = await fetch("https://api.culqi.com/v2/charges", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.secretKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount: params.amountInMinorUnits,
-        currency_code: params.currency,
-        email: params.email,
-        source_id: params.token,
-        description: params.description,
-      }),
-    });
+    try {
+      const res = await fetch("https://api.culqi.com/v2/charges", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.secretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: params.amountInMinorUnits,
+          currency_code: params.currency,
+          email: params.email,
+          source_id: params.token,
+          description: params.description,
+        }),
+      });
 
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      this.logger.warn(`Culqi rechazó el cargo: ${JSON.stringify(body)}`);
-      return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Pago rechazado" };
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        this.logger.warn(`Culqi rechazó el cargo: ${JSON.stringify(body)}`);
+        return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Pago rechazado" };
+      }
+      // Culqi devuelve `source.type` ("card", "yape", "plin", ...) en la
+      // respuesta del cargo — se guarda para poder diferenciar la comisión
+      // de cada billetera (PlatformSettings.yapeFeePercent/plinFeePercent —
+      // separadas, cada banco cobra distinto) de la de tarjeta en los reportes.
+      return { success: true, providerRef: body.id, receiptUrl: body?.receipt_url, paymentMethod: body?.source?.type ?? null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error de Culqi";
+      this.logger.warn(`Error de red al cobrar con Culqi: ${message}`);
+      return { success: false, failureMessage: message };
     }
-    // Culqi devuelve `source.type` ("card", "yape", "plin", ...) en la
-    // respuesta del cargo — se guarda para poder diferenciar la comisión
-    // de cada billetera (PlatformSettings.yapeFeePercent/plinFeePercent —
-    // separadas, cada banco cobra distinto) de la de tarjeta en los reportes.
-    return { success: true, providerRef: body.id, receiptUrl: body?.receipt_url, paymentMethod: body?.source?.type ?? null };
   }
 
   /**
@@ -91,24 +97,30 @@ export class CulqiProvider implements PaymentProvider {
       return { success: true, providerRefundRef: `sim_refund_${Date.now()}` };
     }
 
-    const res = await fetch("https://api.culqi.com/v2/refunds", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.secretKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        charge_id: params.providerRef,
-        amount: params.amountInMinorUnits,
-        reason: "solicitud_comprador",
-      }),
-    });
+    try {
+      const res = await fetch("https://api.culqi.com/v2/refunds", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.secretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          charge_id: params.providerRef,
+          amount: params.amountInMinorUnits,
+          reason: "solicitud_comprador",
+        }),
+      });
 
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      this.logger.warn(`Culqi rechazó el reembolso: ${JSON.stringify(body)}`);
-      return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Reembolso rechazado" };
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        this.logger.warn(`Culqi rechazó el reembolso: ${JSON.stringify(body)}`);
+        return { success: false, failureMessage: body?.user_message ?? body?.merchant_message ?? "Reembolso rechazado" };
+      }
+      return { success: true, providerRefundRef: body.id };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error de Culqi al reembolsar";
+      this.logger.warn(`Error de red al reembolsar con Culqi: ${message}`);
+      return { success: false, failureMessage: message };
     }
-    return { success: true, providerRefundRef: body.id };
   }
 }

@@ -62,6 +62,11 @@ import {
   upsertModuleSchema,
   upsertProgramSchema,
   upsertQuestionSchema,
+  reorderMaterialSchema,
+  suggestQuestionsSchema,
+  updateTeacherLiquidationStatusSchema,
+  emailFinancialReportSchema,
+  setCourseStaffCanEditSchema,
 } from "../../common/validation/local-schemas";
 import { respondToQuoteSchema, type ScormLocale } from "@inkademy/shared";
 import { AssessmentService } from "../assessment/assessment.service";
@@ -120,7 +125,12 @@ export class AdminController {
   @Patch("areas/:id")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Actualiza un área" })
-  updateArea(@Param("id") id: string, @Body() dto: any) {
+  // Hallazgo de auditoría (REVIEW.md #1.4): único endpoint de este
+  // controller sin ninguna validación de runtime pese a tener un hermano
+  // (createArea) que sí valida — un campo de tipo incorrecto llegaba tal
+  // cual a prisma.area.update y disparaba una excepción de Prisma no
+  // controlada.
+  updateArea(@Param("id") id: string, @Body(new ZodValidationPipe(upsertAreaSchema.partial())) dto: any) {
     return this.adminService.updateArea(id, dto);
   }
 
@@ -428,7 +438,7 @@ export class AdminController {
   @Patch("materials/:id/reorder")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Mueve un material una posición arriba/abajo entre sus hermanos (misma lección o módulo) — TEACHER solo si es CourseStaff del curso dueño" })
-  reorderMaterial(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() dto: { direction: "up" | "down" }) {
+  reorderMaterial(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(reorderMaterialSchema)) dto: { direction: "up" | "down" }) {
     return this.adminService.reorderMaterial(id, dto.direction, teacherScopeId(user));
   }
 
@@ -488,7 +498,7 @@ export class AdminController {
   @Post("assessments/:assessmentId/questions/suggest")
   @Roles("ADMIN", "TEACHER")
   @ApiOperation({ summary: "Genera borradores de preguntas con IA sobre un tema — no crea nada, solo sugiere" })
-  suggestQuestions(@Body() dto: { topic: string; count: number; types?: string[] }) {
+  suggestQuestions(@Body(new ZodValidationPipe(suggestQuestionsSchema)) dto: { topic: string; count: number; types?: string[] }) {
     return this.assessmentService.suggestQuestions({ topic: dto.topic, count: dto.count, types: dto.types ?? [] });
   }
 
@@ -853,7 +863,7 @@ export class AdminController {
   @Patch("teacher-liquidations/:id/status")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Aprueba o marca como pagada una liquidación" })
-  updateTeacherLiquidationStatus(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() dto: { status: "APPROVED" | "PAID" }) {
+  updateTeacherLiquidationStatus(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(updateTeacherLiquidationStatusSchema)) dto: { status: "APPROVED" | "PAID" }) {
     return this.adminService.updateTeacherLiquidationStatus(id, dto.status, user.id);
   }
 
@@ -1136,7 +1146,8 @@ export class AdminController {
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Envía el estado financiero del periodo por correo, en PDF adjunto" })
   emailFinancialReport(
-    @Body() body: { recipientEmail: string; from?: string; to?: string; period?: string; year?: number; months?: number },
+    @Body(new ZodValidationPipe(emailFinancialReportSchema))
+    body: { recipientEmail: string; from?: string; to?: string; period?: string; year?: number; months?: number },
   ) {
     return this.adminService.emailFinancialReport(body.recipientEmail, {
       from: body.from,
@@ -1275,7 +1286,7 @@ export class AdminController {
   @Patch("course-staff/:id/can-edit")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Bloquea/restaura el permiso de edición de un docente sobre este curso, sin desasignarlo" })
-  setCourseStaffCanEdit(@Param("id") id: string, @Body() dto: { canEdit: boolean }) {
+  setCourseStaffCanEdit(@Param("id") id: string, @Body(new ZodValidationPipe(setCourseStaffCanEditSchema)) dto: { canEdit: boolean }) {
     return this.adminService.setCourseStaffCanEdit(id, dto.canEdit);
   }
 

@@ -1050,3 +1050,30 @@ export const translateTextSchema = z.object({
   from: scormLocaleSchema,
   to: scormLocaleSchema,
 });
+
+export const reorderMaterialSchema = z.object({
+  direction: z.enum(["up", "down"]),
+});
+
+export const suggestQuestionsSchema = z.object({
+  topic: z.string().min(1),
+  count: z.number().int().positive(),
+  types: z.array(z.string()).optional(),
+});
+
+export const updateTeacherLiquidationStatusSchema = z.object({
+  status: z.enum(["APPROVED", "PAID"]),
+});
+
+export const emailFinancialReportSchema = z.object({
+  recipientEmail: z.string().email(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  period: z.string().optional(),
+  year: z.number().optional(),
+  months: z.number().optional(),
+});
+
+export const setCourseStaffCanEditSchema = z.object({
+  canEdit: z.boolean(),
+});

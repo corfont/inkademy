@@ -78,6 +78,7 @@ async function applyCompletedCourseRules(userId: string, created: NewRecommendat
     }
 
     const currentLevelIdx = LEVEL_ORDER.indexOf(course.level);
+    if (currentLevelIdx === -1) continue;
     const nextLevel = LEVEL_ORDER[currentLevelIdx + 1];
     if (nextLevel) {
       const candidates = await prisma.course.findMany({

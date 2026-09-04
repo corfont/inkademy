@@ -325,7 +325,7 @@ export class CertificateService {
     // Se arma en segundo plano mientras Nest ya empezó a mandar la respuesta
     // (streaming) — si un PDF individual falla (p.ej. se borró del bucket),
     // se lo salta con un log en vez de tirar abajo el ZIP completo.
-    void (async () => {
+    (async () => {
       for (const c of certificates) {
         if (!c.pdfAssetId) continue;
         try {
@@ -338,7 +338,9 @@ export class CertificateService {
         }
       }
       await archive.finalize();
-    })();
+    })().catch((err) => {
+      this.logger.error(`Fallo al generar el ZIP de certificados: ${(err as Error).message}`, (err as Error).stack);
+    });
 
     return { filename: `certificados-${new Date().toISOString().slice(0, 10)}.zip`, archive };
   }

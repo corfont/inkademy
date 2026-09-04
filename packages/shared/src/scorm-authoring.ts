@@ -572,6 +572,7 @@ ${headerHtml}
           correct: "✓ Correcto.", incorrect: "✗ Incorrecto.", result: "Resultado",
           passed: "Aprobado.", failedTpl: "No alcanzaste la nota mínima ({{score}}%).",
           scoreOfTpl: "{{correct}} de {{total}} respuestas correctas.",
+          unsectionedTpl: "Sin sección asignada: {{correct}} de {{total}}.",
           trueLabel: "Verdadero", falseLabel: "Falso",
           defaultMatchingInstructions: "Arrastra cada elemento de la derecha sobre su pareja.",
           defaultOrderingInstructions: "Arrastra para poner los elementos en el orden correcto.",
@@ -580,6 +581,7 @@ ${headerHtml}
           correct: "✓ Correct.", incorrect: "✗ Incorrect.", result: "Result",
           passed: "Passed.", failedTpl: "You did not reach the minimum score ({{score}}%).",
           scoreOfTpl: "{{correct}} of {{total}} correct answers.",
+          unsectionedTpl: "No section assigned: {{correct}} of {{total}}.",
           trueLabel: "True", falseLabel: "False",
           defaultMatchingInstructions: "Drag each item on the right onto its match.",
           defaultOrderingInstructions: "Drag to put the items in the correct order.",
@@ -588,6 +590,7 @@ ${headerHtml}
           correct: "✓ Corretto.", incorrect: "✗ Errato.", result: "Risultato",
           passed: "Superato.", failedTpl: "Non hai raggiunto il punteggio minimo ({{score}}%).",
           scoreOfTpl: "{{correct}} risposte corrette su {{total}}.",
+          unsectionedTpl: "Nessuna sezione assegnata: {{correct}} su {{total}}.",
           trueLabel: "Vero", falseLabel: "Falso",
           defaultMatchingInstructions: "Trascina ogni elemento a destra sulla sua coppia.",
           defaultOrderingInstructions: "Trascina per mettere gli elementi nell'ordine corretto.",
@@ -596,6 +599,7 @@ ${headerHtml}
           correct: "✓ Correct.", incorrect: "✗ Incorrect.", result: "Résultat",
           passed: "Réussi.", failedTpl: "Vous n'avez pas atteint la note minimale ({{score}}%).",
           scoreOfTpl: "{{correct}} réponses correctes sur {{total}}.",
+          unsectionedTpl: "Aucune section assignée : {{correct}} sur {{total}}.",
           trueLabel: "Vrai", falseLabel: "Faux",
           defaultMatchingInstructions: "Faites glisser chaque élément de droite vers sa paire.",
           defaultOrderingInstructions: "Faites glisser pour remettre les éléments dans le bon ordre.",
@@ -604,6 +608,7 @@ ${headerHtml}
           correct: "✓ Correto.", incorrect: "✗ Incorreto.", result: "Resultado",
           passed: "Aprovado.", failedTpl: "Você não atingiu a nota mínima ({{score}}%).",
           scoreOfTpl: "{{correct}} de {{total}} respostas corretas.",
+          unsectionedTpl: "Sem seção atribuída: {{correct}} de {{total}}.",
           trueLabel: "Verdadeiro", falseLabel: "Falso",
           defaultMatchingInstructions: "Arraste cada item da direita para o seu par.",
           defaultOrderingInstructions: "Arraste para colocar os itens na ordem correta.",
@@ -1012,6 +1017,20 @@ ${headerHtml}
       return { id: sec.id, title: sec.title, weightPercent: sec.weightPercent, total: qs.length, correct: correct, score: qs.length > 0 ? Math.round((correct / qs.length) * 100) : 0 };
     });
   }
+  // Preguntas que quedan FUERA de toda sección definida (sin sectionId, o
+  // con un sectionId que ya no matchea ninguna sección — p. ej. se borró
+  // la sección, o se agregó la pregunta después sin asignarle una). Hoy
+  // computeScore() las ignora por completo cuando hay secciones (peso 0,
+  // ni cuentan como acierto ni como total) — eso es intencional y no
+  // cambia acá, pero antes desaparecían en silencio del desglose. Este
+  // helper es solo informativo, para que renderResult() avise al autor
+  // del contenido que existen.
+  function unsectionedScore() {
+    var sectionIds = (DATA.sections || []).map(function (sec) { return sec.id; });
+    var qs = slides.filter(function (s) { return isQuestionSlide(s) && sectionIds.indexOf(s.sectionId) === -1; });
+    var correct = qs.filter(function (s) { return revealed[s.id] && isCorrect(s); }).length;
+    return { total: qs.length, correct: correct };
+  }
   function computeScore() {
     var sections = DATA.sections || [];
     if (sections.length > 0) {
@@ -1031,10 +1050,15 @@ ${headerHtml}
     var correct = correctCount();
     var passed = score >= passingScore;
     var sections = DATA.sections || [];
+    var unsectioned = sections.length > 0 ? unsectionedScore() : null;
     var breakdown = sections.length > 0
       ? '<ul class="section-breakdown">' + sectionScores().map(function (sec) {
           return '<li>' + escapeHtml(L(sec.title)) + ': ' + sec.correct + '/' + sec.total + ' (' + sec.score + '%, peso ' + sec.weightPercent + '%)</li>';
-        }).join("") + '</ul>'
+        }).join("") +
+        (unsectioned && unsectioned.total > 0
+          ? '<li>' + escapeHtml(UI_STRINGS[locale].unsectionedTpl.replace("{{correct}}", String(unsectioned.correct)).replace("{{total}}", String(unsectioned.total))) + '</li>'
+          : "") +
+        '</ul>'
       : "";
     var scoreOfLine = sections.length === 0 && total > 0
       ? UI_STRINGS[locale].scoreOfTpl.replace("{{correct}}", String(correct)).replace("{{total}}", String(total)) + " "
