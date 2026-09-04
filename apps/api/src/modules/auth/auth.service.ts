@@ -226,6 +226,36 @@ export class AuthService {
     await this.prisma.user.update({ where: { id: sub }, data: { emailVerifiedAt: new Date() } });
   }
 
+  // Código de intercambio de un solo uso para el redirect de OAuth (ver
+  // REVIEW.md #2.2) — en memoria del propio proceso: alcanza para el
+  // volumen real de logins OAuth de esta app (un solo proceso de apps/api,
+  // no horizontalmente escalado hoy) y evita depender de Redis/una tabla
+  // nueva para algo que vive ~60 segundos.
+  private readonly oauthExchangeCodes = new Map<string, { accessToken: string; expiresAt: number }>();
+  private readonly OAUTH_EXCHANGE_TTL_MS = 60_000;
+
+  createOAuthExchangeCode(accessToken: string): string {
+    this.pruneExpiredOAuthExchangeCodes();
+    const code = randomUUID();
+    this.oauthExchangeCodes.set(code, { accessToken, expiresAt: Date.now() + this.OAUTH_EXCHANGE_TTL_MS });
+    return code;
+  }
+
+  /** Un solo uso: se borra al leerlo, exista o no, haya expirado o no. */
+  consumeOAuthExchangeCode(code: string): string | null {
+    const entry = this.oauthExchangeCodes.get(code);
+    this.oauthExchangeCodes.delete(code);
+    if (!entry || entry.expiresAt < Date.now()) return null;
+    return entry.accessToken;
+  }
+
+  private pruneExpiredOAuthExchangeCodes() {
+    const now = Date.now();
+    for (const [code, entry] of this.oauthExchangeCodes) {
+      if (entry.expiresAt < now) this.oauthExchangeCodes.delete(code);
+    }
+  }
+
   async findOrCreateFromOAuth(profile: OAuthProfile) {
     const oauthAccount = await this.prisma.oAuthAccount.findUnique({
       where: {

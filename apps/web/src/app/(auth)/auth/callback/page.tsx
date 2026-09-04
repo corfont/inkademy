@@ -10,7 +10,10 @@ import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 
 // Destino de /auth/google/callback y /auth/microsoft/callback en la API:
-// APP_URL/auth/callback?token=<accessToken>
+// APP_URL/auth/callback?code=<códigoDeIntercambio> — un código de un solo
+// uso (~60s), no el accessToken crudo (ver REVIEW.md #2.2: el token en la
+// URL quedaba en historial/logs/Referer). Se canjea acá mismo por el token
+// real antes de hacer nada más.
 export default function OAuthCallbackPage() {
   return (
     <Suspense fallback={null}>
@@ -27,18 +30,20 @@ function OAuthCallbackInner() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    const token = searchParams.get("token");
-    if (!token) {
+    const code = searchParams.get("code");
+    if (!code) {
       setError(true);
       return;
     }
     authApi
-      .me(token)
-      .then((user) => {
-        persistSession(user, token);
-        setUser(user);
-        router.push(user.profileCompletedAt ? "/campus" : "/completar-perfil");
-      })
+      .exchangeOAuthCode(code)
+      .then(({ accessToken: token }) =>
+        authApi.me(token).then((user) => {
+          persistSession(user, token);
+          setUser(user);
+          router.push(user.profileCompletedAt ? "/campus" : "/completar-perfil");
+        }),
+      )
       .catch(() => setError(true));
   }, [searchParams, router, setUser]);
 

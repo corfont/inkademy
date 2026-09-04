@@ -161,6 +161,9 @@ export const authApi = {
   changePassword: (currentPassword: string, newPassword: string) =>
     apiFetch<{ accessToken: string }>("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) }),
   me: (accessToken?: string | null) => apiFetch<AuthUser>("/auth/me", { accessToken }),
+  // El callback de login OAuth ya no manda el accessToken crudo en la URL
+  // (?token=...) — manda un código de un solo uso (~60s) que se canjea acá.
+  exchangeOAuthCode: (code: string) => apiFetch<{ accessToken: string }>("/auth/exchange", { query: { code } }),
   forgotPassword: (email: string) => apiFetch<void>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (input: { token: string; password: string }) => apiFetch<void>("/auth/reset-password", { method: "POST", body: JSON.stringify(input) }),
   getFullProfile: (accessToken?: string | null) => apiFetch<FullProfileDTO>("/profile", { accessToken, cache: "no-store" }),

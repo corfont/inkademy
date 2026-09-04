@@ -40,6 +40,7 @@
     "cookie-parser": "^1.4.6",
     "express": "^4.19.2",
     "fast-xml-parser": "^5.0.0",
+    "helmet": "^8.3.0",
     "ics": "^3.7.6",
     "ioredis": "^5.4.1",
     "passport": "^0.7.0",

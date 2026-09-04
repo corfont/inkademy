@@ -36,7 +36,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
         error = (b.error as string) ?? HttpStatus[statusCode] ?? exception.name;
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      // Hallazgo de auditoría (REVIEW.md #2.5): antes esto reenviaba
+      // exception.message TAL CUAL al cliente — para un error no controlado
+      // (p.ej. PrismaClientKnownRequestError/PrismaClientValidationError)
+      // eso filtra detalles internos (nombres de columnas, forma exacta de
+      // la query) en una respuesta 500 pública. El detalle real se sigue
+      // logueando completo server-side; el cliente solo ve un mensaje
+      // genérico, igual que para cualquier otro 500 no anticipado.
       error = exception.name;
       this.logger.error(exception.message, exception.stack);
     }

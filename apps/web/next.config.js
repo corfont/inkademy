@@ -24,6 +24,24 @@ const nextConfig = {
     // El lint se corre aparte (pnpm lint); no bloquear el build de producción por reglas de estilo.
     ignoreDuringBuilds: true,
   },
+  // Hallazgo de auditoría (REVIEW.md #2.4): apps/web no mandaba ningún
+  // header de seguridad, dependiendo 100% de que el hosting/CDN de
+  // producción los agregara. Sin X-Frame-Options, cualquier página del
+  // sitio (login incluido) podía enmarcarse en un iframe de terceros
+  // (clickjacking).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
+  },
   webpack: (config, { dev }) => {
     if (dev) {
       // Este repo vive dentro de una carpeta sincronizada por Synology Drive.

@@ -318,7 +318,7 @@ export class AssessmentService {
   ): Promise<AssessmentResultDTO> {
     const attempt = await this.prisma.assessmentAttempt.findUnique({
       where: { id: attemptId },
-      include: { assessment: true },
+      include: { assessment: { include: { questions: true } } },
     });
     if (!attempt) throw new NotFoundException("Intento no encontrado");
     if (attempt.userId !== userId) throw new ForbiddenException("No puedes enviar el intento de otro usuario");
@@ -363,7 +363,16 @@ export class AssessmentService {
     let status: "PENDING_REVIEW" | "PASSED" | "FAILED" = "PENDING_REVIEW";
     let finalScore: number | null = null;
     if (!stillPending) {
-      const maxPoints = questions.reduce((sum, q) => sum + q.points, 0) || 1;
+      // Bug real encontrado en auditoría: esto usaba `questions` (derivado
+      // SOLO de input.answers, es decir, lo que el alumno alcanzó a
+      // responder) como el total del examen — igual que gradeAnswer (línea
+      // ~779) ya hace bien, el total real es TODO el examen
+      // (attempt.assessment.questions), no lo que llegó en el submit. Sin
+      // esto, un intento con solo 2 de 10 preguntas respondidas (p.ej. el
+      // timer del frontend auto-envía al agotarse el tiempo) calculaba la
+      // nota como (aciertos de esas 2)/(total de esas 2) — podía dar 100%
+      // habiendo respondido el 20% del examen.
+      const maxPoints = attempt.assessment.questions.reduce((sum, q) => sum + q.points, 0) || 1;
       const earned = allAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
       finalScore = Math.round((earned / maxPoints) * 10000) / 100;
       status = finalScore >= attempt.assessment.minScore ? "PASSED" : "FAILED";

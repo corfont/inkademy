@@ -6,8 +6,10 @@ import {
   HttpStatus,
   Inject,
   Post,
+  Query,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -23,8 +25,8 @@ import { Public } from "../../common/decorators/public.decorator";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { AuthService } from "./auth.service";
 import { LocalAuthGuard } from "./guards/local-auth.guard";
-import { GoogleAuthGuard } from "./guards/google-auth.guard";
-import { MicrosoftAuthGuard } from "./guards/microsoft-auth.guard";
+import { GoogleAuthGuard, GoogleCallbackAuthGuard } from "./guards/google-auth.guard";
+import { MicrosoftAuthGuard, MicrosoftCallbackAuthGuard } from "./guards/microsoft-auth.guard";
 import { AuthResponseDto, ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from "./dto/auth.dto";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -130,7 +132,12 @@ export class AuthController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiBody({ type: ForgotPasswordDto })
   @ApiOperation({ summary: "Solicita email de recuperación de contraseña" })
-  async forgotPassword(@Body() body: { email: string }) {
+  // Hallazgo de auditoría (REVIEW.md #2.6): a diferencia de resetPassword/
+  // changePassword, este endpoint público no validaba el body en runtime —
+  // forgotPasswordSchema ya estaba importado pero nunca se usaba. Un
+  // `email` no-string llegaba tal cual a prisma.user.findUnique y disparaba
+  // una excepción de Prisma no controlada.
+  async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordSchema)) body: { email: string }) {
     await this.authService.forgotPassword(body.email);
   }
 
@@ -182,7 +189,7 @@ export class AuthController {
   }
 
   @Public()
-  @UseGuards(GoogleAuthGuard)
+  @UseGuards(GoogleCallbackAuthGuard)
   @Get("google/callback")
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     return this.handleOAuthCallback(req, res);
@@ -196,10 +203,26 @@ export class AuthController {
   microsoftLogin() {}
 
   @Public()
-  @UseGuards(MicrosoftAuthGuard)
+  @UseGuards(MicrosoftCallbackAuthGuard)
   @Get("microsoft/callback")
   async microsoftCallback(@Req() req: Request, @Res() res: Response) {
     return this.handleOAuthCallback(req, res);
+  }
+
+  // Hallazgo de auditoría (REVIEW.md #2.2): el accessToken viajaba crudo en
+  // la query string del redirect (?token=...) — queda en historial del
+  // navegador, logs de acceso, y se filtra vía Referer si esa página carga
+  // cualquier recurso de terceros antes de limpiar la URL. Ahora el
+  // redirect lleva un CÓDIGO de intercambio de un solo uso (~60s de vida,
+  // ver AuthService.createOAuthExchangeCode) — el frontend lo canjea acá
+  // por el token real, y el código deja de ser válido apenas se usa.
+  @Public()
+  @Get("exchange")
+  @ApiOperation({ summary: "Canjea el código de intercambio de un login OAuth (un solo uso, ~60s) por el access token real" })
+  exchangeOAuthCode(@Query("code") code: string) {
+    const accessToken = code ? this.authService.consumeOAuthExchangeCode(code) : null;
+    if (!accessToken) throw new UnauthorizedException("El enlace de inicio de sesión ya expiró o ya se usó — intenta iniciar sesión de nuevo.");
+    return { accessToken };
   }
 
   private async handleOAuthCallback(req: Request, res: Response) {
@@ -209,6 +232,7 @@ export class AuthController {
     const { accessToken, rawUser } = await this.authService.login(oauthUser);
     this.setRefreshCookie(res, this.authService.signRefreshToken(rawUser));
     const appUrl = this.config.get<string>("APP_URL", "http://localhost:3000");
-    return res.redirect(`${appUrl}/auth/callback?token=${accessToken}`);
+    const code = this.authService.createOAuthExchangeCode(accessToken);
+    return res.redirect(`${appUrl}/auth/callback?code=${code}`);
   }
 }
