@@ -222,14 +222,14 @@ export function CalendarView({ events, locale }: { events: CalendarEventLike[]; 
                       {dayEvents.slice(0, 2).map((ev) => (
                         <span
                           key={ev.id}
-                          className={`truncate rounded-sm px-1 py-0.5 text-[0.65rem] leading-tight ${
+                          className={`truncate rounded-sm px-1 py-0.5 text-2xs leading-tight ${
                             ev.type === "LIVE_CLASS" ? "bg-ink-50 text-ink-700" : "bg-gold-50 text-gold-700"
                           }`}
                         >
                           {ev.title}
                         </span>
                       ))}
-                      {dayEvents.length > 2 && <span className="text-[0.65rem] text-ash-500">+{dayEvents.length - 2} más</span>}
+                      {dayEvents.length > 2 && <span className="text-2xs text-ash-500">+{dayEvents.length - 2} más</span>}
                     </div>
                   </button>
                 );

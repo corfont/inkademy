@@ -104,6 +104,7 @@
   "courseDetail": {
     "modules": "Course content",
     "lessonsCount": "{count} lessons",
+    "lessonCountOne": "1 lesson",
     "freePreview": "Free preview",
     "aboutCourse": "About this course",
     "teacherTitle": "Instructor",

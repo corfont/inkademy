@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { ROLE_STYLE, COMPANY_CHIP_STYLE } from "@/lib/role-style";
 import { EditUserModal } from "@/components/admin/EditUserModal";
@@ -573,14 +574,10 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
               <p className="text-xs text-ash-500">{user.email}</p>
             </div>
           </div>
-          <span
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-              user.status === "active" ? "bg-success-bg text-success" : "bg-danger-bg text-danger"
-            }`}
-          >
+          <Badge variant={user.status === "active" ? "success" : "danger"}>
             {user.status === "active" ? <CheckCircle2 className="h-3 w-3" /> : <Ban className="h-3 w-3" />}
             {user.status === "active" ? "Activa" : "Desactivada"}
-          </span>
+          </Badge>
         </div>
 
         {/* Rol — chips multi-select: "un docente podría ser también alumno,
@@ -770,9 +767,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
         <EnrollmentSemaphore stats={user.enrollmentStats} />
       </td>
       <td className="p-3">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.status === "active" ? "bg-success-bg text-success" : "bg-danger-bg text-danger"}`}>
-          {user.status === "active" ? "Activa" : "Desactivada"}
-        </span>
+        <Badge variant={user.status === "active" ? "success" : "danger"}>{user.status === "active" ? "Activa" : "Desactivada"}</Badge>
       </td>
       <td className="p-3">
         <div className="flex flex-wrap gap-1">

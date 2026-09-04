@@ -32,7 +32,7 @@ export function SearchBox({ className }: { className?: string }) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={t("searchPlaceholder")}
-          className="w-full bg-transparent text-base text-ash-800 placeholder:text-ash-400 focus:outline-none"
+          className="w-full overflow-hidden text-ellipsis whitespace-nowrap bg-transparent text-base text-ash-800 placeholder:text-ash-400 focus:outline-none"
         />
         <Button type="submit" size="md" className="rounded-full">
           {tc("search")}

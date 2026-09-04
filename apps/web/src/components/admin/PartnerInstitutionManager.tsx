@@ -128,7 +128,7 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={inst.signatureUrl} alt={`Firma de ${inst.name}`} className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <label className="cursor-pointer px-2 text-center text-[0.65rem] text-ash-400 hover:text-ink-700">
+                    <label className="cursor-pointer px-2 text-center text-2xs text-ash-600 hover:text-ink-700">
                       Subir firma
                       <input
                         type="file"
@@ -224,7 +224,7 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={form.signatureUrl} alt="Firma" className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <span className="text-[0.65rem] text-ash-400">Sin firma</span>
+                    <span className="text-2xs text-ash-400">Sin firma</span>
                   )}
                 </div>
                 <label className="cursor-pointer text-sm text-ink-600 hover:underline">

@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { Dialog } from "@/components/ui/Dialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
 import { FileDropzone } from "./FileDropzone";
 import { DropLabel } from "./DropLabel";
@@ -82,6 +84,7 @@ export function CourseEditor({ course }: { course: any }) {
 function StatusToggle({ status, busy, onChange }: { status: string; busy: boolean; onChange: (s: string) => void }) {
   const variant = status === "PUBLISHED" ? "success" : status === "ARCHIVED" ? "outline" : "neutral";
   const label = status === "PUBLISHED" ? "Publicado" : status === "ARCHIVED" ? "Archivado (oculto)" : "Borrador";
+  const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
   return (
     <div className="flex items-center gap-3">
       <Badge variant={variant as any}>{label}</Badge>
@@ -102,18 +105,22 @@ function StatusToggle({ status, busy, onChange }: { status: string; busy: boolea
           )}
           {/* Archivar: oculta el curso del catálogo público de inmediato (no aparece ni por URL directa),
               a diferencia de "borrador" que es el estado normal antes de publicar por primera vez. */}
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              if (confirm("¿Archivar este curso? Dejará de verse en el catálogo público de inmediato, incluso por URL directa. Los alumnos ya matriculados conservan su acceso.")) {
-                onChange("ARCHIVED");
-              }
-            }}
-          >
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmArchiveOpen(true)}>
             Ocultar (archivar)
           </Button>
+          <ConfirmDialog
+            open={confirmArchiveOpen}
+            onClose={() => setConfirmArchiveOpen(false)}
+            onConfirm={() => {
+              setConfirmArchiveOpen(false);
+              onChange("ARCHIVED");
+            }}
+            title="Archivar este curso"
+            message="¿Archivar este curso? Dejará de verse en el catálogo público de inmediato, incluso por URL directa. Los alumnos ya matriculados conservan su acceso."
+            confirmLabel="Archivar"
+            danger
+            busy={busy}
+          />
         </>
       )}
     </div>
@@ -191,6 +198,12 @@ function MetadataSection({
   const [syllabusAssetId, setSyllabusAssetId] = useState(course.syllabusAssetId ?? null);
   const [syllabusUrl, setSyllabusUrl] = useState(course.syllabusUrl ?? null);
   const [uploadingSyllabus, setUploadingSyllabus] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const [syllabusError, setSyllabusError] = useState<string | null>(null);
+  const [newAreaDialogOpen, setNewAreaDialogOpen] = useState(false);
+  const [newAreaName, setNewAreaName] = useState("");
+  const [newAreaSaving, setNewAreaSaving] = useState(false);
+  const [newAreaError, setNewAreaError] = useState<string | null>(null);
   const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
   const [discountExpiresAt, setDiscountExpiresAt] = useState(
     course.discountExpiresAt ? isoStringToLocalDateOnly(course.discountExpiresAt) : "",
@@ -216,33 +229,49 @@ function MetadataSection({
     refreshAreas();
   }, []);
 
+  function openNewAreaDialog() {
+    setNewAreaName("");
+    setNewAreaError(null);
+    setNewAreaDialogOpen(true);
+  }
+
+  function closeNewAreaDialog() {
+    if (newAreaSaving) return;
+    setNewAreaDialogOpen(false);
+  }
+
   async function handleCreateArea() {
-    const name = prompt("Nombre de la nueva área (español):");
-    if (!name || !name.trim()) return;
+    const name = newAreaName.trim();
+    if (!name) return;
     const slug = name
-      .trim()
       .toLowerCase()
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
+    setNewAreaSaving(true);
+    setNewAreaError(null);
     try {
-      const created = await adminApi.createArea({ slug, name: { es: name.trim(), en: name.trim() }, order: areas.length });
+      const created = await adminApi.createArea({ slug, name: { es: name, en: name }, order: areas.length });
       refreshAreas();
       setAreaId(created.id);
+      setNewAreaDialogOpen(false);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos crear el área.");
+      setNewAreaError(err instanceof ApiError ? err.message : "No pudimos crear el área.");
+    } finally {
+      setNewAreaSaving(false);
     }
   }
 
   async function handleCoverUpload(file: File) {
     setUploadingCover(true);
+    setCoverError(null);
     try {
       const { assetId, url } = await adminApi.uploadAsset(file);
       setCoverImageAssetId(assetId);
       setCoverPreviewUrl(url);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos subir la imagen de portada.");
+      setCoverError(err instanceof ApiError ? err.message : "No pudimos subir la imagen de portada.");
     } finally {
       setUploadingCover(false);
     }
@@ -250,12 +279,13 @@ function MetadataSection({
 
   async function handleSyllabusUpload(file: File) {
     setUploadingSyllabus(true);
+    setSyllabusError(null);
     try {
       const { assetId, url } = await adminApi.uploadAsset(file);
       setSyllabusAssetId(assetId);
       setSyllabusUrl(url);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos subir el sílabo.");
+      setSyllabusError(err instanceof ApiError ? err.message : "No pudimos subir el sílabo.");
     } finally {
       setUploadingSyllabus(false);
     }
@@ -312,11 +342,37 @@ function MetadataSection({
             </Select>
           </div>
           <div className="flex items-end">
-            <Button type="button" size="sm" variant="outline" onClick={handleCreateArea}>
+            <Button type="button" size="sm" variant="outline" onClick={openNewAreaDialog}>
               + Nueva área
             </Button>
           </div>
         </div>
+        <Dialog open={newAreaDialogOpen} onClose={closeNewAreaDialog} title="Nueva área" className="max-w-sm">
+          <div className="flex flex-col gap-3">
+            {newAreaError && <Callout variant="danger">{newAreaError}</Callout>}
+            <div>
+              <Label htmlFor="new-area-name">Nombre de la nueva área (español)</Label>
+              <Input
+                id="new-area-name"
+                autoFocus
+                value={newAreaName}
+                disabled={newAreaSaving}
+                onChange={(e) => setNewAreaName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newAreaName.trim()) handleCreateArea();
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={closeNewAreaDialog} disabled={newAreaSaving}>
+                Cancelar
+              </Button>
+              <Button type="button" disabled={newAreaSaving || !newAreaName.trim()} onClick={handleCreateArea}>
+                {newAreaSaving ? "Creando…" : "Crear"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
         <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
           <div>
             <Label htmlFor="edit-duration">Duración</Label>
@@ -393,6 +449,7 @@ function MetadataSection({
                 hint="Arrastra una imagen aquí o haz click (JPG/PNG)"
                 onFile={handleCoverUpload}
               />
+              {coverError && <p className="mt-1 text-xs text-danger">{coverError}</p>}
             </div>
           </div>
         </div>
@@ -417,6 +474,7 @@ function MetadataSection({
                 hint="PDF o Word"
                 onFile={handleSyllabusUpload}
               />
+              {syllabusError && <p className="mt-1 text-xs text-danger">{syllabusError}</p>}
             </div>
           </div>
         </div>
@@ -491,7 +549,7 @@ function SortableModuleBlock({ courseId, module: mod, busy, run }: { courseId: s
     <div ref={setNodeRef} style={style} className="flex items-start gap-2">
       <button
         type="button"
-        className="mt-4 cursor-grab touch-none text-ash-400 hover:text-ash-600"
+        className="mt-4 cursor-grab touch-none text-ash-600 hover:text-ash-600"
         aria-label="Arrastrar para reordenar módulo"
         {...attributes}
         {...listeners}
@@ -513,6 +571,7 @@ function ContentSection({ course, busy, run }: { course: any; busy: boolean; run
   // resincroniza cuando el padre trae `course` fresco tras cada mutación
   // (mismo patrón que ExamBuilder.questions).
   const [modules, setModules] = useState<any[]>(course.modules);
+  const [reorderError, setReorderError] = useState<string | null>(null);
   useEffect(() => {
     setModules(course.modules);
   }, [course.modules]);
@@ -525,10 +584,11 @@ function ContentSection({ course, busy, run }: { course: any; busy: boolean; run
     const newIndex = modules.findIndex((m) => m.id === over.id);
     const next = arrayMove(modules, oldIndex, newIndex);
     setModules(next);
+    setReorderError(null);
     try {
       await adminApi.reorderModules(course.id, next.map((m) => m.id));
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
+      setReorderError(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
       setModules(course.modules);
     }
   }
@@ -537,6 +597,8 @@ function ContentSection({ course, busy, run }: { course: any; busy: boolean; run
     <Card>
       <CardContent className="flex flex-col gap-6 p-6">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Módulos y lecciones</h2>
+
+        {reorderError && <Callout variant="danger">{reorderError}</Callout>}
 
         {modules.length === 0 && <p className="text-sm text-ash-500">Este curso todavía no tiene módulos.</p>}
 
@@ -628,6 +690,7 @@ function EditableTitle({ title, onSave, disabled, className }: { title: string; 
 
 function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; module: any; busy: boolean; run: any }) {
   const [newLesson, setNewLesson] = useState({ title: "", contentType: "VIDEO" });
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   return (
     <div className="rounded-lg border border-paper-border p-4">
@@ -640,18 +703,31 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
         />
         <button
           type="button"
-          className="text-ash-400 hover:text-danger"
+          className="text-ash-600 hover:text-danger"
           disabled={busy}
-          onClick={() => confirm("¿Eliminar este módulo y todo su contenido?") && run(() => adminApi.deleteModule(mod.id))}
+          onClick={() => setConfirmDeleteOpen(true)}
           aria-label="Eliminar módulo"
         >
           <Trash2 className="h-4 w-4" />
         </button>
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          onConfirm={() => {
+            setConfirmDeleteOpen(false);
+            run(() => adminApi.deleteModule(mod.id));
+          }}
+          title="Eliminar módulo"
+          message="¿Eliminar este módulo y todo su contenido?"
+          confirmLabel="Eliminar"
+          danger
+          busy={busy}
+        />
       </div>
 
       <ModuleMaterialsSection module={mod} busy={busy} run={run} />
 
-      <p className="mt-3 text-[11px] text-ash-400">
+      <p className="mt-3 text-2xs text-ash-400">
         El alumno ve las lecciones (videos/PDF/texto) en el orden de esta lista — usa ↑/↓ para reordenarlas. Los materiales de cada lección se
         muestran igual: primero todos los <strong>Principales</strong> (para leer en ese momento, junto al video) y después los{" "}
         <strong>Complementarios</strong> (quedan disponibles pero no se resaltan) — dentro de cada grupo, en el orden que definas con sus propias
@@ -765,7 +841,7 @@ function MaterialItem({
         // crea vacío y acá se sube un .zip o se arma con el editor.
         <div className="flex flex-col gap-1 py-0.5">
           <span className="flex items-center gap-1">📎 {material.title}</span>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-ash-500">
+          <div className="flex flex-wrap items-center gap-2 text-2xs text-ash-500">
             {material.scormEntryPath ? <span>Paquete SCORM cargado</span> : <span className="text-ash-400">Sin paquete SCORM todavía</span>}
             <DropLabel
               accept=".zip"
@@ -796,7 +872,7 @@ function MaterialItem({
         <div className="flex items-center">
           <button
             type="button"
-            className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+            className="px-1 text-ash-600 hover:text-ink-700 disabled:opacity-30"
             disabled={busy || isFirst}
             title="Mover arriba"
             aria-label="Mover material arriba"
@@ -806,7 +882,7 @@ function MaterialItem({
           </button>
           <button
             type="button"
-            className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+            className="px-1 text-ash-600 hover:text-ink-700 disabled:opacity-30"
             disabled={busy || isLast}
             title="Mover abajo"
             aria-label="Mover material abajo"
@@ -855,7 +931,7 @@ function MaterialItem({
         </button>
         <button
           type="button"
-          className="text-ash-400 hover:text-danger"
+          className="text-ash-600 hover:text-danger"
           disabled={busy}
           title="Eliminar material"
           aria-label="Eliminar material"
@@ -983,15 +1059,17 @@ function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy:
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<"MAIN" | "SUPPLEMENTARY">("MAIN");
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function handleUpload(file: File) {
     setUploading(true);
+    setUploadError(null);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
       await run(() => adminApi.createModuleMaterial(mod.id, { title: title || file.name, assetId, kind: kindFromFile(file), category }));
       setTitle("");
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
+      setUploadError(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
     } finally {
       setUploading(false);
     }
@@ -1030,6 +1108,7 @@ function ModuleMaterialsSection({ module: mod, busy, run }: { module: any; busy:
           onAdd={(scormTitle) => run(() => adminApi.createModuleMaterial(mod.id, { title: scormTitle, kind: "scorm", category }))}
         />
       </div>
+      {uploadError && <p className="mt-1 text-xs text-danger">{uploadError}</p>}
     </div>
   );
 }
@@ -1072,14 +1151,22 @@ function LessonRow({
   const [savingLink, setSavingLink] = useState(false);
   const [scormUploading, setScormUploading] = useState(false);
   const [scormBuilderOpen, setScormBuilderOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [scormUploadError, setScormUploadError] = useState<string | null>(null);
+  const [linkSaveError, setLinkSaveError] = useState<string | null>(null);
+  const [subtitlesActionError, setSubtitlesActionError] = useState<string | null>(null);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
+  const [materialUploadError, setMaterialUploadError] = useState<string | null>(null);
 
   async function handleScormUpload(file: File) {
     setScormUploading(true);
+    setScormUploadError(null);
     try {
       await adminApi.uploadScormPackage(lesson.id, file);
       router.refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos procesar el paquete SCORM.");
+      setScormUploadError(err instanceof ApiError ? err.message : "No pudimos procesar el paquete SCORM.");
     } finally {
       setScormUploading(false);
     }
@@ -1087,11 +1174,12 @@ function LessonRow({
 
   async function handleSaveLink() {
     setSavingLink(true);
+    setLinkSaveError(null);
     try {
       await adminApi.updateLesson(lesson.id, { externalUrl: linkUrl.trim() || null });
       router.refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar el enlace.");
+      setLinkSaveError(err instanceof ApiError ? err.message : "No pudimos guardar el enlace.");
     } finally {
       setSavingLink(false);
     }
@@ -1099,11 +1187,12 @@ function LessonRow({
 
   async function handleGenerateSubtitles() {
     setSubtitlesRequesting(true);
+    setSubtitlesActionError(null);
     try {
       await adminApi.generateSubtitles(lesson.id);
       router.refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos encolar la generación de subtítulos.");
+      setSubtitlesActionError(err instanceof ApiError ? err.message : "No pudimos encolar la generación de subtítulos.");
     } finally {
       setSubtitlesRequesting(false);
     }
@@ -1111,12 +1200,13 @@ function LessonRow({
 
   async function handleVideoUpload(file: File) {
     setUploading(true);
+    setVideoUploadError(null);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
       await adminApi.updateLesson(lesson.id, { videoAssetId: assetId });
       router.refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
+      setVideoUploadError(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
     } finally {
       setUploading(false);
     }
@@ -1124,12 +1214,13 @@ function LessonRow({
 
   async function handleAudioUpload(file: File) {
     setUploading(true);
+    setAudioUploadError(null);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
       await adminApi.updateLesson(lesson.id, { audioAssetId: assetId });
       router.refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
+      setAudioUploadError(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
     } finally {
       setUploading(false);
     }
@@ -1137,6 +1228,7 @@ function LessonRow({
 
   async function handleMaterialUpload(file: File) {
     setUploading(true);
+    setMaterialUploadError(null);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
       await run(() =>
@@ -1149,7 +1241,7 @@ function LessonRow({
       );
       setNewMaterialTitle("");
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
+      setMaterialUploadError(err instanceof ApiError ? err.message : "No pudimos subir el archivo.");
     } finally {
       setUploading(false);
     }
@@ -1162,7 +1254,7 @@ function LessonRow({
           <div className="flex items-center">
             <button
               type="button"
-              className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+              className="px-1 text-ash-600 hover:text-ink-700 disabled:opacity-30"
               disabled={busy || isFirst}
               title="Mover lección arriba"
               aria-label="Mover lección arriba"
@@ -1172,7 +1264,7 @@ function LessonRow({
             </button>
             <button
               type="button"
-              className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30"
+              className="px-1 text-ash-600 hover:text-ink-700 disabled:opacity-30"
               disabled={busy || isLast}
               title="Mover lección abajo"
               aria-label="Mover lección abajo"
@@ -1192,13 +1284,26 @@ function LessonRow({
         </div>
         <button
           type="button"
-          className="text-ash-400 hover:text-danger"
+          className="text-ash-600 hover:text-danger"
           disabled={busy}
-          onClick={() => confirm("¿Eliminar esta lección?") && run(() => adminApi.deleteLesson(lesson.id))}
+          onClick={() => setConfirmDeleteOpen(true)}
           aria-label="Eliminar lección"
         >
           <Trash2 className="h-4 w-4" />
         </button>
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          onConfirm={() => {
+            setConfirmDeleteOpen(false);
+            run(() => adminApi.deleteLesson(lesson.id));
+          }}
+          title="Eliminar lección"
+          message="¿Eliminar esta lección?"
+          confirmLabel="Eliminar"
+          danger
+          busy={busy}
+        />
       </div>
 
       {lesson.contentType === "VIDEO" && (
@@ -1332,7 +1437,7 @@ function LessonRow({
           onAdd={(scormTitle) => run(() => adminApi.createMaterial(lesson.id, { title: scormTitle, kind: "scorm", category: newMaterialCategory }))}
         />
       </div>
-      <p className="mt-1 text-[11px] text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>
+      <p className="mt-1 text-2xs text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>
       <FormativeQuizEditor lesson={lesson} />
     </li>
   );
@@ -1350,6 +1455,7 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
   const [open, setOpen] = useState(false);
   const [questions, setQuestions] = useState<any[]>(lesson.formativeQuiz?.questions ?? []);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function addQuestion() {
     setQuestions((qs) => [
@@ -1390,6 +1496,7 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
 
   async function handleSave() {
     setSaving(true);
+    setError(null);
     try {
       const cleaned = questions
         .map((q) => ({
@@ -1403,7 +1510,7 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
       await adminApi.updateLesson(lesson.id, { formativeQuiz: { questions: cleaned } });
       router.refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar la evaluación formativa.");
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la evaluación formativa.");
     } finally {
       setSaving(false);
     }
@@ -1411,12 +1518,17 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
 
   return (
     <div className="mt-2 border-t border-paper-border pt-2">
+      {error && (
+        <Callout variant="danger" className="mb-2">
+          {error}
+        </Callout>
+      )}
       <button type="button" className="text-xs font-medium text-ink-700 hover:underline" onClick={() => setOpen((o) => !o)}>
         {open ? "Ocultar" : "Gestionar"} evaluación formativa {questions.length > 0 && `(${questions.length})`}
       </button>
       {open && (
         <div className="mt-2 flex flex-col gap-3">
-          <p className="text-[11px] text-ash-500">
+          <p className="text-2xs text-ash-500">
             Preguntas de autoevaluación dentro de esta lección — el alumno ve al toque si acertó, con la explicación que pongas. No cuenta para la
             nota ni el certificado.
             {lesson.contentType === "VIDEO" &&
@@ -1431,7 +1543,7 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
                   value={q.text}
                   onChange={(e) => updateQuestion(q.id, { text: e.target.value })}
                 />
-                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => removeQuestion(q.id)} aria-label="Eliminar pregunta">
+                <button type="button" className="text-ash-600 hover:text-danger" onClick={() => removeQuestion(q.id)} aria-label="Eliminar pregunta">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -1452,14 +1564,14 @@ function FormativeQuizEditor({ lesson }: { lesson: any }) {
                       onChange={(e) => updateOption(q.id, oIdx, e.target.value)}
                     />
                     {q.options.length > 2 && (
-                      <button type="button" className="text-ash-400 hover:text-danger" onClick={() => removeOption(q.id, oIdx)} aria-label="Quitar opción">
+                      <button type="button" className="text-ash-600 hover:text-danger" onClick={() => removeOption(q.id, oIdx)} aria-label="Quitar opción">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
                 ))}
                 {q.options.length < 6 && (
-                  <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => addOption(q.id)}>
+                  <button type="button" className="self-start text-2xs font-medium text-ink-700 hover:underline" onClick={() => addOption(q.id)}>
                     + Agregar opción
                   </button>
                 )}
@@ -1501,6 +1613,10 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
   const [form, setForm] = useState({ startsAt: "", endsAt: "", capacity: "", teacherId: "", recurrence: "ONCE" as "ONCE" | "WEEKLY" });
   const [teachers, setTeachers] = useState<any[]>([]);
   const [summary, setSummary] = useState<{ totalHours: number; scheduledHours: number; remainingHours: number } | null>(null);
+  // Reemplaza el prompt() nativo para pedir el motivo de cancelación —
+  // mismo criterio que ConfirmDialog en el resto del archivo.
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
 
   async function refreshSummary() {
     try {
@@ -1587,8 +1703,8 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
                       className="text-danger hover:bg-danger-bg"
                       disabled={busy}
                       onClick={() => {
-                        const reason = prompt("Motivo de la cancelación:");
-                        if (reason) run(() => liveSessionApi.cancel(session.id, reason)).then(refreshSummary);
+                        setCancelReason("");
+                        setCancelTarget(session.id);
                       }}
                     >
                       Cancelar
@@ -1690,6 +1806,29 @@ function LiveSessionsSection({ course, busy, run }: { course: any; busy: boolean
           </Button>
         </div>
       </CardContent>
+
+      <Dialog open={!!cancelTarget} onClose={() => setCancelTarget(null)} title="Cancelar sesión" className="max-w-sm">
+        <Label htmlFor="cancel-reason">Motivo de la cancelación</Label>
+        <Input id="cancel-reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} autoFocus />
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setCancelTarget(null)}>
+            Volver
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={!cancelReason.trim() || busy}
+            onClick={() => {
+              const id = cancelTarget!;
+              const reason = cancelReason.trim();
+              setCancelTarget(null);
+              run(() => liveSessionApi.cancel(id, reason)).then(refreshSummary);
+            }}
+          >
+            Cancelar sesión
+          </Button>
+        </div>
+      </Dialog>
     </Card>
   );
 }
@@ -1986,9 +2125,11 @@ function ExamTemplateSection({ course, onSaved }: { course: any; onSaved: () => 
   const [footerText, setFooterText] = useState(course.examFooterText?.es ?? "");
   const [instructionsText, setInstructionsText] = useState(course.examInstructionsText?.es ?? "");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
     setBusy(true);
+    setError(null);
     try {
       await adminApi.updateCourse(course.id, {
         examHeaderText: headerText.trim() ? { es: headerText } : null,
@@ -1997,7 +2138,7 @@ function ExamTemplateSection({ course, onSaved }: { course: any; onSaved: () => 
       });
       onSaved();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar la plantilla.");
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la plantilla.");
     } finally {
       setBusy(false);
     }
@@ -2005,6 +2146,11 @@ function ExamTemplateSection({ course, onSaved }: { course: any; onSaved: () => 
 
   return (
     <div className="rounded-lg border border-paper-border p-4">
+      {error && (
+        <Callout variant="danger" className="mb-2">
+          {error}
+        </Callout>
+      )}
       <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => setOpen((o) => !o)}>
         <span className="text-sm font-semibold text-ink-900">Plantilla de exámenes del curso</span>
         <span className="text-xs text-ash-500">{open ? "Ocultar" : "Editar"}</span>
@@ -2084,7 +2230,7 @@ function SortableAssessmentRow({
       <div className="flex items-start gap-2">
         <button
           type="button"
-          className="mt-0.5 cursor-grab touch-none text-ash-400 hover:text-ash-600"
+          className="mt-0.5 cursor-grab touch-none text-ash-600 hover:text-ash-600"
           aria-label="Arrastrar para reordenar"
           {...attributes}
           {...listeners}
@@ -2153,6 +2299,8 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
   const [uploadingFile, setUploadingFile] = useState(false);
   const [scormOwnerKey, setScormOwnerKey] = useState(""); // "lesson:<id>" | "material:<id>"
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const moduleTitleById = new Map((course.modules ?? []).map((m: any) => [m.id, m.title?.es]));
 
@@ -2195,12 +2343,13 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
   async function handleCreate() {
     if (!newTitle.trim()) return;
     setCreating(true);
+    setError(null);
     try {
       await adminApi.createAssessment(course.id, { title: { es: newTitle }, moduleId: newModuleId || null });
       setNewTitle("");
       await refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos crear la evaluación.");
+      setError(err instanceof ApiError ? err.message : "No pudimos crear la evaluación.");
     } finally {
       setCreating(false);
     }
@@ -2208,10 +2357,11 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
 
   async function handleCreateFileExam(file: File) {
     if (!newTitle.trim()) {
-      alert("Ponle un título al examen antes de subir el archivo.");
+      setError("Ponle un título al examen antes de subir el archivo.");
       return;
     }
     setUploadingFile(true);
+    setError(null);
     try {
       const { assetId } = await adminApi.uploadAsset(file);
       await adminApi.createAssessment(course.id, {
@@ -2224,7 +2374,7 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
       setMode("questions");
       await refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos crear el examen de archivo.");
+      setError(err instanceof ApiError ? err.message : "No pudimos crear el examen de archivo.");
     } finally {
       setUploadingFile(false);
     }
@@ -2237,6 +2387,7 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
     if (!newTitle.trim() || !scormOwnerKey) return;
     const [kind, id] = scormOwnerKey.split(":");
     setCreating(true);
+    setError(null);
     try {
       await adminApi.createAssessment(course.id, {
         title: { es: newTitle },
@@ -2248,7 +2399,7 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
       setScormOwnerKey("");
       await refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos crear el examen respaldado por SCORM.");
+      setError(err instanceof ApiError ? err.message : "No pudimos crear el examen respaldado por SCORM.");
     } finally {
       setCreating(false);
     }
@@ -2264,18 +2415,18 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
     try {
       await adminApi.reorderAssessments(course.id, next.map((a) => a.id));
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
       refresh();
     }
   }
 
   async function handleDelete(assessment: any) {
-    if (!confirm(`¿Eliminar "${assessment.title?.es}"? Solo se puede si nadie la ha presentado todavía.`)) return;
+    setError(null);
     try {
       await adminApi.deleteAssessment(assessment.id);
       await refresh();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos eliminar la evaluación.");
+      setError(err instanceof ApiError ? err.message : "No pudimos eliminar la evaluación.");
     }
   }
 
@@ -2286,6 +2437,7 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
     <>
       <Card>
         <CardContent className="flex flex-col gap-4 p-6">
+          {error && <Callout variant="danger">{error}</Callout>}
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-lg font-semibold text-ink-900">Evaluaciones</h2>
             <label className="flex items-center gap-1.5 text-xs text-ash-600">
@@ -2315,7 +2467,7 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
                         assessment={a}
                         moduleTitle={a.moduleId ? (moduleTitleById.get(a.moduleId) as string | undefined) ?? null : null}
                         onEdit={() => setEditingId(a.id)}
-                        onDelete={() => handleDelete(a)}
+                        onDelete={() => setDeleteTarget(a)}
                       />
                     ))}
                   </div>
@@ -2414,6 +2566,20 @@ function AssessmentsSection({ course, onCourseChange }: { course: any; onCourseC
           onChange={refresh}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) handleDelete(target);
+        }}
+        title="Eliminar evaluación"
+        message={`¿Eliminar "${deleteTarget?.title?.es}"? Solo se puede si nadie la ha presentado todavía.`}
+        confirmLabel="Eliminar"
+        danger
+      />
     </>
   );
 }
@@ -2482,10 +2648,10 @@ function DetailSectionsManager({ course }: { course: any }) {
           <div key={sec.id} className="rounded-lg border border-paper-border p-4">
             <div className="flex items-start gap-2">
               <div className="flex flex-col">
-                <button type="button" className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, "up")} aria-label="Mover arriba">
+                <button type="button" className="px-1 text-ash-600 hover:text-ink-700 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, "up")} aria-label="Mover arriba">
                   <ChevronUp className="h-4 w-4" />
                 </button>
-                <button type="button" className="px-1 text-ash-400 hover:text-ink-700 disabled:opacity-30" disabled={i === sections.length - 1} onClick={() => move(i, "down")} aria-label="Mover abajo">
+                <button type="button" className="px-1 text-ash-600 hover:text-ink-700 disabled:opacity-30" disabled={i === sections.length - 1} onClick={() => move(i, "down")} aria-label="Mover abajo">
                   <ChevronDown className="h-4 w-4" />
                 </button>
               </div>
@@ -2502,7 +2668,7 @@ function DetailSectionsManager({ course }: { course: any }) {
                   onChange={(e) => updateSection(sec.id, { body: { es: e.target.value } })}
                 />
               </div>
-              <button type="button" className="text-ash-400 hover:text-danger" onClick={() => removeSection(sec.id)} aria-label="Eliminar sección">
+              <button type="button" className="text-ash-600 hover:text-danger" onClick={() => removeSection(sec.id)} aria-label="Eliminar sección">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -2544,6 +2710,7 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
   const [role, setRole] = useState("TEACHER");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
 
   // Antes había que escribir el correo del docente de memoria (sin saber
   // siquiera si ya tenía cuenta) — ahora se elige de la lista real de
@@ -2592,7 +2759,6 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
   }
 
   async function handleRemove(id: string) {
-    if (!confirm("¿Quitar a este docente del curso?")) return;
     setBusy(true);
     try {
       await adminApi.removeCourseStaff(id);
@@ -2653,7 +2819,7 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
                     >
                       {s.canEdit ? <LockOpen className="h-4 w-4" aria-hidden="true" /> : <Lock className="h-4 w-4 text-danger" aria-hidden="true" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleRemove(s.id)}>
+                    <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => setRemoveTarget(s.id)}>
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </div>
@@ -2725,6 +2891,19 @@ function CourseStaffSection({ courseId }: { courseId: string }) {
           </form>
         )}
       </CardContent>
+      <ConfirmDialog
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={() => {
+          const id = removeTarget!;
+          setRemoveTarget(null);
+          handleRemove(id);
+        }}
+        title="Quitar docente"
+        message="¿Quitar a este docente del curso?"
+        confirmLabel="Quitar"
+        danger
+      />
     </Card>
   );
 }

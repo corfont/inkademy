@@ -224,8 +224,12 @@ body {
    moderación en titulares destacados (home, no en todo el sitio) para que
    Inkademy se sienta parte de la misma marca sin perder su propia identidad
    azul de sub-marca. */
+/* gold-400 da solo 1.9:1 de contraste contra --paper (bajo el mínimo 3:1
+   para texto grande) — se usa gold-500 en su lugar (4.52:1 contra --paper,
+   calculado con la fórmula de luminancia relativa de WCAG), manteniendo el
+   mismo matiz dorado. */
 .brand-gradient-text {
-  background-image: linear-gradient(130deg, hsl(var(--indigo-400)) 8%, hsl(var(--gold-400)) 92%);
+  background-image: linear-gradient(130deg, hsl(var(--indigo-400)) 8%, hsl(var(--gold-500)) 92%);
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;

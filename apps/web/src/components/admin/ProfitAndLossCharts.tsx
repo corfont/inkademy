@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { TrendingUp, TrendingDown, Scale, Target } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -17,6 +18,18 @@ function monthLabel(month: string) {
   return `${names[Number(m) - 1]} ${y.slice(2)}`;
 }
 
+// "#586bd8" era el hex fijo de indigo-400 — no reaccionaba a modo oscuro.
+// Se resuelve la custom property real (hsl() sin envolver, ver
+// globals.css) en tiempo de montaje.
+function useIndigoChartColor() {
+  const [indigo, setIndigo] = useState("#586bd8");
+  useEffect(() => {
+    const value = getComputedStyle(document.documentElement).getPropertyValue("--indigo-400").trim();
+    if (value) setIndigo(`hsl(${value})`);
+  }, []);
+  return indigo;
+}
+
 /**
  * Estado de resultados muy visual, poco texto — "que el sistema calcule
  * punto de equilibrio, si estamos en superávit, déficit, pronostique
@@ -28,6 +41,7 @@ export function ProfitAndLossCharts({ data, locale }: { data: any; locale: strin
   const lastMonth = data.months[data.months.length - 1];
   const status = STATUS_COPY[data.status] ?? STATUS_COPY.EQUILIBRIO;
   const breakEvenPct = data.breakEvenIncome && data.breakEvenIncome > 0 ? Math.min(200, (lastMonth.income / data.breakEvenIncome) * 100) : null;
+  const indigo = useIndigoChartColor();
 
   return (
     <div className="flex flex-col gap-4">
@@ -94,7 +108,7 @@ export function ProfitAndLossCharts({ data, locale }: { data: any; locale: strin
               {data.breakEvenIncome && (
                 <ReferenceLine y={data.breakEvenIncome} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "Equilibrio", fontSize: 11, fill: "#b45309" }} />
               )}
-              <Bar dataKey="income" name="Ingresos" fill="#586bd8" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="income" name="Ingresos" fill={indigo} radius={[4, 4, 0, 0]} />
               <Bar dataKey="expenses" name="Gastos" fill="#dc2626" radius={[4, 4, 0, 0]} />
               <Line type="monotone" dataKey="profit" name="Utilidad" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 4 }} />
             </ComposedChart>

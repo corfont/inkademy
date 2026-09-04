@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -37,6 +37,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label, Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Card, CardContent } from "@/components/ui/Card";
 import { DropLabel } from "./DropLabel";
 
@@ -74,9 +75,10 @@ const BRAND_COLOR_CHIPS = [
 ];
 
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (hex: string) => void }) {
+  const inputId = useId();
   return (
     <div className="flex items-center justify-between gap-2">
-      <Label className="text-xs">{label}</Label>
+      <Label htmlFor={inputId} className="text-xs">{label}</Label>
       <div className="flex items-center gap-1">
         {BRAND_COLOR_CHIPS.map((c) => (
           <button
@@ -88,7 +90,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
             onClick={() => onChange(c.hex)}
           />
         ))}
-        <input type="color" className="h-6 w-8 cursor-pointer rounded border border-paper-border p-0" value={value} onChange={(e) => onChange(e.target.value)} />
+        <input id={inputId} type="color" className="h-6 w-8 cursor-pointer rounded border border-paper-border p-0" value={value} onChange={(e) => onChange(e.target.value)} />
       </div>
     </div>
   );
@@ -201,6 +203,7 @@ function OptionsEditor({
             checked={correctSet.has(idx)}
             onChange={() => onToggleCorrect(idx)}
             title="Marcar como respuesta correcta"
+            aria-label="Marcar como respuesta correcta"
           />
           <Input
             className="h-7 flex-1 text-xs"
@@ -209,14 +212,14 @@ function OptionsEditor({
             onChange={(e) => onChangeOption(idx, e.target.value)}
           />
           {options.length > 2 && (
-            <button type="button" className="text-ash-400 hover:text-danger" onClick={() => onRemoveOption(idx)} aria-label="Quitar opción">
+            <button type="button" className="text-ash-600 hover:text-danger" onClick={() => onRemoveOption(idx)} aria-label="Quitar opción">
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           )}
         </div>
       ))}
       {options.length < 6 && (
-        <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={onAddOption}>
+        <button type="button" className="self-start text-2xs font-medium text-ink-700 hover:underline" onClick={onAddOption}>
           + Agregar opción
         </button>
       )}
@@ -257,8 +260,10 @@ function ContentSlideEditor({
   onChange: (s: ScormSlide) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   async function handleImageUpload(file: File) {
     setUploading(true);
+    setUploadError(null);
     try {
       // Data URI, no URL de storage: el contenido SCORM debe ser autocontenido y corre con una
       // CSP que no permite imágenes de otro origen (ver HotspotSlideEditor más abajo).
@@ -270,7 +275,7 @@ function ContentSlideEditor({
       });
       onChange({ ...slide, imageUrl: dataUrl });
     } catch {
-      alert("No pudimos leer la imagen.");
+      setUploadError("No pudimos leer la imagen.");
     } finally {
       setUploading(false);
     }
@@ -294,6 +299,7 @@ function ContentSlideEditor({
         {slide.imageUrl ? <span>Imagen cargada</span> : <span>Sin imagen (opcional)</span>}
         <DropLabel accept="image/*" busy={uploading} label={slide.imageUrl ? "Reemplazar imagen" : "Subir imagen"} small onFile={handleImageUpload} />
       </div>
+      {uploadError && <Callout variant="danger">{uploadError}</Callout>}
       {/* "Como lo hacen los mejores" — dónde va la imagen dentro de la
           diapositiva. Solo tiene sentido con una imagen ya cargada. */}
       {slide.imageUrl && (
@@ -304,7 +310,7 @@ function ContentSlideEditor({
                 key={l.value}
                 type="button"
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px]",
+                  "rounded-full border px-2.5 py-1 text-2xs",
                   (slide.layout ?? "image-bottom") === l.value ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper-muted",
                 )}
                 onClick={() => onChange({ ...slide, layout: l.value, imageBox: l.value === "image-background" ? (slide.imageBox ?? { x: 10, y: 10, width: 60, height: 60 }) : slide.imageBox })}
@@ -315,7 +321,7 @@ function ContentSlideEditor({
           </div>
           {slide.layout === "image-background" && (
             <>
-              <p className="text-[11px] text-ash-500">Arrastra la caja para mover la imagen; usa la esquina para redimensionarla.</p>
+              <p className="text-2xs text-ash-500">Arrastra la caja para mover la imagen; usa la esquina para redimensionarla.</p>
               <ImageBoxEditor
                 imageUrl={slide.imageUrl}
                 box={slide.imageBox ?? { x: 10, y: 10, width: 60, height: 60 }}
@@ -470,7 +476,7 @@ function FillBlankSlideEditor({
         value={slide.text[editLocale] ?? ""}
         onChange={(e) => onChange({ ...slide, text: { ...slide.text, [editLocale]: e.target.value } })}
       />
-      <p className="text-[11px] text-ash-500">{blankCount} espacio(s) detectado(s).</p>
+      <p className="text-2xs text-ash-500">{blankCount} espacio(s) detectado(s).</p>
       {slide.blanks.map((accepted, i) => (
         <Input
           key={i}
@@ -530,7 +536,7 @@ function MatchingSlideEditor({
               onChange={(e) => onChange({ ...slide, pairs: slide.pairs.map((p, i) => (i === idx ? { ...p, right: { ...p.right, [editLocale]: e.target.value } } : p)) })}
             />
             {slide.pairs.length > 2 && (
-              <button type="button" className="text-ash-400 hover:text-danger" onClick={() => onChange({ ...slide, pairs: slide.pairs.filter((_, i) => i !== idx) })} aria-label="Quitar par">
+              <button type="button" className="text-ash-600 hover:text-danger" onClick={() => onChange({ ...slide, pairs: slide.pairs.filter((_, i) => i !== idx) })} aria-label="Quitar par">
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             )}
@@ -539,7 +545,7 @@ function MatchingSlideEditor({
         {slide.pairs.length < 8 && (
           <button
             type="button"
-            className="self-start text-[11px] font-medium text-ink-700 hover:underline"
+            className="self-start text-2xs font-medium text-ink-700 hover:underline"
             onClick={() => onChange({ ...slide, pairs: [...slide.pairs, { left: emptyText(), right: emptyText() }] })}
           >
             + Agregar par
@@ -568,7 +574,7 @@ function OrderingSlideEditor({
         value={slide.instructions?.[editLocale] ?? ""}
         onChange={(e) => onChange({ ...slide, instructions: setLocalizedOptional(slide.instructions, editLocale, e.target.value) })}
       />
-      <p className="text-[11px] text-ash-500">Escribe los elementos en el ORDEN CORRECTO — se mostrarán desordenados al alumno.</p>
+      <p className="text-2xs text-ash-500">Escribe los elementos en el ORDEN CORRECTO — se mostrarán desordenados al alumno.</p>
       <div className="flex flex-col gap-1.5">
         {slide.items.map((item, idx) => (
           <div key={idx} className="flex items-center gap-2">
@@ -580,14 +586,14 @@ function OrderingSlideEditor({
               onChange={(e) => onChange({ ...slide, items: slide.items.map((it, i) => (i === idx ? { ...it, [editLocale]: e.target.value } : it)) })}
             />
             {slide.items.length > 2 && (
-              <button type="button" className="text-ash-400 hover:text-danger" onClick={() => onChange({ ...slide, items: slide.items.filter((_, i) => i !== idx) })} aria-label="Quitar elemento">
+              <button type="button" className="text-ash-600 hover:text-danger" onClick={() => onChange({ ...slide, items: slide.items.filter((_, i) => i !== idx) })} aria-label="Quitar elemento">
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             )}
           </div>
         ))}
         {slide.items.length < 10 && (
-          <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => onChange({ ...slide, items: [...slide.items, emptyText()] })}>
+          <button type="button" className="self-start text-2xs font-medium text-ink-700 hover:underline" onClick={() => onChange({ ...slide, items: [...slide.items, emptyText()] })}>
             + Agregar elemento
           </button>
         )}
@@ -608,10 +614,12 @@ function HotspotSlideEditor({
   onChange: (s: ScormSlide) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [drawing, setDrawing] = useState<{ startX: number; startY: number; x: number; y: number; width: number; height: number } | null>(null);
 
   async function handleImageUpload(file: File) {
     setUploading(true);
+    setUploadError(null);
     try {
       // Se guarda como data URI (no una URL de storage): el paquete SCORM generado debe ser
       // autocontenido, y el contenido corre en un iframe con CSP "default-src 'self' ... data:"
@@ -624,7 +632,7 @@ function HotspotSlideEditor({
       });
       onChange({ ...slide, imageUrl: dataUrl, zones: [] });
     } catch {
-      alert("No pudimos leer la imagen.");
+      setUploadError("No pudimos leer la imagen.");
     } finally {
       setUploading(false);
     }
@@ -671,9 +679,10 @@ function HotspotSlideEditor({
         {slide.imageUrl ? <span>Imagen cargada</span> : <span>Sube una imagen primero</span>}
         <DropLabel accept="image/*" busy={uploading} label={slide.imageUrl ? "Reemplazar imagen" : "Subir imagen"} small onFile={handleImageUpload} />
       </div>
+      {uploadError && <Callout variant="danger">{uploadError}</Callout>}
       {slide.imageUrl && (
         <>
-          <p className="text-[11px] text-ash-500">Arrastra sobre la imagen para marcar una zona correcta. Puedes marcar varias.</p>
+          <p className="text-2xs text-ash-500">Arrastra sobre la imagen para marcar una zona correcta. Puedes marcar varias.</p>
           <div
             className="relative inline-block max-w-full cursor-crosshair select-none"
             onMouseDown={handleMouseDown}
@@ -759,13 +768,13 @@ function SlideRow({
 
   return (
     <div ref={setNodeRef} style={style} className="flex gap-2 rounded-md border border-paper-border bg-paper p-3">
-      <button type="button" className="mt-1 flex-none cursor-grab touch-none text-ash-400 hover:text-ash-600" aria-label="Arrastrar para reordenar" {...attributes} {...listeners}>
+      <button type="button" className="mt-1 flex-none cursor-grab touch-none text-ash-600 hover:text-ash-600" aria-label="Arrastrar para reordenar" {...attributes} {...listeners}>
         <GripVertical className="h-4 w-4" aria-hidden="true" />
       </button>
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-ash-500">{SCORM_SLIDE_TYPE_LABEL[slide.type]}</span>
-          <button type="button" className="text-ash-400 hover:text-danger" onClick={onDelete} aria-label="Eliminar diapositiva">
+          <button type="button" className="text-ash-600 hover:text-danger" onClick={onDelete} aria-label="Eliminar diapositiva">
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
@@ -805,7 +814,7 @@ function SortableSectionRow({
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   return (
     <div ref={setNodeRef} style={style} className="flex items-center gap-2">
-      <button type="button" className="flex-none cursor-grab touch-none text-ash-400 hover:text-ash-600" aria-label="Arrastrar para reordenar" {...attributes} {...listeners}>
+      <button type="button" className="flex-none cursor-grab touch-none text-ash-600 hover:text-ash-600" aria-label="Arrastrar para reordenar" {...attributes} {...listeners}>
         <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
       <Input
@@ -816,7 +825,7 @@ function SortableSectionRow({
       />
       <Input className="h-7 w-20 text-xs" type="number" min={0} max={100} value={section.weightPercent} onChange={(e) => onChange({ weightPercent: Number(e.target.value) })} />
       <span className="text-xs text-ash-500">%</span>
-      <button type="button" className="text-ash-400 hover:text-danger" onClick={onDelete} aria-label="Quitar sección">
+      <button type="button" className="text-ash-600 hover:text-danger" onClick={onDelete} aria-label="Quitar sección">
         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </div>
@@ -877,12 +886,17 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   const [presetToApply, setPresetToApply] = useState("");
   const [presetNameInput, setPresetNameInput] = useState<string | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
+  const [presetError, setPresetError] = useState<string | null>(null);
+  const [confirmDeletePreset, setConfirmDeletePreset] = useState<{ id: string; name: string } | null>(null);
+  const [deletingPreset, setDeletingPreset] = useState(false);
   const [addType, setAddType] = useState<ScormSlide["type"]>("content");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [built, setBuilt] = useState(Boolean(owner.scormEntryPath && owner.scormAuthoredContent));
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<ScormAnalytics | null>(null);
 
   useEffect(() => {
@@ -906,24 +920,30 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
   async function handleSavePreset() {
     if (!presetNameInput?.trim()) return;
     setSavingPreset(true);
+    setPresetError(null);
     try {
       await adminApi.createScormThemePreset({ name: presetNameInput.trim(), theme });
       const rows = await adminApi.listScormThemePresets();
       setSavedPresets((rows as any[]).map((r) => ({ id: r.id, name: r.name, theme: r.theme as ScormTheme, builtin: false })));
       setPresetNameInput(null);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar el preset.");
+      setPresetError(err instanceof ApiError ? err.message : "No pudimos guardar el preset.");
     } finally {
       setSavingPreset(false);
     }
   }
-  async function handleDeletePreset(id: string) {
-    if (!confirm("¿Eliminar este preset guardado?")) return;
+  async function handleDeletePreset() {
+    if (!confirmDeletePreset) return;
+    setDeletingPreset(true);
+    setPresetError(null);
     try {
-      await adminApi.deleteScormThemePreset(id);
-      setSavedPresets((sp) => sp.filter((p) => p.id !== id));
+      await adminApi.deleteScormThemePreset(confirmDeletePreset.id);
+      setSavedPresets((sp) => sp.filter((p) => p.id !== confirmDeletePreset.id));
+      setConfirmDeletePreset(null);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos eliminar el preset (¿eres el ADMIN?).");
+      setPresetError(err instanceof ApiError ? err.message : "No pudimos eliminar el preset (¿eres el ADMIN?).");
+    } finally {
+      setDeletingPreset(false);
     }
   }
 
@@ -1112,11 +1132,12 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
 
   async function handlePreviewSession() {
     setPreviewLoading(true);
+    setPreviewError(null);
     try {
       const { playerUrl } = await previewSession(owner.id);
       window.open(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}${playerUrl}`, "_blank", "noopener,noreferrer");
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos abrir la vista previa.");
+      setPreviewError(err instanceof ApiError ? err.message : "No pudimos abrir la vista previa.");
     } finally {
       setPreviewLoading(false);
     }
@@ -1124,12 +1145,13 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
 
   async function handleExport() {
     setExporting(true);
+    setExportError(null);
     try {
       const token = getClientAccessToken();
       if (!token) throw new Error("Sesión inválida");
       await downloadPackage(owner.id, token);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos descargar el paquete.");
+      setExportError(err instanceof ApiError ? err.message : "No pudimos descargar el paquete.");
     } finally {
       setExporting(false);
     }
@@ -1155,7 +1177,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                   key={loc}
                   type="button"
                   className={cn(
-                    "rounded-full border px-2.5 py-1 text-[11px]",
+                    "rounded-full border px-2.5 py-1 text-2xs",
                     editLocale === loc ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper",
                   )}
                   onClick={() => setEditLocale(loc)}
@@ -1237,14 +1259,22 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                 Aplicar
               </Button>
               {savedPresets.some((p) => p.id === presetToApply) && (
-                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => handleDeletePreset(presetToApply)} aria-label="Eliminar preset guardado">
+                <button
+                  type="button"
+                  className="text-ash-600 hover:text-danger"
+                  onClick={() => {
+                    const preset = savedPresets.find((p) => p.id === presetToApply);
+                    if (preset) setConfirmDeletePreset({ id: preset.id, name: preset.name });
+                  }}
+                  aria-label="Eliminar preset guardado"
+                >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               )}
             </div>
 
             {presetNameInput === null ? (
-              <button type="button" className="self-start text-[11px] font-medium text-ink-700 hover:underline" onClick={() => setPresetNameInput("")}>
+              <button type="button" className="self-start text-2xs font-medium text-ink-700 hover:underline" onClick={() => setPresetNameInput("")}>
                 + Guardar como preset
               </button>
             ) : (
@@ -1259,6 +1289,17 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                 </button>
               </div>
             )}
+            {presetError && <Callout variant="danger">{presetError}</Callout>}
+            <ConfirmDialog
+              open={Boolean(confirmDeletePreset)}
+              onClose={() => setConfirmDeletePreset(null)}
+              onConfirm={handleDeletePreset}
+              title="Eliminar preset"
+              message={`¿Eliminar el preset "${confirmDeletePreset?.name ?? ""}"?`}
+              confirmLabel="Eliminar"
+              danger
+              busy={deletingPreset}
+            />
 
             <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
               <ColorField label="Primario" value={theme.primaryColor} onChange={(hex) => setTheme((t) => ({ ...t, primaryColor: hex }))} />
@@ -1306,7 +1347,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                     key={sc}
                     type="button"
                     className={cn(
-                      "rounded-full border px-2 py-0.5 text-[11px]",
+                      "rounded-full border px-2 py-0.5 text-2xs",
                       theme.fontScale === sc ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper",
                     )}
                     onClick={() => setTheme((t) => ({ ...t, fontScale: sc }))}
@@ -1322,7 +1363,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                     key={cs}
                     type="button"
                     className={cn(
-                      "rounded-full border px-2 py-0.5 text-[11px]",
+                      "rounded-full border px-2 py-0.5 text-2xs",
                       theme.cardStyle === cs ? "border-ink-700 bg-ink-700 text-white" : "border-paper-border text-ash-600 hover:bg-paper",
                     )}
                     onClick={() => setTheme((t) => ({ ...t, cardStyle: cs }))}
@@ -1347,7 +1388,7 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
                 }}
               />
               {theme.headerImageUrl && (
-                <button type="button" className="text-ash-400 hover:text-danger" onClick={() => setTheme((t) => ({ ...t, headerImageUrl: null }))} aria-label="Quitar logo">
+                <button type="button" className="text-ash-600 hover:text-danger" onClick={() => setTheme((t) => ({ ...t, headerImageUrl: null }))} aria-label="Quitar logo">
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               )}
@@ -1399,6 +1440,8 @@ export function ScormBuilder({ owner, open, onClose, onSaved }: { owner: ScormBu
               </>
             )}
           </div>
+          {previewError && <Callout variant="danger">{previewError}</Callout>}
+          {exportError && <Callout variant="danger">{exportError}</Callout>}
 
           {analytics && analytics.totalAttempts > 0 && (
             <Card>

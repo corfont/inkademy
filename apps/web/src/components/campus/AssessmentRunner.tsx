@@ -90,7 +90,7 @@ function OrderingField({
       {order.map((id, i) => (
         <li key={id} className="flex items-center justify-between gap-2 rounded-md border border-paper-border bg-paper p-3 text-sm">
           <span>
-            <span className="mr-2 font-semibold text-ash-400">{i + 1}.</span>
+            <span className="mr-2 font-semibold text-ash-600">{i + 1}.</span>
             {byId.get(id)}
           </span>
           <div className="flex gap-1">
@@ -229,7 +229,7 @@ function FileUploadRunner({ assessment }: { assessment: AssessmentDefinition }) 
       {assessment.timeLimitMinutes ? <ExamCountdownBar remaining={remaining} totalSeconds={totalSeconds} /> : null}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(assessment.title, locale, "Evaluación")}</h1>
-        {!assessment.timeLimitMinutes && <span className="text-xs text-ash-400">Sin límite de tiempo</span>}
+        {!assessment.timeLimitMinutes && <span className="text-xs text-ash-600">Sin límite de tiempo</span>}
       </div>
       {timeExpired && <Callout variant="warning" className="mb-4">Se acabó el tiempo para este examen — si ya tenías tu archivo listo, igual puedes enviarlo.</Callout>}
       {error && <Callout variant="danger" className="mb-4">{error}</Callout>}
@@ -494,7 +494,7 @@ function QuestionBasedRunner({ assessment }: { assessment: AssessmentDefinition 
                 )}
               </Callout>
             ) : (
-              <p className="mt-2 text-xs text-ash-400">Usaste todos tus intentos disponibles.</p>
+              <p className="mt-2 text-xs text-ash-600">Usaste todos tus intentos disponibles.</p>
             )}
           </div>
         )}

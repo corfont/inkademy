@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
-import { Button } from "@/components/ui/Button";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 /**
  * Boundary de error para /checkout. Con el guard de middleware.ts (que ahora
@@ -18,20 +17,12 @@ export default function CheckoutError({ error, reset }: { error: Error & { diges
   }, [error]);
 
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
-      <h1 className="font-serif text-2xl font-semibold text-ink-900">No pudimos completar tu compra</h1>
-      <p className="max-w-md text-ash-600">
-        Tu sesión pudo haber expirado mientras llenabas el formulario, o hubo un problema temporal. No se realizó
-        ningún cargo. Vuelve a iniciar sesión e inténtalo de nuevo.
-      </p>
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={reset}>
-          Reintentar
-        </Button>
-        <Link href="/login">
-          <Button>Iniciar sesión</Button>
-        </Link>
-      </div>
-    </div>
+    <ErrorState
+      title="No pudimos completar tu compra"
+      message="Tu sesión pudo haber expirado mientras llenabas el formulario, o hubo un problema temporal. No se realizó ningún cargo. Vuelve a iniciar sesión e inténtalo de nuevo."
+      onRetry={reset}
+      secondaryHref="/login"
+      secondaryLabel="Iniciar sesión"
+    />
   );
 }

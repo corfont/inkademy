@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
-import { Button } from "@/components/ui/Button";
+import { ErrorState } from "@/components/ui/ErrorState";
 
 /**
  * Boundary de error para todo el segmento /empresa/[companyId]/*.
@@ -20,20 +19,12 @@ export default function EmpresaError({ error, reset }: { error: Error & { digest
   }, [error]);
 
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
-      <h1 className="font-serif text-2xl font-semibold text-ink-900">No pudimos mostrar esta empresa</h1>
-      <p className="max-w-md text-ash-600">
-        Puede que no tengas acceso a esta empresa, que el enlace sea incorrecto, o que haya ocurrido un problema
-        temporal. Si el problema persiste, contacta a soporte.
-      </p>
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={reset}>
-          Reintentar
-        </Button>
-        <Link href="/campus">
-          <Button>Volver a mi campus</Button>
-        </Link>
-      </div>
-    </div>
+    <ErrorState
+      title="No pudimos mostrar esta empresa"
+      message="Puede que no tengas acceso a esta empresa, que el enlace sea incorrecto, o que haya ocurrido un problema temporal. Si el problema persiste, contacta a soporte."
+      onRetry={reset}
+      secondaryHref="/campus"
+      secondaryLabel="Volver a mi campus"
+    />
   );
 }

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2, Pencil, Eye, Archive, ArchiveRestore, X, Sparkles } from "lucide-react";
+import { GripVertical, Trash2, Pencil, Eye, Archive, ArchiveRestore, Sparkles } from "lucide-react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Dialog } from "@/components/ui/Dialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -71,6 +72,7 @@ function QuestionForm({
   const [shortAnswer, setShortAnswer] = useState(existingQuestion?.type === "SHORT_ANSWER" ? (existingQuestion?.correctAnswer ?? "") : "");
   const [points, setPoints] = useState(String(existingQuestion?.points ?? 1));
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const needsOptions = type === "SINGLE_CHOICE" || type === "MULTI_CHOICE" || type === "ORDERING";
   const optionLines = optionsText
@@ -81,6 +83,7 @@ function QuestionForm({
   async function handleSubmit() {
     if (!text.trim()) return;
     setBusy(true);
+    setError(null);
     try {
       let options: { id: string; text: string }[] | undefined;
       let correctAnswer: string | string[] | undefined;
@@ -110,7 +113,7 @@ function QuestionForm({
       }
       onDone();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar la pregunta.");
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar la pregunta.");
     } finally {
       setBusy(false);
     }
@@ -224,6 +227,8 @@ function QuestionForm({
         <Input id="q-points" type="number" min="0.1" step="0.1" value={points} onChange={(e) => setPoints(e.target.value)} className="max-w-[8rem]" />
       </div>
 
+      {error && <Callout variant="danger">{error}</Callout>}
+
       <div className="flex gap-2">
         <Button size="sm" disabled={busy || !text.trim()} onClick={handleSubmit}>
           {busy ? "Guardando…" : isEdit ? "Guardar cambios" : "Agregar pregunta"}
@@ -267,7 +272,7 @@ function SortableQuestionRow({
       <div className="flex items-start gap-2">
         <button
           type="button"
-          className="mt-0.5 cursor-grab touch-none text-ash-400 hover:text-ash-600"
+          className="mt-0.5 cursor-grab touch-none text-ash-600 hover:text-ash-600"
           aria-label="Arrastrar para reordenar"
           {...attributes}
           {...listeners}
@@ -414,7 +419,7 @@ function AiSuggestQuestionsDialog({ assessmentId, onDone }: { assessmentId: stri
                     <div key={i} className="rounded-md border border-paper-border p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <span className="mb-1 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                          <span className="mb-1 inline-block rounded bg-violet-100 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-violet-700">
                             {QUESTION_TYPE_LABEL[d.type] ?? d.type}
                           </span>
                           <p className="text-sm text-ink-900">{d.text?.es ?? ""}</p>
@@ -478,6 +483,10 @@ export function ExamBuilder({
 
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [templateDownloadError, setTemplateDownloadError] = useState<string | null>(null);
+  const [confirmDeleteQuestionId, setConfirmDeleteQuestionId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [minScore, setMinScore] = useState(String(assessment.minScore));
@@ -547,12 +556,13 @@ export function ExamBuilder({
 
   async function handleArchiveToggle() {
     setBusy(true);
+    setError(null);
     try {
       await adminApi.updateAssessment(assessment.id, { archived: !assessment.archived });
       onChange();
       onClose();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos actualizar el estado.");
+      setError(err instanceof ApiError ? err.message : "No pudimos actualizar el estado.");
     } finally {
       setBusy(false);
     }
@@ -564,25 +574,36 @@ export function ExamBuilder({
     if (!file) return;
     setImportBusy(true);
     setImportResult(null);
+    setImportError(null);
     try {
       const result = await adminApi.importQuestions(assessment.id, file);
       setImportResult(result);
       if (result.created > 0) onChange();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos importar el archivo.");
+      setImportError(err instanceof ApiError ? err.message : "No pudimos importar el archivo.");
     } finally {
       setImportBusy(false);
     }
   }
 
-  async function handleDeleteQuestion(id: string) {
-    if (!confirm("¿Eliminar esta pregunta?")) return;
+  function handleDeleteQuestion(id: string) {
+    setConfirmDeleteQuestionId(id);
+  }
+
+  async function handleConfirmDeleteQuestion() {
+    if (!confirmDeleteQuestionId) return;
+    const id = confirmDeleteQuestionId;
+    setDeleteBusy(true);
     try {
       await adminApi.deleteQuestion(id);
       setQuestions((qs) => qs.filter((q) => q.id !== id));
       onChange();
+      setConfirmDeleteQuestionId(null);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos eliminar la pregunta.");
+      setError(err instanceof ApiError ? err.message : "No pudimos eliminar la pregunta.");
+      setConfirmDeleteQuestionId(null);
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -597,7 +618,7 @@ export function ExamBuilder({
       await adminApi.reorderQuestions(assessment.id, next.map((q) => q.id));
       onChange();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
+      setError(err instanceof ApiError ? err.message : "No pudimos guardar el nuevo orden.");
       setQuestions(assessment.questions ?? []);
     }
   }
@@ -686,7 +707,12 @@ export function ExamBuilder({
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => adminApi.downloadQuestionsTemplate(assessment.id).catch(() => alert("No pudimos generar la plantilla."))}
+                    onClick={() => {
+                      setTemplateDownloadError(null);
+                      adminApi
+                        .downloadQuestionsTemplate(assessment.id)
+                        .catch(() => setTemplateDownloadError("No pudimos generar la plantilla."));
+                    }}
                   >
                     Descargar plantilla Excel
                   </Button>
@@ -701,7 +727,9 @@ export function ExamBuilder({
                     onChange={handleImportFile}
                   />
                   <span className="text-xs text-ash-500">Preguntas creadas en lote desde un archivo Excel (ver plantilla).</span>
+                  {templateDownloadError && <p className="w-full text-xs text-danger">{templateDownloadError}</p>}
                 </div>
+                {importError && <Callout variant="danger">{importError}</Callout>}
                 {importResult && (
                   <Callout variant={importResult.errors.length > 0 ? "warning" : "success"}>
                     <p className="font-medium">
@@ -884,19 +912,25 @@ export function ExamBuilder({
         </Tabs>
       </div>
 
-      {previewOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-ink-950/60" onClick={() => setPreviewOpen(false)} aria-hidden="true" />
-          <div className="relative z-10 max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-paper p-4 shadow-raised">
-            <div className="mb-2 flex justify-end">
-              <Button variant="ghost" size="icon" aria-label="Cerrar vista previa" onClick={() => setPreviewOpen(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <ExamHeaderCard exam={previewInfo} locale="es" />
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title="Vista previa del examen"
+        className="max-h-[90vh] max-w-xl overflow-y-auto"
+      >
+        <ExamHeaderCard exam={previewInfo} locale="es" />
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(confirmDeleteQuestionId)}
+        onClose={() => setConfirmDeleteQuestionId(null)}
+        onConfirm={handleConfirmDeleteQuestion}
+        title="Eliminar pregunta"
+        message="¿Eliminar esta pregunta? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        danger
+        busy={deleteBusy}
+      />
     </Dialog>
   );
 }

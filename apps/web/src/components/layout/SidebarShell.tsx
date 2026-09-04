@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/layout/BrandLogo";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, X, ArrowLeft, Home } from "lucide-react";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
@@ -118,6 +118,31 @@ export function SidebarShell({
   // desaparecer.
   const [canGoBack, setCanGoBack] = useState(false);
 
+  // Foco del drawer móvil: al abrir, se mueve al primer elemento focuseable
+  // del nav; al cerrar (incluye Escape, click en el backdrop, o navegar a
+  // un link del propio menú), vuelve al botón hamburguesa que lo abrió.
+  // También cierra con Escape y bloquea el scroll del body mientras está
+  // abierto — mismo patrón que components/ui/Dialog.tsx.
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const focusable = mobileNavRef.current?.querySelector<HTMLElement>("a, button");
+    focusable?.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMobileOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "";
+      menuButtonRef.current?.focus();
+    };
+  }, [mobileOpen]);
+
   useEffect(() => {
     if (!pathname) return;
     const stack = readNavStack();
@@ -198,10 +223,15 @@ export function SidebarShell({
       </aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-paper-border bg-paper px-4 lg:hidden">
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-paper-border bg-paper px-4 lg:hidden">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {canGoBack && (
-              <button type="button" onClick={goBack} aria-label="Atrás" className="p-2 text-ink-800">
+              <button
+                type="button"
+                onClick={goBack}
+                aria-label="Atrás"
+                className="flex min-h-11 min-w-11 items-center justify-center p-2.5 text-ink-800"
+              >
                 <ArrowLeft className="h-5 w-5" />
               </button>
             )}
@@ -210,7 +240,11 @@ export function SidebarShell({
                 escritorio — se agrega aquí para que exista la misma
                 acción visible en ambos tamaños de pantalla. */}
             {!isHome && (
-              <Link href={brandHref} aria-label="Inicio" className="p-2 text-ink-800">
+              <Link
+                href={brandHref}
+                aria-label="Inicio"
+                className="flex min-h-11 min-w-11 items-center justify-center p-2.5 text-ink-800"
+              >
                 <Home className="h-5 w-5" />
               </Link>
             )}
@@ -221,20 +255,39 @@ export function SidebarShell({
           <div className="flex flex-none items-center gap-1">
             <NotificationBell />
             <button
+              ref={menuButtonRef}
               type="button"
               aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
               aria-expanded={mobileOpen}
               onClick={() => setMobileOpen((v) => !v)}
-              className="p-2 text-ink-800"
+              className="flex min-h-11 min-w-11 items-center justify-center p-2.5 text-ink-800"
             >
               {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </header>
+        {/* Antes este panel empujaba el <main> en vez de superponerse (sin
+            backdrop, sin clic-fuera, sin Escape) — ahora es un drawer real
+            de pantalla completa (fixed inset-0) por encima de todo. */}
         {mobileOpen && (
-          <div className="border-b border-paper-border bg-ink-900 p-4 text-paper lg:hidden" style={sidebarColor ? { backgroundColor: sidebarColor } : undefined}>
-            {nav}
-            <div className="mt-4">{topRight}</div>
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div className="absolute inset-0 animate-fade-in bg-black/40" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+            <div
+              ref={mobileNavRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menú de navegación"
+              className="relative z-10 flex h-full w-full flex-col overflow-y-auto bg-ink-900 p-4 text-paper animate-slide-up"
+              style={sidebarColor ? { backgroundColor: sidebarColor } : undefined}
+            >
+              {nav}
+              <div className="mt-4 flex items-center gap-3">
+                <NotificationBell />
+                <ThemeToggle />
+                <LocaleSwitcher />
+              </div>
+              <div className="mt-4">{topRight}</div>
+            </div>
           </div>
         )}
 

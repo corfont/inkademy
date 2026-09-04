@@ -468,6 +468,21 @@ function BackgroundTemplateEditor({
     setPlacingTag(null);
   }
 
+  // Equivalente por teclado del click de arriba — el div de vista previa no
+  // tiene un "cursor" cuando se activa con Enter/Espacio, así que se
+  // adapta el evento con el centro del recuadro como punto de colocación.
+  function handlePreviewKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!placingTag) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    handlePreviewClick({
+      currentTarget: e.currentTarget,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    } as React.MouseEvent<HTMLDivElement>);
+  }
+
   // "El drag me lleva arriba/abajo/derecha/izquierda pero no me deja
   // posicionarlo donde quiero" — el drag-and-drop NATIVO de HTML5
   // (draggable + onDragEnd) no compensa el punto exacto donde agarraste
@@ -551,6 +566,10 @@ function BackgroundTemplateEditor({
         <div
           ref={previewRef}
           onClick={handlePreviewClick}
+          onKeyDown={handlePreviewKeyDown}
+          role="button"
+          tabIndex={0}
+          aria-label={placingTag ? "Colocar el tag seleccionado en el centro de la vista previa" : "Vista previa del certificado"}
           className={`relative w-full max-w-2xl overflow-hidden rounded-lg border border-paper-border bg-paper-muted ${placingTag ? "cursor-crosshair" : ""}`}
           style={{ aspectRatio: `${aspect}` }}
         >

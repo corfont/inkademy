@@ -7,6 +7,7 @@ import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Dialog } from "@/components/ui/Dialog";
 
 /**
  * Formulario de creación de curso. Antes el botón "Nuevo curso" del listado
@@ -31,6 +32,10 @@ export default function NewCoursePage() {
     priceCurrency: "PEN",
     certificationIncluded: true,
   });
+  const [newAreaOpen, setNewAreaOpen] = useState(false);
+  const [newAreaName, setNewAreaName] = useState("");
+  const [newAreaError, setNewAreaError] = useState<string | null>(null);
+  const [creatingArea, setCreatingArea] = useState(false);
 
   function refreshAreas() {
     adminApi
@@ -53,15 +58,26 @@ export default function NewCoursePage() {
       .replace(/^-+|-+$/g, "");
   }
 
-  async function handleCreateArea() {
-    const name = prompt("Nombre de la nueva área (español):");
-    if (!name || !name.trim()) return;
+  function handleCreateArea() {
+    setNewAreaName("");
+    setNewAreaError(null);
+    setNewAreaOpen(true);
+  }
+
+  async function handleConfirmCreateArea() {
+    const name = newAreaName.trim();
+    if (!name) return;
+    setCreatingArea(true);
+    setNewAreaError(null);
     try {
-      const created = await adminApi.createArea({ slug: slugify(name), name: { es: name.trim(), en: name.trim() }, order: areas.length });
+      const created = await adminApi.createArea({ slug: slugify(name), name: { es: name, en: name }, order: areas.length });
       refreshAreas();
       setForm((f) => ({ ...f, areaId: created.id }));
+      setNewAreaOpen(false);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "No pudimos crear el área.");
+      setNewAreaError(err instanceof ApiError ? err.message : "No pudimos crear el área.");
+    } finally {
+      setCreatingArea(false);
     }
   }
 
@@ -229,6 +245,30 @@ export default function NewCoursePage() {
           </form>
         </CardContent>
       </Card>
+
+      <Dialog open={newAreaOpen} onClose={() => setNewAreaOpen(false)} title="Nueva área" className="max-w-sm">
+        {newAreaError && (
+          <Callout variant="danger" className="mb-3">
+            {newAreaError}
+          </Callout>
+        )}
+        <Label htmlFor="new-area-name">Nombre (español)</Label>
+        <Input
+          id="new-area-name"
+          value={newAreaName}
+          onChange={(e) => setNewAreaName(e.target.value)}
+          autoFocus
+          onKeyDown={(e) => e.key === "Enter" && handleConfirmCreateArea()}
+        />
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setNewAreaOpen(false)} disabled={creatingArea}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={handleConfirmCreateArea} disabled={creatingArea || !newAreaName.trim()}>
+            {creatingArea ? "Creando…" : "Crear área"}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

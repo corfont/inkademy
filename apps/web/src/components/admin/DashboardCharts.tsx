@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -17,21 +18,8 @@ import {
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/Card";
 
-const STATUS_COLOR: Record<string, string> = {
-  ACTIVE: "#586bd8", // indigo — en curso
-  COMPLETED: "#16a34a", // verde — completado
-  EXPIRED: "#f59e0b", // ámbar — vencido
-  CANCELLED: "#dc2626", // rojo — cancelado
-};
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "En curso", COMPLETED: "Completado", EXPIRED: "Vencido", CANCELLED: "Cancelado" };
 
-const TICKET_STATUS_COLOR: Record<string, string> = {
-  OPEN: "#dc2626",
-  IN_PROGRESS: "#f59e0b",
-  WAITING_USER: "#586bd8",
-  RESOLVED: "#16a34a",
-  CLOSED: "#6b7280",
-};
 const TICKET_STATUS_LABEL: Record<string, string> = {
   OPEN: "Abierto",
   IN_PROGRESS: "En progreso",
@@ -39,6 +27,24 @@ const TICKET_STATUS_LABEL: Record<string, string> = {
   RESOLVED: "Resuelto",
   CLOSED: "Cerrado",
 };
+
+// "#586bd8"/"#d8b16c" eran los hex fijos de indigo-400/gold-400 — no
+// reaccionaban a modo oscuro. Se resuelven las custom properties reales
+// (hsl() sin envolver, ver globals.css) en tiempo de montaje, cuando el DOM
+// ya está pintado y getComputedStyle puede leerlas.
+function useBrandChartColors() {
+  const [colors, setColors] = useState({ indigo: "#586bd8", gold: "#d8b16c" });
+  useEffect(() => {
+    const styles = getComputedStyle(document.documentElement);
+    const indigo = styles.getPropertyValue("--indigo-400").trim();
+    const gold = styles.getPropertyValue("--gold-400").trim();
+    setColors({
+      indigo: indigo ? `hsl(${indigo})` : "#586bd8",
+      gold: gold ? `hsl(${gold})` : "#d8b16c",
+    });
+  }, []);
+  return colors;
+}
 
 function monthLabel(month: string) {
   const [y, m] = month.split("-");
@@ -58,6 +64,20 @@ export function DashboardCharts({
   };
   ticketsByStatus: { status: string; count: number }[];
 }) {
+  const { indigo, gold } = useBrandChartColors();
+  const STATUS_COLOR: Record<string, string> = {
+    ACTIVE: indigo, // indigo — en curso
+    COMPLETED: "#16a34a", // verde — completado
+    EXPIRED: "#f59e0b", // ámbar — vencido
+    CANCELLED: "#dc2626", // rojo — cancelado
+  };
+  const TICKET_STATUS_COLOR: Record<string, string> = {
+    OPEN: "#dc2626",
+    IN_PROGRESS: "#f59e0b",
+    WAITING_USER: indigo,
+    RESOLVED: "#16a34a",
+    CLOSED: "#6b7280",
+  };
   const revenue = data.revenueByMonth.map((r) => ({ ...r, label: monthLabel(r.month) }));
   const enrollments = data.enrollmentsByMonth.map((r) => ({ ...r, label: monthLabel(r.month) }));
 
@@ -75,7 +95,7 @@ export function DashboardCharts({
                 <XAxis dataKey="label" fontSize={12} stroke="#8a8a94" />
                 <YAxis fontSize={12} stroke="#8a8a94" width={50} />
                 <Tooltip formatter={(v: any) => [`S/ ${Number(v).toLocaleString("es-PE")}`, "Ventas"]} />
-                <Line type="monotone" dataKey="total" stroke="#586bd8" strokeWidth={2.5} dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="total" stroke={indigo} strokeWidth={2.5} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -94,7 +114,7 @@ export function DashboardCharts({
                 <XAxis dataKey="label" fontSize={12} stroke="#8a8a94" />
                 <YAxis fontSize={12} stroke="#8a8a94" width={40} allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="count" name="Matrículas" fill="#d8b16c" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" name="Matrículas" fill={gold} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

@@ -67,7 +67,16 @@ function LoginForm() {
         router.push(home);
       }
     } catch (err) {
-      setServerError(err instanceof ApiError ? err.message : "No pudimos iniciar sesión.");
+      if (err instanceof ApiError && err.error === "NETWORK_ERROR") {
+        // No mostrar el mensaje crudo de ApiError acá: incluye la URL
+        // interna de la API y el stack del TypeError de fetch — ver
+        // apps/web/src/lib/api-client.ts, el `.catch` dentro de apiFetch.
+        setServerError("No pudimos conectar. Intenta de nuevo en un momento.");
+      } else if (err instanceof ApiError) {
+        setServerError(err.message);
+      } else {
+        setServerError("No pudimos iniciar sesión.");
+      }
     }
   }
 

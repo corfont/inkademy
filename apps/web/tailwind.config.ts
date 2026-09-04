@@ -17,6 +17,13 @@ const config: Config = {
       screens: { "2xl": "1280px" },
     },
     extend: {
+      fontSize: {
+        // Escalón "micro" — antes se repetía como valor arbitrario
+        // (text-[10px]/[11px]/[0.65rem]/[0.7rem]) en ~26 sitios distintos
+        // (badges, pies de campo, encabezados de tabla densos). 11px es el
+        // valor más frecuente entre esos usos.
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+      },
       colors: {
         ink: {
           50: "hsl(var(--ink-50) / <alpha-value>)",

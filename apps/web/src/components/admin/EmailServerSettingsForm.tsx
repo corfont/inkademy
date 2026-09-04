@@ -73,7 +73,7 @@ export function EmailServerSettingsForm({ settings }: { settings: EmailServerSet
           <Input id="smtp-user" value={username} onChange={(e) => setUsername(e.target.value)} />
         </div>
         <div>
-          <Label htmlFor="smtp-pass">Contraseña {settings.hasPassword && <span className="text-ash-400">(configurada — deja en blanco para no cambiarla)</span>}</Label>
+          <Label htmlFor="smtp-pass">Contraseña {settings.hasPassword && <span className="text-ash-600">(configurada — deja en blanco para no cambiarla)</span>}</Label>
           <Input id="smtp-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
         </div>
         <div>

@@ -83,7 +83,7 @@ function NpsRing({ promoters, passives, detractors, score }: { promoters: number
       </svg>
       <div className="absolute flex flex-col items-center">
         <p className={cn("font-serif text-3xl font-bold", score >= 0 ? "text-success" : "text-danger")}>{score}</p>
-        <p className="text-[10px] uppercase tracking-wide text-ash-500">Score NPS</p>
+        <p className="text-2xs uppercase tracking-wide text-ash-500">Score NPS</p>
       </div>
     </div>
   );
