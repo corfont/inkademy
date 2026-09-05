@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { Dialog } from "@/components/ui/Dialog";
 
 const FREQ_LABEL: Record<string, string> = { DAILY: "Diario", WEEKLY: "Semanal", MONTHLY: "Mensual", END_OF_COURSE: "Al finalizar el curso" };
 
@@ -26,6 +27,11 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
   const [genTeacherId, setGenTeacherId] = useState("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
+  // Reemplaza el prompt() nativo que se usaba para pedir el motivo de
+  // perdonar una penalidad — sin validación ni forma de deshabilitar el
+  // botón mientras se envía.
+  const [waiveTarget, setWaiveTarget] = useState<string | null>(null);
+  const [waiveReason, setWaiveReason] = useState("");
 
   async function refresh() {
     try {
@@ -187,8 +193,8 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
                               variant="ghost"
                               disabled={busy}
                               onClick={() => {
-                                const reason = prompt("Motivo para perdonar la penalidad:");
-                                if (reason) run(() => adminApi.waiveTeacherLiquidation(l.id, reason));
+                                setWaiveReason("");
+                                setWaiveTarget(l.id);
                               }}
                             >
                               Perdonar
@@ -214,6 +220,28 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!waiveTarget} onClose={() => setWaiveTarget(null)} title="Perdonar penalidad" className="max-w-sm">
+        <Label htmlFor="waive-reason">Motivo para perdonar la penalidad</Label>
+        <Input id="waive-reason" value={waiveReason} onChange={(e) => setWaiveReason(e.target.value)} autoFocus />
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setWaiveTarget(null)}>
+            Volver
+          </Button>
+          <Button
+            type="button"
+            disabled={!waiveReason.trim() || busy}
+            onClick={() => {
+              const id = waiveTarget!;
+              const reason = waiveReason.trim();
+              setWaiveTarget(null);
+              run(() => adminApi.waiveTeacherLiquidation(id, reason));
+            }}
+          >
+            Perdonar
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

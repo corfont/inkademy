@@ -176,7 +176,7 @@ export default async function PendingReviewPage() {
                   <p className="text-sm text-ash-500">
                     {localize(item.courseTitle, "es", "—")} — {localize(item.assessmentTitle, "es", "")}
                   </p>
-                  <p className="text-xs text-ash-400">
+                  <p className="text-xs text-ash-600">
                     Enviado {item.submittedAt ? formatDate(item.submittedAt, "es") : "—"}
                     {item.daysSincePending > 0 && ` — ${item.daysSincePending} día(s) de atraso`}
                   </p>

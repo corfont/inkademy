@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ROLE_STYLE, COMPANY_CHIP_STYLE } from "@/lib/role-style";
 import { EditUserModal } from "@/components/admin/EditUserModal";
 
@@ -427,7 +428,7 @@ function RoleChips({ user, busy, onToggle }: { user: UserRow; busy: boolean; onT
  */
 function EnrollmentSemaphore({ stats }: { stats?: { total: number; active: number; completed: number } }) {
   if (!stats || stats.total === 0) {
-    return <span className="text-xs text-ash-400">Sin cursos matriculados todavía</span>;
+    return <span className="text-xs text-ash-600">Sin cursos matriculados todavía</span>;
   }
   return (
     <div className="flex items-center gap-3 text-xs text-ash-600" title="Cursos matriculados · completados · en curso (pendientes de terminar)">
@@ -447,6 +448,11 @@ function EnrollmentSemaphore({ stats }: { stats?: { total: number; active: numbe
   );
 }
 
+type UserCardPendingAction =
+  | { type: "removeCompany"; companyId: string; membershipId: string; companyName: string }
+  | { type: "disable" }
+  | { type: "delete" };
+
 function UserCard({ user, companies, onChange }: { user: UserRow; companies: any[]; onChange: () => void }) {
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -455,6 +461,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
   const [resetOpen, setResetOpen] = useState(false);
   const [companyId, setCompanyId] = useState("");
   const [companyRole, setCompanyRole] = useState<"COMPANY_ADMIN" | "PARTICIPANT">("PARTICIPANT");
+  const [pendingAction, setPendingAction] = useState<UserCardPendingAction | null>(null);
 
   // Sugerencia por dominio de correo: si el dominio del usuario coincide con
   // el de alguna empresa ya registrada (comparando contra su razón social
@@ -479,7 +486,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
   }
 
   async function handleRemoveCompany(companyIdToRemove: string, membershipId: string, companyName: string) {
-    if (!confirm(`¿Quitar a ${user.firstName} de ${companyName}? Deja de ver los datos de esa empresa.`)) return;
+    setPendingAction(null);
     setBusy(true);
     setRowError(null);
     try {
@@ -508,11 +515,27 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
 
   async function handleToggleStatus() {
     const next = user.status === "active" ? "disabled" : "active";
-    if (next === "disabled" && !confirm(`¿Desactivar la cuenta de ${user.email}? No podrá iniciar sesión hasta que la reactives.`)) return;
+    if (next === "disabled") {
+      setPendingAction({ type: "disable" });
+      return;
+    }
     setBusy(true);
     setRowError(null);
     try {
       await adminApi.updateUser(user.id, { status: next });
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el estado.");
+      setBusy(false);
+    }
+  }
+
+  async function handleConfirmDisable() {
+    setPendingAction(null);
+    setBusy(true);
+    setRowError(null);
+    try {
+      await adminApi.updateUser(user.id, { status: "disabled" });
       onChange();
     } catch (err) {
       setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el estado.");
@@ -546,7 +569,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
   }
 
   async function handleDelete() {
-    if (!confirm(`¿Eliminar la cuenta de ${user.email}? Si tiene compras, certificados o matrículas, no se podrá — desactívala en ese caso.`)) return;
+    setPendingAction(null);
     setBusy(true);
     setRowError(null);
     try {
@@ -593,7 +616,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
                 key={c.companyId}
                 type="button"
                 disabled={busy}
-                onClick={() => handleRemoveCompany(c.companyId, c.membershipId, c.companyName)}
+                onClick={() => setPendingAction({ type: "removeCompany", companyId: c.companyId, membershipId: c.membershipId, companyName: c.companyName })}
                 title={`${c.role === "COMPANY_ADMIN" ? "Admin de empresa" : "Colaborador"} — clic para quitar`}
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${COMPANY_CHIP_STYLE.chipActive} hover:opacity-80`}
               >
@@ -685,7 +708,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
             <KeyRound className="h-3.5 w-3.5" />
             Restablecer
           </Button>
-          <Button size="sm" variant="outline" className="gap-1.5 text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+          <Button size="sm" variant="outline" className="gap-1.5 text-danger hover:bg-danger-bg" disabled={busy} onClick={() => setPendingAction({ type: "delete" })}>
             <Trash2 className="h-3.5 w-3.5" />
             Eliminar
           </Button>
@@ -693,6 +716,37 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
       </CardContent>
       {editing && <EditUserModal user={user} open={editing} onClose={() => setEditing(false)} onSaved={onChange} />}
       <ResetPasswordDialog user={user} open={resetOpen} onClose={() => setResetOpen(false)} />
+      <ConfirmDialog
+        open={!!pendingAction}
+        onClose={() => setPendingAction(null)}
+        onConfirm={() => {
+          if (!pendingAction) return;
+          if (pendingAction.type === "removeCompany") {
+            handleRemoveCompany(pendingAction.companyId, pendingAction.membershipId, pendingAction.companyName);
+          } else if (pendingAction.type === "disable") {
+            handleConfirmDisable();
+          } else if (pendingAction.type === "delete") {
+            handleDelete();
+          }
+        }}
+        title={
+          pendingAction?.type === "removeCompany"
+            ? "Quitar de la empresa"
+            : pendingAction?.type === "disable"
+              ? "Desactivar cuenta"
+              : "Eliminar cuenta"
+        }
+        message={
+          pendingAction?.type === "removeCompany"
+            ? `¿Quitar a ${user.firstName} de ${pendingAction.companyName}? Deja de ver los datos de esa empresa.`
+            : pendingAction?.type === "disable"
+              ? `¿Desactivar la cuenta de ${user.email}? No podrá iniciar sesión hasta que la reactives.`
+              : `¿Eliminar la cuenta de ${user.email}? Si tiene compras, certificados o matrículas, no se podrá — desactívala en ese caso.`
+        }
+        confirmLabel={pendingAction?.type === "removeCompany" ? "Quitar" : pendingAction?.type === "disable" ? "Desactivar" : "Eliminar"}
+        danger
+        busy={busy}
+      />
     </Card>
   );
 }
@@ -703,6 +757,9 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
   const [rowError, setRowError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  // Mismo patrón que UserCard::pendingAction — antes usaba confirm() nativo,
+  // inconsistente con el resto de la vista de tarjetas del mismo archivo.
+  const [pendingAction, setPendingAction] = useState<"disable" | "delete" | null>(null);
 
   async function handleToggleRole(role: string) {
     const next = toggleRole(user, role);
@@ -720,7 +777,10 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
 
   async function handleToggleStatus() {
     const next = user.status === "active" ? "disabled" : "active";
-    if (next === "disabled" && !confirm(`¿Desactivar la cuenta de ${user.email}?`)) return;
+    if (next === "disabled") {
+      setPendingAction("disable");
+      return;
+    }
     setBusy(true);
     try {
       await adminApi.updateUser(user.id, { status: next });
@@ -731,8 +791,20 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
     }
   }
 
+  async function handleConfirmDisable() {
+    setPendingAction(null);
+    setBusy(true);
+    try {
+      await adminApi.updateUser(user.id, { status: "disabled" });
+      onChange();
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No pudimos cambiar el estado.");
+      setBusy(false);
+    }
+  }
+
   async function handleDelete() {
-    if (!confirm(`¿Eliminar la cuenta de ${user.email}?`)) return;
+    setPendingAction(null);
     setBusy(true);
     try {
       await adminApi.deleteUser(user.id);
@@ -780,12 +852,26 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => setResetOpen(true)}>
             Restablecer
           </Button>
-          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={handleDelete}>
+          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => setPendingAction("delete")}>
             Eliminar
           </Button>
         </div>
         {editing && <EditUserModal user={user} open={editing} onClose={() => setEditing(false)} onSaved={onChange} />}
         <ResetPasswordDialog user={user} open={resetOpen} onClose={() => setResetOpen(false)} />
+        <ConfirmDialog
+          open={!!pendingAction}
+          onClose={() => setPendingAction(null)}
+          onConfirm={() => (pendingAction === "disable" ? handleConfirmDisable() : handleDelete())}
+          title={pendingAction === "disable" ? "Desactivar cuenta" : "Eliminar cuenta"}
+          message={
+            pendingAction === "disable"
+              ? `¿Desactivar la cuenta de ${user.email}? No podrá iniciar sesión hasta que la reactives.`
+              : `¿Eliminar la cuenta de ${user.email}? Si tiene compras, certificados o matrículas, no se podrá — desactívala en ese caso.`
+          }
+          confirmLabel={pendingAction === "disable" ? "Desactivar" : "Eliminar"}
+          danger
+          busy={busy}
+        />
       </td>
     </tr>
   );

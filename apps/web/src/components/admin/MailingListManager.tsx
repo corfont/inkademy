@@ -7,6 +7,7 @@ import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   AudienceFilterFields,
   filterToFormState,
@@ -37,6 +38,7 @@ export function MailingListManager({
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -110,7 +112,7 @@ export function MailingListManager({
                     variant="ghost"
                     className="text-danger hover:bg-danger-bg"
                     disabled={busy}
-                    onClick={() => confirm(`¿Eliminar la lista "${l.name}"?`) && run(() => adminApi.deleteMailingList(l.id))}
+                    onClick={() => setDeleteTarget({ id: l.id, name: l.name })}
                   >
                     Eliminar
                   </Button>
@@ -120,6 +122,21 @@ export function MailingListManager({
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) run(() => adminApi.deleteMailingList(target.id));
+        }}
+        title="Eliminar lista"
+        message={`¿Eliminar la lista "${deleteTarget?.name}"?`}
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

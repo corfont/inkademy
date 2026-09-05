@@ -50,7 +50,7 @@ export default async function AdminSupportPage() {
                 </td>
                 <td className="p-4 text-ash-600">
                   {ticket.createdByName ?? "—"}
-                  {ticket.createdByEmail && <span className="block text-xs text-ash-400">{ticket.createdByEmail}</span>}
+                  {ticket.createdByEmail && <span className="block text-xs text-ash-600">{ticket.createdByEmail}</span>}
                 </td>
                 <td className="p-4 text-ash-600">{ticket.category}</td>
                 <td className="p-4 text-ash-600">{formatDate(ticket.createdAt, locale)}</td>

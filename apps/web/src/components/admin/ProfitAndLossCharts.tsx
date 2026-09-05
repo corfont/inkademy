@@ -81,7 +81,7 @@ export function ProfitAndLossCharts({ data, locale }: { data: any; locale: strin
               {data.avgGrowthPct !== null ? `${data.avgGrowthPct >= 0 ? "+" : ""}${data.avgGrowthPct.toFixed(1)}%` : "—"}
             </p>
             <p className="text-sm text-ash-500">Crecimiento mensual promedio</p>
-            {data.avgGrowthPct === null && <p className="mt-1 text-xs text-ash-400">Faltan meses con ventas para calcular una tendencia.</p>}
+            {data.avgGrowthPct === null && <p className="mt-1 text-xs text-ash-600">Faltan meses con ventas para calcular una tendencia.</p>}
           </CardContent>
         </Card>
         <Card>

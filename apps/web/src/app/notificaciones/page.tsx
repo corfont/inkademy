@@ -78,7 +78,7 @@ export default function NotificationsPage() {
               <div className={cn("min-w-0 flex-1", n.readAt && "pl-5")}>
                 <p className="font-medium text-ink-900">{n.title ?? "Notificación"}</p>
                 {n.body && <p className="mt-1 text-sm text-ash-600">{n.body}</p>}
-                <p className="mt-1.5 text-xs text-ash-400">{new Date(n.createdAt).toLocaleString("es-PE")}</p>
+                <p className="mt-1.5 text-xs text-ash-600">{new Date(n.createdAt).toLocaleString("es-PE")}</p>
               </div>
             </div>
           );

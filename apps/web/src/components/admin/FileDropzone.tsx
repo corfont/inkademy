@@ -57,7 +57,7 @@ export function FileDropzone({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
-      className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border-2 border-dashed p-4 text-center text-sm transition-colors ${
+      className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border-2 border-dashed p-4 text-center text-sm transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink-500 ${
         dragging ? "border-ink-500 bg-paper-muted" : "border-paper-border hover:border-ash-400"
       } ${busy ? "pointer-events-none opacity-60" : ""}`}
     >
@@ -68,7 +68,9 @@ export function FileDropzone({
         type="file"
         accept={accept}
         multiple={multiple}
-        className="hidden"
+        // sr-only en vez de "hidden" — mantiene el input enfocable con Tab y
+        // activable con Enter/Espacio (ver DropLabel.tsx, mismo fix).
+        className="peer sr-only"
         disabled={busy}
         onChange={(e) => {
           handleFiles(e.target.files);

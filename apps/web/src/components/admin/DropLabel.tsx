@@ -30,7 +30,7 @@ export function DropLabel({
         const file = e.dataTransfer.files?.[0];
         if (file && !busy) onFile(file);
       }}
-      className={`flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${small ? "text-xs" : "text-sm"} text-ink-700 hover:underline ${
+      className={`flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${small ? "text-xs" : "text-sm"} text-ink-700 hover:underline peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink-500 ${
         dragging ? "bg-paper-muted ring-1 ring-ink-400" : ""
       }`}
     >
@@ -39,7 +39,11 @@ export function DropLabel({
       <input
         type="file"
         accept={accept}
-        className="hidden"
+        // sr-only (no display:none) para que siga siendo enfocable con Tab
+        // y activable con Enter/Espacio — antes "hidden" lo sacaba por
+        // completo del árbol de accesibilidad, sin forma de abrirlo con
+        // teclado. peer-focus-visible en el <label> le da el anillo de foco.
+        className="peer sr-only"
         disabled={busy}
         onChange={(e) => {
           const file = e.target.files?.[0];

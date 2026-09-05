@@ -356,7 +356,7 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={form.institutionSignatureUrl} alt="Firma institucional" className="max-h-full max-w-full object-contain" />
               ) : (
-                <span className="text-xs text-ash-400">Sin firma</span>
+                <span className="text-xs text-ash-600">Sin firma</span>
               )}
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 hover:underline">
@@ -439,7 +439,7 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                   className="max-h-full max-w-full object-contain"
                 />
               ) : (
-                <span className="text-xs text-ash-400">Sin sello de agua</span>
+                <span className="text-xs text-ash-600">Sin sello de agua</span>
               )}
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 hover:underline">

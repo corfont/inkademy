@@ -9,6 +9,7 @@ import { LocaleSwitcher } from "./LocaleSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./NotificationBell";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { cn } from "@/lib/cn";
 
 // "El botón retroceder no llega hasta la página de inicio, se desactiva
@@ -120,28 +121,16 @@ export function SidebarShell({
 
   // Foco del drawer móvil: al abrir, se mueve al primer elemento focuseable
   // del nav; al cerrar (incluye Escape, click en el backdrop, o navegar a
-  // un link del propio menú), vuelve al botón hamburguesa que lo abrió.
-  // También cierra con Escape y bloquea el scroll del body mientras está
-  // abierto — mismo patrón que components/ui/Dialog.tsx.
+  // un link del propio menú), vuelve a quien tenía el foco antes (el botón
+  // hamburguesa, en el caso normal). También cierra con Escape, bloquea el
+  // scroll del body mientras está abierto, y ATRAPA Tab dentro del panel —
+  // antes solo movía el foco al abrir/cerrar sin interceptar Tab, así que
+  // un usuario de teclado podía tabular hacia afuera del drawer aunque
+  // tuviera aria-modal="true". Mismo hook que usa components/ui/Dialog.tsx.
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const focusable = mobileNavRef.current?.querySelector<HTMLElement>("a, button");
-    focusable?.focus();
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMobileOpen(false);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
-      menuButtonRef.current?.focus();
-    };
-  }, [mobileOpen]);
+  useFocusTrap(mobileOpen, mobileNavRef, () => setMobileOpen(false), { initialFocus: "first" });
 
   useEffect(() => {
     if (!pathname) return;

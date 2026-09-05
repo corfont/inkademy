@@ -210,7 +210,7 @@ export function CalendarView({ events, locale }: { events: CalendarEventLike[]; 
                     type="button"
                     onClick={() => setSelectedDay(dayEvents.length ? key : null)}
                     className={`flex min-h-[3.5rem] flex-col items-start gap-0.5 rounded-md border p-1.5 text-left text-xs transition-colors sm:min-h-[4.5rem] ${
-                      inMonth ? "bg-paper" : "bg-paper-muted/40 text-ash-400"
+                      inMonth ? "bg-paper" : "bg-paper-muted/40 text-ash-600"
                     } ${isSelected ? "border-ink-700 ring-1 ring-ink-700" : "border-paper-border"} ${
                       dayEvents.length ? "cursor-pointer hover:border-ink-400" : "cursor-default"
                     }`}

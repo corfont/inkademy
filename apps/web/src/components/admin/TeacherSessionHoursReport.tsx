@@ -188,13 +188,13 @@ export function TeacherSessionHoursReport({ teachers, courses }: { teachers: any
                           <td className="p-2">{s.earlinessMinutes > 0 ? <Badge variant="warning">{fmtMinutes(s.earlinessMinutes)}</Badge> : "—"}</td>
                           <td className="p-2 font-medium text-ink-900">
                             {fmtMinutes(s.payableMinutes)}
-                            {!s.hasAttendanceData && <span className="ml-1 text-ash-400" title="Sin dato real de asistencia — se estima con lo programado">*</span>}
+                            {!s.hasAttendanceData && <span className="ml-1 text-ash-600" title="Sin dato real de asistencia — se estima con lo programado">*</span>}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <p className="mt-2 text-xs text-ash-400">* Sin dato de asistencia todavía (sesión futura, o Microsoft Graph no sincronizó) — se estima con la duración programada completa.</p>
+                  <p className="mt-2 text-xs text-ash-600">* Sin dato de asistencia todavía (sesión futura, o Microsoft Graph no sincronizó) — se estima con la duración programada completa.</p>
                 </div>
               )}
             </CardContent>

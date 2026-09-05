@@ -68,7 +68,7 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
                   </Button>
                 </a>
               ) : (
-                <p className="mt-6 text-xs text-ash-400">El PDF todavía se está generando — vuelve a intentarlo en unos minutos.</p>
+                <p className="mt-6 text-xs text-ash-600">El PDF todavía se está generando — vuelve a intentarlo en unos minutos.</p>
               )}
             </div>
           ) : (
@@ -79,7 +79,7 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
           )}
         </div>
 
-        <p className="mt-6 text-xs text-ash-400">
+        <p className="mt-6 text-xs text-ash-600">
           {t("codeLabel")}: <code>{params.codigo}</code>
         </p>
       </div>

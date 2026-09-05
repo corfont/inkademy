@@ -336,17 +336,17 @@ function MaterialList({
                   type="button"
                   disabled={!mat.scormReady}
                   onClick={() => setOpenScormMaterialId(mat.id)}
-                  className="flex items-center gap-2 text-sm text-ink-700 hover:underline disabled:cursor-not-allowed disabled:text-ash-400 disabled:no-underline"
+                  className="flex items-center gap-2 text-sm text-ink-700 hover:underline disabled:cursor-not-allowed disabled:text-ash-600 disabled:no-underline"
                 >
                   <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
                   {mat.title}
-                  {!mat.scormReady && <span className="text-xs text-ash-400">(se está preparando)</span>}
+                  {!mat.scormReady && <span className="text-xs text-ash-600">(se está preparando)</span>}
                 </button>
               ) : (
                 <a href={mat.url ?? "#"} {...linkProps} className="flex items-center gap-2 text-sm text-ink-700 hover:underline">
                   <FileText className="h-4 w-4 flex-none" aria-hidden="true" />
                   {mat.title}
-                  {!allowDownload && <span className="text-xs text-ash-400">(solo vista)</span>}
+                  {!allowDownload && <span className="text-xs text-ash-600">(solo vista)</span>}
                 </a>
               )}
               {/* "Si un curso tiene lecturas principales el alumno deberá
@@ -728,7 +728,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
               <label htmlFor="lesson-notes" className="text-xs font-semibold uppercase tracking-wide text-ash-500">
                 Mis notas
               </label>
-              <span className="text-xs text-ash-400">{notesSaved ? "Guardado" : "Guardando…"}</span>
+              <span className="text-xs text-ash-600">{notesSaved ? "Guardado" : "Guardando…"}</span>
             </div>
             <textarea
               id="lesson-notes"
@@ -872,7 +872,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                           <Circle className="h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
                         )}
                         <span className="flex-1">{localize(lesson.title, locale)}</span>
-                        {lesson.durationMinutes && <span className="text-xs text-ash-400">{lesson.durationMinutes}′</span>}
+                        {lesson.durationMinutes && <span className="text-xs text-ash-600">{lesson.durationMinutes}′</span>}
                       </button>
                     </li>
                   );

@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { localize, formatDate } from "@/lib/format";
 
 /**
@@ -25,6 +26,7 @@ export function CourtesyGrantsHistory({ grants, areas }: { grants: any[]; areas:
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[] | null>(null);
 
   const filtered = useMemo(() => {
     let rows = areaFilter ? grants.filter((g) => g.areaSlug === areaFilter) : grants;
@@ -47,7 +49,7 @@ export function CourtesyGrantsHistory({ grants, areas }: { grants: any[]; areas:
 
   async function handleDelete(ids: string[]) {
     if (ids.length === 0) return;
-    if (!confirm(ids.length === 1 ? "¿Quitar esta cortesía del historial?" : `¿Quitar ${ids.length} cortesías del historial?`)) return;
+    setDeleteTargetIds(null);
     setBusy(true);
     setError(null);
     try {
@@ -81,7 +83,7 @@ export function CourtesyGrantsHistory({ grants, areas }: { grants: any[]; areas:
             ))}
           </Select>
           {selected.size > 0 && (
-            <Button size="sm" variant="outline" className="text-danger" disabled={busy} onClick={() => handleDelete([...selected])}>
+            <Button size="sm" variant="outline" className="text-danger" disabled={busy} onClick={() => setDeleteTargetIds([...selected])}>
               Eliminar {selected.size} seleccionadas
             </Button>
           )}
@@ -122,7 +124,7 @@ export function CourtesyGrantsHistory({ grants, areas }: { grants: any[]; areas:
                   <td className="p-3 text-ash-600">{g.authorizedBy}</td>
                   <td className="p-3 text-ash-500">{g.note ?? "—"}</td>
                   <td className="p-3 text-right">
-                    <Button size="sm" variant="ghost" className="text-ash-400 hover:text-danger" disabled={busy} onClick={() => handleDelete([g.id])}>
+                    <Button size="sm" variant="ghost" className="text-ash-600 hover:text-danger" disabled={busy} onClick={() => setDeleteTargetIds([g.id])}>
                       Eliminar
                     </Button>
                   </td>
@@ -132,6 +134,21 @@ export function CourtesyGrantsHistory({ grants, areas }: { grants: any[]; areas:
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTargetIds}
+        onClose={() => setDeleteTargetIds(null)}
+        onConfirm={() => deleteTargetIds && handleDelete(deleteTargetIds)}
+        title="Quitar del historial"
+        message={
+          deleteTargetIds?.length === 1
+            ? "¿Quitar esta cortesía del historial?"
+            : `¿Quitar ${deleteTargetIds?.length ?? 0} cortesías del historial?`
+        }
+        confirmLabel="Quitar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

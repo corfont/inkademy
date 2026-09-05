@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const BILLING_LABEL: Record<string, string> = {
   FIXED: "Monto fijo",
@@ -41,6 +42,7 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
     invoicesDirectly: false,
   });
   const [uploading, setUploading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -180,11 +182,7 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
                   variant="ghost"
                   className="text-danger hover:bg-danger-bg"
                   disabled={busy}
-                  onClick={() => {
-                    if (confirm(`¿Eliminar el convenio con ${inst.name}? Se quitarán todas sus asociaciones a cursos.`)) {
-                      run(() => adminApi.deletePartnerInstitution(inst.id));
-                    }
-                  }}
+                  onClick={() => setDeleteTarget({ id: inst.id, name: inst.name })}
                 >
                   Eliminar
                 </Button>
@@ -224,7 +222,7 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={form.signatureUrl} alt="Firma" className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <span className="text-2xs text-ash-400">Sin firma</span>
+                    <span className="text-2xs text-ash-600">Sin firma</span>
                   )}
                 </div>
                 <label className="cursor-pointer text-sm text-ink-600 hover:underline">
@@ -271,6 +269,21 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) run(() => adminApi.deletePartnerInstitution(target.id));
+        }}
+        title="Eliminar convenio"
+        message={`¿Eliminar el convenio con ${deleteTarget?.name}? Se quitarán todas sus asociaciones a cursos.`}
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

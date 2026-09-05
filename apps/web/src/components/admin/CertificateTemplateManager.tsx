@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FileDropzone } from "./FileDropzone";
 
 // Placeholders reales que reemplaza apps/worker/src/processors/certificate.processor.ts
@@ -114,6 +115,7 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
   // antes (cargada vía loadForEdit, sin URL a mano) se sigue mostrando el
   // texto como respaldo — ver customImagePreviewUrls más abajo.
   const [customImagePreviewUrls, setCustomImagePreviewUrls] = useState<Record<string, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const previewHtml = useMemo(
     () => renderPreview(form.htmlTemplate || "<p style='padding:2rem;color:#999'>Escribe o carga una plantilla para previsualizarla.</p>"),
@@ -161,10 +163,10 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   }
 
-  async function handleDelete(tpl: any) {
-    if (!confirm(`¿Eliminar la plantilla "${tpl.name}"? Esto no se puede deshacer.`)) return;
-    await run(() => adminApi.deleteCertificateTemplate(tpl.id));
-    if (editingId === tpl.id) resetForm();
+  async function handleDelete(id: string) {
+    setDeleteTarget(null);
+    await run(() => adminApi.deleteCertificateTemplate(id));
+    if (editingId === id) resetForm();
   }
 
   function updateTag(tag: string, patch: Partial<TagRow>) {
@@ -292,7 +294,13 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
                           >
                             {tpl.active ? "Desactivar" : "Activar"}
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => handleDelete(tpl)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-danger hover:bg-danger-bg"
+                            disabled={busy}
+                            onClick={() => setDeleteTarget({ id: tpl.id, name: tpl.name })}
+                          >
                             Eliminar
                           </Button>
                         </div>
@@ -410,6 +418,17 @@ export function CertificateTemplateManager({ templates }: { templates: any[] }) 
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+        title="Eliminar plantilla"
+        message={`¿Eliminar la plantilla "${deleteTarget?.name}"? Esto no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }
@@ -582,7 +601,7 @@ function BackgroundTemplateEditor({
             // a diferencia de un <img> (que nunca puede decodificar un PDF).
             <iframe title="Vista previa del fondo PDF" src={form.backgroundPreviewUrl} className="absolute inset-0 h-full w-full border-0" />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-xs text-ash-400">Sube un archivo de fondo primero</div>
+            <div className="absolute inset-0 flex items-center justify-center text-xs text-ash-600">Sube un archivo de fondo primero</div>
           )}
 
           {Object.values(tagRows)
@@ -598,7 +617,7 @@ function BackgroundTemplateEditor({
                     onPointerDown={(e) => handleTagPointerDown(r.tag, e)}
                     title={custom ? "Imagen personalizada" : def!.label}
                     className={`absolute flex cursor-move touch-none items-center justify-center overflow-hidden border border-dashed bg-ink-500/10 ${
-                      draggingTag === r.tag ? "border-primary-600 ring-2 ring-primary-300" : "border-ink-500"
+                      draggingTag === r.tag ? "border-ink-600 ring-2 ring-ink-300" : "border-ink-500"
                     }`}
                     style={{
                       left: `${r.xPercent}%`,
@@ -617,7 +636,7 @@ function BackgroundTemplateEditor({
                   key={r.tag}
                   onPointerDown={(e) => handleTagPointerDown(r.tag, e)}
                   className={`absolute cursor-move touch-none whitespace-pre-line ${
-                    draggingTag === r.tag ? "outline outline-2 outline-primary-400" : ""
+                    draggingTag === r.tag ? "outline outline-2 outline-ink-400" : ""
                   }`}
                   style={{
                     left: `${r.xPercent}%`,

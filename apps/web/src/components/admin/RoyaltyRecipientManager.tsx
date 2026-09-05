@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const BILLING_LABEL: Record<string, string> = {
   PER_ENROLLMENT: "Por alumno matriculado",
@@ -49,6 +50,7 @@ export function RoyaltyRecipientManager({ recipients, courses }: { recipients: a
   const [userResults, setUserResults] = useState<any[]>([]);
   const [linkedUserLabel, setLinkedUserLabel] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   function handleUserQueryChange(q: string) {
     setUserQuery(q);
@@ -140,7 +142,7 @@ export function RoyaltyRecipientManager({ recipients, courses }: { recipients: a
                   variant="ghost"
                   className="text-danger hover:bg-danger-bg"
                   disabled={busy}
-                  onClick={() => confirm(`¿Eliminar a ${r.name}? Se quitarán sus asociaciones a cursos.`) && run(() => adminApi.deleteRoyaltyRecipient(r.id))}
+                  onClick={() => setDeleteTarget({ id: r.id, name: r.name })}
                 >
                   Eliminar
                 </Button>
@@ -245,6 +247,21 @@ export function RoyaltyRecipientManager({ recipients, courses }: { recipients: a
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) run(() => adminApi.deleteRoyaltyRecipient(target.id));
+        }}
+        title="Eliminar destinatario"
+        message={`¿Eliminar a ${deleteTarget?.name}? Se quitarán sus asociaciones a cursos.`}
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

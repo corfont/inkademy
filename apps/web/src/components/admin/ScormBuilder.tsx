@@ -578,7 +578,7 @@ function OrderingSlideEditor({
       <div className="flex flex-col gap-1.5">
         {slide.items.map((item, idx) => (
           <div key={idx} className="flex items-center gap-2">
-            <span className="w-4 text-xs text-ash-400">{idx + 1}.</span>
+            <span className="w-4 text-xs text-ash-600">{idx + 1}.</span>
             <Input
               className="h-7 flex-1 text-xs"
               placeholder={`Elemento ${idx + 1}`}

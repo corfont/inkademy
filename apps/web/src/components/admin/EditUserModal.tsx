@@ -117,7 +117,7 @@ export function EditUserModal({ user, open, onClose, onSaved }: { user: Editable
                 e.target.value = "";
               }}
             />
-            {uploadingAvatar && <p className="mt-1 text-xs text-ash-400">Subiendo…</p>}
+            {uploadingAvatar && <p className="mt-1 text-xs text-ash-600">Subiendo…</p>}
           </div>
         </div>
 

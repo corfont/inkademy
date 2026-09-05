@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge, type BadgeProps } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const STATUS_LABEL: Record<PlatformLicenseDTO["status"], string> = {
   ACTIVE: "Activa",
@@ -50,6 +51,7 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
     endsAt: "",
     notes: "",
   });
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -90,7 +92,7 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("¿Eliminar esta licencia? Esta acción no se puede deshacer.")) return;
+    setDeleteTargetId(null);
     await run(() => platformLicenseApi.remove(id));
   }
 
@@ -182,7 +184,7 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
                 </Select>
                 <button
                   type="button"
-                  onClick={() => handleDelete(license.id)}
+                  onClick={() => setDeleteTargetId(license.id)}
                   aria-label="Eliminar licencia"
                   className="rounded-md p-2 text-ash-500 hover:bg-danger-bg hover:text-danger"
                 >
@@ -193,6 +195,17 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
           ))}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!deleteTargetId}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={() => deleteTargetId && handleDelete(deleteTargetId)}
+        title="Eliminar licencia"
+        message="¿Eliminar esta licencia? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

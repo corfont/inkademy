@@ -55,7 +55,7 @@ export default async function SeatPoolsPage({ params }: { params: { companyId: s
                   {t("used")}: {pool.seatsUsed} / {t("purchased")}: {pool.seatsPurchased}
                 </p>
                 <ProgressBar value={(pool.seatsUsed / pool.seatsPurchased) * 100} className="mt-2 max-w-xs" />
-                {pool.expiresAt && <p className="mt-1 text-xs text-ash-400">{t("expiresOn", { date: formatDate(pool.expiresAt, locale) })}</p>}
+                {pool.expiresAt && <p className="mt-1 text-xs text-ash-600">{t("expiresOn", { date: formatDate(pool.expiresAt, locale) })}</p>}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <AssignSeatButton companyId={params.companyId} poolId={pool.id} disabled={pool.seatsUsed >= pool.seatsPurchased} />

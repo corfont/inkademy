@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
  * "El administrador debería tener la facultad de resetear un avance a 0%
@@ -18,13 +19,10 @@ export function ResetProgressControl({ enrollmentId }: { enrollmentId: string })
   const router = useRouter();
   const [busy, setBusy] = useState<"ZERO" | "FULL" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<"ZERO" | "FULL" | null>(null);
 
   async function handleReset(target: "ZERO" | "FULL") {
-    const confirmMsg =
-      target === "ZERO"
-        ? "¿Reiniciar el avance de este alumno a 0%? Se desmarcan todas sus lecciones y lecturas completadas en este curso."
-        : "¿Forzar el avance de este alumno a 100%? Se marcan todas las lecciones y lecturas del curso como completadas.";
-    if (!confirm(confirmMsg)) return;
+    setConfirmTarget(null);
     setBusy(target);
     setError(null);
     try {
@@ -40,14 +38,28 @@ export function ResetProgressControl({ enrollmentId }: { enrollmentId: string })
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
-        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => handleReset("ZERO")}>
+        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setConfirmTarget("ZERO")}>
           <RotateCcw className="h-4 w-4" aria-hidden="true" /> {busy === "ZERO" ? "…" : "0%"}
         </Button>
-        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => handleReset("FULL")}>
+        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setConfirmTarget("FULL")}>
           {busy === "FULL" ? "…" : "100%"}
         </Button>
       </div>
       {error && <p className="text-xs text-danger">{error}</p>}
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={() => confirmTarget && handleReset(confirmTarget)}
+        title="Reajustar avance"
+        message={
+          confirmTarget === "ZERO"
+            ? "¿Reiniciar el avance de este alumno a 0%? Se desmarcan todas sus lecciones y lecturas completadas en este curso."
+            : "¿Forzar el avance de este alumno a 100%? Se marcan todas las lecciones y lecturas del curso como completadas."
+        }
+        confirmLabel="Confirmar"
+        danger
+        busy={busy !== null}
+      />
     </div>
   );
 }

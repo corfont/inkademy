@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { companyApi, ApiError } from "@/lib/api-client";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatPrice, formatDate } from "@/lib/format";
 
 const STATUS_VARIANT: Record<string, "neutral" | "warning" | "success" | "danger"> = {
@@ -42,9 +43,12 @@ export function QuoteResponseCard({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
 
   async function respond(status: "ACCEPTED" | "REJECTED") {
-    if (status === "REJECTED" && !confirm("¿Rechazar esta cotización?")) return;
+    if (status === "REJECTED") {
+      setConfirmRejectOpen(false);
+    }
     setBusy(true);
     setError(null);
     try {
@@ -82,12 +86,22 @@ export function QuoteResponseCard({
           <Button size="sm" disabled={busy} onClick={() => respond("ACCEPTED")}>
             Aceptar
           </Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => respond("REJECTED")}>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmRejectOpen(true)}>
             Rechazar
           </Button>
         </div>
       )}
       {error && <p className="text-xs text-danger">{error}</p>}
+      <ConfirmDialog
+        open={confirmRejectOpen}
+        onClose={() => setConfirmRejectOpen(false)}
+        onConfirm={() => respond("REJECTED")}
+        title="Rechazar cotización"
+        message="¿Rechazar esta cotización?"
+        confirmLabel="Rechazar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

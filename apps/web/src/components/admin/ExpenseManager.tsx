@@ -7,6 +7,7 @@ import { adminApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatDate, formatPrice } from "@/lib/format";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -32,6 +33,7 @@ export function ExpenseManager({ expenses, locale }: { expenses: any[]; locale: 
   const [recurrence, setRecurrence] = useState("ONCE");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -51,7 +53,7 @@ export function ExpenseManager({ expenses, locale }: { expenses: any[]; locale: 
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("¿Eliminar este gasto?")) return;
+    setDeleteTargetId(null);
     await adminApi.deleteExpense(id);
     router.refresh();
   }
@@ -135,7 +137,7 @@ export function ExpenseManager({ expenses, locale }: { expenses: any[]; locale: 
                 <td className="p-3">
                   <button
                     type="button"
-                    onClick={() => handleDelete(exp.id)}
+                    onClick={() => setDeleteTargetId(exp.id)}
                     className="text-ash-400 hover:text-danger"
                     aria-label="Eliminar gasto"
                   >
@@ -147,6 +149,17 @@ export function ExpenseManager({ expenses, locale }: { expenses: any[]; locale: 
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTargetId}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={() => deleteTargetId && handleDelete(deleteTargetId)}
+        title="Eliminar gasto"
+        message="¿Eliminar este gasto?"
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </div>
   );
 }

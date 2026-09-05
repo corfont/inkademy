@@ -6,6 +6,7 @@ import { adminApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FileDropzone } from "./FileDropzone";
 
 /**
@@ -20,6 +21,7 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
 
   // Antes solo se podía subir un documento a la vez (FileDropzone sin
   // `multiple`) — con una base de conocimiento real (varios manuales, FAQs,
@@ -61,11 +63,11 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
     }
   }
 
-  async function handleDelete(doc: any) {
-    if (!confirm(`¿Eliminar "${doc.title}" de la base de conocimiento del asistente?`)) return;
-    setBusyId(doc.id);
+  async function handleDelete(id: string) {
+    setDeleteTarget(null);
+    setBusyId(id);
     try {
-      await adminApi.deleteChatbotDocument(doc.id);
+      await adminApi.deleteChatbotDocument(id);
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos eliminar el documento.");
@@ -106,7 +108,13 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
                       <Button size="sm" variant="ghost" disabled={busyId === doc.id} onClick={() => toggleActive(doc)}>
                         {doc.active ? "Desactivar" : "Activar"}
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busyId === doc.id} onClick={() => handleDelete(doc)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-danger hover:bg-danger-bg"
+                        disabled={busyId === doc.id}
+                        onClick={() => setDeleteTarget({ id: doc.id, title: doc.title })}
+                      >
                         Eliminar
                       </Button>
                     </div>
@@ -125,6 +133,17 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
         hint="PDF con texto real, o .txt/.md — puedes elegir o soltar varios a la vez"
         onFile={handleUpload}
         multiple
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+        title="Eliminar documento"
+        message={`¿Eliminar "${deleteTarget?.title}" de la base de conocimiento del asistente?`}
+        confirmLabel="Eliminar"
+        danger
+        busy={busyId === deleteTarget?.id}
       />
     </div>
   );

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AudienceFilterFields, filterToFormState, formStateToFilter, type AudienceFilterFormState } from "@/components/admin/AudienceFilterFields";
 
 const GOAL_LABEL: Record<string, string> = {
@@ -129,6 +130,7 @@ function CampaignCard({
   onEdit?: () => void;
   editing?: boolean;
 }) {
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   return (
     <Card className={editing ? "border-ink-400" : undefined}>
       <CardContent className="flex flex-col gap-2 p-5">
@@ -160,13 +162,26 @@ function CampaignCard({
               variant="ghost"
               className="text-danger hover:bg-danger-bg"
               disabled={busy}
-              onClick={() => confirm(`¿Eliminar la campaña "${c.name}"?`) && run(() => adminApi.deleteEmailCampaign(c.id))}
+              onClick={() => setConfirmDeleteOpen(true)}
             >
               Eliminar
             </Button>
           </div>
         )}
       </CardContent>
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => {
+          setConfirmDeleteOpen(false);
+          run(() => adminApi.deleteEmailCampaign(c.id));
+        }}
+        title="Eliminar campaña"
+        message={`¿Eliminar la campaña "${c.name}"?`}
+        confirmLabel="Eliminar"
+        danger
+        busy={busy}
+      />
     </Card>
   );
 }

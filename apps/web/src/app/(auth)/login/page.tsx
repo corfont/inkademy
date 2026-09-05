@@ -111,7 +111,7 @@ function LoginForm() {
           </Button>
         </form>
 
-        <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-wide text-ash-400">
+        <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-wide text-ash-600">
           <span className="h-px flex-1 bg-paper-border" />
           {t("orContinueWith")}
           <span className="h-px flex-1 bg-paper-border" />

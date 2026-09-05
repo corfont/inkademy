@@ -49,12 +49,12 @@ export default async function SuggestionsPage() {
                   <p className="text-sm text-ash-700">{s.message}</p>
                   <Badge variant={STATUS_VARIANT[s.status] ?? "outline"}>{STATUS_LABEL[s.status] ?? s.status}</Badge>
                 </div>
-                <p className="mt-1 text-xs text-ash-400">{formatDateTime(s.createdAt, locale)}</p>
+                <p className="mt-1 text-xs text-ash-600">{formatDateTime(s.createdAt, locale)}</p>
                 {s.adminResponse && (
                   <div className="mt-3 rounded-md bg-ink-50 p-3 text-sm text-ink-800">
                     <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-500">Respuesta de Inkademy</p>
                     <p>{s.adminResponse}</p>
-                    {s.respondedAt && <p className="mt-1 text-xs text-ash-400">{formatDateTime(s.respondedAt, locale)}</p>}
+                    {s.respondedAt && <p className="mt-1 text-xs text-ash-600">{formatDateTime(s.respondedAt, locale)}</p>}
                   </div>
                 )}
               </li>
