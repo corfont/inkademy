@@ -77,6 +77,7 @@
   "catalog": {
     "title": "Catalog",
     "subtitle": "Explore our curated offering by area, modality and level.",
+    "resultCountOne": "1 result",
     "resultsCount": "{count} results",
     "noResults": "We couldn't find courses matching these filters.",
     "filters": {
@@ -425,6 +426,12 @@
     "pay": "Pay",
     "processing": "Processing payment…",
     "success": "Payment successful! You now have access to your course.",
+    "successTitle": "All set! Your purchase was completed successfully",
+    "successSubtitle": "You now have access — we sent your receipt by email.",
+    "successOrderRef": "Order #",
+    "successAmountPaid": "Amount paid",
+    "goToPayments": "View my payment history",
+    "successRedirecting": "We'll take you there automatically in a few seconds…",
     "error": "We couldn't process your payment. Please try again.",
     "asCompany": "Buy on behalf of a company",
     "invoiceTitle": "Billing receipt",

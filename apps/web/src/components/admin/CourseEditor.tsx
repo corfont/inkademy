@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, memo } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -19,9 +20,13 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
 import { FileDropzone } from "./FileDropzone";
 import { DropLabel } from "./DropLabel";
-import { ScormBuilder } from "./ScormBuilder";
-import { ExamBuilder } from "./ExamBuilder";
 import { useAuth } from "@/components/providers/AuthProvider";
+
+// Code-splitting: ScormBuilder y ExamBuilder son editores modales pesados que
+// solo se montan bajo demanda (al abrir su modal respectivo) — no deben ir en
+// el bundle inicial de CourseEditor, que se carga siempre que se edita un curso.
+const ScormBuilder = dynamic(() => import("./ScormBuilder").then((m) => m.ScormBuilder), { ssr: false });
+const ExamBuilder = dynamic(() => import("./ExamBuilder").then((m) => m.ExamBuilder), { ssr: false });
 
 /**
  * Editor de contenido de un curso: metadata, módulos → lecciones →
@@ -32,23 +37,76 @@ import { useAuth } from "@/components/providers/AuthProvider";
  * para volver a traer el detalle completo del curso desde el server
  * component padre, en vez de mantener un caché local optimista.
  */
-export function CourseEditor({ course }: { course: any }) {
+// "El curso que creaste... no puedo completar la última pregunta" y, en la
+// auditoría de diseño, "CourseEditor mezcla ~16 campos comerciales con la
+// edición pedagógica, y esa misma pantalla sin recorte es lo que ve un
+// docente" — antes era una sola columna vertical de 9 secciones con TODO
+// visible a la vez (carga cognitiva crítica: 5/8 fallos del checklist).
+// Ahora se agrupa en 3 pestañas; "Comercial" no se renderiza en absoluto
+// para `viewerRole==="TEACHER"` (ver /docente/cursos/[courseId]/page.tsx).
+type CourseEditorTab = "content" | "commercial" | "delivery";
+
+function CourseEditorTabs({
+  active,
+  onChange,
+  showCommercial,
+}: {
+  active: CourseEditorTab;
+  onChange: (tab: CourseEditorTab) => void;
+  showCommercial: boolean;
+}) {
+  const tabs: { key: CourseEditorTab; label: string }[] = [
+    { key: "content", label: "Contenido" },
+    ...(showCommercial ? [{ key: "commercial" as const, label: "Comercial" }] : []),
+    { key: "delivery", label: "Evaluaciones y sesiones en vivo" },
+  ];
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-md border border-paper-border bg-paper-muted p-1" role="tablist">
+      {tabs.map((tab) => (
+        <button
+          key={tab.key}
+          type="button"
+          role="tab"
+          aria-selected={active === tab.key}
+          onClick={() => onChange(tab.key)}
+          className={cn(
+            "flex-none whitespace-nowrap rounded px-3 py-1.5 text-sm font-medium transition-colors",
+            active === tab.key ? "bg-paper text-ink-900 shadow-card" : "text-ash-600 hover:text-ink-700",
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function CourseEditor({ course, viewerRole = "ADMIN" }: { course: any; viewerRole?: "ADMIN" | "TEACHER" }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<CourseEditorTab>("content");
+  const showCommercial = viewerRole === "ADMIN";
 
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
-    setBusy(true);
-    try {
-      await action();
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Ocurrió un error. Intenta de nuevo.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Estabilizado con useCallback — se pasa como prop a decenas de
+  // componentes de fila (módulos, lecciones, materiales) que ahora están
+  // memoizados con React.memo; sin esto, `run` se recreaba en cada render
+  // de CourseEditor y anulaba el memo de todos ellos.
+  const run = useCallback(
+    async (action: () => Promise<unknown>) => {
+      setError(null);
+      setBusy(true);
+      try {
+        await action();
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Ocurrió un error. Intenta de nuevo.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [router],
+  );
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-8">
@@ -62,21 +120,27 @@ export function CourseEditor({ course }: { course: any }) {
 
       {error && <Callout variant="danger">{error}</Callout>}
 
-      <MetadataSection course={course} busy={busy} onSave={(patch) => run(() => adminApi.updateCourse(course.id, patch))} />
+      <CourseEditorTabs active={activeTab} onChange={setActiveTab} showCommercial={showCommercial} />
 
-      <DetailSectionsManager course={course} />
+      <div className={cn("flex flex-col gap-8", activeTab !== "content" && "hidden")}>
+        <GeneralInfoSection course={course} busy={busy} onSave={(patch) => run(() => adminApi.updateCourse(course.id, patch))} />
+        <DetailSectionsManager course={course} />
+        <CourseStaffSection courseId={course.id} />
+        <ContentSection course={course} busy={busy} run={run} />
+      </div>
 
-      <CourseStaffSection courseId={course.id} />
+      {showCommercial && (
+        <div className={cn("flex flex-col gap-8", activeTab !== "commercial" && "hidden")}>
+          <CommercialSection course={course} busy={busy} onSave={(patch) => run(() => adminApi.updateCourse(course.id, patch))} />
+        </div>
+      )}
 
-      <ContentSection course={course} busy={busy} run={run} />
-
-      <LiveSessionsSection course={course} busy={busy} run={run} />
-
-      {course.liveSessions.length > 0 && <AttendanceReportSection courseId={course.id} />}
-
-      <ApprovalRuleSection courseId={course.id} />
-
-      <AssessmentsSection course={course} onCourseChange={router.refresh} />
+      <div className={cn("flex flex-col gap-8", activeTab !== "delivery" && "hidden")}>
+        <LiveSessionsSection course={course} busy={busy} run={run} />
+        {course.liveSessions.length > 0 && <AttendanceReportSection courseId={course.id} />}
+        <ApprovalRuleSection courseId={course.id} />
+        <AssessmentsSection course={course} onCourseChange={router.refresh} />
+      </div>
     </div>
   );
 }
@@ -152,7 +216,16 @@ function isoStringToLocalDateOnly(iso: string): string {
   return `${y}-${m}-${day}`;
 }
 
-function MetadataSection({
+/**
+ * Antes toda esta sección (título/área/duración/portada/sílabo/idioma) vivía
+ * en un único `MetadataSection` junto con los campos comerciales (precio,
+ * descuento, plantilla de certificado, plazo de acceso) — un docente que
+ * solo entraba a subir un video se topaba con los ~16 campos de ambos
+ * grupos a la vez. Se separó en dos componentes hermanos con su propio
+ * botón de guardar cada uno (ver CommercialSection más abajo): éste vive en
+ * la pestaña "Contenido", visible para admin y docente por igual.
+ */
+function GeneralInfoSection({
   course,
   busy,
   onSave,
@@ -183,11 +256,7 @@ function MetadataSection({
       setTranslating(false);
     }
   }
-  const [priceAmount, setPriceAmount] = useState(String(course.priceAmount ?? "0"));
-  const [priceCurrency, setPriceCurrency] = useState(course.priceCurrency ?? "PEN");
-  const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
   const [language, setLanguage] = useState(course.language ?? "es");
-  const [templates, setTemplates] = useState<any[]>([]);
   const [areas, setAreas] = useState<any[]>([]);
   const [areaId, setAreaId] = useState(course.areaId ?? course.area?.id ?? "");
   const [durationHours, setDurationHours] = useState(String(course.durationHours ?? "0"));
@@ -204,14 +273,6 @@ function MetadataSection({
   const [newAreaName, setNewAreaName] = useState("");
   const [newAreaSaving, setNewAreaSaving] = useState(false);
   const [newAreaError, setNewAreaError] = useState<string | null>(null);
-  const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
-  const [discountExpiresAt, setDiscountExpiresAt] = useState(
-    course.discountExpiresAt ? isoStringToLocalDateOnly(course.discountExpiresAt) : "",
-  );
-  // Solo aplica en la práctica a cursos grabados (el alumno avanza a su
-  // ritmo, así que necesita una fecha límite o quedar abierto) — pero se
-  // deja editable para cualquier modalidad, es el admin quien decide.
-  const [accessDurationPolicy, setAccessDurationPolicy] = useState(course.accessDurationPolicy ?? "PERMANENT");
   const [blockMainVideoDownload, setBlockMainVideoDownload] = useState(course.blockMainVideoDownload ?? true);
 
   function refreshAreas() {
@@ -222,10 +283,6 @@ function MetadataSection({
   }
 
   useEffect(() => {
-    adminApi
-      .certificateTemplates()
-      .then(setTemplates)
-      .catch(() => setTemplates([]));
     refreshAreas();
   }, []);
 
@@ -295,12 +352,12 @@ function MetadataSection({
     <Card>
       <CardContent className="flex flex-col gap-4 p-6">
         <h2 className="font-serif text-lg font-semibold text-ink-900">Datos generales</h2>
-        <div className="grid gap-4 sm:grid-cols-[1fr_8rem_6rem]">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="edit-title">Título (español)</Label>
             <Input id="edit-title" value={titleEs} onChange={(e) => setTitleEs(e.target.value)} />
           </div>
-          <div className="sm:col-span-3">
+          <div>
             <div className="flex items-center justify-between">
               <Label htmlFor="edit-title-en">Título (inglés)</Label>
               <Button
@@ -317,17 +374,6 @@ function MetadataSection({
             </div>
             <Input id="edit-title-en" value={titleEn} onChange={(e) => setTitleEn(e.target.value)} placeholder="(opcional)" />
             {translateError && <p className="mt-1 text-xs text-danger">{translateError}</p>}
-          </div>
-          <div>
-            <Label htmlFor="edit-price">Precio</Label>
-            <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="edit-currency">Moneda</Label>
-            <Select id="edit-currency" value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)}>
-              <option value="PEN">PEN (S/)</option>
-              <option value="USD">USD ($)</option>
-            </Select>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -386,49 +432,6 @@ function MetadataSection({
               <option value="MONTHS">Meses</option>
             </Select>
           </div>
-        </div>
-        <div className="rounded-md bg-paper-muted p-3">
-          <Label htmlFor="edit-access-policy">Plazo de acceso (cursos grabados)</Label>
-          <Select id="edit-access-policy" value={accessDurationPolicy} onChange={(e) => setAccessDurationPolicy(e.target.value)}>
-            <option value="PERMANENT">Abierto — sin fecha de término</option>
-            <option value="DAYS_7">7 días desde la matrícula</option>
-            <option value="DAYS_30">30 días desde la matrícula</option>
-            <option value="MONTHS_6">6 meses desde la matrícula</option>
-          </Select>
-          <p className="mt-1 text-xs text-ash-500">
-            Si tiene fecha de término, al vencer el alumno pierde el acceso al contenido y no recibe certificado — el admin puede ampliar el
-            plazo de un alumno puntual desde /admin/matriculas.
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 rounded-md bg-paper-muted p-3">
-          <div>
-            <Label htmlFor="edit-discount">Descuento (%)</Label>
-            <Input
-              id="edit-discount"
-              type="number"
-              min="0"
-              max="90"
-              placeholder="Sin descuento"
-              value={discountPercent}
-              onChange={(e) => setDiscountPercent(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="edit-discount-expires">Vence el (opcional)</Label>
-            <Input
-              id="edit-discount-expires"
-              type="date"
-              value={discountExpiresAt}
-              onChange={(e) => setDiscountExpiresAt(e.target.value)}
-              disabled={!discountPercent}
-            />
-          </div>
-          {discountPercent && Number(discountPercent) > 0 && (
-            <p className="sm:col-span-2 text-sm text-success">
-              Precio con descuento: {(Number(priceAmount) * (1 - Number(discountPercent) / 100)).toFixed(2)} {priceCurrency}
-              {discountExpiresAt ? ` — hasta el ${discountExpiresAt}` : ""}
-            </p>
-          )}
         </div>
         <div>
           <Label>Imagen de portada</Label>
@@ -498,6 +501,127 @@ function MetadataSection({
           </p>
         </div>
         <div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              onSave({
+                title: { ...course.title, es: titleEs, ...(titleEn.trim() ? { en: titleEn } : {}) },
+                language,
+                areaId,
+                durationHours: Number(durationHours),
+                durationUnit,
+                coverImageAssetId,
+                syllabusAssetId,
+                blockMainVideoDownload,
+              })
+            }
+          >
+            Guardar cambios
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Campos comerciales/de certificación — separados de GeneralInfoSection
+ * (ver comentario ahí arriba). Solo se monta cuando `viewerRole==="ADMIN"`
+ * (pestaña "Comercial" de CourseEditor); un docente nunca la ve ni puede
+ * editar estos campos desde esta pantalla.
+ */
+function CommercialSection({
+  course,
+  busy,
+  onSave,
+}: {
+  course: any;
+  busy: boolean;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const [priceAmount, setPriceAmount] = useState(String(course.priceAmount ?? "0"));
+  const [priceCurrency, setPriceCurrency] = useState(course.priceCurrency ?? "PEN");
+  const [certificateTemplateId, setCertificateTemplateId] = useState(course.certificateTemplateId ?? "");
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
+  const [discountExpiresAt, setDiscountExpiresAt] = useState(
+    course.discountExpiresAt ? isoStringToLocalDateOnly(course.discountExpiresAt) : "",
+  );
+  // Solo aplica en la práctica a cursos grabados (el alumno avanza a su
+  // ritmo, así que necesita una fecha límite o quedar abierto) — pero se
+  // deja editable para cualquier modalidad, es el admin quien decide.
+  const [accessDurationPolicy, setAccessDurationPolicy] = useState(course.accessDurationPolicy ?? "PERMANENT");
+
+  useEffect(() => {
+    adminApi
+      .certificateTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, []);
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Precio y certificación</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="edit-price">Precio</Label>
+            <Input id="edit-price" type="number" min="0" step="0.01" value={priceAmount} onChange={(e) => setPriceAmount(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="edit-currency">Moneda</Label>
+            <Select id="edit-currency" value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)}>
+              <option value="PEN">PEN (S/)</option>
+              <option value="USD">USD ($)</option>
+            </Select>
+          </div>
+        </div>
+        <div className="rounded-md bg-paper-muted p-3">
+          <Label htmlFor="edit-access-policy">Plazo de acceso (cursos grabados)</Label>
+          <Select id="edit-access-policy" value={accessDurationPolicy} onChange={(e) => setAccessDurationPolicy(e.target.value)}>
+            <option value="PERMANENT">Abierto — sin fecha de término</option>
+            <option value="DAYS_7">7 días desde la matrícula</option>
+            <option value="DAYS_30">30 días desde la matrícula</option>
+            <option value="MONTHS_6">6 meses desde la matrícula</option>
+          </Select>
+          <p className="mt-1 text-xs text-ash-500">
+            Si tiene fecha de término, al vencer el alumno pierde el acceso al contenido y no recibe certificado — el admin puede ampliar el
+            plazo de un alumno puntual desde /admin/matriculas.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 rounded-md bg-paper-muted p-3">
+          <div>
+            <Label htmlFor="edit-discount">Descuento (%)</Label>
+            <Input
+              id="edit-discount"
+              type="number"
+              min="0"
+              max="90"
+              placeholder="Sin descuento"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-discount-expires">Vence el (opcional)</Label>
+            <Input
+              id="edit-discount-expires"
+              type="date"
+              value={discountExpiresAt}
+              onChange={(e) => setDiscountExpiresAt(e.target.value)}
+              disabled={!discountPercent}
+            />
+          </div>
+          {discountPercent && Number(discountPercent) > 0 && (
+            <p className="sm:col-span-2 text-sm text-success">
+              Precio con descuento: {(Number(priceAmount) * (1 - Number(discountPercent) / 100)).toFixed(2)} {priceCurrency}
+              {discountExpiresAt ? ` — hasta el ${discountExpiresAt}` : ""}
+            </p>
+          )}
+        </div>
+        <div>
           <Label htmlFor="edit-cert-template">Plantilla de certificado</Label>
           <Select id="edit-cert-template" value={certificateTemplateId} onChange={(e) => setCertificateTemplateId(e.target.value)}>
             <option value="">Automática (la más reciente activa en el idioma del alumno)</option>
@@ -515,21 +639,13 @@ function MetadataSection({
             disabled={busy}
             onClick={() =>
               onSave({
-                title: { ...course.title, es: titleEs, ...(titleEn.trim() ? { en: titleEn } : {}) },
                 priceAmount: Number(priceAmount),
                 priceCurrency,
                 certificateTemplateId: certificateTemplateId || null,
-                language,
-                areaId,
-                durationHours: Number(durationHours),
-                durationUnit,
                 accessDurationPolicy,
-                coverImageAssetId,
-                syllabusAssetId,
                 discountPercent: discountPercent ? Number(discountPercent) : null,
                 discountExpiresAt:
                   discountPercent && discountExpiresAt ? dateOnlyToLocalEndOfDayISOString(discountExpiresAt) : null,
-                blockMainVideoDownload,
               })
             }
           >
@@ -727,7 +843,7 @@ function ModuleBlock({ courseId, module: mod, busy, run }: { courseId: string; m
 
       <ModuleMaterialsSection module={mod} busy={busy} run={run} />
 
-      <p className="mt-3 text-2xs text-ash-400">
+      <p className="mt-3 text-2xs text-ash-600">
         El alumno ve las lecciones (videos/PDF/texto) en el orden de esta lista — usa ↑/↓ para reordenarlas. Los materiales de cada lección se
         muestran igual: primero todos los <strong>Principales</strong> (para leer en ese momento, junto al video) y después los{" "}
         <strong>Complementarios</strong> (quedan disponibles pero no se resaltan) — dentro de cada grupo, en el orden que definas con sus propias
@@ -808,7 +924,11 @@ const CATEGORY_LABEL: Record<string, string> = { MAIN: "Principal", SUPPLEMENTAR
  * Principales se muestran antes que los Complementarios, y este orden
  * decide la secuencia DENTRO de cada grupo.
  */
-function MaterialItem({
+// Memoizado — se renderiza dentro de un `.map()` de materiales (de módulo Y
+// de lección) que puede tener muchos ítems en un curso grande; con `run`
+// estabilizado arriba, evita re-renderizar cada fila cuando el padre se
+// vuelve a renderizar por una acción que no tocó estos materiales.
+const MaterialItem = memo(function MaterialItem({
   material,
   busy,
   run,
@@ -823,6 +943,7 @@ function MaterialItem({
 }) {
   const [scormUploading, setScormUploading] = useState(false);
   const [scormBuilderOpen, setScormBuilderOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   async function handleScormUpload(file: File) {
     setScormUploading(true);
@@ -842,7 +963,7 @@ function MaterialItem({
         <div className="flex flex-col gap-1 py-0.5">
           <span className="flex items-center gap-1">📎 {material.title}</span>
           <div className="flex flex-wrap items-center gap-2 text-2xs text-ash-500">
-            {material.scormEntryPath ? <span>Paquete SCORM cargado</span> : <span className="text-ash-400">Sin paquete SCORM todavía</span>}
+            {material.scormEntryPath ? <span>Paquete SCORM cargado</span> : <span className="text-ash-600">Sin paquete SCORM todavía</span>}
             <DropLabel
               accept=".zip"
               busy={scormUploading}
@@ -935,14 +1056,27 @@ function MaterialItem({
           disabled={busy}
           title="Eliminar material"
           aria-label="Eliminar material"
-          onClick={() => run(() => adminApi.deleteMaterial(material.id))}
+          onClick={() => setConfirmDeleteOpen(true)}
         >
           <Trash2 className="h-3 w-3" />
         </button>
+        <ConfirmDialog
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          onConfirm={() => {
+            setConfirmDeleteOpen(false);
+            run(() => adminApi.deleteMaterial(material.id));
+          }}
+          title="Eliminar material"
+          message="¿Eliminar este material? Los alumnos perderán acceso a este archivo de inmediato."
+          confirmLabel="Eliminar"
+          danger
+          busy={busy}
+        />
       </div>
     </li>
   );
-}
+});
 
 /**
  * Antes solo se podía subir un archivo — no había ninguna forma de agregar
@@ -1127,7 +1261,11 @@ function kindFromFile(file: File): string {
   return "file";
 }
 
-function LessonRow({
+// Memoizado — se renderiza dentro de un `.map()` de lecciones de un módulo,
+// que puede tener muchas en un curso grande; evita re-renderizar cada fila
+// (con toda su lógica interna de materiales/subtítulos/SCORM) cuando el
+// padre se vuelve a renderizar por una acción que no tocó esta lección.
+const LessonRow = memo(function LessonRow({
   lesson,
   busy,
   run,
@@ -1380,7 +1518,7 @@ function LessonRow({
               No se pudieron generar (reintentar abajo)
             </span>
           ) : (
-            <span className="text-ash-400">Sin subtítulos todavía</span>
+            <span className="text-ash-600">Sin subtítulos todavía</span>
           )}
           {lesson.subtitlesStatus !== "PROCESSING" && (
             <button
@@ -1437,11 +1575,11 @@ function LessonRow({
           onAdd={(scormTitle) => run(() => adminApi.createMaterial(lesson.id, { title: scormTitle, kind: "scorm", category: newMaterialCategory }))}
         />
       </div>
-      <p className="mt-1 text-2xs text-ash-400">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>
+      <p className="mt-1 text-2xs text-ash-600">Acepta PDF, Word, Excel, PPT, imágenes (PNG/JPG), video, o un enlace externo.</p>
       <FormativeQuizEditor lesson={lesson} />
     </li>
   );
-}
+});
 
 /**
  * "Cursos e-learning interactivos con evaluación formativa integrada" — el
@@ -1923,7 +2061,7 @@ function AttendanceReportSection({ courseId }: { courseId: string }) {
                           {cell?.durationMin !== null && cell?.durationMin !== undefined ? (
                             <span className={cell.present ? "text-success" : "text-danger"}>{cell.durationMin}′</span>
                           ) : (
-                            <span className="text-ash-300">—</span>
+                            <span className="text-ash-500">—</span>
                           )}
                         </td>
                       );

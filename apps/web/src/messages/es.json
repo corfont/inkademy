@@ -77,6 +77,7 @@
   "catalog": {
     "title": "Catálogo",
     "subtitle": "Explora nuestra oferta curada por área, modalidad y nivel.",
+    "resultCountOne": "1 resultado",
     "resultsCount": "{count} resultados",
     "noResults": "No encontramos cursos con estos filtros.",
     "filters": {
@@ -425,6 +426,12 @@
     "pay": "Pagar",
     "processing": "Procesando pago…",
     "success": "¡Pago exitoso! Ya tienes acceso a tu curso.",
+    "successTitle": "¡Listo! Tu compra se realizó con éxito",
+    "successSubtitle": "Ya tienes acceso — te enviamos el comprobante a tu correo.",
+    "successOrderRef": "N.º de orden",
+    "successAmountPaid": "Monto pagado",
+    "goToPayments": "Ver mi historial de pagos",
+    "successRedirecting": "Te llevaremos ahí automáticamente en unos segundos…",
     "error": "No pudimos procesar tu pago. Intenta nuevamente.",
     "asCompany": "Comprar a nombre de una empresa",
     "invoiceTitle": "Comprobante de pago",

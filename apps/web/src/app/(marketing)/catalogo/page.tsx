@@ -92,7 +92,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
         <div>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-ash-500" aria-live="polite">
-              {t("resultsCount", { count: items.length })}
+              {items.length === 1 ? t("resultCountOne") : t("resultsCount", { count: items.length })}
             </p>
             <Suspense fallback={null}>
               <SortSelect />

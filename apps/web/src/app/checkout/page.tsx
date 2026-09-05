@@ -4,7 +4,7 @@ import Link from "next/link";
 import { BrandLogo } from "@/components/layout/BrandLogo";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Lock } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import type { CourseCardDTO, ProgramDetailDTO } from "@inkademy/shared";
 import { catalogApi, commerceApi, authApi, ApiError } from "@/lib/api-client";
@@ -73,6 +73,10 @@ function CheckoutForm() {
   });
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Se muestra en el resumen de compra exitosa (número de orden + monto) —
+  // antes se descartaba y el momento de éxito era solo un aviso de una
+  // línea sin ningún detalle de lo que se acababa de comprar.
+  const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
   const [documentNumberAutofilled, setDocumentNumberAutofilled] = useState(false);
 
   // Si el alumno ya tiene DNI cargado en su perfil, se autocompleta acá en
@@ -183,7 +187,14 @@ function CheckoutForm() {
             }),
       });
       setStatus("success");
-      setTimeout(() => router.push(`/campus/pagos?orderId=${result.orderId}`), 1200);
+      setCompletedOrderId(result.orderId);
+      // Antes redirigía a los 1200ms sin dar tiempo a leer ningún resumen —
+      // ahora el resumen de orden queda visible varios segundos (con un
+      // botón para ir de inmediato, sin esperar) antes del redirect
+      // automático, siguiendo la regla del pico y el fin: el cierre de una
+      // compra —incluyendo compras B2B de varios cupos— debe reforzar la
+      // decisión, no solo confirmarla de pasada.
+      setTimeout(() => router.push(`/campus/pagos?orderId=${result.orderId}`), 6000);
     } catch (err) {
       setStatus("error");
       // Errores de openCulqiCheckout (widget cerrado, tarjeta rechazada, etc.)
@@ -226,7 +237,41 @@ function CheckoutForm() {
           <h1 className="font-serif text-2xl font-semibold text-ink-900">{t("title")}</h1>
 
           {status === "success" ? (
-            <Callout variant="success">{t("success")}</Callout>
+            <Card>
+              <CardContent className="flex flex-col items-center gap-4 p-8 text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
+                  <CheckCircle2 className="h-8 w-8 text-success" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="font-serif text-xl font-semibold text-ink-900">{t("successTitle")}</h2>
+                  <p className="mt-1 text-sm text-ash-600">{t("successSubtitle")}</p>
+                </div>
+
+                <div className="w-full max-w-sm rounded-lg border border-paper-border bg-paper-muted p-4 text-left">
+                  <p className="text-sm font-medium text-ink-900">{title}</p>
+                  {seatPoolQty && (
+                    <p className="mt-0.5 text-xs text-ash-600">
+                      {formatPrice(unitAmount, currency, locale)} × {seatPoolQty} cupos
+                    </p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between border-t border-paper-border pt-3 text-sm">
+                    <span className="text-ash-600">{t("successAmountPaid")}</span>
+                    <span className="font-semibold text-ink-900">{formatPrice(amount, currency, locale)}</span>
+                  </div>
+                  {completedOrderId && (
+                    <div className="mt-1.5 flex items-center justify-between text-xs">
+                      <span className="text-ash-600">{t("successOrderRef")}</span>
+                      <span className="font-mono text-ash-700">{completedOrderId.slice(0, 8).toUpperCase()}</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button size="lg" onClick={() => router.push(`/campus/pagos?orderId=${completedOrderId ?? ""}`)}>
+                  {t("goToPayments")}
+                </Button>
+                <p className="text-xs text-ash-500">{t("successRedirecting")}</p>
+              </CardContent>
+            </Card>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
               {status === "error" && errorMessage && <Callout variant="danger">{errorMessage}</Callout>}

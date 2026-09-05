@@ -270,3 +270,92 @@ Los 3 se ejecutan en **cada** carga de `/admin/finanzas`. Batcheables agrupando 
 6. **3.1 + 3.2** — Selector de tema/idioma en móvil + mensaje de error genérico en login (ambos triviales de arreglar, impacto directo en cualquier usuario).
 7. Resto de Alto (2.2-2.6, 3.3-3.8, 4.4-4.9) según capacidad del equipo.
 8. Medio/Bajo — limpieza incremental, sin bloquear ningún lanzamiento.
+
+---
+
+## Ronda 2 — Revisión de diseño/UX con skills (`/critique` + `/audit` + `/design:accessibility-review` + `/harden` + `/optimize`) — 2026-09-04
+
+**Estado (2026-09-05): implementados y verificados con `tsc --noEmit` limpio los 10 ítems de la sección "Problemas Prioritarios" (P0-P2) — material sin confirmación, 18 sitios de `alert()/confirm()/prompt()` nativos, teclado en subida de archivos, foco atrapado del drawer móvil (hook `useFocusTrap` compartido con `Dialog.tsx`), barrido de contraste `ash-400/300` (33 usos reales corregidos), clases `primary-*` inexistentes, plural de `/catalogo`, momento de éxito de checkout rediseñado, `CourseEditor` dividido en pestañas Contenido/Comercial/Evaluaciones-y-sesiones (con "Comercial" oculta para `viewerRole="TEACHER"`), y `next/dynamic`+`React.memo` para los editores/filas pesadas. No se pudo verificar con `next build`/Playwright en vivo por la misma limitación de RAM de la máquina compartida documentada abajo — `tsc --noEmit` en los 3 apps es la verificación disponible.** El texto original de los hallazgos se conserva como registro histórico.
+
+Segunda pasada, pedida explícitamente con "usa todos los skills necesarios". A diferencia de la Ronda 1 (arriba), esta ronda usó el protocolo formal de `/critique`: dos evaluaciones independientes sin verse entre sí — **Evaluación A** (revisión de diseño cualitativa: heurísticas de Nielsen, carga cognitiva, personas, viaje emocional) y **Evaluación B** (auditoría técnica: WCAG 2.1 AA, rendimiento, temas, responsivo, antipatrones) — más el escáner determinista `impeccable --fast` sobre los 212 archivos `.tsx`/`.jsx` de `apps/web/src`. No se pudo usar navegador en vivo (la máquina compartida tenía ~69MB de RAM libre en el momento de la revisión — mismo límite ya documentado en la Ronda 1); ambas evaluaciones se hicieron por lectura exhaustiva de código fuente.
+
+### Escáner automático (`impeccable --fast`): 6 hallazgos, prácticamente todos falsos positivos
+
+| # | Hallazgo | Veredicto (ambas evaluaciones coincidieron) |
+|---|---|---|
+| 1-2 | `border-l-4` "side-tab" en `admin/page.tsx:228` y `NpsSurveyManager.tsx:270` | **Falso positivo.** Es un indicador de severidad/zona (con ícono + badge de texto al lado, no es color-only) — patrón legítimo, no decorativo. |
+| 3-4 | `ai-color-palette` en `text-indigo-*` | **Falso positivo.** Indigo es el segundo azul real de marca de Inkapitales (`#586BD8`), documentado con su ratio de contraste en `globals.css`. |
+| 5 | `gradient-text` en `.brand-gradient-text` (`globals.css:233`) | **Falso positivo.** Un solo uso, en el `<h1>` del home, reproduce el degradado de marca de inkapitales.com — no es el "texto arcoíris en cada título" típico de IA. |
+| 6 | `img` rota en `CertificateTemplateManager.tsx:582` | **Falso positivo en el `<img>` mismo** (es la vista previa de plantilla; el PDF usa `<iframe>` aparte) — **pero destapó un bug real distinto** (ver P2 abajo: clases `primary-*` inexistentes). |
+
+**Conclusión**: cero antipatrones visuales genuinos de IA (paleta gratuita, glassmorphism decorativo, métricas hero repetitivas, cuadrículas idénticas) en home/dashboard/catálogo/detalle de curso. El sistema de marca es real y deliberado, no genérico.
+
+### Puntuación de Salud
+
+| Marco | Puntuación |
+|---|---|
+| Heurísticas de Nielsen (Evaluación A, 10×4) | **25/40** — funcional con deuda de diseño concentrada en `CourseEditor` |
+| Auditoría técnica (Evaluación B, 5×4: a11y/rendimiento/temas/responsivo/antipatrones) | **13/20** — aceptable con hallazgos relevantes |
+
+### Patrón sistémico más importante: "se construyó bien, no se propagó del todo"
+
+Ambas evaluaciones, de forma independiente, convergieron en el mismo diagnóstico: los componentes/patrones correctos ya existen en el código (`ConfirmDialog`, tokens de color con contraste calculado, foco atrapado en `Dialog.tsx`, `getComputedStyle` para gráficos) pero se aplicaron solo al subconjunto de archivos que motivó su creación en la Ronda 1, sin barrer el resto del código con el mismo patrón. Esto explica la mayoría de los hallazgos P1/P2 nuevos.
+
+### Problemas Prioritarios (combinados, ambas evaluaciones)
+
+**[P0] Eliminar un material de lección no pide confirmación — único caso sin `ConfirmDialog` en todo `CourseEditor.tsx`**
+`CourseEditor.tsx:932-941` — el botón de basurero llama `adminApi.deleteMaterial()` directamente en `onClick`, mientras módulos/lecciones/cursos/evaluaciones en el mismo archivo sí usan `ConfirmDialog`. Pérdida de datos irreversible con un clic accidental. → `/harden`
+
+**[P1] `alert()/confirm()/prompt()` nativos siguen en 13 archivos (18 sitios) no cubiertos en la Ronda 1** — incluyendo **5 sitios dentro de `UsersManager.tsx`**, el mismo archivo donde `ResetPasswordDialog` ya estableció el patrón correcto. También: `PlatformLicenseManager`, `EmailCampaignManager`, `ExpenseManager`, `CourtesyGrantsHistory`, `PartnerInstitutionManager`, `CertificateTemplateManager`, `MailingListManager`, `ResetProgressControl`, `ChatbotDocumentsManager`, `RoyaltyRecipientManager`, `RemoveMemberButton`, `QuoteResponseCard`, y `TeacherPayrollManager.tsx:190` (`prompt()` nativo sin validación para "motivo de penalidad"). → `/harden`
+
+**[P1] Inputs de subida de archivo inalcanzables por teclado (WCAG 2.1.1)** — `DropLabel.tsx`/`FileDropzone.tsx` (usados en portada de curso, video/material de lección, imágenes SCORM, fondo de certificado, documentos del chatbot) usan `className="hidden"` (`display:none`) en el `<input type="file">`, sacándolo del árbol de accesibilidad. Un usuario de teclado no puede abrir el selector de archivos en ningún punto de subida del sistema. Fix: técnica `sr-only` (igual que `Checkbox.tsx`) o `tabIndex`+`onKeyDown` en el `<label>`. → `/harden`
+
+**[P1] La corrección de contraste `text-ash-400` (Ronda 1) fue parcial: 59 usos reales siguen en 2.91:1, bajo el mínimo AA de 4.5:1** — timestamps de notificaciones, estados vacíos ("Sin cursos matriculados", "Sin firma"/"Sin sello de agua"), notas explicativas y hints de formulario. Mismo defecto ya corregido en ~25 sitios; el barrido no llegó a estos. → `/polish`
+
+**[P1] El drawer móvil promete `aria-modal="true"` pero no atrapa `Tab`** — a diferencia de `Dialog.tsx` (que sí intercepta Tab y cicla foco), `SidebarShell.tsx` mueve el foco al abrir/cerrar pero un usuario de teclado puede tabular hacia afuera del drawer, hacia contenido de la página subyacente que sigue en el DOM. Fix: extraer el trap de `Dialog.tsx` a un hook compartido (`useFocusTrap`) y reusarlo. → `/harden`
+
+**[P1] `CourseEditor` (2909 líneas): ~16 campos comerciales/pedagógicos simultáneos en una sola sección, reutilizado sin recorte para el rol docente** — `MetadataSection` mezcla precio/descuento/moneda/plantilla de certificado con política de acceso e idioma, y la misma pantalla completa (sin ninguna prop de rol) es lo que ve un profesor que solo quiere subir un SCORM. Checklist de carga cognitiva: 5 de 8 puntos fallan (crítico). Es un problema de arquitectura de la información, no de estilo. → `/distill` seguido de `/shape`
+
+**[P2] Clases Tailwind `primary-*` no existen en `tailwind.config.ts` (solo `ink/paper/ash/gold/indigo/success/warning/danger`)** — usadas en `CertificateTemplateManager.tsx:601,620` para resaltar el tag que se está arrastrando (`border-primary-600 ring-primary-300 outline-primary-400`). Como la clase no genera CSS, ese feedback visual nunca aparece. Ambas evaluaciones llegaron al mismo hallazgo por caminos distintos (una lo vio como código muerto, la otra como consecuencia del escáner). → `/polish`
+
+**[P2] Bug de pluralización "1 resultados" en `/catalogo` (la página más visitada del sitio) — mismo bug ya corregido en `cursos/[slug]`, no propagado** — `catalogo/page.tsx:95` usa `resultsCount` sin rama singular; `cursos/[slug]/page.tsx` ya tiene `lessonCountOne`/`lessonsCount` correctamente ramificado. → `/harden`
+
+**[P2] Momento de éxito de checkout plano — viola la regla del pico y el fin** — tras un pago exitoso (incluyendo compras B2B de múltiples cupos), solo aparece un `Callout` de una línea con redirect automático a 1200ms; sin resumen de orden, monto ni número de referencia visible. Para una compra ejecutiva/corporativa, el cierre de la experiencia no refuerza la decisión de compra. → `/delight`
+
+**[P2] Cero `React.memo`/`useCallback` en 119 componentes cliente, cero `next/dynamic` en todo el proyecto** — `ScormBuilder`/`ExamBuilder` (con su propia lógica `@dnd-kit`) se incluyen en el bundle inicial de `/admin/catalogo/[courseId]` aunque la mayoría de sesiones nunca abre esos modales. → `/optimize`
+
+### Otros hallazgos de valor (severidad menor, no bloqueantes)
+
+- Dashboard admin: grid de 6 KPIs con estructura idéntica sin jerarquía entre ellos (patrón "hero metrics" a vigilar) — `admin/page.tsx:130-152`. → `/bolder`
+- `/empresas`: bloque de 3 tarjetas de beneficios genérico, sin prueba social para el comprador B2B — `empresas/page.tsx:29-37`. → `/bolder` + `/polish`
+- Colores hardcodeados de Tailwind genérico (`bg-blue-400`, `bg-green-400`, etc., no tokens de marca) en la navegación de `campus`/`docente`/`admin` — no reaccionarán si un tenant de "arriendo aislado" personaliza su marca. → `/colorize`
+- `DashboardCharts`/`ProfitAndLossCharts`: la corrección de colores vía `getComputedStyle` (Ronda 1) cubrió solo indigo/gold; colores de estado (`success`/`warning`/`danger`) y ejes siguen hardcodeados. → `/optimize`
+- Estrellas de calificación en `CourseRatingsManager.tsx` con el mismo `gold-400` (1.90:1) que ya se corrigió en el resto del sitio a `gold-500`/`warning`. → `/polish`
+- `colaboradores/page.tsx` sin manejo de tabla vacía (cero colaboradores = tabla con encabezados y ninguna fila, sin CTA). → `/harden`
+- Manejo de errores de red sin distinguir código HTTP (400/403/404/429/500) — depende 100% de que el backend redacte un mensaje humano. → `/harden`
+- Cero skeletons / cero `loading.tsx` de Next — todo estado de carga es texto plano "Cargando…". → `/polish`
+
+### Heurísticas de Nielsen (Evaluación A)
+
+| # | Heurística | Puntuación |
+|---|---|:---:|
+| 1 | Visibilidad del estado del sistema | 3 |
+| 2 | Relación sistema-mundo real | 4 |
+| 3 | Control y libertad del usuario | 2 |
+| 4 | Consistencia y estándares | 2 |
+| 5 | Prevención de errores | 2 |
+| 6 | Reconocimiento antes que recuerdo | 3 |
+| 7 | Flexibilidad y eficiencia de uso | 2 |
+| 8 | Estética y diseño minimalista | 2 |
+| 9 | Recuperación frente a errores | 3 |
+| 10 | Ayuda y documentación | 2 |
+| **Total** | | **25/40** |
+
+### Lo que ya funciona bien (ambas evaluaciones lo destacaron)
+
+- Back-stack de navegación propio en `SidebarShell.tsx` (resuelve de raíz un bug real de "atrás" entre secciones, no es un parche).
+- Confirmaciones de borrado con consecuencia explícita ("los alumnos ya matriculados conservan su acceso") donde existen.
+- Transparencia fiscal en checkout (desglose de IGV con base legal citada).
+- `Dialog.tsx` como referencia real de accesibilidad (foco, trap, Escape, restauración) — el problema es que no se reusó en todas partes.
+- Disciplina consistente de limpieza de `useEffect`/timers/listeners en todo el código revisado.
+- `package.json` sin dependencias muertas; todas las tablas con `overflow-x-auto`; sistema de tokens de color documentado con ratios de contraste calculados inline.
