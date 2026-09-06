@@ -31,6 +31,27 @@ const scormProgressSchema = z.object({
  * restringido a 'self'/inline/eval — la protección real contra scripts de
  * terceros, que nunca fue el problema acá).
  */
+/**
+ * `helmet()` (agregado globalmente en main.ts, ver ese comentario) manda
+ * por defecto `X-Frame-Options: SAMEORIGIN` y
+ * `Cross-Origin-Resource-Policy: same-origin` en TODA respuesta de la API,
+ * incluida esta. Esta ruta ya declara su propia intención explícita de ser
+ * embebible desde cualquier origen (`frame-ancestors *` arriba — Classroom.tsx
+ * la incrusta en un `<iframe>` que casi siempre vive en el origen del web
+ * app, distinto del de la API). `frame-ancestors` gana sobre
+ * `X-Frame-Options` en navegadores modernos, pero
+ * `Cross-Origin-Resource-Policy` es un mecanismo aparte que si no se
+ * relaja acá puede bloquear la carga del iframe entre orígenes distintos
+ * (detectado en una revisión de seguridad — no verificado como bug real en
+ * este entorno de un solo origen, pero es el mismo error exacto de
+ * "funciona en mi máquina" que ya se documentó para otros casos: local no
+ * prueba producción, donde api/web sí están en orígenes distintos).
+ */
+function allowCrossOriginFraming(res: Response) {
+  res.removeHeader("X-Frame-Options");
+  res.set("Cross-Origin-Resource-Policy", "cross-origin");
+}
+
 function scormContentSecurityPolicy(): string {
   const imageOrigins = [process.env.S3_PUBLIC_BASE_URL, process.env.S3_ENDPOINT]
     .filter((url): url is string => Boolean(url))
@@ -92,6 +113,7 @@ export class ScormController {
       "Content-Security-Policy": scormContentSecurityPolicy(),
       "X-Content-Type-Options": "nosniff",
     });
+    allowCrossOriginFraming(res);
     res.send(html);
   }
 
@@ -112,6 +134,7 @@ export class ScormController {
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=3600",
     });
+    allowCrossOriginFraming(res);
     res.send(buffer);
   }
 

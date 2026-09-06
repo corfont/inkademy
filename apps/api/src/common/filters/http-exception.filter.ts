@@ -43,7 +43,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // la query) en una respuesta 500 pública. El detalle real se sigue
       // logueando completo server-side; el cliente solo ve un mensaje
       // genérico, igual que para cualquier otro 500 no anticipado.
-      error = exception.name;
+      // `error` también se deja genérico (no `exception.name`) — verificado
+      // en vivo que un TokenError de OAuth filtraba el nombre real de la
+      // clase de excepción de una dependencia interna (passport-oauth2) en
+      // ese mismo campo, aunque `message` ya fuera genérico.
       this.logger.error(exception.message, exception.stack);
     }
 

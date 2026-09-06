@@ -592,8 +592,34 @@ export class AdminService {
     return this.prisma.course.create({ data: input as never });
   }
 
+  /**
+   * Campos comerciales/de certificación — la pantalla de admin
+   * (CourseEditor.tsx) ya los oculta por completo en la pestaña "Comercial"
+   * cuando `viewerRole==="TEACHER"`, pero ocultarlos en el cliente no
+   * reemplaza validar el permiso en el servidor (hallazgo de auditoría de
+   * seguridad: un docente con CourseStaff podía seguir enviando estos
+   * campos directamente por PATCH, sin pasar por la UI). `status` queda
+   * fuera de esta lista a propósito: StatusToggle sigue expuesto a
+   * docentes en la UI (pueden archivar/despublicar su propio curso), así
+   * que restringirlo acá rompería esa función ya existente.
+   */
+  private static readonly TEACHER_RESTRICTED_COURSE_FIELDS = [
+    "priceAmount",
+    "priceCurrency",
+    "accessDurationPolicy",
+    "b2bAvailable",
+    "b2bPriceAmount",
+    "discountPercent",
+    "discountExpiresAt",
+    "certificateTemplateId",
+  ] as const;
+
   async updateCourse(id: string, input: Record<string, unknown>, teacherUserId?: string) {
-    if (teacherUserId) await this.assertTeacherCanEditCourse(id, teacherUserId);
+    if (teacherUserId) {
+      await this.assertTeacherCanEditCourse(id, teacherUserId);
+      input = { ...input };
+      for (const key of AdminService.TEACHER_RESTRICTED_COURSE_FIELDS) delete input[key];
+    }
     return this.prisma.course.update({ where: { id }, data: input as never });
   }
 
