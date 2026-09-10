@@ -1040,6 +1040,7 @@ export const upsertSettingsSchema = z.object({
   certificateEmailFontFamily: z.string().optional().nullable(),
   certificateEmailTextAlign: z.enum(["left", "center", "right", "justify"]).optional(),
   certificateEmailTextColor: z.string().optional().nullable(),
+  ssoMicrosoftDomains: z.string().optional().nullable(),
 });
 
 // "Traducción asistida" — genérico (POST /admin/translate), hoy usado tanto

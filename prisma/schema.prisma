@@ -1930,6 +1930,17 @@ model PlatformSettings {
   certificateEmailTextAlign  String? @default("left") // left | center | right | justify
   certificateEmailTextColor  String?
 
+  // "Si el usuario se logea con @inkapitales.com el sistema sabe que es de
+  // Microsoft e inicia sesión" — dominios de correo (separados por coma,
+  // ej. "inkapitales.com,otraempresa.com") que deben saltar directo al SSO
+  // de Microsoft/Azure AD en vez de pedir contraseña. El login (paso 1:
+  // solo correo) compara el dominio contra esta lista antes de decidir si
+  // revela el campo de contraseña o redirige a /auth/microsoft?login_hint=.
+  // null/vacío = nadie salta automáticamente (comportamiento anterior,
+  // login+Microsoft siguen disponibles como botones manuales de todas
+  // formas).
+  ssoMicrosoftDomains String?
+
   updatedAt DateTime @updatedAt
 }
 

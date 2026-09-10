@@ -28,6 +28,19 @@ export class MicrosoftStrategy extends PassportStrategy(OAuth2Strategy, "microso
     });
   }
 
+  /**
+   * `passport-oauth2` NO reenvía automáticamente ninguna opción extra hacia
+   * la URL de autorización (su propia implementación por defecto devuelve
+   * `{}` — verificado leyendo node_modules/passport-oauth2/lib/strategy.js
+   * antes de asumirlo): `state`/`scope`/PKCE son los únicos campos que
+   * arma por su cuenta. `login_hint` (agregado por MicrosoftAuthGuard desde
+   * el ?login_hint= del login del frontend) hay que reenviarlo acá a mano
+   * para que Microsoft precargue el correo en su propia pantalla.
+   */
+  authorizationParams(options: { login_hint?: string }): Record<string, string> {
+    return options.login_hint ? { login_hint: options.login_hint } : {};
+  }
+
   /** passport-oauth2 no sabe cómo obtener el perfil de Microsoft Graph: lo pedimos manualmente. */
   async userProfile(accessToken: string, done: (err: unknown, profile?: unknown) => void) {
     try {

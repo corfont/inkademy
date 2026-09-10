@@ -8,9 +8,17 @@ import type { Request, Response } from "express";
 export const MICROSOFT_OAUTH_STATE_COOKIE = "oauth_state_microsoft";
 const STATE_COOKIE_MAX_AGE_MS = 10 * 60 * 1000;
 
+// Formato laxo a propósito (no exige TLD conocido, no es lo que valida que
+// el correo exista) — solo evita que un valor con basura o un intento de
+// meter algo que no sea un correo llegue como login_hint a Microsoft. Un
+// login_hint inválido simplemente se ignora (undefined), nunca rompe el
+// flujo de login.
+const LOGIN_HINT_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 @Injectable()
 export class MicrosoftAuthGuard extends AuthGuard("microsoft") {
   getAuthenticateOptions(context: ExecutionContext) {
+    const req = context.switchToHttp().getRequest<Request>();
     const res = context.switchToHttp().getResponse<Response>();
     const nonce = randomBytes(16).toString("hex");
     res.cookie(MICROSOFT_OAUTH_STATE_COOKIE, nonce, {
@@ -20,7 +28,14 @@ export class MicrosoftAuthGuard extends AuthGuard("microsoft") {
       path: "/auth",
       maxAge: STATE_COOKIE_MAX_AGE_MS,
     });
-    return { state: nonce };
+    // "El sistema sabe que es de Microsoft e inicia sesión" — el login del
+    // frontend detecta el dominio y redirige acá con ?login_hint=<correo>
+    // para que Microsoft precargue el campo de correo en su propia pantalla
+    // (el usuario nunca lo vuelve a tipear). MicrosoftStrategy.authorizationParams
+    // es quien realmente lo agrega a la URL de autorización — ver ese archivo.
+    const rawHint = req.query?.login_hint;
+    const loginHint = typeof rawHint === "string" && LOGIN_HINT_PATTERN.test(rawHint) ? rawHint : undefined;
+    return { state: nonce, login_hint: loginHint };
   }
 }
 

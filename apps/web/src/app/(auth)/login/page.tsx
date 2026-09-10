@@ -8,12 +8,35 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginInput } from "@inkademy/shared";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 import { ApiError, API_URL } from "@/lib/api-client";
 import { belongsToOtherRoleArea, roleHomeHref } from "@/lib/auth";
 import { Input, Label, FieldError } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+
+/**
+ * "Si el usuario se logea con @inkapitales.com el sistema sabe que es de
+ * Microsoft e inicia sesión" — compara el dominio del correo (normalizado:
+ * minúsculas, sin espacios) contra la lista configurable en
+ * /admin/apariencia (PlatformSettings.ssoMicrosoftDomains, separados por
+ * coma). Vacío/sin configurar = nadie salta automáticamente; el botón
+ * "Continuar con Microsoft" sigue disponible manualmente de todas formas.
+ */
+function matchesSsoDomain(email: string, ssoDomains: string | null | undefined): boolean {
+  const domain = email.trim().toLowerCase().split("@")[1];
+  if (!domain || !ssoDomains) return false;
+  return ssoDomains
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(domain);
+}
+
+function microsoftSsoUrl(email: string): string {
+  return `${API_URL}/auth/microsoft?login_hint=${encodeURIComponent(email.trim())}`;
+}
 
 export default function LoginPage() {
   return (
@@ -28,7 +51,13 @@ function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const brand = useBrandSettings();
   const [serverError, setServerError] = useState<string | null>(null);
+  // Mientras el navegador arma el redirect a Microsoft (tras detectar el
+  // dominio), el formulario se deshabilita — sin esto, alguien que ya
+  // empezó a escribir la contraseña justo cuando termina de escribir el
+  // correo vería el submit normal competir con la redirección.
+  const [redirectingToSso, setRedirectingToSso] = useState(false);
   // "Al iniciar sesión, generar un session_uuid único; si el del token no
   // coincide con el de la base, destruir la sesión actual" — cuando eso
   // pasa, AuthProvider redirige acá con este parámetro para explicar POR
@@ -42,7 +71,19 @@ function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
+  // Se dispara al salir del campo de correo (antes de tocar la contraseña
+  // siquiera) y de nuevo al enviar el formulario, como red de seguridad —
+  // un autofill del navegador puede rellenar ambos campos y enviar sin
+  // pasar por onBlur.
+  function redirectToMicrosoftIfSsoDomain(email: string): boolean {
+    if (!email || !matchesSsoDomain(email, brand.ssoMicrosoftDomains)) return false;
+    setRedirectingToSso(true);
+    window.location.href = microsoftSsoUrl(email);
+    return true;
+  }
+
   async function onSubmit(values: LoginInput) {
+    if (redirectToMicrosoftIfSsoDomain(values.email)) return;
     setServerError(null);
     try {
       const user = await login(values.email, values.password);
@@ -91,14 +132,31 @@ function LoginForm() {
             <Callout variant="info">Tu sesión se cerró porque se inició sesión con esta cuenta en otro dispositivo.</Callout>
           )}
           {serverError && <Callout variant="danger">{serverError}</Callout>}
+          {redirectingToSso && <Callout variant="info">{t("redirectingToMicrosoft")}</Callout>}
           <div>
             <Label htmlFor="email">{t("email")}</Label>
-            <Input id="email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              error={errors.email?.message}
+              disabled={redirectingToSso}
+              {...register("email", {
+                onBlur: (e: React.FocusEvent<HTMLInputElement>) => redirectToMicrosoftIfSsoDomain(e.target.value),
+              })}
+            />
             <FieldError>{errors.email?.message}</FieldError>
           </div>
           <div>
             <Label htmlFor="password">{t("password")}</Label>
-            <Input id="password" type="password" autoComplete="current-password" error={errors.password?.message} {...register("password")} />
+            <Input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              error={errors.password?.message}
+              disabled={redirectingToSso}
+              {...register("password")}
+            />
             <FieldError>{errors.password?.message}</FieldError>
           </div>
           <div className="text-right">
@@ -106,8 +164,8 @@ function LoginForm() {
               {t("forgot")}
             </Link>
           </div>
-          <Button type="submit" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? "…" : t("submit")}
+          <Button type="submit" size="lg" disabled={isSubmitting || redirectingToSso}>
+            {redirectingToSso ? "…" : isSubmitting ? "…" : t("submit")}
           </Button>
         </form>
 

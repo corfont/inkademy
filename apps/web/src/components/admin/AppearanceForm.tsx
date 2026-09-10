@@ -118,6 +118,7 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
         certificateEmailFontFamily: form.certificateEmailFontFamily,
         certificateEmailTextAlign: form.certificateEmailTextAlign,
         certificateEmailTextColor: form.certificateEmailTextColor,
+        ssoMicrosoftDomains: form.ssoMicrosoftDomains,
       });
       setSaved(true);
       router.refresh();
@@ -334,6 +335,27 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                 onChange={(e) => setForm((f) => ({ ...f, contactAddress: e.target.value }))}
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Inicio de sesión con Microsoft</h2>
+          <p className="text-sm text-ash-500">
+            Dominios de correo que inician sesión con Microsoft automáticamente, sin pedir contraseña — por ejemplo,
+            un colaborador con cuenta @inkapitales.com nunca ve el campo de contraseña, se le redirige directo al login
+            de Microsoft/Azure AD apenas escribe su correo. Separa varios dominios con coma. El botón "Continuar con
+            Microsoft" sigue disponible para cualquier correo, esté o no en esta lista.
+          </p>
+          <div>
+            <Label htmlFor="sso-microsoft-domains">Dominios (separados por coma)</Label>
+            <Input
+              id="sso-microsoft-domains"
+              placeholder="inkapitales.com, otraempresa.com"
+              value={form.ssoMicrosoftDomains ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, ssoMicrosoftDomains: e.target.value }))}
+            />
           </div>
         </CardContent>
       </Card>

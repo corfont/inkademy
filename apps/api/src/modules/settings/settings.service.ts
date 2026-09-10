@@ -42,6 +42,7 @@ const DEFAULTS = {
   certificateEmailFontFamily: null as string | null,
   certificateEmailTextAlign: "left" as string,
   certificateEmailTextColor: null as string | null,
+  ssoMicrosoftDomains: null as string | null,
 };
 
 @Injectable()
@@ -89,6 +90,7 @@ export class SettingsService {
         certificateEmailFontFamily: null,
         certificateEmailTextAlign: "left",
         certificateEmailTextColor: null,
+        ssoMicrosoftDomains: null,
         taxAffectation,
       };
     }

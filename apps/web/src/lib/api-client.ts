@@ -225,6 +225,8 @@ export interface PlatformSettingsDTO {
   certificateEmailFontFamily?: string | null;
   certificateEmailTextAlign?: "left" | "center" | "right" | "justify";
   certificateEmailTextColor?: string | null;
+  /** Dominios (separados por coma) que saltan directo a "Iniciar sesión con Microsoft" — ver login/page.tsx. */
+  ssoMicrosoftDomains?: string | null;
 }
 
 /** GET /admin/sunat-settings — los secretos nunca llegan en texto plano, solo flags hasX. */

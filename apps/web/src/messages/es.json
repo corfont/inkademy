@@ -161,7 +161,8 @@
       "createAccount": "Crear cuenta",
       "orContinueWith": "o continúa con",
       "google": "Continuar con Google",
-      "microsoft": "Continuar con Microsoft"
+      "microsoft": "Continuar con Microsoft",
+      "redirectingToMicrosoft": "Reconocimos tu correo de empresa — te llevamos a iniciar sesión con Microsoft…"
     },
     "register": {
       "title": "Crea tu cuenta",
