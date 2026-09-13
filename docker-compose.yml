@@ -119,6 +119,15 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # NEXT_PUBLIC_* se hornea en el bundle del navegador en tiempo de
+      # BUILD, no de ejecución — ver el comentario en apps/web/Dockerfile.
+      # Compose sustituye estas ${VAR} leyendo el .env de este mismo
+      # directorio (no el env_file: de abajo, que solo aplica en runtime).
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        NEXT_PUBLIC_CULQI_PUBLIC_KEY: ${NEXT_PUBLIC_CULQI_PUBLIC_KEY:-}
+        NEXT_PUBLIC_STRIPE_PUBLIC_KEY: ${NEXT_PUBLIC_STRIPE_PUBLIC_KEY:-}
+        NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${NEXT_PUBLIC_PAYPAL_CLIENT_ID:-}
     restart: unless-stopped
     env_file: .env
     environment:

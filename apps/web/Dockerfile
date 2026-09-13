@@ -26,6 +26,22 @@ COPY pnpm-workspace.yaml package.json ./
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 ENV NEXT_TELEMETRY_DISABLED=1
+# Las variables NEXT_PUBLIC_* de Next.js se "hornean" como strings literales
+# en el bundle del NAVEGADOR durante `next build` — a diferencia del resto
+# de las env vars, no basta con pasarlas en `environment:` del contenedor
+# en tiempo de ejecución, porque para entonces el JS ya está compilado.
+# Verificado en vivo: sin esto, el bundle del cliente seguía llamando a
+# `http://localhost:4000` (el default de api-client.ts) aunque el
+# contenedor tuviera NEXT_PUBLIC_API_URL correcto en su entorno — deben
+# pasarse como --build-arg (ver build.args en docker-compose.yml).
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CULQI_PUBLIC_KEY
+ARG NEXT_PUBLIC_STRIPE_PUBLIC_KEY
+ARG NEXT_PUBLIC_PAYPAL_CLIENT_ID
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_CULQI_PUBLIC_KEY=${NEXT_PUBLIC_CULQI_PUBLIC_KEY}
+ENV NEXT_PUBLIC_STRIPE_PUBLIC_KEY=${NEXT_PUBLIC_STRIPE_PUBLIC_KEY}
+ENV NEXT_PUBLIC_PAYPAL_CLIENT_ID=${NEXT_PUBLIC_PAYPAL_CLIENT_ID}
 RUN pnpm --filter @inkademy/shared run build
 RUN pnpm --filter @inkademy/web build
 
