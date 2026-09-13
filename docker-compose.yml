@@ -30,7 +30,11 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    # MinIO restringió sus imágenes en Docker Hub (minio/minio, minio/mc) a
+    # requerir login — verificado en vivo: "pull access denied" en un pull
+    # anónimo real, no una suposición. quay.io/minio/* es su mirror oficial
+    # sin ese requisito.
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -49,7 +53,7 @@ services:
 
   # Crea el bucket por defecto al iniciar (equivalente local a crear el bucket S3 en prod).
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     depends_on:
       - minio
     entrypoint: >
