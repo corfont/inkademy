@@ -1,8 +1,6 @@
-ALTER TABLE "CourseSuggestion"
-  ADD COLUMN "adminResponse" TEXT,
-  ADD COLUMN "respondedAt" TIMESTAMP(3),
-  ADD COLUMN "respondedById" TEXT;
-
-ALTER TABLE "CourseSuggestion"
-  ADD CONSTRAINT "CourseSuggestion_respondedById_fkey"
-  FOREIGN KEY ("respondedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- No-op: superada por 20260824180016_add_course_suggestions (crea la
+-- tabla "CourseSuggestion" con estas mismas columnas desde el CREATE TABLE
+-- — bug de orden de migraciones, ver el comentario largo ahí). Se deja
+-- como SELECT sin efecto para no romper el historial ya aplicado contra
+-- las bases de datos de desarrollo existentes.
+SELECT 1;
