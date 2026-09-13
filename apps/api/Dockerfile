@@ -42,6 +42,10 @@ COPY --from=build /repo/packages ./packages
 COPY --from=build /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
 COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
+# Se incluye para poder correr `prisma migrate deploy`/`db execute` contra
+# el propio contenedor de producción (schema + SQL de migraciones ya
+# generadas) sin tener que reconstruir la imagen para eso.
+COPY --from=build /repo/prisma ./prisma
 
 WORKDIR /repo/apps/api
 EXPOSE 4000
