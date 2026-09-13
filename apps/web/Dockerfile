@@ -52,7 +52,15 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-COPY --from=builder /repo/apps/web/public ./public
+# El servidor standalone (server.js) sirve `public/` relativo a SU PROPIA
+# ubicación, no a la raíz del contenedor — y con `outputFileTracingRoot`
+# apuntando al monorepo (ver next.config.js), server.js queda anidado en
+# ./apps/web/server.js (no en la raíz), igual que .next/static ya se
+# copiaba correctamente. `public/` se quedó apuntando a la raíz por error
+# (./public) cuando se corrigió esa ruta — verificado en vivo: el logo y
+# el resto de assets de /public devolvían 404 pese a existir dentro de la
+# imagen, en /app/public en vez de /app/apps/web/public.
+COPY --from=builder /repo/apps/web/public ./apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
 
