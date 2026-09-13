@@ -34,8 +34,11 @@ ALTER TABLE "PlatformSettings" ADD COLUMN "detractionRucNaturalPercent" DOUBLE P
 ALTER TABLE "PlatformSettings" ADD COLUMN "detractionRucNaturalThreshold" DOUBLE PRECISION NOT NULL DEFAULT 700;
 ALTER TABLE "PlatformSettings" ADD COLUMN "detractionRucEmpresaPercent" DOUBLE PRECISION NOT NULL DEFAULT 12;
 
--- IGV por defecto GRAVADO (Inkapitales no es institución educativa exonerada)
-ALTER TABLE "SunatSettings" ALTER COLUMN "taxAffectation" SET DEFAULT 'GRAVADO';
+-- IGV por defecto GRAVADO (Inkapitales no es institución educativa
+-- exonerada): movido a 20260824213913_add_sunat_settings (que crea la
+-- tabla SunatSettings), mismo bug de orden que el bloque anterior — esta
+-- migración corre antes que esa por nombre de carpeta, y "SunatSettings"
+-- todavía no existe en una base de datos nueva.
 
 -- Convenios institucionales (certificado con 3ra firma + facturación por convenio)
 CREATE TYPE "PartnerBillingType" AS ENUM ('FIXED', 'PER_COURSE', 'PER_PERIOD');
