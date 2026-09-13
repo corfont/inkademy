@@ -16,7 +16,7 @@
     "backup:restore": "tsx scripts/restore-backup.ts",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "postinstall": "pnpm --filter @inkademy/db run generate && pnpm --filter @inkademy/shared run build && pnpm --filter @inkademy/db run build"
+    "postinstall": "test -f prisma/schema.prisma && (pnpm --filter @inkademy/db run generate && pnpm --filter @inkademy/shared run build && pnpm --filter @inkademy/db run build) || echo 'postinstall: prisma/schema.prisma aún no existe en este árbol (capa \"deps\" de un build Docker por etapas) — se omite, la etapa \"build\" del Dockerfile ya lo corre explícitamente después de copiar el código fuente completo.'"
   },
   "dependencies": {
     "dotenv": "^16.4.5"
