@@ -12,12 +12,27 @@ ALTER TABLE "LiveSession" ADD CONSTRAINT "LiveSession_teacherId_fkey" FOREIGN KE
 ALTER TYPE "QuestionType" ADD VALUE 'ORDERING';
 
 -- Yape/Plin fee + detracción por tipo de comprador (reemplaza el % plano)
+--
+-- Bug de orden de migraciones (detectado corriendo `prisma migrate deploy`
+-- contra una base de datos realmente vacía por primera vez en la vida del
+-- proyecto): esta carpeta está fechada 24-ago, pero originalmente asumía
+-- que "detractionEnabled"/"detractionPercent" ya existían — columnas que
+-- en realidad crea la migración 20260825060000_detraction_settings,
+-- fechada UN DÍA DESPUÉS. En las bases de datos de desarrollo ya
+-- migradas esto nunca se notó porque ambas ya están marcadas como
+-- aplicadas (el orden real en que se corrieron a mano no coincide con el
+-- de sus nombres de carpeta). Para no alterar esas bases ya migradas, se
+-- mantienen ambos nombres de carpeta tal cual y en su lugar esta
+-- migración pasa a crear "detractionEnabled" directamente (con el default
+-- final que de todos modos terminaba teniendo), sin depender de la otra
+-- migración ni de una columna "detractionPercent" que nunca llegó a
+-- crearse en este orden — ver el comentario en
+-- 20260825060000_detraction_settings/migration.sql, que ahora es un no-op.
 ALTER TABLE "PlatformSettings" ADD COLUMN "yapePlinFeePercent" DOUBLE PRECISION NOT NULL DEFAULT 0;
-ALTER TABLE "PlatformSettings" ALTER COLUMN "detractionEnabled" SET DEFAULT true;
+ALTER TABLE "PlatformSettings" ADD COLUMN "detractionEnabled" BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE "PlatformSettings" ADD COLUMN "detractionRucNaturalPercent" DOUBLE PRECISION NOT NULL DEFAULT 12;
 ALTER TABLE "PlatformSettings" ADD COLUMN "detractionRucNaturalThreshold" DOUBLE PRECISION NOT NULL DEFAULT 700;
 ALTER TABLE "PlatformSettings" ADD COLUMN "detractionRucEmpresaPercent" DOUBLE PRECISION NOT NULL DEFAULT 12;
-ALTER TABLE "PlatformSettings" DROP COLUMN "detractionPercent";
 
 -- IGV por defecto GRAVADO (Inkapitales no es institución educativa exonerada)
 ALTER TABLE "SunatSettings" ALTER COLUMN "taxAffectation" SET DEFAULT 'GRAVADO';
