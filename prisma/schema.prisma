@@ -4,8 +4,16 @@
 // ============================================================================
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../packages/db/generated"
+  provider      = "prisma-client-js"
+  output        = "../packages/db/generated"
+  // Sin esto, Prisma asume "native" (el target del contenedor de BUILD) y
+  // en node:20-alpine falló en runtime con "Prisma failed to detect the
+  // libssl/openssl version... Defaulting to openssl-1.1.x" seguido de
+  // "Unable to require libquery_engine-linux-musl.so.node" — Alpine trae
+  // OpenSSL 3.x pero el motor descargado no coincidía. Declarar el target
+  // explícito evita depender de esa detección. Solo se vio ejecutando el
+  // contenedor real (api/worker), nunca en el build ni en tsc.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

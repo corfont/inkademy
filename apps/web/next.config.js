@@ -7,9 +7,6 @@ const path = require("node:path");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  // Necesario para que el output standalone incluya @inkademy/shared
-  // (dependencia de workspace fuera de apps/web) al construir en el monorepo.
-  outputFileTracingRoot: path.join(__dirname, "../.."),
   reactStrictMode: true,
   images: {
     remotePatterns: [
@@ -19,6 +16,18 @@ const nextConfig = {
   },
   experimental: {
     typedRoutes: false,
+    // Necesario para que el output standalone incluya @inkademy/shared
+    // (dependencia de workspace fuera de apps/web) al construir en el
+    // monorepo. Va DENTRO de `experimental`, no en el nivel superior — en
+    // Next 14.2.5 el nivel superior es un objeto estricto (zod
+    // `strictObject`) que solo WARN-ea y descarta cualquier clave que no
+    // reconoce ahí, en vez de fallar; puesta afuera, esta opción se
+    // ignoraba en silencio (visible como "Unrecognized key(s)...
+    // outputFileTracingRoot" en cada arranque) y el build standalone caía
+    // a su propia detección de raíz, aplanando server.js a /app/server.js
+    // en vez de /app/apps/web/server.js — solo se detectó ejecutando el
+    // contenedor real, no en el build ni en next dev.
+    outputFileTracingRoot: path.join(__dirname, "../.."),
   },
   eslint: {
     // El lint se corre aparte (pnpm lint); no bloquear el build de producción por reglas de estilo.
