@@ -19,7 +19,25 @@ import type {
 } from "@inkademy/shared";
 import { getClientAccessToken, setClientAccessToken, clearClientAccessToken } from "./auth";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// En un despliegue con Docker Compose donde api/web son contenedores
+// separados en la misma máquina (sin dominio propio, expuestos por IP
+// pública), un fetch hecho DESDE un Server Component (que corre dentro
+// del contenedor "web") hacia la URL pública puede fallar por "hairpin
+// NAT" — Docker no siempre deja que un contenedor se alcance a sí mismo
+// (u a otro contenedor del mismo host) rebotando por la IP pública del
+// host. Next.js compila este módulo por separado para el bundle de
+// servidor y el de navegador, así que `typeof window === "undefined"`
+// resuelve correctamente en cada uno: el servidor usa la URL INTERNA de
+// Docker (API_URL_INTERNAL, ej. http://api:4000) si está definida, y el
+// navegador siempre usa la pública (NEXT_PUBLIC_API_URL) — nunca al
+// revés, porque el navegador del usuario sí necesita la URL real.
+// Verificado en vivo: sin esto, la home mostraba "No pudimos conectar con
+// el servidor" (el fetch server-side fallaba) aunque curl directo a la
+// API pública funcionara perfecto desde fuera.
+export const API_URL =
+  typeof window === "undefined"
+    ? (process.env.API_URL_INTERNAL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000")
+    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000");
 
 export class ApiError extends Error {
   statusCode: number;
