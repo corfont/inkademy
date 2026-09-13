@@ -34,6 +34,12 @@ ENV NODE_ENV=production
 # Chromium para puppeteer (generación de PDF de certificados). Se usa el
 # Chromium del paquete de Alpine en vez del que descarga puppeteer, que no
 # corre bien en musl/alpine sin dependencias adicionales.
+#
+# openssl: sin el binario CLI instalado, la detección de OpenSSL de Prisma
+# en runtime falla en silencio y carga el motor de query equivocado (el
+# compilado para openssl-1.1.x, que no existe en esta imagen) en vez del
+# "linux-musl-openssl-3.0.x" ya generado al lado — solo se vio ejecutando
+# el contenedor real, no en el build.
 RUN apk add --no-cache \
       chromium \
       nss \
@@ -41,6 +47,7 @@ RUN apk add --no-cache \
       harfbuzz \
       ca-certificates \
       ttf-freefont \
+      openssl \
     && rm -rf /var/cache/apk/*
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser

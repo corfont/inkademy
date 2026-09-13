@@ -27,6 +27,15 @@ RUN pnpm --filter @inkademy/api run build
 FROM node:20-alpine AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
+# Sin esto, el binario de Prisma generado para "linux-musl-openssl-3.0.x"
+# queda sin usarse: la propia detección de OpenSSL de Prisma en runtime
+# necesita poder invocar `openssl` — sin el paquete instalado, falla en
+# silencio ("Prisma failed to detect the libssl/openssl version...
+# Defaulting to openssl-1.1.x") y carga el motor equivocado
+# (libquery_engine-linux-musl.so.node, que pide libssl.so.1.1, inexistente
+# en esta imagen) aunque el correcto ya esté generado al lado. Solo se vio
+# ejecutando el contenedor real.
+RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/packages ./packages
