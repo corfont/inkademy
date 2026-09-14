@@ -225,11 +225,35 @@ export class AuthController {
     return { accessToken };
   }
 
+  // Puente de acceso desde el CRM de Inkapitales (modo "módulo del CRM",
+  // uso interno — ver CLAUDE.md de portafolio, sección "Dos categorías de
+  // sistema" y AuthService.findOrCreateCrmBridgeAdmin). El CRM redirige acá
+  // el navegador de su propio admin ya autenticado, con un JWT corto
+  // firmado con CRM_BRIDGE_SECRET (nunca visto por el navegador del CRM,
+  // solo generado server-side ahí) — el resto del flujo es IDÉNTICO al
+  // callback de OAuth: arranca sesión real de Inkademy, cookie de refresh,
+  // código de intercambio de un solo uso, redirect a /auth/callback.
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 600_000 } })
+  @Get("crm-bridge")
+  @ApiOperation({ summary: "Acceso admin a Inkademy desde el CRM de Inkapitales (token firmado, uso interno)" })
+  async crmBridge(@Query("token") token: string, @Res() res: Response) {
+    if (!token) throw new UnauthorizedException("Falta el token de acceso del CRM.");
+    const profile = this.authService.verifyCrmBridgeToken(token);
+    const user = await this.authService.findOrCreateCrmBridgeAdmin(profile);
+    return this.startSessionAndRedirect(user, res);
+  }
+
   private async handleOAuthCallback(req: Request, res: Response) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const profile = req.user as any;
     const oauthUser = await this.authService.findOrCreateFromOAuth(profile);
-    const { accessToken, rawUser } = await this.authService.login(oauthUser);
+    return this.startSessionAndRedirect(oauthUser, res);
+  }
+
+  /** Cola común de "ya sé quién es, arranca su sesión real" — la comparten el callback de OAuth y el puente del CRM. */
+  private async startSessionAndRedirect(user: import("@inkademy/db").User, res: Response) {
+    const { accessToken, rawUser } = await this.authService.login(user);
     this.setRefreshCookie(res, this.authService.signRefreshToken(rawUser));
     const appUrl = this.config.get<string>("APP_URL", "http://localhost:3000");
     const code = this.authService.createOAuthExchangeCode(accessToken);

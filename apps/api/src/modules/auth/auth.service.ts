@@ -34,6 +34,14 @@ interface OAuthProfile {
   lastName: string;
 }
 
+/** Payload que firma el CRM (con CRM_BRIDGE_SECRET) para el puente de acceso — ver findOrCreateCrmBridgeAdmin. */
+interface CrmBridgeTokenPayload {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  aud: "inkademy-crm-bridge";
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -286,6 +294,58 @@ export class AuthService {
         providerAccountId: profile.providerAccountId,
       },
     });
+    return user;
+  }
+
+  /**
+   * Puente de acceso desde el CRM de Inkapitales (modo "módulo del CRM",
+   * uso interno — ver CLAUDE.md de portafolio, sección "Dos categorías de
+   * sistema"). El CRM firma el token con el mismo CRM_BRIDGE_SECRET; acá
+   * solo se verifica — Inkademy nunca ve ni necesita la sesión del CRM en
+   * sí, solo confía en esta aserción firmada de "este correo es un admin
+   * autenticado del CRM ahora mismo".
+   */
+  verifyCrmBridgeToken(token: string): CrmBridgeTokenPayload {
+    const secret = this.config.get<string>("CRM_BRIDGE_SECRET");
+    if (!secret) throw new BadRequestException("El puente de acceso con el CRM no está configurado en este servidor.");
+    try {
+      const payload = this.jwt.verify<CrmBridgeTokenPayload>(token, { secret });
+      if (payload.aud !== "inkademy-crm-bridge" || !payload.email) throw new Error("payload inválido");
+      return payload;
+    } catch {
+      throw new UnauthorizedException("El enlace de acceso desde el CRM ya expiró o no es válido — vuelve a intentarlo desde el CRM.");
+    }
+  }
+
+  /**
+   * "El admin del CRM tendrá todos los roles de Inkademy" (pedido
+   * explícito del usuario) — se busca por correo; si no existe, se crea
+   * como ADMIN directo; si ya existe con otro rol principal (ej. ya es
+   * TEACHER en Inkademy por su cuenta), se le AGREGA ADMIN como rol
+   * secundario en vez de pisar su rol principal — conserva lo que ya tenía
+   * y de todas formas le da acceso admin completo (los guards de la API
+   * validan globalRole+secondaryRoles juntos, mismo patrón que el resto
+   * del sistema multi-rol).
+   */
+  async findOrCreateCrmBridgeAdmin(profile: { email: string; firstName?: string; lastName?: string }): Promise<User> {
+    let user = await this.prisma.user.findUnique({ where: { email: profile.email } });
+    if (!user) {
+      return this.prisma.user.create({
+        data: {
+          email: profile.email,
+          firstName: profile.firstName || "Admin",
+          lastName: profile.lastName || "CRM",
+          globalRole: "ADMIN",
+          emailVerifiedAt: new Date(),
+        },
+      });
+    }
+    if (user.globalRole !== "ADMIN" && !user.secondaryRoles.includes("ADMIN")) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { secondaryRoles: { push: "ADMIN" } },
+      });
+    }
     return user;
   }
 }
