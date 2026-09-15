@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -92,15 +93,65 @@ export class AuthService {
     return { user: this.toAuthUser(user), accessToken, rawUser: user };
   }
 
+  // Bloqueo temporal tras intentos fallidos — mismo umbral que el CRM del
+  // portafolio (ver ../../CLAUDE.md, "Estandarización: Seguridad").
+  private static readonly MAX_FAILED_ATTEMPTS = 5;
+  private static readonly LOCKOUT_DURATION_MINUTES = 30;
+
   async validateLocalUser(email: string, password: string): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException("Credenciales inválidas");
     }
+
+    // El bloqueo SÍ es un mensaje distinto y explícito (a diferencia de
+    // "credenciales inválidas") — una cuenta bloqueada ya reveló que existe
+    // en el intento que la bloqueó, así que ocultarlo aquí no protege nada
+    // y solo confunde a quien de verdad es el dueño de la cuenta.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const minutos = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));
+      throw new HttpException(
+        `Cuenta bloqueada temporalmente por demasiados intentos fallidos. Intenta de nuevo en ${minutos} minuto(s), o usa "Olvidé mi contraseña".`,
+        423, // Locked — HttpStatus no lo define en esta versión de NestJS
+      );
+    }
+
     const valid = await argon2.verify(user.passwordHash, password);
-    if (!valid) throw new UnauthorizedException("Credenciales inválidas");
+    if (!valid) {
+      await this.registerFailedLoginAttempt(user);
+      throw new UnauthorizedException("Credenciales inválidas");
+    }
+
+    if (user.failedLoginAttempts > 0) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+    }
+
     if (user.status !== "active") throw new UnauthorizedException("Cuenta deshabilitada");
     return user;
+  }
+
+  /** Tras una contraseña INCORRECTA: incrementa el contador y, al llegar a
+   * MAX_FAILED_ATTEMPTS, bloquea la cuenta y avisa por correo. */
+  private async registerFailedLoginAttempt(user: User): Promise<void> {
+    const attempts = user.failedLoginAttempts + 1;
+
+    if (attempts >= AuthService.MAX_FAILED_ATTEMPTS) {
+      const lockedUntil = new Date(Date.now() + AuthService.LOCKOUT_DURATION_MINUTES * 60_000);
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: attempts, lockedUntil },
+      });
+      try {
+        await this.notifications.sendAccountLocked(user.email, user.firstName, lockedUntil, user.id);
+      } catch (err) {
+        // El envío nunca debe tumbar el flujo de login.
+        // eslint-disable-next-line no-console
+        console.error("[account-lockout] No se pudo encolar el correo de alerta:", err);
+      }
+      return;
+    }
+
+    await this.prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: attempts } });
   }
 
   /** Entrypoint único para "arrancar sesión" — lo usan tanto /auth/login como el callback OAuth. */

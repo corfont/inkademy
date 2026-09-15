@@ -86,6 +86,12 @@ model User {
   // sesiones activas al desplegar esto. Ver JwtStrategy/AuthService.
   currentSessionId String?
 
+  // Bloqueo temporal tras intentos fallidos de contraseña — mismo umbral que
+  // el CRM del portafolio (5 intentos, 30 minutos), ver
+  // ../../CLAUDE.md ("Estandarización: Seguridad") y AuthService.validateLocalUser.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   // Perfil progresivo (persona natural) — se completa antes de pago/certificado.
   documentType    String? // DNI, CE, PASSPORT, RUC... (según país)
   documentNumber  String?

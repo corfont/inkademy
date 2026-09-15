@@ -94,6 +94,25 @@ export class NotificationService {
     );
   }
 
+  /** Bloqueo temporal de cuenta tras 5 intentos fallidos — ver
+   * AuthService.validateLocalUser y ../../CLAUDE.md ("Estandarización: Seguridad"). */
+  sendAccountLocked(to: string, firstName: string, lockedUntil: Date, userId: string) {
+    const hasta = new Intl.DateTimeFormat("es-PE", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "America/Lima",
+    }).format(lockedUntil);
+    return this.enqueueEmail(
+      EMAIL_JOBS.ACCOUNT_LOCKED,
+      {
+        to,
+        subject: "Tu cuenta de Inkademy fue bloqueada temporalmente",
+        html: `<p>Hola ${firstName},</p><p>Detectamos 5 intentos fallidos de inicio de sesión en tu cuenta. Por seguridad, quedó bloqueada temporalmente hasta las <strong>${hasta}</strong> (hora de Lima).</p><p>Si fuiste tú y olvidaste tu contraseña, espera a que se levante el bloqueo o usa "¿Olvidaste tu contraseña?". Si NO fuiste tú, avisa a soporte de inmediato.</p>`,
+      },
+      userId,
+    );
+  }
+
   sendReceipt(to: string, orderId: string, total: string, currency: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.RECEIPT,
