@@ -20,6 +20,7 @@ import { EnrollmentService } from "../enrollment/enrollment.service";
 import { CulqiProvider } from "./providers/culqi.provider";
 import { StripeProvider } from "./providers/stripe.provider";
 import { PayPalProvider } from "./providers/paypal.provider";
+import { CrmBridgeProvider } from "./providers/crm-bridge.provider";
 import type { PaymentProvider } from "./providers/payment-provider.interface";
 
 /** Datos de comprador ya resueltos para la boleta/factura electrónica. */
@@ -70,6 +71,7 @@ export class CommerceService {
     private readonly culqiProvider: CulqiProvider,
     private readonly stripeProvider: StripeProvider,
     private readonly paypalProvider: PayPalProvider,
+    private readonly crmBridge: CrmBridgeProvider,
     @InjectQueue(QUEUE_NAMES.INVOICE) private readonly invoiceQueue: Queue,
   ) {}
 
@@ -306,7 +308,7 @@ export class CommerceService {
   private async finalizeOrderPaid(orderId: string) {
     const order = await this.prisma.order.findUniqueOrThrow({
       where: { id: orderId },
-      include: { items: true, payments: true, user: true },
+      include: { items: true, payments: true, user: true, company: true },
     });
 
     // "Dos webhooks concurrentes del mismo pago (Stripe/Culqi reintentan
@@ -408,7 +410,68 @@ export class CommerceService {
       await this.createElectronicInvoiceIfNeeded(order);
     }
 
+    // Puente con el CRM de Inkapitales (ver providers/crm-bridge.provider.ts)
+    // — igual que el comprobante SUNAT, se omite en cursos gratuitos (total
+    // 0) porque no hay una venta real que registrar. Nunca bloquea ni afecta
+    // el resultado de la compra: sincronizarVenta() ya nunca lanza.
+    if (Number(order.total) > 0) {
+      const sync = order.companyId && order.company
+        ? await this.crmBridge.sincronizarVenta({
+            sourceId: order.id,
+            currency: order.currency,
+            partner: {
+              kind: "company",
+              country: order.company.country,
+              taxIdType: order.company.taxIdType,
+              taxId: order.company.taxId,
+              legalName: order.company.legalName,
+            },
+            lineas: await this.resolverLineasParaCrm(order.items),
+          })
+        : await this.crmBridge.sincronizarVenta({
+            sourceId: order.id,
+            currency: order.currency,
+            partner: {
+              kind: "buyer",
+              country: order.buyerCountry,
+              documentType: order.buyerDocumentType,
+              documentNumber: order.buyerDocumentNumber,
+              legalName: order.buyerLegalName,
+            },
+            lineas: await this.resolverLineasParaCrm(order.items),
+          });
+      if (!sync.sincronizado) {
+        this.logger.log(`Orden ${order.id}: no sincronizada con el CRM (${sync.motivo}).`);
+      }
+    }
+
     return { enrollmentIds, receiptUrl };
+  }
+
+  /** Nombre legible de cada línea de la orden para el Quote del CRM — el
+   * curso/programa comprado, no un producto genérico (ver QuoteLine.description
+   * del lado CRM: mismo patrón usado para licita-perú). */
+  private async resolverLineasParaCrm(
+    items: { offeringKind: string; courseId: string | null; programId: string | null; unitPrice: unknown; quantity: number; seatPoolQty: number | null }[],
+  ): Promise<{ description: string; quantity: number; unitPrice: number }[]> {
+    const lineas: { description: string; quantity: number; unitPrice: number }[] = [];
+    for (const item of items) {
+      let titulo = item.offeringKind === "COURSE" ? "Curso Inkademy" : "Programa Inkademy";
+      if (item.offeringKind === "COURSE" && item.courseId) {
+        const course = await this.prisma.course.findUnique({ where: { id: item.courseId }, select: { title: true } });
+        const t = course?.title as { es?: string; en?: string } | undefined;
+        titulo = t?.es || t?.en || titulo;
+      } else if (item.offeringKind === "PROGRAM" && item.programId) {
+        const program = await this.prisma.program.findUnique({ where: { id: item.programId }, select: { title: true } });
+        const t = program?.title as { es?: string; en?: string } | undefined;
+        titulo = t?.es || t?.en || titulo;
+      }
+      if (item.seatPoolQty && item.seatPoolQty > 0) {
+        titulo = `${titulo} (${item.seatPoolQty} cupos)`;
+      }
+      lineas.push({ description: titulo, quantity: item.quantity, unitPrice: Number(item.unitPrice) });
+    }
+    return lineas;
   }
 
   private async hasDirectInvoicingPartnership(items: { courseId: string | null }[]): Promise<boolean> {

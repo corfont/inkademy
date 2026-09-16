@@ -7,11 +7,12 @@ import { CommerceService } from "./commerce.service";
 import { CulqiProvider } from "./providers/culqi.provider";
 import { StripeProvider } from "./providers/stripe.provider";
 import { PayPalProvider } from "./providers/paypal.provider";
+import { CrmBridgeProvider } from "./providers/crm-bridge.provider";
 
 @Module({
   imports: [NotificationModule, CalendarModule, EnrollmentModule],
   controllers: [CommerceController, WebhooksController],
-  providers: [CommerceService, CulqiProvider, StripeProvider, PayPalProvider],
+  providers: [CommerceService, CulqiProvider, StripeProvider, PayPalProvider, CrmBridgeProvider],
   exports: [CommerceService],
 })
 export class CommerceModule {}
