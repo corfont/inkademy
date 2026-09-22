@@ -9,7 +9,18 @@ import { loginSchema, type LoginInput } from "@inkademy/shared";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
-import { ApiError, API_URL } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
+
+// A diferencia de un fetch() (que puede correr server-side y necesitar la URL
+// interna de Docker, ver api-client.ts), un <a href> SIEMPRE lo sigue el
+// navegador de la persona, nunca el servidor — incluso cuando este
+// Client Component se renderiza inicialmente en el servidor (SSR), el href
+// resultante termina en el HTML que recibe un navegador real. Usar el
+// API_URL dual-purpose acá horneaba la URL INTERNA de Docker
+// (http://api:4000, inalcanzable desde cualquier navegador) en los botones
+// de Google/Microsoft — bug real encontrado probando el login contra
+// producción tras apuntar el dominio (22-sep-2026).
+const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 import { belongsToOtherRoleArea, roleHomeHref } from "@/lib/auth";
 import { Input, Label, FieldError } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -35,7 +46,7 @@ function matchesSsoDomain(email: string, ssoDomains: string | null | undefined):
 }
 
 function microsoftSsoUrl(email: string): string {
-  return `${API_URL}/auth/microsoft?login_hint=${encodeURIComponent(email.trim())}`;
+  return `${PUBLIC_API_URL}/auth/microsoft?login_hint=${encodeURIComponent(email.trim())}`;
 }
 
 export default function LoginPage() {
@@ -176,12 +187,12 @@ function LoginForm() {
         </div>
 
         <div className="mt-4 flex flex-col gap-2">
-          <a href={`${API_URL}/auth/google`}>
+          <a href={`${PUBLIC_API_URL}/auth/google`}>
             <Button type="button" variant="outline" className="w-full">
               {t("google")}
             </Button>
           </a>
-          <a href={`${API_URL}/auth/microsoft`}>
+          <a href={`${PUBLIC_API_URL}/auth/microsoft`}>
             <Button type="button" variant="outline" className="w-full">
               {t("microsoft")}
             </Button>
