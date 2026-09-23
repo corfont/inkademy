@@ -31,8 +31,38 @@ async function bootstrap() {
   // global estricto (queda como mejora aparte, no se improvisa a medias).
   app.use(helmet({ contentSecurityPolicy: false }));
 
+  // BUG REAL encontrado el 23-sep-2026: `origin` como string único exige una
+  // coincidencia EXACTA del header Origin — pero Caddy enruta TANTO
+  // "inkademy.lat" COMO "www.inkademy.lat" al mismo frontend (ver
+  // ../../../Caddyfile), y ambos tienen certificado TLS válido propio. Una
+  // persona que entra por www. (autocompletado del navegador, un marcador
+  // viejo) manda `Origin: https://www.inkademy.lat`, la API sigue
+  // devolviendo `Access-Control-Allow-Origin: https://inkademy.lat` (el
+  // valor fijo de APP_URL) — el navegador bloquea CUALQUIER fetch/XHR (el
+  // login incluido) con un error de CORS, aunque una navegación simple (GET
+  // de página completa, sin preflight) cargue perfecto — exactamente el
+  // síntoma reportado ("no puedo entrar" pese a que el sitio carga). Se
+  // detectó comparando el header real devuelto para ambos orígenes con
+  // `curl`, no solo leyendo el código. Fix: aceptar tanto la variante con
+  // "www." como sin ella del mismo APP_URL, en vez de un string único.
+  const appUrl = config.get<string>("APP_URL", "http://localhost:3000");
+  const allowedOrigins = new Set([appUrl]);
+  try {
+    const { protocol, hostname } = new URL(appUrl);
+    const altHost = hostname.startsWith("www.") ? hostname.slice(4) : `www.${hostname}`;
+    allowedOrigins.add(`${protocol}//${altHost}`);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn(`⚠️  APP_URL="${appUrl}" no es una URL válida — CORS solo admite ese valor tal cual, sin variante www.`);
+  }
+
   app.enableCors({
-    origin: config.get<string>("APP_URL", "http://localhost:3000"),
+    origin: (origin, callback) => {
+      // Sin header Origin (curl, server-to-server, health checks) no aplica
+      // CORS en absoluto — se deja pasar, igual que el comportamiento previo.
+      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      callback(new Error(`Origin no permitido por CORS: ${origin}`), false);
+    },
     credentials: true,
   });
 
