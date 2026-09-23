@@ -48,6 +48,21 @@ export class PlatformCoreService {
 
     const existente = await this.prisma.user.findUnique({ where: { email } });
 
+    // El formulario de "Completa tu perfil" (documento/país/ciudad/cargo/
+    // empresa/nivel de experiencia/áreas de interés) es de Inkademy, pensado
+    // para un alumno/empresa que se AUTO-registra ahí — tiene sentido real
+    // para ESE público (emitir certificado, personalizar recomendaciones).
+    // Una cuenta provisionada por acá SIEMPRE viene del CRM (personal de
+    // Inkapitales, roles gruesos ADMIN/TEACHER/SUPPORT) — exigirle ese
+    // mismo formulario no tiene ningún sentido de negocio, y antes de este
+    // fix cualquier cuenta nueva provisionada desde el CRM caía igual en esa
+    // pantalla porque `profileCompletedAt` nunca se tocaba acá. STUDENT
+    // queda afuera a propósito: si algún día este puente también provisiona
+    // alumnos reales (ej. una matrícula B2B masiva), esos sí deben completar
+    // su perfil real, igual que cualquier otro alumno.
+    const rolEfectivo = globalRole ?? existente?.globalRole ?? "STUDENT";
+    const esCuentaDePersonal = rolEfectivo !== "STUDENT";
+
     if (existente) {
       const actualizado = await this.prisma.user.update({
         where: { email },
@@ -56,6 +71,7 @@ export class PlatformCoreService {
           firstName,
           lastName,
           ...(globalRole ? { globalRole } : {}),
+          ...(esCuentaDePersonal && !existente.profileCompletedAt ? { profileCompletedAt: new Date() } : {}),
         },
       });
       return { id: actualizado.id };
@@ -70,6 +86,7 @@ export class PlatformCoreService {
         globalRole: globalRole ?? "STUDENT",
         status: "active",
         emailVerifiedAt: new Date(),
+        ...(esCuentaDePersonal ? { profileCompletedAt: new Date() } : {}),
       },
     });
     return { id: creado.id };
