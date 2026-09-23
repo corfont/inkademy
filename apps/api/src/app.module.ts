@@ -29,6 +29,7 @@ import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
 import { ChatbotModule } from "./modules/chatbot/chatbot.module";
 import { NpsModule } from "./modules/nps/nps.module";
 import { ScormModule } from "./modules/scorm/scorm.module";
+import { PlatformCoreModule } from "./modules/platform-core/platform-core.module";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { ScormModule } from "./modules/scorm/scorm.module";
     ChatbotModule,
     NpsModule,
     ScormModule,
+    PlatformCoreModule,
   ],
   providers: [
     // Orden importa: ThrottlerGuard corre primero (limita por IP sin
