@@ -3,6 +3,13 @@
 Este documento es para cuando un tercero **arrienda el sistema completo** (no cursos ni
 alumnos individuales) — quiere su propia marca, su propio catálogo, su propio dominio.
 
+**Este es uno de dos modos posibles** (aclarado por el usuario, 14-sep-2026): Inkademy
+también puede operar como **módulo del CRM de Inkapitales** (capacitación interna, con
+el admin del CRM teniendo todos los roles de Inkademy) — un modo distinto, sin instancia
+aislada, todavía sin diseñar. Ver `../../CLAUDE.md` (portafolio compartido, sección
+"Dos categorías de sistema") para el panorama completo antes de asumir que este
+checklist aplica a cualquier despliegue nuevo de Inkademy.
+
 ## Decisión de arquitectura (por qué esto y no multi-tenancy en la misma base de datos)
 
 Cada arrendatario obtiene su **propia instancia desplegada**: su propio `docker-compose`
