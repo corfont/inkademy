@@ -3035,6 +3035,18 @@ export class AdminService {
     }
     // Un rol no puede estar a la vez como principal y como secundario.
     const data: Record<string, unknown> = { ...input };
+    // `displayName` (solo lo siembra prisma/seed.ts hoy — no hay ningún
+    // campo de edición real para él en ninguna pantalla) queda "congelado"
+    // para siempre si no se limpia acá: todo lugar que lee `displayName ??
+    // firstName+lastName` (barra lateral, certificados, tickets de
+    // soporte, reportes de admin) seguía mostrando el nombre viejo aunque
+    // el admin editara firstName/lastName. Bug real reportado por el
+    // usuario ("cambié el nombre pero en la barra lateral sigue saliendo
+    // el antiguo"). Se limpia el override cada vez que cambia alguno de
+    // los dos, para que el fallback se recalcule con los valores nuevos.
+    if (input.firstName !== undefined || input.lastName !== undefined) {
+      data.displayName = null;
+    }
     if (input.secondaryRoles) {
       const globalRole = input.globalRole ?? (await this.prisma.user.findUnique({ where: { id }, select: { globalRole: true } }))?.globalRole;
       data.secondaryRoles = input.secondaryRoles.filter((r) => r !== globalRole);
