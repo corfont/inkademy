@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 /**
  * Trampa de foco compartida — antes solo existía inline dentro de
@@ -25,6 +25,19 @@ export function useFocusTrap(
   const initialFocus = options?.initialFocus ?? "container";
   const lockScroll = options?.lockScroll ?? true;
 
+  // `onClose` puede cambiar de identidad en cada render del componente
+  // dueño (ej. un `handleClose` que resetea estado local antes de llamar
+  // `onClose`, declarado como function statement en el cuerpo en vez de
+  // `useCallback`) — sin este ref, ese cambio de referencia entraba al
+  // arreglo de dependencias del efecto de abajo y lo reiniciaba en CADA
+  // TECLEO de cualquier input dentro del diálogo, devolviendo el foco al
+  // contenedor y obligando a hacer clic de nuevo tras cada letra. Bug real
+  // encontrado en el diálogo de "Restablecer contraseña" de Inkademy.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!active) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -36,7 +49,7 @@ export function useFocusTrap(
     }
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
       if (e.key === "Tab") {
         const focusable = containerRef.current?.querySelectorAll<HTMLElement>(
           'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
@@ -61,5 +74,5 @@ export function useFocusTrap(
       previouslyFocused?.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, onClose]);
+  }, [active]);
 }
