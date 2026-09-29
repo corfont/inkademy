@@ -48,6 +48,30 @@ git" con "tener un despliegue automatizado como el resto"):
   esto también, hay que primero mover esas credenciales a variables de
   entorno.
 
+**⚠️ Incidente real, 29-sep-2026 — `docker-compose.yml` (el archivo
+DEV/genérico, SÍ versionado en git) y `docker-compose.prod.yml` (el real,
+sin versionar) comparten el mismo nombre de proyecto Compose (derivado
+del nombre del directorio, `inkademy` — ninguno de los dos fija
+`name:`/`COMPOSE_PROJECT_NAME` explícito) y el mismo volumen de Postgres
+(`pgdata`)**: correr `docker compose -f docker-compose.yml up -d web`
+(el archivo por defecto, sin `-prod`) RECREA los mismos contenedores
+`inkademy-web-1`/`inkademy-api-1`/etc. que ya corrían bajo
+`docker-compose.prod.yml`, reemplazando su configuración — en este caso,
+el mapeo de puertos: `docker-compose.yml` publica `3000:3000`/`4000:4000`
+(los puertos INTERNOS de los contenedores, pensados para dev local),
+mientras que el real es `8082:3000`/`8083:4000` (ver tabla del portafolio
+compartido) — el sitio quedó inalcanzable en 8082/8083 hasta corregirlo.
+**Sin pérdida de datos** en este incidente puntual (ambos archivos usan
+el mismo volumen `pgdata` Y el mismo `env_file: .env`, así que no hubo
+mezcla de credenciales tampoco) — pero eso es specific a este estado
+actual de ambos archivos, no una garantía general: si algún día divergen
+en el nombre del volumen o en qué `.env*` usan, el mismo error SÍ
+perdería datos o mezclaría secretos. **Cualquier comando `docker compose`
+contra este proyecto necesita `-f docker-compose.prod.yml` explícito,
+siempre** — el archivo sin sufijo es solo para desarrollo local, nunca
+para tocar el VPS. Encontrado y corregido en la misma sesión que agregó
+el fix de nav de Alumno (ver más abajo).
+
 ## Bug real corregido: CORS con un solo origen fijo bloqueaba el login vía `www.inkademy.lat` (23-sep-2026)
 
 Reportado por el usuario como "no puedo entrar a Inkademy con mi cuenta"

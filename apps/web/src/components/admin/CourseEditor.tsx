@@ -192,28 +192,30 @@ function StatusToggle({ status, busy, onChange }: { status: string; busy: boolea
 }
 
 // "El descuento aparece con un conteo hacia atrás que no corresponde" —
-// bug real: <input type="date"> solo da "YYYY-MM-DD" sin hora, y al
-// mandarlo tal cual, z.coerce.date() del backend lo interpreta como
-// MEDIANOCHE UTC (así lo exige el spec de ECMAScript para un string
-// solo-fecha) — para un admin en Perú (UTC-5) eso son las 7pm del día
-// ANTERIOR, así que "vence el 15" en realidad vencía casi un día antes
-// de lo esperado. Un string con hora pero SIN sufijo de zona (distinto
-// de uno solo-fecha) SÍ se interpreta como hora LOCAL del navegador —
-// por eso se arma "fin de ese día" a mano antes de mandarlo.
-function dateOnlyToLocalEndOfDayISOString(dateOnly: string): string {
-  return new Date(`${dateOnly}T23:59:59.999`).toISOString();
-}
-// Inverso, para precargar el <input type="date"> a partir del instante
-// UTC guardado — recortar el ISO string directamente (como se hacía
-// antes) daba el día equivocado para casi cualquier hora de la tarde/
-// noche en zonas UTC-negativas, porque comparaba el día en UTC, no en la
-// zona local de quien lo está editando.
-function isoStringToLocalDateOnly(iso: string): string {
+// segundo bug real encontrado sobre el mismo campo (el primero, ya
+// corregido, era que <input type="date"> mandaba solo "YYYY-MM-DD" y el
+// backend lo interpretaba como medianoche UTC): con SOLO el día
+// seleccionable, "hoy" siempre significaba "hasta las 23:59:59.999 de
+// hoy" — nunca "ahora mismo". Un admin que quería que el descuento
+// venciera YA, eligiendo "hoy", en realidad dejaba el conteo corriendo
+// hasta la medianoche — a las 10:04am mostraba ~13h55m restantes
+// (exactamente lo que falta para medianoche), no un error de huso
+// horario. Fix: <input type="datetime-local"> — el admin elige el
+// INSTANTE exacto, incluido "ahora" (botón de abajo), no solo el día.
+// `datetime-local` ya da "YYYY-MM-DDTHH:mm" en hora LOCAL del navegador
+// sin sufijo de zona, así que `new Date(value).toISOString()` alcanza
+// directo, sin ningún ajuste manual de fin de día.
+function isoStringToLocalDatetimeInput(iso: string): string {
   const d = new Date(iso);
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const h = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${mo}-${day}T${h}:${mi}`;
+}
+function nowAsLocalDatetimeInput(): string {
+  return isoStringToLocalDatetimeInput(new Date().toISOString());
 }
 
 /**
@@ -547,7 +549,7 @@ function CommercialSection({
   const [templates, setTemplates] = useState<any[]>([]);
   const [discountPercent, setDiscountPercent] = useState(course.discountPercent != null ? String(course.discountPercent) : "");
   const [discountExpiresAt, setDiscountExpiresAt] = useState(
-    course.discountExpiresAt ? isoStringToLocalDateOnly(course.discountExpiresAt) : "",
+    course.discountExpiresAt ? isoStringToLocalDatetimeInput(course.discountExpiresAt) : "",
   );
   // Solo aplica en la práctica a cursos grabados (el alumno avanza a su
   // ritmo, así que necesita una fecha límite o quedar abierto) — pero se
@@ -606,18 +608,30 @@ function CommercialSection({
           </div>
           <div>
             <Label htmlFor="edit-discount-expires">Vence el (opcional)</Label>
-            <Input
-              id="edit-discount-expires"
-              type="date"
-              value={discountExpiresAt}
-              onChange={(e) => setDiscountExpiresAt(e.target.value)}
-              disabled={!discountPercent}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id="edit-discount-expires"
+                type="datetime-local"
+                value={discountExpiresAt}
+                onChange={(e) => setDiscountExpiresAt(e.target.value)}
+                disabled={!discountPercent}
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!discountPercent}
+                onClick={() => setDiscountExpiresAt(nowAsLocalDatetimeInput())}
+              >
+                Vencer ahora
+              </Button>
+            </div>
           </div>
           {discountPercent && Number(discountPercent) > 0 && (
             <p className="sm:col-span-2 text-sm text-success">
               Precio con descuento: {(Number(priceAmount) * (1 - Number(discountPercent) / 100)).toFixed(2)} {priceCurrency}
-              {discountExpiresAt ? ` — hasta el ${discountExpiresAt}` : ""}
+              {discountExpiresAt ? ` — hasta el ${new Date(discountExpiresAt).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" })}` : ""}
             </p>
           )}
         </div>
@@ -645,7 +659,7 @@ function CommercialSection({
                 accessDurationPolicy,
                 discountPercent: discountPercent ? Number(discountPercent) : null,
                 discountExpiresAt:
-                  discountPercent && discountExpiresAt ? dateOnlyToLocalEndOfDayISOString(discountExpiresAt) : null,
+                  discountPercent && discountExpiresAt ? new Date(discountExpiresAt).toISOString() : null,
               })
             }
           >
