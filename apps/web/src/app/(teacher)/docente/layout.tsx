@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut, Banknote, BookOpen, Award, Sparkles, Users, Wallet, Handshake, Percent, Building2, LifeBuoy, MessageSquarePlus } from "lucide-react";
+import { LayoutDashboard, LibraryBig, ClipboardCheck, CalendarDays, User, LogOut, Banknote, BookOpen, Award, Sparkles, Users, Wallet, Handshake, Percent, Building2, LifeBuoy, MessageSquarePlus, Receipt } from "lucide-react";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { roleHomeHref } from "@/lib/auth";
@@ -40,8 +40,16 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     navItems.push(
       { href: "/campus", label: "Mi campus", icon: LayoutDashboard, section: "Alumno", colorClassName: "bg-slate-400/20 text-slate-300" },
       { href: "/campus/cursos", label: "Mis cursos (alumno)", icon: BookOpen, section: "Alumno", colorClassName: "bg-blue-400/20 text-blue-300" },
+      { href: "/catalogo", label: "Explorar catálogo (alumno)", icon: LibraryBig, section: "Alumno", colorClassName: "bg-sky-400/20 text-sky-300" },
+      { href: "/campus/agenda", label: "Agenda (alumno)", icon: CalendarDays, section: "Alumno", colorClassName: "bg-orange-400/20 text-orange-300" },
       { href: "/campus/certificados", label: "Certificados (alumno)", icon: Award, section: "Alumno", colorClassName: "bg-purple-400/20 text-purple-300" },
+      { href: "/campus/pagos", label: "Pagos (alumno)", icon: Receipt, section: "Alumno", colorClassName: "bg-green-400/20 text-green-300" },
       { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles, section: "Alumno", colorClassName: "bg-violet-400/20 text-violet-300" },
+      // Mismo hallazgo/fix que en admin/layout.tsx: este bloque "prestado"
+      // se había quedado desactualizado respecto al nav nativo de Alumno
+      // (campus/layout.tsx), a diferencia del bloque de Docente de arriba.
+      { href: "/campus/soporte", label: "Soporte (alumno)", icon: LifeBuoy, section: "Alumno", colorClassName: "bg-red-400/20 text-red-300" },
+      { href: "/campus/sugerencias", label: "Sugerencias (alumno)", icon: MessageSquarePlus, section: "Alumno", colorClassName: "bg-fuchsia-400/20 text-fuchsia-300" },
     );
   }
   if (roles.includes("ADMIN") || roles.includes("SUPPORT")) {

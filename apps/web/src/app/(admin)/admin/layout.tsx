@@ -148,9 +148,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     navItems.push(
       { href: "/campus", label: "Mi campus", icon: LayoutDashboard, section: "Alumno", colorClassName: "bg-slate-400/20 text-slate-300" },
       { href: "/campus/cursos", label: "Mis cursos (alumno)", icon: BookOpen, section: "Alumno", colorClassName: "bg-blue-400/20 text-blue-300" },
+      { href: "/catalogo", label: "Explorar catálogo (alumno)", icon: LibraryBig, section: "Alumno", colorClassName: "bg-sky-400/20 text-sky-300" },
       { href: "/campus/agenda", label: "Agenda (alumno)", icon: CalendarDays, section: "Alumno", colorClassName: "bg-orange-400/20 text-orange-300" },
       { href: "/campus/certificados", label: "Certificados (alumno)", icon: Award, section: "Alumno", colorClassName: "bg-purple-400/20 text-purple-300" },
+      { href: "/campus/pagos", label: "Pagos (alumno)", icon: Receipt, section: "Alumno", colorClassName: "bg-green-400/20 text-green-300" },
       { href: "/campus/recomendaciones", label: "Recomendaciones", icon: Sparkles, section: "Alumno", colorClassName: "bg-violet-400/20 text-violet-300" },
+      // Faltaban acá aunque ya existían en el nav nativo de /campus
+      // (campus/layout.tsx) y en el bloque "prestado" de Docente de arriba
+      // — mismo hallazgo, mismo fix: este bloque se había quedado
+      // desactualizado respecto al nav nativo de Alumno.
+      { href: "/campus/soporte", label: "Soporte (alumno)", icon: LifeBuoy, section: "Alumno", colorClassName: "bg-red-400/20 text-red-300" },
+      { href: "/campus/sugerencias", label: "Sugerencias (alumno)", icon: MessageSquarePlus, section: "Alumno", colorClassName: "bg-fuchsia-400/20 text-fuchsia-300" },
       { href: "/campus/perfil", label: "Perfil", icon: User, section: "Alumno", colorClassName: "bg-cyan-400/20 text-cyan-300" },
     );
   }
