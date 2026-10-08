@@ -143,7 +143,7 @@ export class LiveSessionService {
       organizerUpn,
     });
 
-    return this.prisma.liveSession.create({
+    const created = await this.prisma.liveSession.create({
       data: {
         courseId: input.courseId,
         title: input.title as object,
@@ -158,6 +158,9 @@ export class LiveSessionService {
         joinUrl: meeting.joinUrl,
       },
     });
+    // Los alumnos que ya estaban matriculados la ven en su agenda (con el botón para entrar) desde el primer momento.
+    await this.calendarService.addLiveSessionToEnrolled(created.id).catch(() => undefined);
+    return created;
   }
 
   /**
@@ -236,6 +239,7 @@ export class LiveSessionService {
         }),
       );
     }
+    for (const s of created) await this.calendarService.addLiveSessionToEnrolled(s.id).catch(() => undefined);
     return created;
   }
 

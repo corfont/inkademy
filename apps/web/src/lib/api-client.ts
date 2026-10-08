@@ -414,10 +414,12 @@ export const meApi = {
   enrollments: (status?: string, accessToken?: string | null) =>
     apiFetch<EnrollmentSummaryDTO[]>("/me/enrollments", { query: { status }, accessToken }),
   enrollment: (id: string, accessToken?: string | null) => apiFetch<any>(`/me/enrollments/${id}`, { accessToken }),
-  updateLessonProgress: (lessonId: string, input: { completed?: boolean; lastPositionSeconds?: number }) =>
+  updateLessonProgress: (lessonId: string, input: { completed?: boolean; lastPositionSeconds?: number }, opts?: { keepalive?: boolean }) =>
     apiFetch<{ progressPct: number; status: string; readyForRatingPrompt: boolean }>(`/me/lessons/${lessonId}/progress`, {
       method: "PATCH",
       body: JSON.stringify(input),
+      // Al cerrar la pestaña el navegador cancelaría una petición normal; keepalive deja que termine.
+      ...(opts?.keepalive ? { keepalive: true } : {}),
     }),
   // "El alumno deberá marcar como leído" (solo lecturas principales) — recalcula progressPct igual que una lección.
   markMaterialRead: (materialId: string) =>

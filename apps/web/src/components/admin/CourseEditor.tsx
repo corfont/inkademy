@@ -264,6 +264,7 @@ function GeneralInfoSection({
   const [durationHours, setDurationHours] = useState(String(course.durationHours ?? "0"));
   const [durationUnit, setDurationUnit] = useState(course.durationUnit ?? "HOURS");
   const [coverImageAssetId, setCoverImageAssetId] = useState(course.coverImageAssetId ?? null);
+  const [coverWarning, setCoverWarning] = useState<string | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState(course.coverImageUrl ?? null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [syllabusAssetId, setSyllabusAssetId] = useState(course.syllabusAssetId ?? null);
@@ -325,6 +326,25 @@ function GeneralInfoSection({
   async function handleCoverUpload(file: File) {
     setUploadingCover(true);
     setCoverError(null);
+    setCoverWarning(null);
+    // La portada se muestra HORIZONTAL (16:9) y se recorta al centro en las tarjetas: se avisa si la imagen elegida no encaja.
+    try {
+      const dim = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new window.Image();
+        img.onload = () => {
+          resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = () => reject(new Error("no se pudo leer"));
+        img.src = url;
+      });
+      const ratio = dim.w / dim.h;
+      if (dim.w < 800) setCoverWarning(`La imagen es pequeña (${dim.w}×${dim.h} px); se verá borrosa. Usa al menos 1280×720 px.`);
+      else if (ratio < 1.5 || ratio > 2.1) setCoverWarning(`La imagen no es horizontal 16:9 (${dim.w}×${dim.h} px): se recortará al centro en las tarjetas y puede cortar parte del diseño.`);
+    } catch {
+      /* si no se puede medir, igual se sube */
+    }
     try {
       const { assetId, url } = await adminApi.uploadAsset(file);
       setCoverImageAssetId(assetId);
@@ -454,6 +474,8 @@ function GeneralInfoSection({
                 hint="Arrastra una imagen aquí o haz click (JPG/PNG)"
                 onFile={handleCoverUpload}
               />
+              <p className="mt-1 text-xs text-ash-500">Recomendado: horizontal 16:9, por ejemplo 1280×720 px o más. En las tarjetas se recorta al centro.</p>
+              {coverWarning && <p className="mt-1 text-xs font-medium text-warning">{coverWarning}</p>}
               {coverError && <p className="mt-1 text-xs text-danger">{coverError}</p>}
             </div>
           </div>

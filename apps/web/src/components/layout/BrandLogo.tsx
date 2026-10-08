@@ -22,7 +22,9 @@ export function BrandLogo({ className, maxHeightPx }: { className?: string; maxH
       // el sidebar de escritorio) también se aplicaba ahí — "el botón menú
       // no aparecía" porque, a 64px, el logo (proporción ancha) empujaba el
       // botón de hamburguesa fuera del viewport en pantallas angostas.
-      style={{ height: logoHeightPx, width: "auto", maxHeight: maxHeightPx }}
+      // El tamaño se da por el alto, pero nunca se sale de su contenedor: si el logo es muy ancho se achica EN PROPORCIÓN (object-fit: contain),
+      // no se estira ni se corta.
+      style={{ height: logoHeightPx, width: "auto", maxWidth: "100%", maxHeight: maxHeightPx, objectFit: "contain" }}
       className={className}
     />
   );

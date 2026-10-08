@@ -138,12 +138,13 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
         <CardContent className="flex flex-col gap-4 p-6">
           <h2 className="font-serif text-lg font-semibold text-ink-900">Logo</h2>
           <div className="flex items-center gap-6">
-            <div className="flex h-20 w-40 items-center justify-center rounded-md border border-dashed border-paper-border bg-paper-muted">
+            {/* Vista previa tal como se ve en la barra lateral: mismo ancho útil, centrado, y el logo crece o se achica en proporción. */}
+            <div className="flex w-64 flex-none items-center justify-center rounded-md bg-ink-900 p-5" style={form.sidebarColor ? { backgroundColor: form.sidebarColor } : undefined}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={form.logoUrl || "/brand/logo-horizontal.png"}
                 alt="Vista previa del logo"
-                style={{ height: form.logoHeightPx, width: "auto", maxWidth: "100%" }}
+                style={{ height: form.logoHeightPx, width: "auto", maxWidth: "100%", objectFit: "contain" }}
               />
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 hover:underline">
@@ -159,7 +160,7 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
             </label>
           </div>
           <div className="max-w-xs">
-            <Label htmlFor="logo-height">Alto del logo: {form.logoHeightPx}px</Label>
+            <Label htmlFor="logo-height">Tamaño del logo: {form.logoHeightPx}px de alto</Label>
             <input
               id="logo-height"
               type="range"

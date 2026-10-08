@@ -204,7 +204,7 @@ export function SidebarShell({
         className="hidden w-64 flex-none flex-col bg-ink-900 p-5 text-paper lg:flex"
         style={sidebarColor ? { backgroundColor: sidebarColor } : undefined}
       >
-        <Link href={brandHref} className="mb-8 flex items-center" aria-label="Inkademy">
+        <Link href={brandHref} className="mb-8 flex items-center justify-center" aria-label="Inkademy">
           <BrandLogo />
         </Link>
         {nav}

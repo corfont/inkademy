@@ -97,7 +97,7 @@ export class CalendarService {
     }
 
     const liveSessions = await this.prisma.liveSession.findMany({
-      where: { courseId: course.id, startsAt: { gt: new Date() } },
+      where: { courseId: course.id, endsAt: { gt: new Date() }, status: { not: "CANCELLED" } },
     });
     for (const session of liveSessions) {
       await this.prisma.calendarEvent.create({
@@ -145,5 +145,27 @@ export class CalendarService {
     const { error, value } = createEvents(icsEvents);
     if (error) throw error;
     return value ?? "";
+  }
+
+  /**
+   * Una clase en vivo creada DESPUÉS de que los alumnos ya se matricularon nunca llegaba a su agenda (los eventos solo se generaban al
+   * matricularse, con las clases que existían ese día) — así que «la clase de las 17:20» no aparecía ni había botón para entrar. Esto agrega la
+   * sesión a la agenda de cada inscrito activo que todavía no la tiene. Idempotente.
+   */
+  async addLiveSessionToEnrolled(liveSessionId: string): Promise<number> {
+    const session = await this.prisma.liveSession.findUnique({ where: { id: liveSessionId }, include: { course: { select: { id: true, title: true } } } });
+    if (!session || session.status === "CANCELLED") return 0;
+    const [enrolled, ya] = await Promise.all([
+      this.prisma.enrollment.findMany({ where: { courseId: session.courseId, offeringKind: "COURSE", status: "ACTIVE" }, select: { userId: true }, distinct: ["userId"] }),
+      this.prisma.calendarEvent.findMany({ where: { liveSessionId }, select: { userId: true } }),
+    ]);
+    const tienen = new Set(ya.map((e) => e.userId));
+    const nuevos = enrolled.filter((e) => !tienen.has(e.userId));
+    if (nuevos.length === 0) return 0;
+    const titulo = (session.course.title as Record<string, string>)?.es ?? "Curso Inkademy";
+    await this.prisma.calendarEvent.createMany({
+      data: nuevos.map((e) => ({ userId: e.userId, type: "LIVE_CLASS" as const, title: `Clase en vivo: ${titulo}`, startsAt: session.startsAt, endsAt: session.endsAt, liveSessionId, courseId: session.courseId })),
+    });
+    return nuevos.length;
   }
 }

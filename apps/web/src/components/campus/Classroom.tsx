@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Award, CheckCircle2, Circle, ClipboardCheck, ExternalLink, FileDown, FileText, Headphones, HelpCircle, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
+import { Award, CheckCircle2, Circle, ClipboardCheck, ExternalLink, FileDown, FileText, Headphones, HelpCircle, PlayCircle, ShieldAlert, XCircle, Maximize2 } from "lucide-react";
 import type { ClassroomDetail, ClassroomMaterial, FormativeQuiz, FormativeQuizQuestion } from "@/lib/mock-data";
-import { meApi, API_URL } from "@/lib/api-client";
+import { meApi, API_URL, ApiError } from "@/lib/api-client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -212,15 +212,54 @@ function VideoCheckpointOverlay({ question, onContinue }: { question: FormativeQ
  * agrega allow-top-navigation ni allow-popups-to-escape-sandbox, así que el
  * paquete no puede navegar ni redirigir la pestaña del alumno.
  */
+// «Cuando se diseña un examen en formato SCORM no se muestra todo el contenido» — la ventana tenía un alto fijo (32 rem). Ahora arranca más
+// alta, el alumno puede elegir el tamaño y ampliarla a pantalla completa.
+const ALTOS_SCORM = [
+  { id: "normal", label: "Normal", className: "h-[32rem]" },
+  { id: "grande", label: "Grande", className: "h-[46rem] max-h-[calc(100vh-6rem)]" },
+  { id: "completo", label: "Alto de la pantalla", className: "h-[calc(100vh-6rem)] min-h-[32rem]" },
+] as const;
+
 function ScormFrame({ playerUrl }: { playerUrl: string | null }) {
-  if (!playerUrl) return <div className="flex h-[32rem] items-center justify-center rounded-lg border border-paper-border bg-paper text-sm text-ash-500">Cargando contenido…</div>;
+  const [alto, setAlto] = useState<(typeof ALTOS_SCORM)[number]["id"]>("grande");
+  const [pantallaCompleta, setPantallaCompleta] = useState(false);
+  const envoltorio = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = () => setPantallaCompleta(document.fullscreenElement === envoltorio.current);
+    document.addEventListener("fullscreenchange", h);
+    return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+  const claseAlto = ALTOS_SCORM.find((a) => a.id === alto)!.className;
+  if (!playerUrl) return <div className={cn("flex items-center justify-center rounded-lg border border-paper-border bg-paper text-sm text-ash-500", claseAlto)}>Cargando contenido…</div>;
   return (
-    <iframe
-      src={playerUrl}
-      title="Contenido SCORM"
-      className="h-[32rem] w-full rounded-lg border border-paper-border bg-ink-950"
-      sandbox="allow-scripts allow-same-origin allow-forms"
-    />
+    <div ref={envoltorio} className={cn("flex flex-col gap-2", pantallaCompleta && "bg-ink-950 p-2")}>
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-ash-600">
+        <label className="flex items-center gap-1.5">
+          Tamaño
+          <select value={alto} onChange={(e) => setAlto(e.target.value as typeof alto)} className="rounded-md border border-paper-border bg-paper px-1.5 py-1 text-xs text-ink-900">
+            {ALTOS_SCORM.map((a) => (
+              <option key={a.id} value={a.id}>{a.label}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => (document.fullscreenElement ? document.exitFullscreen() : envoltorio.current?.requestFullscreen?.())}
+          className="flex items-center gap-1 rounded-md border border-paper-border bg-paper px-2 py-1 text-xs font-medium text-ink-900 hover:border-ink-400"
+        >
+          <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+          {pantallaCompleta ? "Salir de pantalla completa" : "Pantalla completa"}
+        </button>
+      </div>
+      <iframe
+        src={playerUrl}
+        title="Contenido SCORM"
+        allow="fullscreen"
+        allowFullScreen
+        className={cn("w-full rounded-lg border border-paper-border bg-ink-950", pantallaCompleta ? "h-full min-h-0 flex-1" : claseAlto)}
+        sandbox="allow-scripts allow-same-origin allow-forms"
+      />
+    </div>
   );
 }
 
@@ -286,7 +325,7 @@ function MaterialScormDialog({
   }, [enrollmentId, materialId]);
 
   return (
-    <Dialog open onClose={onClose} title={title} className="max-w-4xl">
+    <Dialog open onClose={onClose} title={title} className="max-w-6xl">
       {error ? <Callout variant="danger">{error}</Callout> : <ScormFrame playerUrl={playerUrl} />}
     </Dialog>
   );
@@ -356,9 +395,9 @@ function MaterialList({
                   el mismo botón manual — completar el SCORM no lo marca solo. */}
               {onMarkRead &&
                 (isRead ? (
-                  <span className="flex flex-none items-center gap-1 text-xs font-medium text-success">
+                  <span className="flex flex-none items-center gap-1 text-xs font-medium text-success" title="Ya está marcado; puedes volver a abrir el material cuando quieras.">
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Leído
+                    Leído · puedes releerlo
                   </span>
                 ) : (
                   <button
@@ -443,8 +482,16 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   const [currentId, setCurrentId] = useState(
     allLessons.find((l) => l.isCourseStarter)?.id ?? allLessons.find((l) => !l.completed)?.id ?? allLessons[0]?.id,
   );
-  const current = allLessons.find((l) => l.id === currentId) ?? allLessons[0];
-  const currentModule = detail.modules.find((m) => m.lessons.some((l) => l.id === current?.id));
+  // «Al alumno debería permitírsele acceder a cualquiera de los módulos para ir leyendo el material» — un módulo sin lecciones (solo lecturas)
+  // antes no se podía abrir en ningún lado. Ahora cualquier módulo se abre desde la barra lateral y muestra sus lecturas.
+  const [viewModuleId, setViewModuleId] = useState<string | null>(
+    allLessons.length === 0 ? (detail.modules.find((m) => m.materials.length > 0) ?? detail.modules[0])?.id ?? null : null,
+  );
+  const moduleMode = viewModuleId !== null;
+  const current = moduleMode ? undefined : (allLessons.find((l) => l.id === currentId) ?? allLessons[0]);
+  const currentModule = moduleMode
+    ? detail.modules.find((m) => m.id === viewModuleId)
+    : detail.modules.find((m) => m.lessons.some((l) => l.id === current?.id));
   const lastSentRef = useRef(0);
 
   // "Interacciones sobre un video: bloquear el avance, pausar y mostrar la
@@ -481,15 +528,66 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     if (readyForRatingPrompt && !detail.myRating) setRatingOpen(true);
   }
 
-  async function persistProgress(lessonId: string, patch: { completed?: boolean; lastPositionSeconds?: number }) {
+  // «El avance del curso no se guarda en algunos casos, más cuando se hace en distintos momentos» — antes un fallo al guardar (corte de conexión,
+  // sesión que se renovaba justo en ese momento) se ignoraba en silencio: la pantalla mostraba la lección como completa pero el servidor nunca la
+  // recibió. Ahora los cambios pendientes se guardan en una cola, se reintentan solos (al volver la conexión, al salir de la pestaña y cada 15 s) y se
+  // avisa al alumno mientras haya algo sin guardar.
+  const pendientesRef = useRef(new Map<string, { completed?: boolean; lastPositionSeconds?: number }>());
+  const guardandoRef = useRef(false);
+  const [sinGuardar, setSinGuardar] = useState(false);
+
+  async function vaciarPendientes(opts: { keepalive?: boolean } = {}) {
+    if (guardandoRef.current) return;
+    guardandoRef.current = true;
     try {
-      const result = await meApi.updateLessonProgress(lessonId, patch);
-      if (result?.progressPct !== undefined) setProgressPct(result.progressPct);
-      maybeOpenRatingPrompt(result?.readyForRatingPrompt);
-    } catch {
-      // best-effort: si la API no está disponible, el estado local sigue reflejando el intento del alumno
+      for (const [lessonId, patch] of [...pendientesRef.current.entries()]) {
+        let hecho = false;
+        for (let intento = 0; intento < 3 && !hecho; intento++) {
+          if (intento > 0) await new Promise((r) => setTimeout(r, intento * 1500));
+          try {
+            const result = await meApi.updateLessonProgress(lessonId, patch, opts);
+            if (result?.progressPct !== undefined) setProgressPct(result.progressPct);
+            maybeOpenRatingPrompt(result?.readyForRatingPrompt);
+            hecho = true;
+          } catch (err) {
+            // Un 403 (acceso vencido, sin matrícula) no se arregla reintentando: se descarta para no quedar en bucle.
+            if (err instanceof ApiError && (err.statusCode === 403 || err.statusCode === 404)) hecho = true;
+          }
+        }
+        if (hecho) {
+          // Si mientras tanto llegó un cambio más nuevo para esa lección, se conserva.
+          if (pendientesRef.current.get(lessonId) === patch) pendientesRef.current.delete(lessonId);
+        }
+      }
+    } finally {
+      guardandoRef.current = false;
+      setSinGuardar(pendientesRef.current.size > 0);
     }
   }
+
+  function persistProgress(lessonId: string, patch: { completed?: boolean; lastPositionSeconds?: number }) {
+    const previo = pendientesRef.current.get(lessonId) ?? {};
+    pendientesRef.current.set(lessonId, { ...previo, ...patch, ...(previo.completed ? { completed: true } : {}) });
+    setSinGuardar(true);
+    void vaciarPendientes();
+  }
+
+  useEffect(() => {
+    const reintentar = () => void vaciarPendientes();
+    const alSalir = () => void vaciarPendientes({ keepalive: true });
+    const reloj = setInterval(() => pendientesRef.current.size > 0 && reintentar(), 15_000);
+    const alOcultar = () => document.visibilityState === "hidden" && alSalir();
+    window.addEventListener("online", reintentar);
+    window.addEventListener("pagehide", alSalir);
+    document.addEventListener("visibilitychange", alOcultar);
+    return () => {
+      clearInterval(reloj);
+      window.removeEventListener("online", reintentar);
+      window.removeEventListener("pagehide", alSalir);
+      document.removeEventListener("visibilitychange", alOcultar);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function markComplete(lessonId: string) {
     setCompletedMap((m) => ({ ...m, [lessonId]: true }));
@@ -511,11 +609,15 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
   // tanto para el <video> como para el <audio> de una lección AUDIO, sin
   // duplicar la lógica de progreso/reanudar/checkpoints.
   function onTimeUpdate(e: SyntheticEvent<HTMLMediaElement>) {
+    if (!current) return;
     const seconds = Math.floor(e.currentTarget.currentTime);
     if (seconds - lastSentRef.current >= 10) {
       lastSentRef.current = seconds;
       persistProgress(current.id, { lastPositionSeconds: seconds });
     }
+    // Al llegar al 95 % se da por vista (no hace falta esperar el último segundo: si cierra los créditos o se va antes del final, igual cuenta).
+    const total = e.currentTarget.duration;
+    if (Number.isFinite(total) && total > 0 && e.currentTarget.currentTime / total >= 0.95 && !completedMap[current.id]) markComplete(current.id);
     if (!activeCheckpoint && seconds > maxWatchedSeconds) setMaxWatchedSeconds(seconds);
     // Los checkpoints (preguntas que interrumpen la reproducción) solo
     // aplican a video — videoCheckpoints queda vacío para una lección de
@@ -605,6 +707,9 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         }}
       />
       <div className="flex flex-col gap-6">
+        {sinGuardar && (
+          <Callout variant="warning">Estamos guardando tu avance… Si ves este aviso mucho rato, revisa tu conexión: lo seguimos intentando y no se pierde mientras esta página siga abierta.</Callout>
+        )}
         {detail.accessExpiresAt && (
           <Callout variant="warning">Debes terminar este curso antes del {formatDate(detail.accessExpiresAt, locale)} para conservar el acceso y poder certificarte.</Callout>
         )}
@@ -617,6 +722,19 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
           </a>
         )}
 
+        {moduleMode && currentModule ? (
+          <div className="rounded-lg border border-paper-border bg-paper p-5">
+            <h1 className="font-serif text-xl font-semibold text-ink-900">{localize(currentModule.title, locale)}</h1>
+            <p className="mt-1 text-sm text-ash-600">
+              {currentModule.lessons.length === 0
+                ? "Este módulo no tiene clases en video: su contenido son las lecturas de abajo. Puedes abrirlas y releerlas cuando quieras."
+                : "Elige una clase en la lista de la derecha, o revisa las lecturas de este módulo."}
+            </p>
+            {currentModule.materials.length === 0 && currentModule.lessons.length === 0 && (
+              <p className="mt-3 rounded-md bg-paper-muted p-3 text-sm text-ash-600">Todavía no hay contenido publicado en este módulo.</p>
+            )}
+          </div>
+        ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
           <div>
             {current?.contentType === "VIDEO" ? (
@@ -635,6 +753,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                   className="w-full bg-ink-950"
                   src={current.videoUrl}
                   onTimeUpdate={onTimeUpdate}
+                  onPause={(e) => persistProgress(current.id, { lastPositionSeconds: Math.floor(e.currentTarget.currentTime) })}
                   onSeeking={onSeeking}
                   onEnded={() => markComplete(current.id)}
                 >
@@ -739,6 +858,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
             />
           </div>
         </div>
+        )}
 
         {hasAnyMaterials && (
           <section className="flex flex-col gap-4">
@@ -846,17 +966,31 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         <div className="flex flex-col gap-4">
           {detail.modules.map((mod) => (
             <div key={mod.id}>
-              <p className="mb-2 text-sm font-semibold text-ash-700">{localize(mod.title, locale)}</p>
+              <button
+                type="button"
+                onClick={() => setViewModuleId(mod.id)}
+                aria-current={moduleMode && viewModuleId === mod.id ? "true" : undefined}
+                className={cn(
+                  "mb-2 flex w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-sm font-semibold hover:bg-paper-muted",
+                  moduleMode && viewModuleId === mod.id ? "bg-ink-50 text-ink-800" : "text-ash-700",
+                )}
+              >
+                <span>{localize(mod.title, locale)}</span>
+                {mod.materials.length > 0 && <span className="flex-none text-xs font-normal text-ash-600">{mod.materials.length} lectura{mod.materials.length === 1 ? "" : "s"}</span>}
+              </button>
               <ul className="flex flex-col gap-1">
                 {mod.lessons.map((lesson) => {
-                  const isCurrent = lesson.id === currentId;
+                  const isCurrent = !moduleMode && lesson.id === currentId;
                   const isComplete = completedMap[lesson.id];
                   return (
                     <li key={lesson.id}>
                       <button
                         type="button"
-                        onClick={() => setCurrentId(lesson.id)}
-                        aria-current={isCurrent ? "true" : undefined}
+                        onClick={() => {
+                          setViewModuleId(null);
+                          setCurrentId(lesson.id);
+                        }}
+                        aria-current={isCurrent && !moduleMode ? "true" : undefined}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm",
                           isCurrent ? "bg-ink-50 text-ink-800" : "text-ash-700 hover:bg-paper-muted",

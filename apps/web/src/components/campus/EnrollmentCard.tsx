@@ -97,7 +97,10 @@ export function EnrollmentCard({
               </p>
             )}
             <ProgressBar value={enrollment.progressPct} label={t("progress", { pct: enrollment.progressPct })} className="mt-3 max-w-sm" />
-            <p className="mt-1 text-sm text-ash-500">{t("progress", { pct: Math.round(enrollment.progressPct) })}</p>
+            {/* Todos empiezan en 0 % porque el avance se calcula con lo que ya completaste (lecciones vistas y lecturas marcadas): sin eso, 0 no es un error. */}
+            <p className="mt-1 text-sm text-ash-500">
+              {enrollment.progressPct === 0 ? "Aún no empiezas: tu avance sube al completar clases y lecturas." : t("progress", { pct: Math.round(enrollment.progressPct) })}
+            </p>
 
             <div className="mt-3">
               {enrollment.approvalMissing.length > 0 ? (

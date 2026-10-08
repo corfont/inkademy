@@ -155,11 +155,11 @@ export class EnrollmentService {
 
   private async nextActionLabel(courseId: string, enrollmentId: string): Promise<string | null> {
     const upcoming = await this.prisma.liveSession.findFirst({
-      where: { courseId, startsAt: { gt: new Date() }, status: "SCHEDULED" },
+      where: { courseId, endsAt: { gt: new Date() }, status: "SCHEDULED" },
       orderBy: { startsAt: "asc" },
     });
     if (upcoming) {
-      return `Próxima clase: ${upcoming.startsAt.toLocaleString("es-PE")}`;
+      return upcoming.startsAt <= new Date() ? `Clase en vivo en curso (hasta ${upcoming.endsAt.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })})` : `Próxima clase: ${upcoming.startsAt.toLocaleString("es-PE", { timeZone: "America/Lima" })}`;
     }
     const nextLesson = await this.prisma.lesson.findFirst({
       where: {
@@ -351,7 +351,7 @@ export class EnrollmentService {
     // nextActionLabel — próxima clase en vivo por curso.
     const upcomingSessions = courseIds.length
       ? await this.prisma.liveSession.findMany({
-          where: { courseId: { in: courseIds }, startsAt: { gt: new Date() }, status: "SCHEDULED" },
+          where: { courseId: { in: courseIds }, endsAt: { gt: new Date() }, status: "SCHEDULED" },
           orderBy: { startsAt: "asc" },
         })
       : [];
@@ -395,7 +395,7 @@ export class EnrollmentService {
 
     const nextActionLabelFromMaps = (courseId: string, enrollmentId: string): string | null => {
       const upcoming = upcomingSessionByCourseId.get(courseId);
-      if (upcoming) return `Próxima clase: ${upcoming.startsAt.toLocaleString("es-PE")}`;
+      if (upcoming) return upcoming.startsAt <= new Date() ? `Clase en vivo en curso (hasta ${upcoming.endsAt.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" })})` : `Próxima clase: ${upcoming.startsAt.toLocaleString("es-PE", { timeZone: "America/Lima" })}`;
       const lessons = lessonsByCourseId.get(courseId) ?? [];
       const completedIds = completedLessonIdsByEnrollment.get(enrollmentId);
       const nextLesson = lessons.find((l) => !completedIds?.has(l.id));

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BrandLogo } from "@/components/layout/BrandLogo";
+import { esAmex, formatearCvc, formatearNumeroTarjeta, formatearVencimiento, validarTarjeta } from "@/lib/card-format";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { CheckCircle2, Lock } from "lucide-react";
@@ -206,6 +207,15 @@ function CheckoutForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Con el formulario propio de tarjeta (no con el widget del proveedor) se revisa la forma de los datos antes de pagar.
+    if (!useCulqiWidget) {
+      const problema = validarTarjeta(card);
+      if (problema) {
+        setStatus("error");
+        setErrorMessage(problema);
+        return;
+      }
+    }
     const paymentMethodToken = await getPaymentToken().catch((err) => {
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : t("error"));
@@ -443,10 +453,12 @@ function CheckoutForm() {
                           <Input
                             id="cardNumber"
                             inputMode="numeric"
+                            autoComplete="cc-number"
                             required
+                            maxLength={23}
                             placeholder="4111 1111 1111 1111"
                             value={card.number}
-                            onChange={(e) => setCard((c) => ({ ...c, number: e.target.value }))}
+                            onChange={(e) => setCard((c) => ({ ...c, number: formatearNumeroTarjeta(e.target.value), cvc: formatearCvc(c.cvc, e.target.value) }))}
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -455,9 +467,12 @@ function CheckoutForm() {
                             <Input
                               id="cardExpiry"
                               required
+                              inputMode="numeric"
+                              autoComplete="cc-exp"
+                              maxLength={5}
                               placeholder="12/29"
                               value={card.expiry}
-                              onChange={(e) => setCard((c) => ({ ...c, expiry: e.target.value }))}
+                              onChange={(e) => setCard((c) => ({ ...c, expiry: formatearVencimiento(e.target.value) }))}
                             />
                           </div>
                           <div>
@@ -466,8 +481,11 @@ function CheckoutForm() {
                               id="cardCvc"
                               required
                               inputMode="numeric"
+                              autoComplete="cc-csc"
+                              maxLength={4}
+                              placeholder={esAmex(card.number) ? "1234" : "123"}
                               value={card.cvc}
-                              onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value }))}
+                              onChange={(e) => setCard((c) => ({ ...c, cvc: formatearCvc(e.target.value, c.number) }))}
                             />
                           </div>
                         </div>
