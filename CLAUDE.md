@@ -160,3 +160,14 @@ integraciones/empleado?email=...`, que devuelva `jobTitle`/empresa si el
 correo corresponde a un `Employee` real) el día que Inkademy tenga una
 pantalla de perfil para personal, o que este dato se use en algo real
 (certificados, reportes, liquidaciones).
+
+## Revisión de feedback de alumnos y docentes (7-oct-2026)
+
+Pedido directo del usuario (excepción a «Inkademy no se toca» de `../CLAUDE.md`). Cambios desplegados (`docker compose -f docker-compose.prod.yml build api web worker`):
+- **Clases en vivo**: una sesión creada DESPUÉS de que los alumnos se matricularon nunca llegaba a su agenda (los `CalendarEvent` solo se creaban al matricularse). Ahora `CalendarService.addLiveSessionToEnrolled()` los agrega al crear la sesión (única y serie); además «próxima clase» usa `endsAt > now` (antes `startsAt > now` hacía desaparecer la clase en curso) y el aula muestra un aviso con botón para entrar.
+- **Aula**: cualquier módulo se abre desde la barra lateral (un módulo con solo lecturas, sin clases, no se podía abrir); avance con cola de reintentos (antes un fallo al guardar se ignoraba en silencio) y 95 % del video cuenta como visto; SCORM con tamaño elegible y pantalla completa; el estado del examen SCORM se muestra aunque el paquete no reporte nota.
+- **Checkout**: formato y validación de tarjeta (`lib/card-format.ts`: solo dígitos, MM/AA válido, Luhn, CVC de 3 o 4 según la marca).
+- **Marca**: logo centrado en la barra lateral y proporcional (`object-fit: contain`); vista previa con el ancho real de la barra.
+- **Certificados**: «Regenerar» ya no borra el PDF actual antes de tener el nuevo (si la generación fallaba, quedaba para siempre «generando…»).
+- **Regalías**: la fecha de fin ya era opcional (vacía = indefinida); ahora se ve explícito en la pantalla.
+- **Pendiente propuesto, sin construir**: pantalla de bienvenida/introducción del curso (video, imagen, PPT) antes de las clases; reproductor de video propio (hoy es el `<video>` nativo del navegador).
