@@ -19,6 +19,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { RescheduleSessionControl } from "./RescheduleSessionControl";
 import { FileDropzone } from "./FileDropzone";
+import { CourseWelcomeEditor, type WelcomeValue } from "./CourseWelcomeEditor";
 import { DropLabel } from "./DropLabel";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -272,6 +273,15 @@ function GeneralInfoSection({
   const [uploadingSyllabus, setUploadingSyllabus] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
   const [syllabusError, setSyllabusError] = useState<string | null>(null);
+  const [welcome, setWelcome] = useState<WelcomeValue>({
+    enabled: Boolean(course.welcomeEnabled),
+    title: course.welcomeTitle ?? "",
+    text: course.welcomeText ?? "",
+    kind: (course.welcomeMediaKind as WelcomeValue["kind"]) ?? "",
+    assetId: course.welcomeAssetId ?? null,
+    linkUrl: course.welcomeLinkUrl ?? "",
+    mediaUrl: course.welcomeMediaUrl ?? null,
+  });
   const [newAreaDialogOpen, setNewAreaDialogOpen] = useState(false);
   const [newAreaName, setNewAreaName] = useState("");
   const [newAreaSaving, setNewAreaSaving] = useState(false);
@@ -505,6 +515,7 @@ function GeneralInfoSection({
             </div>
           </div>
         </div>
+        <CourseWelcomeEditor value={welcome} onChange={setWelcome} />
         <div className="max-w-xs">
           <Label htmlFor="edit-language">Idioma del curso</Label>
           <Select id="edit-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -539,6 +550,12 @@ function GeneralInfoSection({
                 coverImageAssetId,
                 syllabusAssetId,
                 blockMainVideoDownload,
+                welcomeEnabled: welcome.enabled,
+                welcomeTitle: welcome.title.trim() || null,
+                welcomeText: welcome.text.trim() || null,
+                welcomeMediaKind: welcome.kind || null,
+                welcomeAssetId: welcome.kind && welcome.kind !== "LINK" ? welcome.assetId : null,
+                welcomeLinkUrl: welcome.kind === "LINK" ? welcome.linkUrl.trim() || null : null,
               })
             }
           >

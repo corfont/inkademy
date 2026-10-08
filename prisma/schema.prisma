@@ -337,6 +337,14 @@ model Course {
   durationUnit          DurationUnit         @default(HOURS)
   coverImageAssetId     String?
   syllabusAssetId       String? // sílabo del curso (PDF/Word) — visible para el alumno en el aula
+  // Introducción opcional ANTES de las clases (video, imagen, PDF, presentación o enlace) con un botón «Comenzar el curso» — para que el alumno
+  // no caiga de golpe en el primer video. Solo la ve quien aún no empieza (avance 0 %); después se puede reabrir desde el aula.
+  welcomeEnabled        Boolean              @default(false)
+  welcomeTitle          String?
+  welcomeText           String?              @db.Text
+  welcomeMediaKind      String? // VIDEO | IMAGE | PDF | PRESENTATION | LINK
+  welcomeAssetId        String?
+  welcomeLinkUrl        String?
   priceAmount           Decimal              @db.Decimal(10, 2)
   priceCurrency         String               @default("PEN")
   certificationIncluded Boolean              @default(true)

@@ -715,6 +715,7 @@ export class AdminService {
       // resolución para el catálogo público.
       coverImageUrl: course.coverImageAssetId ? this.storageService.getPublicUrl(course.coverImageAssetId) : null,
       syllabusUrl: course.syllabusAssetId ? this.storageService.getPublicUrl(course.syllabusAssetId) : null,
+      welcomeMediaUrl: course.welcomeMediaKind === "LINK" ? course.welcomeLinkUrl : course.welcomeAssetId ? this.storageService.getPublicUrl(course.welcomeAssetId) : null,
       // Materiales (de módulo y de lección) tampoco traían URL previsualizable
       // — el admin solo veía el nombre del archivo, no podía abrirlo.
       modules: course.modules.map((m) => ({

@@ -14,6 +14,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { RequirementChecklist } from "@/components/ui/RequirementChecklist";
 import { ActionSection } from "./ActionSection";
 import { JoinClassButton } from "./JoinClassButton";
+import { EnhancedPlayerControls, PLAYER_MODE_KEY } from "./EnhancedPlayerControls";
 import { CourseRatingPrompt } from "./CourseRatingPrompt";
 import { cn } from "@/lib/cn";
 import { localize, formatDate } from "@/lib/format";
@@ -255,6 +256,75 @@ function LiveSessionBanner({ session }: { session: { id: string; startsAt: strin
         </p>
       </div>
       <JoinClassButton liveSessionId={session.id} />
+    </div>
+  );
+}
+
+/** Convierte un enlace de YouTube o Vimeo en su dirección para incrustar; cualquier otro enlace devuelve null (se ofrece como botón). */
+function embedDeEnlace(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") return `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const id = u.searchParams.get("v") ?? (u.pathname.startsWith("/embed/") ? u.pathname.split("/")[2] : null);
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    if (host === "vimeo.com") {
+      const id = u.pathname.split("/").filter(Boolean)[0];
+      return id && /^\d+$/.test(id) ? `https://player.vimeo.com/video/${id}` : null;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Introducción opcional ANTES de las clases (video, imagen, PDF, presentación o enlace) — para que el alumno no caiga de golpe en el primer
+ * video. «Comenzar el curso» lo lleva a las clases; después puede reabrirla con «Ver introducción del curso».
+ */
+function WelcomePanel({
+  welcome,
+  courseTitle,
+  onStart,
+}: {
+  welcome: NonNullable<ClassroomDetail["welcome"]>;
+  courseTitle: string;
+  onStart: () => void;
+}) {
+  const url = welcome.mediaUrl;
+  const embed = welcome.kind === "LINK" && url ? embedDeEnlace(url) : null;
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-5">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-ash-500">{courseTitle}</p>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">{welcome.title || "Bienvenido al curso"}</h1>
+      </div>
+      {url && welcome.kind === "VIDEO" && <video controls className="w-full rounded-lg bg-ink-950" src={url} controlsList="nodownload" />}
+      {url && welcome.kind === "IMAGE" && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="w-full rounded-lg border border-paper-border" />
+      )}
+      {url && welcome.kind === "PDF" && <iframe title="Introducción" src={url} className="h-[36rem] w-full rounded-lg border border-paper-border" />}
+      {url && welcome.kind === "PRESENTATION" && (
+        <iframe
+          title="Introducción"
+          src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
+          className="h-[32rem] w-full rounded-lg border border-paper-border"
+          allowFullScreen
+        />
+      )}
+      {embed && <iframe title="Introducción" src={embed} className="aspect-video w-full rounded-lg border border-paper-border" allow="fullscreen; picture-in-picture" allowFullScreen />}
+      {url && welcome.kind === "LINK" && !embed && (
+        <a href={url} target="_blank" rel="noreferrer">
+          <Button variant="outline" className="gap-1.5">
+            <ExternalLink className="h-4 w-4" aria-hidden="true" /> Abrir el material de introducción
+          </Button>
+        </a>
+      )}
+      {welcome.text && <p className="whitespace-pre-wrap text-base leading-relaxed text-ink-800">{welcome.text}</p>}
+      <div>
+        <Button size="lg" onClick={onStart}>Comenzar el curso</Button>
+      </div>
     </div>
   );
 }
@@ -527,6 +597,39 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     allLessons.length === 0 ? (detail.modules.find((m) => m.materials.length > 0) ?? detail.modules[0])?.id ?? null : null,
   );
   const moduleMode = viewModuleId !== null;
+  // Reproductor OPCIONAL: el alumno elige controles estándar del navegador o los mejorados (se recuerda en este navegador).
+  const [playerMode, setPlayerMode] = useState<"standard" | "enhanced">("standard");
+  const playerWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(PLAYER_MODE_KEY) === "enhanced") setPlayerMode("enhanced");
+    } catch {}
+  }, []);
+  function choosePlayer(mode: "standard" | "enhanced") {
+    setPlayerMode(mode);
+    try {
+      localStorage.setItem(PLAYER_MODE_KEY, mode);
+    } catch {}
+  }
+  // Introducción opcional del curso: la ve quien aún no empieza (avance 0 %) y no la ha cerrado; después se reabre desde el botón «Ver introducción».
+  const welcomeKey = `inkademy-welcome-${detail.enrollmentId}`;
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  useEffect(() => {
+    if (!detail.welcome) return;
+    try {
+      if ((detail.progressPct ?? 0) === 0 && localStorage.getItem(welcomeKey) !== "1") setWelcomeOpen(true);
+    } catch {
+      if ((detail.progressPct ?? 0) === 0) setWelcomeOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail.enrollmentId]);
+  function startCourse() {
+    setWelcomeOpen(false);
+    try {
+      localStorage.setItem(welcomeKey, "1");
+    } catch {}
+    window.scrollTo({ top: 0 });
+  }
   const current = moduleMode ? undefined : (allLessons.find((l) => l.id === currentId) ?? allLessons[0]);
   const currentModule = moduleMode
     ? detail.modules.find((m) => m.id === viewModuleId)
@@ -734,6 +837,10 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
     }, 1200);
   }
 
+  if (welcomeOpen && detail.welcome) {
+    return <WelcomePanel welcome={detail.welcome} courseTitle={localize(detail.title, locale)} onStart={startCourse} />;
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
       <CourseRatingPrompt
@@ -752,6 +859,13 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         )}
         {detail.accessExpiresAt && (
           <Callout variant="warning">Debes terminar este curso antes del {formatDate(detail.accessExpiresAt, locale)} para conservar el acceso y poder certificarte.</Callout>
+        )}
+        {detail.welcome && (
+          <div>
+            <Button variant="outline" size="sm" onClick={() => setWelcomeOpen(true)}>
+              Ver introducción del curso
+            </Button>
+          </div>
         )}
         {detail.syllabusUrl && (
           <a href={detail.syllabusUrl} target="_blank" rel="noreferrer">
@@ -778,11 +892,13 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
           <div>
             {current?.contentType === "VIDEO" ? (
+              <>
+              <div ref={playerWrapRef} className="overflow-hidden rounded-lg bg-ink-950">
               <div className="relative overflow-hidden rounded-lg">
                 <video
                   key={current.id}
                   ref={videoRef}
-                  controls
+                  controls={playerMode !== "enhanced"}
                   // "El sistema no debe permitir que el usuario pueda descargar
                   // la clase [principal]" — sin botón de descarga del
                   // reproductor nativo y sin menú de clic derecho. Es un
@@ -806,6 +922,14 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                 {detail.blockMainVideoDownload !== false && watermarkLabel && <VideoWatermark label={watermarkLabel} />}
                 {activeCheckpoint && <VideoCheckpointOverlay question={activeCheckpoint} onContinue={() => continueAfterCheckpoint(activeCheckpoint)} />}
               </div>
+              {playerMode === "enhanced" && <EnhancedPlayerControls key={current.id} videoRef={videoRef} wrapperRef={playerWrapRef} hasSubtitles={Boolean(current.subtitlesUrl)} />}
+              </div>
+              <div className="mt-1 flex items-center justify-end gap-2 text-xs text-ash-600">
+                Reproductor:
+                <button type="button" onClick={() => choosePlayer("standard")} aria-pressed={playerMode === "standard"} className={cn("rounded-full px-2.5 py-1", playerMode === "standard" ? "bg-ink-800 text-paper" : "border border-paper-border")}>Estándar</button>
+                <button type="button" onClick={() => choosePlayer("enhanced")} aria-pressed={playerMode === "enhanced"} className={cn("rounded-full px-2.5 py-1", playerMode === "enhanced" ? "bg-ink-800 text-paper" : "border border-paper-border")} title="Velocidad, ±10 s, subtítulos y atajos de teclado">Mejorado</button>
+              </div>
+              </>
             ) : current?.contentType === "AUDIO" ? (
               // Misma mecánica de progreso/reanudar/bloqueo-de-adelantar que
               // el video (onTimeUpdate/onSeeking generalizados a

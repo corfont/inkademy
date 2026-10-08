@@ -409,6 +409,8 @@ export interface ClassroomDetail {
   title: LocalizedText;
   courseId: string;
   syllabusUrl?: string | null;
+  /** Introducción opcional antes de las clases. */
+  welcome?: { title: string | null; text: string | null; kind: "VIDEO" | "IMAGE" | "PDF" | "PRESENTATION" | "LINK" | null; mediaUrl: string | null } | null;
   // "No puedo entrar al curso... para completar lo que me falta" — un curso
   // puede tener VARIAS evaluaciones ponderadas (diplomado); antes solo se
   // exponía la primera (assessmentId singular) y el resto quedaba

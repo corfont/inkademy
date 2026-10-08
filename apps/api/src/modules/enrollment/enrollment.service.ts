@@ -760,6 +760,21 @@ export class EnrollmentService {
       courseId: enrollment.course?.id ?? enrollment.program?.id ?? null,
       title: (enrollment.course?.title as Record<string, string>) ?? (enrollment.program?.title as Record<string, string>) ?? {},
       syllabusUrl: enrollment.course?.syllabusAssetId ? this.storage.getPublicUrl(enrollment.course.syllabusAssetId) : null,
+      // Introducción opcional antes de las clases (ver Course.welcome*).
+      welcome:
+        enrollment.course?.welcomeEnabled && (enrollment.course.welcomeTitle || enrollment.course.welcomeText || enrollment.course.welcomeMediaKind)
+          ? {
+              title: enrollment.course.welcomeTitle ?? null,
+              text: enrollment.course.welcomeText ?? null,
+              kind: enrollment.course.welcomeMediaKind ?? null,
+              mediaUrl:
+                enrollment.course.welcomeMediaKind === "LINK"
+                  ? enrollment.course.welcomeLinkUrl ?? null
+                  : enrollment.course.welcomeAssetId
+                    ? this.storage.getPublicUrl(enrollment.course.welcomeAssetId)
+                    : null,
+            }
+          : null,
       // Cada examen trae su propio `unlocked` (ver arriba) — ya no hay un
       // solo candado global para todos.
       assessments,
