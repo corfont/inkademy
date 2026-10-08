@@ -125,7 +125,7 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     return;
   }
 
-  if (certificate.pdfAssetId) {
+  if (certificate.pdfAssetId && !job.data.force) {
     logger.info("el certificado ya tiene PDF generado, se omite", { certificateId });
     return;
   }

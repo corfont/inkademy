@@ -236,7 +236,7 @@ export function CertificatesTable({ certificates, locale }: { certificates: Cert
                           {openingPdfId === cert.id ? "Abriendo…" : "PDF"}
                         </button>
                       ) : (
-                        <span className="text-xs text-ash-600">generando…</span>
+                        <span className="text-xs text-ash-600" title="Si lleva más de unos minutos, usa «Regenerar» para volver a generarlo.">sin PDF todavía</span>
                       )}
                       <button
                         type="button"

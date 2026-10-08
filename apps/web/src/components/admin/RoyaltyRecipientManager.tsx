@@ -294,13 +294,12 @@ function CourseRoyaltyEditor({
             <li key={a.id} className="flex items-center justify-between gap-2 text-xs">
               <span>
                 {a.course?.title?.es ?? a.course?.slug}
-                {(a.startDate || a.endDate) && (
-                  <span className="text-ash-500">
-                    {" "}
-                    ({a.startDate ? new Date(a.startDate).toLocaleDateString("es-PE") : "…"} —{" "}
-                    {a.endDate ? new Date(a.endDate).toLocaleDateString("es-PE") : "…"})
-                  </span>
-                )}
+                {/* Sin fecha de fin = regalía indefinida (no vence). Las fechas son calendario puras: se muestran en UTC para no correrlas un día. */}
+                <span className="text-ash-500">
+                  {" "}
+                  ({a.startDate ? `desde ${new Date(a.startDate).toLocaleDateString("es-PE", { timeZone: "UTC" })}` : "desde el inicio"} ·{" "}
+                  {a.endDate ? `hasta ${new Date(a.endDate).toLocaleDateString("es-PE", { timeZone: "UTC" })}` : "indefinida, sin fecha límite"})
+                </span>
               </span>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => adminApi.removeCourseRoyalty(a.id))}>
                 Quitar
@@ -318,8 +317,14 @@ function CourseRoyaltyEditor({
             </option>
           ))}
         </Select>
-        <Input type="date" className="h-8 w-32 text-xs" value={startDate} onChange={(e) => setStartDate(e.target.value)} title="Desde (opcional)" />
-        <Input type="date" className="h-8 w-32 text-xs" value={endDate} onChange={(e) => setEndDate(e.target.value)} title="Hasta (opcional)" />
+        <label className="flex flex-col gap-0.5 text-[11px] text-ash-500">
+          Desde (opcional)
+          <Input type="date" className="h-8 w-32 text-xs" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-0.5 text-[11px] text-ash-500">
+          Hasta (vacío = indefinida)
+          <Input type="date" className="h-8 w-32 text-xs" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </label>
         <Button
           size="sm"
           disabled={busy || !courseId}

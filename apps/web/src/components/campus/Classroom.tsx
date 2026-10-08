@@ -220,6 +220,23 @@ const ALTOS_SCORM = [
   { id: "completo", label: "Alto de la pantalla", className: "h-[calc(100vh-6rem)] min-h-[32rem]" },
 ] as const;
 
+/** Lo que el paquete SCORM reportó del examen, en palabras del alumno. */
+function estadoScorm(status: string | null | undefined): string {
+  switch ((status ?? "").toLowerCase()) {
+    case "passed":
+      return "Estado: aprobado";
+    case "failed":
+      return "Estado: no aprobado (puedes reintentar si el examen lo permite)";
+    case "completed":
+      return "Estado: completado (el paquete no envió una nota; si no la ves, avisa a soporte)";
+    case "incomplete":
+    case "browsed":
+      return "Estado: en curso — termínalo hasta el final para que se registre tu nota";
+    default:
+      return "Estado: aún no lo empiezas";
+  }
+}
+
 function ScormFrame({ playerUrl }: { playerUrl: string | null }) {
   const [alto, setAlto] = useState<(typeof ALTOS_SCORM)[number]["id"]>("grande");
   const [pantallaCompleta, setPantallaCompleta] = useState(false);
@@ -898,6 +915,8 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
                         {a.weightPercent ? `Pesa ${a.weightPercent}% de la nota final · ` : ""}
                         Nota mínima {a.minScore}/100
                         {a.bestScore !== null && ` · Tu mejor nota: ${a.bestScore}/100`}
+                        {(a.scormLessonId || a.scormMaterialId) && a.bestScore === null && ` · ${estadoScorm(a.scormStatus)}`}
+                        {(a.scormLessonId || a.scormMaterialId) && a.bestScore !== null && a.scormStatus ? ` · ${estadoScorm(a.scormStatus)}` : ""}
                         {a.attemptsUsed > 0 && ` · Intentos usados: ${a.attemptsUsed}/${a.maxAttempts}`}
                       </p>
                       {!a.unlocked && (

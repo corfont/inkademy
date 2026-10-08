@@ -245,10 +245,11 @@ export class CertificateService {
   async regenerate(certificateId: string) {
     const certificate = await this.prisma.certificate.findUnique({ where: { id: certificateId } });
     if (!certificate) throw new NotFoundException("Certificado no encontrado");
-    await this.prisma.certificate.update({ where: { id: certificateId }, data: { pdfAssetId: null } });
+    // Antes se borraba el PDF ANTES de generar el nuevo: si la generación fallaba, el certificado quedaba para siempre en «generando…» (sin
+    // PDF, ni en la tabla ni en la verificación pública). Ahora el PDF actual sigue disponible hasta que el nuevo lo reemplace (misma ruta).
     await this.certificateQueue.add(
       CERTIFICATE_JOBS.GENERATE,
-      { certificateId },
+      { certificateId, force: true },
       { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true, removeOnFail: 100 },
     );
     return { regenerating: true };

@@ -105,6 +105,8 @@ export const CERTIFICATE_JOBS = {
 } as const;
 
 export interface CertificateGenerateJobData {
+  /** Regenerar aunque ya tenga PDF (el anterior sigue disponible hasta que el nuevo esté listo). */
+  force?: boolean;
   certificateId: string;
 }
 

@@ -398,6 +398,8 @@ export interface ClassroomAssessmentSummary {
   // SCORM (ver Assessment.scormLessonId/scormMaterialId).
   scormLessonId?: string | null;
   scormMaterialId?: string | null;
+  /** Estado que reportó el paquete SCORM (completed, passed, failed, incomplete…). */
+  scormStatus?: string | null;
 }
 export interface ClassroomDetail {
   enrollmentId: string;

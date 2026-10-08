@@ -700,6 +700,12 @@ export class EnrollmentService {
             // de esa lección/material, no en /evaluacion/:id.
             scormLessonId: a.scormLessonId,
             scormMaterialId: a.scormMaterialId,
+            // Cómo va el examen dentro del SCORM (completed / passed / failed / incomplete…), para mostrarlo aunque el paquete no reporte nota.
+            scormStatus: a.scormLessonId
+              ? progressByLesson.get(a.scormLessonId)?.scormCompletionStatus ?? null
+              : a.scormMaterialId
+                ? scormProgressByMaterial.get(a.scormMaterialId)?.scormCompletionStatus ?? null
+                : null,
             unlocked: a.moduleId ? await this.isModuleComplete(a.moduleId, enrollment.id) : enrollment.progressPct >= 100,
             attemptsUsed: await this.prisma.assessmentAttempt.count({
               where: {
