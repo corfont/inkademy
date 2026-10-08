@@ -731,8 +731,20 @@ export class EnrollmentService {
           ? await this.prisma.certificate.findFirst({ where: { userId: enrollment.userId, courseId: enrollment.courseId, revoked: false } })
           : null;
 
+    // Clase en vivo en curso o la próxima (dentro del aula, con botón para entrar) — antes solo estaba en la agenda y en la tarjeta del inicio,
+    // y desaparecía en cuanto empezaba.
+    const liveNow =
+      enrollment.courseId && !accessBlocked
+        ? await this.prisma.liveSession.findFirst({
+            where: { courseId: enrollment.courseId, endsAt: { gt: new Date() }, status: "SCHEDULED" },
+            orderBy: { startsAt: "asc" },
+            select: { id: true, startsAt: true, endsAt: true },
+          })
+        : null;
+
     return {
       enrollmentId: enrollment.id,
+      liveSession: liveNow ? { id: liveNow.id, startsAt: liveNow.startsAt.toISOString(), endsAt: liveNow.endsAt.toISOString() } : null,
       offeringKind: enrollment.offeringKind,
       status: enrollment.status,
       source: enrollment.source,

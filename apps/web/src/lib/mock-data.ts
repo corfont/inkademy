@@ -402,6 +402,8 @@ export interface ClassroomAssessmentSummary {
   scormStatus?: string | null;
 }
 export interface ClassroomDetail {
+  /** Clase en vivo en curso o la próxima de este curso. */
+  liveSession?: { id: string; startsAt: string; endsAt: string } | null;
   enrollmentId: string;
   offeringKind: "COURSE" | "PROGRAM";
   title: LocalizedText;

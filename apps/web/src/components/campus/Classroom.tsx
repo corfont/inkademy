@@ -13,6 +13,7 @@ import { Callout } from "@/components/ui/Callout";
 import { Dialog } from "@/components/ui/Dialog";
 import { RequirementChecklist } from "@/components/ui/RequirementChecklist";
 import { ActionSection } from "./ActionSection";
+import { JoinClassButton } from "./JoinClassButton";
 import { CourseRatingPrompt } from "./CourseRatingPrompt";
 import { cn } from "@/lib/cn";
 import { localize, formatDate } from "@/lib/format";
@@ -235,6 +236,27 @@ function estadoScorm(status: string | null | undefined): string {
     default:
       return "Estado: aún no lo empiezas";
   }
+}
+
+/** Clase en vivo del curso: «en curso» mientras dura, o la próxima; con el botón para entrar (la API abre el acceso 15 min antes). */
+function LiveSessionBanner({ session }: { session: { id: string; startsAt: string; endsAt: string } }) {
+  const inicio = new Date(session.startsAt);
+  const fin = new Date(session.endsAt);
+  const ahora = new Date();
+  const enCurso = inicio <= ahora && ahora < fin;
+  const hora = (d: Date) => d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
+  const dia = inicio.toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Lima" });
+  return (
+    <div className={cn("flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4", enCurso ? "border-success bg-success-bg" : "border-paper-border bg-paper")}>
+      <div>
+        <p className="text-sm font-semibold text-ink-900">{enCurso ? "Tu clase en vivo está en curso" : "Próxima clase en vivo"}</p>
+        <p className="text-sm text-ash-600">
+          {enCurso ? `Hasta las ${hora(fin)} (hora de Lima)` : `${dia}, ${hora(inicio)} – ${hora(fin)} (hora de Lima)`}
+        </p>
+      </div>
+      <JoinClassButton liveSessionId={session.id} />
+    </div>
+  );
 }
 
 function ScormFrame({ playerUrl }: { playerUrl: string | null }) {
@@ -724,6 +746,7 @@ export function Classroom({ detail }: { detail: ClassroomDetail }) {
         }}
       />
       <div className="flex flex-col gap-6">
+        {detail.liveSession && <LiveSessionBanner session={detail.liveSession} />}
         {sinGuardar && (
           <Callout variant="warning">Estamos guardando tu avance… Si ves este aviso mucho rato, revisa tu conexión: lo seguimos intentando y no se pierde mientras esta página siga abierta.</Callout>
         )}
