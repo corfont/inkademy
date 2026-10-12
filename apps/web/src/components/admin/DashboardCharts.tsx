@@ -17,6 +17,8 @@ import {
   Legend,
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/Card";
+import { adminApi } from "@/lib/api-client";
+import { Select } from "@/components/ui/Input";
 
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "En curso", COMPLETED: "Completado", EXPIRED: "Vencido", CANCELLED: "Cancelado" };
 
@@ -53,7 +55,7 @@ function monthLabel(month: string) {
 }
 
 export function DashboardCharts({
-  data,
+  data: initialData,
   ticketsByStatus,
 }: {
   data: {
@@ -65,6 +67,23 @@ export function DashboardCharts({
   ticketsByStatus: { status: string; count: number }[];
 }) {
   const { indigo, gold } = useBrandChartColors();
+  // Horizonte de las series de tiempo: el admin elige cuántos meses mirar (antes fijo en 6).
+  const [months, setMonths] = useState(6);
+  const [data, setData] = useState(initialData);
+  const [loadingRange, setLoadingRange] = useState(false);
+  async function changeMonths(m: number) {
+    setMonths(m);
+    setLoadingRange(true);
+    try {
+      const fresh = await adminApi.kpiCharts(undefined, m);
+      setData((d) => ({ ...d, revenueByMonth: fresh.revenueByMonth ?? d.revenueByMonth, enrollmentsByMonth: fresh.enrollmentsByMonth ?? d.enrollmentsByMonth }));
+    } catch {
+      /* se conserva lo que ya se veía */
+    } finally {
+      setLoadingRange(false);
+    }
+  }
+  const pctLabel = (name: string) => (entry: any) => `${name} ${Math.round((entry.percent ?? 0) * 100)}%`;
   const STATUS_COLOR: Record<string, string> = {
     ACTIVE: indigo, // indigo — en curso
     COMPLETED: "#16a34a", // verde — completado
@@ -83,9 +102,18 @@ export function DashboardCharts({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      <div className="flex items-center justify-end gap-2 lg:col-span-2">
+        <label htmlFor="kpi-months" className="text-sm text-ash-600">Horizonte de las series de tiempo</label>
+        <Select id="kpi-months" className="h-9 w-40" value={months} disabled={loadingRange} onChange={(e) => changeMonths(Number(e.target.value))}>
+          <option value={3}>Últimos 3 meses</option>
+          <option value={6}>Últimos 6 meses</option>
+          <option value={12}>Últimos 12 meses</option>
+          <option value={24}>Últimos 24 meses</option>
+        </Select>
+      </div>
       <Card>
         <CardContent className="p-6">
-          <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">Ventas pagadas — últimos 6 meses</h2>
+          <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">Ventas pagadas — últimos {months} meses</h2>
           {revenue.length === 0 ? (
             <p className="text-sm text-ash-500">Todavía no hay ventas pagadas en este período.</p>
           ) : (
@@ -104,7 +132,7 @@ export function DashboardCharts({
 
       <Card>
         <CardContent className="p-6">
-          <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">Nuevas matrículas — últimos 6 meses</h2>
+          <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">Nuevas matrículas — últimos {months} meses</h2>
           {enrollments.length === 0 ? (
             <p className="text-sm text-ash-500">Todavía no hay matrículas en este período.</p>
           ) : (
@@ -136,7 +164,7 @@ export function DashboardCharts({
                   cx="50%"
                   cy="50%"
                   outerRadius={80}
-                  label={(entry: any) => STATUS_LABEL[entry.status] ?? entry.status}
+                  label={(entry: any) => pctLabel(STATUS_LABEL[entry.status] ?? entry.status)(entry)}
                 >
                   {data.enrollmentsByStatus.map((entry) => (
                     <Cell key={entry.status} fill={STATUS_COLOR[entry.status] ?? "#8a8a94"} />
@@ -158,7 +186,7 @@ export function DashboardCharts({
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={data.coursesByArea} dataKey="count" nameKey="area" cx="50%" cy="50%" outerRadius={80} label={(entry: any) => entry.area}>
+                <Pie data={data.coursesByArea} dataKey="count" nameKey="area" cx="50%" cy="50%" outerRadius={80} label={(entry: any) => pctLabel(entry.area)(entry)}>
                   {data.coursesByArea.map((entry) => (
                     <Cell key={entry.area} fill={hexFromToken(entry.area)} />
                   ))}

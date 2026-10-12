@@ -1084,3 +1084,10 @@ export const emailFinancialReportSchema = z.object({
 export const setCourseStaffCanEditSchema = z.object({
   canEdit: z.boolean(),
 });
+
+/** Atención de un ticket de soporte: estado, responsable y plazo (todo opcional; null quita el responsable o el plazo). */
+export const updateTicketAttentionSchema = z.object({
+  status: z.enum(["OPEN", "IN_PROGRESS", "WAITING_USER", "RESOLVED", "CLOSED"]).optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
+  dueAt: z.string().datetime().nullable().optional(),
+});

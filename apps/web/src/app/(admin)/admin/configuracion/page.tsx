@@ -31,9 +31,12 @@ export default async function AdvancedSettingsPage() {
     <div className="mx-auto flex max-w-3xl flex-col gap-8">
       <div>
         <h1 className="font-serif text-2xl font-semibold text-ink-900">Configuración avanzada</h1>
-        <p className="mt-1 text-sm text-ash-500">Comisiones, impuestos, detracción y comportamiento del asistente de IA — todo en un solo lugar.</p>
+        <p className="mt-1 text-sm text-ash-500">Comisiones, impuestos, detracción, servidor de correo y comportamiento del asistente de IA — todo en un solo lugar.</p>
       </div>
-      <Callout variant="warning">Estos valores afectan directamente lo que se cobra y se reporta como pagado a SUNAT. Cámbialos con cuidado.</Callout>
+      <Callout variant="warning">
+        Estos valores definen cómo se calculan los impuestos y comisiones en los comprobantes nuevos y en los reportes. Cambiarlos no declara ni paga nada ante SUNAT: los comprobantes ya emitidos conservan los valores con los que se emitieron, y los reportes financieros usan los valores vigentes al consultarlos. Cada cambio queda registrado en Auditoría.
+        {sunat.updatedAt && <span className="mt-1 block text-xs">Configuración SUNAT modificada por última vez el {new Date(sunat.updatedAt).toLocaleString("es-PE")}.</span>}
+      </Callout>
 
       <Card>
         <CardContent className="flex flex-col gap-4 p-6">

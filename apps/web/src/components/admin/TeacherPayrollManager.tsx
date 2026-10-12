@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +20,7 @@ const FREQ_LABEL: Record<string, string> = { DAILY: "Diario", WEEKLY: "Semanal",
  * adelantos vive en /admin/liquidaciones/tarifas (TeacherPayrollConfigManager).
  */
 export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
+  const [expandedLiq, setExpandedLiq] = useState<string | null>(null);
   const [teacherFilter, setTeacherFilter] = useState("");
   const [liquidations, setLiquidations] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +150,8 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
                 </thead>
                 <tbody className="divide-y divide-paper-border">
                   {liquidations.map((l) => (
-                    <tr key={l.id}>
+                    <Fragment key={l.id}>
+                    <tr>
                       <td className="p-2 font-medium">
                         {teacherName(l.teacher)}
                         {l.teacher?.bankAccountNumber ? (
@@ -187,6 +189,9 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
                       </td>
                       <td className="p-2">
                         <div className="flex flex-wrap gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => setExpandedLiq(expandedLiq === l.id ? null : l.id)}>
+                            {expandedLiq === l.id ? "Ocultar detalle" : "Ver detalle"}
+                          </Button>
                           {Number(l.deductions) > 0 && !l.deductionsWaived && (
                             <Button
                               size="sm"
@@ -213,6 +218,14 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
                         </div>
                       </td>
                     </tr>
+                    {expandedLiq === l.id && (
+                      <tr className="bg-paper-muted">
+                        <td colSpan={10} className="p-3">
+                          <LiquidationBreakdown l={l} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -242,6 +255,57 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
           </Button>
         </div>
       </Dialog>
+    </div>
+  );
+}
+
+const sym = (c: string) => (c === "USD" ? "$" : "S/");
+
+/** Qué se está pagando exactamente: cada clase con su duración pagable y tarifa, las otras actividades, los descuentos y los adelantos. */
+function LiquidationBreakdown({ l }: { l: any }) {
+  const sessions: any[] = Array.isArray(l.detail?.sessions) ? l.detail.sessions : [];
+  const money = (n: number) => `${sym(l.currency)}${n.toFixed(2)}`;
+  return (
+    <div className="flex flex-col gap-3 text-xs">
+      <div>
+        <p className="mb-1 font-medium text-ink-900">Conceptos de la liquidación</p>
+        {sessions.length === 0 ? (
+          <p className="text-ash-500">Esta liquidación no guarda el detalle por clase.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="text-ash-500">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">Clase dictada</th>
+                  <th className="py-1 pr-3 font-medium">Fecha</th>
+                  <th className="py-1 pr-3 text-right font-medium">Programado</th>
+                  <th className="py-1 pr-3 text-right font-medium">Pagable</th>
+                  <th className="py-1 pr-3 text-right font-medium">Tarifa/h</th>
+                  <th className="py-1 text-right font-medium">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((d, i) => (
+                  <tr key={d.sessionId ?? i} className="border-t border-paper-border">
+                    <td className="py-1 pr-3">{d.courseTitle?.es ?? "Clase en vivo"}</td>
+                    <td className="py-1 pr-3">{d.sessionStartsAt ? new Date(d.sessionStartsAt).toLocaleDateString("es-PE") : "—"}</td>
+                    <td className="py-1 pr-3 text-right">{d.scheduledMinutes} min</td>
+                    <td className="py-1 pr-3 text-right">{d.payableMinutes} min</td>
+                    <td className="py-1 pr-3 text-right">{money(Number(d.hourlyRateTeaching ?? 0))}</td>
+                    <td className="py-1 text-right font-medium">{money((Number(d.payableMinutes ?? 0) / 60) * Number(d.hourlyRateTeaching ?? 0))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <ul className="grid gap-1 sm:grid-cols-2">
+        <li>Horas de otras actividades: <b>{l.hoursOtherActivities}h</b>{l.detail?.hourlyRateOtherActivities ? ` a ${money(Number(l.detail.hourlyRateOtherActivities))}/h` : ""}</li>
+        <li>Descuento por tardanza o salida temprana: <b>{money(Number(l.deductions))}</b>{l.deductionsWaived ? " (perdonado)" : ""}</li>
+        <li>Adelantos descontados: <b>{money(Number(l.advancesDeducted))}</b></li>
+        <li>Neto a pagar: <b>{money(Number(l.netAmount))}</b></li>
+      </ul>
     </div>
   );
 }

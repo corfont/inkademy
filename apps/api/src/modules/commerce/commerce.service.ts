@@ -879,12 +879,13 @@ export class CommerceService {
   async getOrderById(userId: string, orderId: string, isAdmin: boolean) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true, payments: true, electronicInvoice: true, electronicNotes: true },
+      include: { items: true, payments: true, electronicInvoice: true, electronicNotes: true, user: { select: { firstName: true, lastName: true, email: true } }, company: { select: { legalName: true } } },
     });
     if (!order) throw new NotFoundException("Orden no encontrada");
     if (!isAdmin && order.userId !== userId) {
       throw new ForbiddenException("No puedes ver la orden de otro usuario");
     }
+    const itemTitles = await this.itemTitles(order.items);
     return {
       id: order.id,
       status: order.status,
@@ -894,7 +895,17 @@ export class CommerceService {
       total: decimalToString(order.total),
       currency: order.currency,
       createdAt: order.createdAt.toISOString(),
+      orderNumber: `#${order.id.slice(-8).toUpperCase()}`,
+      buyer: {
+        name: `${order.user.firstName} ${order.user.lastName}`,
+        email: order.user.email,
+        companyName: order.company?.legalName ?? null,
+        legalName: order.buyerLegalName ?? null,
+        documentType: order.buyerDocumentType ?? null,
+        documentNumber: order.buyerDocumentNumber ?? null,
+      },
       items: order.items.map((i) => ({
+        title: itemTitles.get(i.courseId ?? i.programId ?? "") ?? null,
         offeringKind: i.offeringKind,
         courseId: i.courseId,
         programId: i.programId,
@@ -928,14 +939,33 @@ export class CommerceService {
     };
   }
 
+  /** Título legible de lo comprado (curso o programa) para cada ítem de una orden — en lote, sin una consulta por ítem. */
+  private async itemTitles(items: { courseId: string | null; programId: string | null }[]): Promise<Map<string, string>> {
+    const courseIds = [...new Set(items.map((i) => i.courseId).filter((x): x is string => Boolean(x)))];
+    const programIds = [...new Set(items.map((i) => i.programId).filter((x): x is string => Boolean(x)))];
+    const [courses, programs] = await Promise.all([
+      courseIds.length ? this.prisma.course.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true } }) : [],
+      programIds.length ? this.prisma.program.findMany({ where: { id: { in: programIds } }, select: { id: true, title: true } }) : [],
+    ]);
+    const es = (t: unknown) => ((t as Record<string, string> | null)?.es ?? "") || "Curso";
+    const map = new Map<string, string>();
+    courses.forEach((c) => map.set(c.id, es(c.title)));
+    programs.forEach((p) => map.set(p.id, es(p.title)));
+    return map;
+  }
+
   async listMine(userId: string) {
     const orders = await this.prisma.order.findMany({
       where: { userId },
-      include: { payments: true },
+      include: { payments: true, items: true },
       orderBy: { createdAt: "desc" },
     });
+    const titles = await this.itemTitles(orders.flatMap((o) => o.items));
     return orders.map((o) => ({
       id: o.id,
+      // Número corto y legible (el UUID completo no le sirve al alumno) y qué compró.
+      orderNumber: `#${o.id.slice(-8).toUpperCase()}`,
+      description: o.items.map((i) => titles.get(i.courseId ?? i.programId ?? "") ?? "").filter(Boolean).join(", "),
       status: o.status,
       total: decimalToString(o.total),
       currency: o.currency,

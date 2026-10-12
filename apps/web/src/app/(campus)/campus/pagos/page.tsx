@@ -11,6 +11,7 @@ import { formatDate, formatPrice } from "@/lib/format";
 export const metadata: Metadata = { title: "Pagos" };
 
 interface OrderLike {
+  orderNumber?: string;
   id: string;
   createdAt: string;
   total: string;
@@ -63,7 +64,7 @@ export default async function PaymentsPage() {
               {orders.map((order: OrderLike) => (
                 <tr key={order.id}>
                   <td className="p-4">
-                    <p className="font-medium text-ink-900">{order.id}</p>
+                    <p className="font-medium text-ink-900">{order.orderNumber ?? order.id}</p>
                     <p className="text-ash-500">{order.description}</p>
                   </td>
                   <td className="p-4 text-ash-600">{formatDate(order.createdAt, locale)}</td>

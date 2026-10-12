@@ -4,6 +4,7 @@ import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { EmailCampaignManager } from "@/components/admin/EmailCampaignManager";
 import { MailingListManager } from "@/components/admin/MailingListManager";
+import Link from "next/link";
 import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Marketing por correo (admin)" };
@@ -28,6 +29,9 @@ export default async function MarketingPage() {
           segundo plano, solo a quienes aceptaron recibir correos de marketing.
         </p>
       </div>
+      <p className="text-sm text-ash-600">
+        ¿Quieres regalar un curso a quien recibe la campaña? <Link href="/admin/cortesias" className="font-medium text-ink-800 underline">Otorgar una cortesía →</Link>
+      </p>
       {!campaignsLive && <Callout variant="info">No pudimos conectar con la API — no se muestran campañas reales por ahora.</Callout>}
       <EmailCampaignManager campaigns={campaigns} areas={areas} companies={companies} courses={courses} mailingLists={mailingLists} />
       <hr className="border-paper-border" />

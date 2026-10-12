@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
 
@@ -38,7 +38,13 @@ export class PlatformLicenseService {
     return license;
   }
 
+  /** El vencimiento no puede ser anterior (ni igual) al inicio: una licencia con fechas invertidas se aceptaba sin queja. */
+  private assertDates(startsAt: Date, endsAt: Date) {
+    if (!(endsAt.getTime() > startsAt.getTime())) throw new BadRequestException("El vencimiento debe ser posterior a la fecha de inicio.");
+  }
+
   create(input: UpsertPlatformLicenseInput) {
+    this.assertDates(new Date(input.startsAt), new Date(input.endsAt));
     return this.prisma.platformLicense.create({
       data: {
         ...input,
@@ -50,7 +56,9 @@ export class PlatformLicenseService {
   }
 
   async update(id: string, input: Partial<UpsertPlatformLicenseInput>) {
-    await this.get(id);
+    const actual = await this.get(id);
+    // En un cambio parcial se valida con los valores efectivos (lo nuevo o, si no se envió, lo que ya estaba guardado).
+    this.assertDates(input.startsAt ? new Date(input.startsAt) : actual.startsAt, input.endsAt ? new Date(input.endsAt) : actual.endsAt);
     return this.prisma.platformLicense.update({
       where: { id },
       data: {

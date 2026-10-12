@@ -35,7 +35,10 @@ export default async function AdminSupportPage() {
               <th className="p-4 font-medium">Asunto</th>
               <th className="p-4 font-medium">Solicitante</th>
               <th className="p-4 font-medium">Categoría</th>
-              <th className="p-4 font-medium">Fecha</th>
+              <th className="p-4 font-medium">Recibido</th>
+              <th className="p-4 font-medium">Responsable</th>
+              <th className="p-4 font-medium">Plazo</th>
+              <th className="p-4 font-medium">Atendido</th>
               <th className="p-4 font-medium">Prioridad</th>
               <th className="p-4 font-medium">Estado</th>
             </tr>
@@ -54,6 +57,9 @@ export default async function AdminSupportPage() {
                 </td>
                 <td className="p-4 text-ash-600">{ticket.category}</td>
                 <td className="p-4 text-ash-600">{formatDate(ticket.createdAt, locale)}</td>
+                <td className="p-4 text-ash-600">{ticket.assignee ? ticket.assignee.displayName ?? `${ticket.assignee.firstName} ${ticket.assignee.lastName}` : "Sin asignar"}</td>
+                <td className={`p-4 ${ticket.dueAt && !ticket.resolvedAt && new Date(ticket.dueAt) < new Date() ? "font-medium text-danger" : "text-ash-600"}`}>{ticket.dueAt ? formatDate(ticket.dueAt, locale) : "—"}</td>
+                <td className="p-4 text-ash-600">{ticket.firstResponseAt ? formatDate(ticket.firstResponseAt, locale) : "Sin responder"}</td>
                 <td className="p-4">
                   <Badge variant={PRIORITY_VARIANT[ticket.priority]}>{ticket.priority}</Badge>
                 </td>

@@ -556,8 +556,11 @@ export class AssessmentService {
     const rows = await this.prisma.assessmentAttempt.findMany({
       where: {
         status: "PENDING_REVIEW",
-        assessment: { sourceFileAssetId: { not: null } },
-        ...(teacherUserId ? { assessment: { course: { staff: { some: { userId: teacherUserId } } } } } : {}),
+        // Un solo filtro de `assessment`: antes, para un docente, el segundo spread pisaba al primero y se perdía «solo exámenes de archivo».
+        assessment: {
+          sourceFileAssetId: { not: null },
+          ...(teacherUserId ? { course: { staff: { some: { userId: teacherUserId } } } } : {}),
+        },
       },
       include: { user: true, assessment: { include: { course: true } } },
       orderBy: { submittedAt: "asc" },

@@ -56,6 +56,8 @@ export function SupportTicketList({
                     <p className="font-medium text-ink-900">{ticket.subject}</p>
                     <p className="text-sm text-ash-500">
                       {ticket.category} · {formatDate(ticket.createdAt, locale)}
+                      {ticket.assignee ? ` · Atiende: ${ticket.assignee.displayName ?? `${ticket.assignee.firstName} ${ticket.assignee.lastName}`}` : ""}
+                      {ticket.dueAt && !ticket.resolvedAt ? ` · Plazo: ${formatDate(ticket.dueAt, locale)}` : ""}
                     </p>
                   </div>
                   <div className="flex gap-2">

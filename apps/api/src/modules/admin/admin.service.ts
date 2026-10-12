@@ -27,6 +27,7 @@ export class AdminService {
 
   async getKpis() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     const [
@@ -40,6 +41,9 @@ export class AdminService {
       ticketsByStatus,
       enrollmentsByCourse,
       revenueByCompany,
+      salesPrev30d,
+      enrollmentsLast30d,
+      enrollmentsPrev30d,
     ] = await Promise.all([
       this.prisma.order.aggregate({
         where: { status: "PAID", createdAt: { gte: thirtyDaysAgo } },
@@ -72,6 +76,10 @@ export class AdminService {
         orderBy: { _sum: { total: "desc" } },
         take: 5,
       }),
+      // Flujo: el mismo periodo inmediato anterior (30-60 días atrás), para mostrar si sube o baja.
+      this.prisma.order.aggregate({ where: { status: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } }, _sum: { total: true }, _count: true }),
+      this.prisma.enrollment.count({ where: { enrolledAt: { gte: thirtyDaysAgo } } }),
+      this.prisma.enrollment.count({ where: { enrolledAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } } }),
     ]);
 
     const [courses, companies] = await Promise.all([
@@ -91,10 +99,14 @@ export class AdminService {
       sales: {
         last30dTotal: decimalToString(salesLast30d._sum.total ?? 0),
         last30dOrders: salesLast30d._count,
+        prev30dTotal: decimalToString(salesPrev30d._sum.total ?? 0),
+        prev30dOrders: salesPrev30d._count,
         totalPaidOrders,
       },
       enrollments: {
         total: totalEnrollments,
+        last30d: enrollmentsLast30d,
+        prev30d: enrollmentsPrev30d,
         bySource: enrollmentsBySource.map((r) => ({ source: r.source, count: r._count.source })),
       },
       students: {
@@ -121,18 +133,20 @@ export class AdminService {
    * tarjetas de números y listas — sin tendencia en el tiempo ni
    * distribución visual de nada). Todo real, agregado directo de la BD.
    */
-  async getKpiCharts() {
+  async getKpiCharts(monthsInput = 6) {
+    // Horizonte elegible por el admin; solo valores razonables (evita pedir años de historia por error).
+    const months = [3, 6, 12, 24].includes(monthsInput) ? monthsInput : 6;
     const [revenueByMonth, enrollmentsByMonth, enrollmentsByStatus, coursesByArea] = await Promise.all([
       this.prisma.$queryRaw<Array<{ month: Date; total: string }>>`
         SELECT date_trunc('month', "createdAt") as month, COALESCE(SUM(total), 0) as total
         FROM "Order"
-        WHERE status = 'PAID' AND "createdAt" >= now() - interval '6 months'
+        WHERE status = 'PAID' AND "createdAt" >= now() - make_interval(months => ${months}::int)
         GROUP BY month ORDER BY month ASC
       `,
       this.prisma.$queryRaw<Array<{ month: Date; count: bigint }>>`
         SELECT date_trunc('month', "enrolledAt") as month, COUNT(*) as count
         FROM "Enrollment"
-        WHERE "enrolledAt" >= now() - interval '6 months'
+        WHERE "enrolledAt" >= now() - make_interval(months => ${months}::int)
         GROUP BY month ORDER BY month ASC
       `,
       this.prisma.enrollment.groupBy({ by: ["status"], _count: { status: true } }),
@@ -3324,10 +3338,17 @@ export class AdminService {
   async listAuditLog(filters: { entity?: string; action?: string; actorId?: string; from?: Date; to?: Date }, page = 1, pageSize = 30) {
     const where = {
       ...(filters.entity ? { entity: filters.entity } : {}),
-      ...(filters.action ? { action: filters.action } : {}),
+      // «Acción (contiene)»: antes era igualdad exacta y «DELETE» nunca encontraba «USER_DELETE».
+      ...(filters.action ? { action: { contains: filters.action.trim(), mode: "insensitive" as const } } : {}),
       ...(filters.actorId ? { actorId: filters.actorId } : {}),
       ...(filters.from || filters.to
-        ? { createdAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } }
+        ? {
+            createdAt: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              // «Hasta» es una fecha (sin hora): incluye todo ese día, no solo hasta las 00:00.
+              ...(filters.to ? { lte: new Date(filters.to.getTime() + 24 * 3_600_000 - 1) } : {}),
+            },
+          }
         : {}),
     };
     const [rows, total] = await Promise.all([
@@ -3340,7 +3361,35 @@ export class AdminService {
       }),
       this.prisma.auditLog.count({ where }),
     ]);
-    return { rows, total, page, pageSize };
+    return { rows: await this.withEntityLabels(rows), total, page, pageSize };
+  }
+
+  /**
+   * Nombre legible del objeto afectado (usuario, curso, programa, empresa…) para que la auditoría no muestre solo UUID. Se resuelve en lote por tipo;
+   * si el objeto ya no existe (se borró), queda sin etiqueta y la pantalla muestra el id corto.
+   */
+  private async withEntityLabels<T extends { entity: string; entityId: string | null }>(rows: T[]): Promise<Array<T & { entityLabel: string | null }>> {
+    const ids = (entity: string) => [...new Set(rows.filter((r) => r.entity === entity && r.entityId).map((r) => r.entityId as string))];
+    const es = (v: unknown) => (v && typeof v === "object" ? ((v as Record<string, string>).es ?? Object.values(v as Record<string, string>)[0] ?? null) : null);
+    const labels = new Map<string, string>();
+    const put = (entity: string, id: string, label: string | null) => label && labels.set(`${entity}:${id}`, label);
+    const [users, courses, programs, companies, areas, partners, royalties] = await Promise.all([
+      ids("User").length ? this.prisma.user.findMany({ where: { id: { in: ids("User") } }, select: { id: true, firstName: true, lastName: true, email: true } }) : [],
+      ids("Course").length ? this.prisma.course.findMany({ where: { id: { in: ids("Course") } }, select: { id: true, title: true } }) : [],
+      ids("Program").length ? this.prisma.program.findMany({ where: { id: { in: ids("Program") } }, select: { id: true, title: true } }) : [],
+      ids("Company").length ? this.prisma.company.findMany({ where: { id: { in: ids("Company") } }, select: { id: true, legalName: true } }) : [],
+      ids("Area").length ? this.prisma.area.findMany({ where: { id: { in: ids("Area") } }, select: { id: true, name: true } }) : [],
+      ids("PartnerInstitution").length ? this.prisma.partnerInstitution.findMany({ where: { id: { in: ids("PartnerInstitution") } }, select: { id: true, name: true } }) : [],
+      ids("RoyaltyRecipient").length ? this.prisma.royaltyRecipient.findMany({ where: { id: { in: ids("RoyaltyRecipient") } }, select: { id: true, name: true } }) : [],
+    ]);
+    users.forEach((u) => put("User", u.id, `${u.firstName} ${u.lastName} (${u.email})`));
+    courses.forEach((c) => put("Course", c.id, es(c.title)));
+    programs.forEach((p) => put("Program", p.id, es(p.title)));
+    companies.forEach((c) => put("Company", c.id, c.legalName));
+    areas.forEach((a) => put("Area", a.id, es(a.name)));
+    partners.forEach((p) => put("PartnerInstitution", p.id, p.name));
+    royalties.forEach((r) => put("RoyaltyRecipient", r.id, r.name));
+    return rows.map((r) => ({ ...r, entityLabel: r.entityId ? labels.get(`${r.entity}:${r.entityId}`) ?? null : null }));
   }
 
   /**

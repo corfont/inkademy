@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { formatDate } from "@/lib/format";
 import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon, Pencil, Copy, Check } from "lucide-react";
 import { adminApi, companyApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -595,6 +596,7 @@ function UserCard({ user, companies, onChange }: { user: UserRow; companies: any
                 {user.firstName} {user.lastName}
               </p>
               <p className="text-xs text-ash-500">{user.email}</p>
+              {user.createdAt && <p className="text-xs text-ash-400">Alta: {formatDate(user.createdAt, "es")}</p>}
             </div>
           </div>
           <Badge variant={user.status === "active" ? "success" : "danger"}>
@@ -825,6 +827,7 @@ function UserListRow({ user, companies: _companies, onChange }: { user: UserRow;
               {user.firstName} {user.lastName}
             </p>
             <p className="text-xs text-ash-500">{user.email}</p>
+            {user.createdAt && <p className="text-xs text-ash-400">Alta: {formatDate(user.createdAt, "es")}</p>}
           </div>
         </div>
         {rowError && <p className="mt-1 text-xs text-danger">{rowError}</p>}

@@ -127,6 +127,8 @@ export interface CourseDetailDTO extends CourseCardDTO {
   subtitleLanguages: string[];
   prerequisiteCourseIds: string[];
   nextRecommendedCourseIds: string[];
+  /** Cursos para sugerir en la ficha: los que el admin recomienda como siguiente paso y, si faltan, los que más llevaron quienes llevaron este. */
+  relatedCourses?: CourseCardDTO[];
   modules: {
     id: string;
     order: number;
@@ -266,6 +268,12 @@ export interface SupportTicketSummaryDTO {
   // tickets) — en "mis tickets" (alumno/docente) es siempre uno mismo, no hace falta.
   createdByName?: string;
   createdByEmail?: string;
+  // Atención del equipo: responsable, plazo, primera respuesta y resolución.
+  assigneeId?: string | null;
+  assignee?: { id: string; firstName: string; lastName: string; displayName: string | null } | null;
+  dueAt?: string | null;
+  firstResponseAt?: string | null;
+  resolvedAt?: string | null;
 }
 
 export interface AdminExceptionDTO {

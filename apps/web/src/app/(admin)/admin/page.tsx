@@ -80,9 +80,16 @@ export default async function AdminDashboardPage() {
       ? "warn"
       : "good";
 
-  const kpiCards: Array<{ label: string; value: string | number; icon: typeof TrendingUp; health?: Health; accent: string }> = [
-    { label: t("sales"), value: formatPrice(kpis.sales.last30dTotal, "PEN", locale), icon: TrendingUp, accent: "indigo" },
-    { label: t("enrollments"), value: kpis.enrollments.total, icon: Users, accent: "gold" },
+  // Flujo: variación contra los 30 días inmediatamente anteriores («▲ 12 %»); sin base de comparación no se inventa un porcentaje.
+  const variation = (now: number, prev: number | undefined): string | undefined => {
+    if (prev === undefined) return undefined;
+    if (prev === 0) return now > 0 ? "Sin ventas en los 30 días anteriores" : undefined;
+    const pct = ((now - prev) / prev) * 100;
+    return `${pct >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(pct))} % vs. los 30 días anteriores`;
+  };
+  const kpiCards: Array<{ label: string; value: string | number; icon: typeof TrendingUp; health?: Health; accent: string; note?: string }> = [
+    { label: t("sales"), value: formatPrice(kpis.sales.last30dTotal, "PEN", locale), icon: TrendingUp, accent: "indigo", note: variation(Number(kpis.sales.last30dTotal), kpis.sales.prev30dTotal === undefined ? undefined : Number(kpis.sales.prev30dTotal)) },
+    { label: t("enrollments"), value: kpis.enrollments.total, icon: Users, accent: "gold", note: kpis.enrollments.last30d === undefined ? undefined : `${kpis.enrollments.last30d} nuevas en 30 días${kpis.enrollments.prev30d ? ` (${kpis.enrollments.last30d >= kpis.enrollments.prev30d ? "▲" : "▼"} ${Math.abs(Math.round(((kpis.enrollments.last30d - kpis.enrollments.prev30d) / kpis.enrollments.prev30d) * 100))} %)` : ""}` },
     { label: t("activeStudents"), value: kpis.students.active, icon: Users, accent: "indigo" },
     { label: t("atRiskStudents"), value: kpis.students.atRisk, icon: UserX, health: atRiskHealth, accent: "danger" },
     { label: t("certificatesIssued"), value: kpis.certificatesIssued, icon: Award, accent: "gold" },
@@ -145,6 +152,7 @@ export default async function AdminDashboardPage() {
                 </div>
                 <p className="mt-3 font-serif text-2xl font-semibold text-ink-900">{kpi.value}</p>
                 <p className="text-sm text-ash-500">{kpi.label}</p>
+                {kpi.note && <p className="mt-0.5 text-xs text-ash-400">{kpi.note}</p>}
               </CardContent>
             </Card>
           ))}

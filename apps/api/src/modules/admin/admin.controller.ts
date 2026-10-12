@@ -97,8 +97,8 @@ export class AdminController {
   @Get("dashboard/kpi-charts")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Series de tiempo y distribuciones para los gráficos del dashboard" })
-  kpiCharts() {
-    return this.adminService.getKpiCharts();
+  kpiCharts(@Query("months") months?: string) {
+    return this.adminService.getKpiCharts(Number(months) || 6);
   }
 
   @Get("exceptions")

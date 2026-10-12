@@ -85,7 +85,8 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   };
   const accessLabel = t(ACCESS_LABEL_KEY[course.accessDurationPolicy] ?? "access6Months");
 
-  const related = MOCK_COURSES.filter((c) => course.nextRecommendedCourseIds?.includes(c.id));
+  // Antes se filtraba contra MOCK_COURSES (datos de ejemplo): con cursos reales nunca coincidía y la sección no aparecía.
+  const related = course.relatedCourses ?? [];
   const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0);
 
   // "Iconos más modernos, tipografía y colores del manual de marca" —
@@ -260,7 +261,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
 
             {related.length > 0 && (
               <section className="mt-10">
-                <h2 className="font-serif text-xl font-semibold text-ink-900">{t("relatedPaths")}</h2>
+                <h2 className="font-serif text-xl font-semibold text-ink-900">Otros alumnos también llevaron</h2>
                 <ul className="mt-3 flex flex-col gap-2">
                   {related.map((r) => (
                     <li key={r.id}>

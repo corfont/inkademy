@@ -18,7 +18,8 @@ export default async function AdminOrderDetailPage({ params }: { params: { id: s
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-ink-900">Orden {order.id}</h1>
+        <h1 className="font-serif text-2xl font-semibold text-ink-900">Orden {order.orderNumber ?? order.id}</h1>
+        <span className="sr-only">{order.id}</span>
         <Link href="/admin/ordenes" className="text-sm text-ink-600 hover:underline">
           ← Volver a órdenes
         </Link>
@@ -40,6 +41,74 @@ export default async function AdminOrderDetailPage({ params }: { params: { id: s
             <span className="text-sm text-ash-500">Fecha</span>
             <span>{formatDate(order.createdAt, locale)}</span>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-6">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Qué se compró</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-ash-500">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">Producto</th>
+                  <th className="py-1 pr-3 font-medium">Tipo</th>
+                  <th className="py-1 pr-3 text-right font-medium">Cantidad</th>
+                  <th className="py-1 pr-3 text-right font-medium">Cupos</th>
+                  <th className="py-1 pr-3 text-right font-medium">Precio unitario</th>
+                  <th className="py-1 text-right font-medium">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(order.items ?? []).map((i: any, idx: number) => (
+                  <tr key={idx} className="border-t border-paper-border">
+                    <td className="py-2 pr-3 text-ink-900">{i.title ?? "—"}</td>
+                    <td className="py-2 pr-3 text-ash-600">{i.offeringKind === "PROGRAM" ? "Programa" : "Curso"}</td>
+                    <td className="py-2 pr-3 text-right text-ash-600">{i.quantity}</td>
+                    <td className="py-2 pr-3 text-right text-ash-600">{i.seatPoolQty ?? "—"}</td>
+                    <td className="py-2 pr-3 text-right text-ash-600">{formatPrice(i.unitPrice, order.currency, locale)}</td>
+                    <td className="py-2 text-right text-ink-900">{formatPrice(String(Number(i.unitPrice) * (i.seatPoolQty ?? i.quantity)), order.currency, locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <dl className="ml-auto grid grid-cols-[auto_auto] gap-x-6 gap-y-1 text-sm">
+            <dt className="text-ash-500">Subtotal</dt>
+            <dd className="text-right text-ash-700">{formatPrice(order.subtotal, order.currency, locale)}</dd>
+            <dt className="text-ash-500">Descuento</dt>
+            <dd className="text-right text-ash-700">- {formatPrice(order.discount, order.currency, locale)}</dd>
+            <dt className="text-ash-500">IGV</dt>
+            <dd className="text-right text-ash-700">{formatPrice(order.tax, order.currency, locale)}</dd>
+            <dt className="font-medium text-ink-900">Total</dt>
+            <dd className="text-right font-medium text-ink-900">{formatPrice(order.total, order.currency, locale)}</dd>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-2 p-6 text-sm">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">Comprador y pagos</h2>
+          {order.buyer && (
+            <div className="text-ash-700">
+              <p className="font-medium text-ink-900">{order.buyer.legalName ?? order.buyer.name}</p>
+              <p>{order.buyer.email}</p>
+              {order.buyer.companyName && <p>Empresa: {order.buyer.companyName}</p>}
+              {order.buyer.documentNumber && <p>{order.buyer.documentType ?? "Documento"}: {order.buyer.documentNumber}</p>}
+            </div>
+          )}
+          {(order.payments ?? []).length === 0 ? (
+            <p className="text-ash-500">Sin pagos registrados.</p>
+          ) : (
+            <ul className="flex flex-col gap-1 border-t border-paper-border pt-2">
+              {order.payments.map((p: any, idx: number) => (
+                <li key={idx} className="flex flex-wrap justify-between gap-2 text-ash-600">
+                  <span>{p.provider} · {p.status}{p.paidAt ? ` · ${formatDate(p.paidAt, locale)}` : ""}</span>
+                  {p.receiptUrl && <a href={p.receiptUrl} target="_blank" rel="noreferrer" className="text-ink-700 hover:underline">Recibo</a>}
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

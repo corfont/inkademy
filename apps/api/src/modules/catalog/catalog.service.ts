@@ -91,6 +91,40 @@ export class CatalogService {
     };
   }
 
+  /**
+   * «Otros alumnos también llevaron»: primero lo que el admin recomienda a mano como siguiente paso; si faltan (máx. 4), se completa con los
+   * cursos publicados que más llevaron quienes ya llevan o llevaron este (matrículas activas o completadas).
+   */
+  private async relatedCoursesFor(courseId: string, recommendedIds: string[]): Promise<CourseCardDTO[]> {
+    const MAX = 4;
+    const ids: string[] = [];
+    if (recommendedIds.length) {
+      const published = await this.prisma.course.findMany({ where: { id: { in: recommendedIds }, status: "PUBLISHED" }, select: { id: true } });
+      const ok = new Set(published.map((c) => c.id));
+      for (const id of recommendedIds) if (ok.has(id) && id !== courseId && ids.length < MAX) ids.push(id);
+    }
+    if (ids.length < MAX) {
+      const alumnos = await this.prisma.enrollment.findMany({
+        where: { courseId, offeringKind: "COURSE", status: { in: ["ACTIVE", "COMPLETED"] } },
+        select: { userId: true },
+        take: 500,
+      });
+      if (alumnos.length > 0) {
+        const juntos = await this.prisma.enrollment.groupBy({
+          by: ["courseId"],
+          where: { userId: { in: alumnos.map((a) => a.userId) }, courseId: { not: courseId }, offeringKind: "COURSE", status: { in: ["ACTIVE", "COMPLETED"] }, course: { status: "PUBLISHED" } },
+          _count: { courseId: true },
+          orderBy: { _count: { courseId: "desc" } },
+          take: MAX * 2,
+        });
+        for (const j of juntos) if (j.courseId && !ids.includes(j.courseId) && ids.length < MAX) ids.push(j.courseId);
+      }
+    }
+    if (ids.length === 0) return [];
+    const cards = await this.getCourseCardsByIds(ids);
+    return ids.map((id) => cards.find((c) => c.id === id)).filter((c): c is CourseCardDTO => Boolean(c));
+  }
+
   /** Usado por otros módulos (p.ej. enrollment/recomendaciones) para mapear cursos a CourseCardDTO. */
   async getCourseCardsByIds(ids: string[]): Promise<CourseCardDTO[]> {
     if (ids.length === 0) return [];
@@ -228,9 +262,12 @@ export class CatalogService {
       take: 50,
     });
 
+    const relatedCourses = await this.relatedCoursesFor(course.id, course.nextRecommendedCourseIds);
+
     const card = this.toCourseCard(course as unknown as CourseWithRelations);
     return {
       ...card,
+      relatedCourses,
       description: (course.description as Record<string, string> | null) ?? null,
       detailSections: (course.detailSections as unknown as CourseDetailDTO["detailSections"]) ?? [],
       accessDurationPolicy: course.accessDurationPolicy,

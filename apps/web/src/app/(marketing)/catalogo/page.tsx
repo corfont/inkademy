@@ -92,7 +92,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
         <div>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-ash-500" aria-live="polite">
-              {items.length === 1 ? t("resultCountOne") : t("resultsCount", { count: items.length })}
+              {courseResult.total === 1 ? t("resultCountOne") : t("resultsCount", { count: courseResult.total })}
             </p>
             <Suspense fallback={null}>
               <SortSelect />
@@ -107,6 +107,24 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
               ))}
             </div>
           )}
+          {/* Paginador: antes se pedían 12 resultados pero nunca se ofrecía ver el resto. */}
+          {courseResult.total > courseResult.pageSize && (() => {
+            const pages = Math.ceil(courseResult.total / courseResult.pageSize);
+            const current = filters.page ?? 1;
+            const hrefFor = (p: number) => {
+              const qs = new URLSearchParams();
+              for (const [k, v] of Object.entries(searchParams)) if (typeof v === "string" && k !== "page") qs.set(k, v);
+              qs.set("page", String(p));
+              return `?${qs.toString()}`;
+            };
+            return (
+              <nav aria-label="Paginación" className="mt-8 flex items-center justify-center gap-3 text-sm">
+                {current > 1 ? <a href={hrefFor(current - 1)} className="rounded-md border border-paper-border px-3 py-1.5 hover:bg-paper-muted">← Anterior</a> : <span className="px-3 py-1.5 text-ash-400">← Anterior</span>}
+                <span className="text-ash-600">Página {current} de {pages}</span>
+                {current < pages ? <a href={hrefFor(current + 1)} className="rounded-md border border-paper-border px-3 py-1.5 hover:bg-paper-muted">Siguiente →</a> : <span className="px-3 py-1.5 text-ash-400">Siguiente →</span>}
+              </nav>
+            );
+          })()}
         </div>
       </div>
     </div>

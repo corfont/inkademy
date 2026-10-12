@@ -1,4 +1,4 @@
-import { forwardRef, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, forwardRef, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import type { CreateSupportTicketInput } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -63,6 +63,8 @@ export class SupportService {
   // Solo los campos necesarios para mostrar "quién lo pidió" — evita filtrar
   // el resto del perfil (teléfono, dirección, fecha de nacimiento, etc.) que
   // `include: { createdBy: true }` habría traído completo.
+  private readonly assigneeSelect = { select: { id: true, firstName: true, lastName: true, displayName: true } } as const;
+
   private readonly createdBySelect = { select: { displayName: true, firstName: true, lastName: true, email: true } } as const;
 
   private mapTicket<T extends { createdBy?: { displayName: string | null; firstName: string; lastName: string; email: string } }>(
@@ -89,7 +91,7 @@ export class SupportService {
       const tickets = await this.prisma.supportTicket.findMany({
         where: { companyId },
         orderBy: { updatedAt: "desc" },
-        include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, createdBy: this.createdBySelect },
+        include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, createdBy: this.createdBySelect, assignee: this.assigneeSelect },
       });
       return tickets.map((t) => this.mapTicket(t));
     }
@@ -100,7 +102,7 @@ export class SupportService {
     const tickets = await this.prisma.supportTicket.findMany({
       where: isGlobalStaff ? {} : { createdById: userId },
       orderBy: { updatedAt: "desc" },
-      include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, createdBy: this.createdBySelect },
+      include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, createdBy: this.createdBySelect, assignee: this.assigneeSelect },
     });
     return tickets.map((t) => this.mapTicket(t));
   }
@@ -116,7 +118,7 @@ export class SupportService {
   async getTicket(userId: string, ticketId: string, isGlobalStaff: boolean) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
-      include: { messages: { orderBy: { createdAt: "asc" }, include: { author: this.messageAuthorSelect } } },
+      include: { messages: { orderBy: { createdAt: "asc" }, include: { author: this.messageAuthorSelect } }, assignee: this.assigneeSelect },
     });
     if (!ticket) throw new NotFoundException("Ticket no encontrado");
 
@@ -142,7 +144,12 @@ export class SupportService {
     const isReplyFromStaff = isGlobalStaff && userId !== ticket.createdById;
     await this.prisma.supportTicket.update({
       where: { id: ticketId },
-      data: { status: isReplyFromStaff ? "WAITING_USER" : "IN_PROGRESS" },
+      data: {
+        status: isReplyFromStaff ? "WAITING_USER" : "IN_PROGRESS",
+        // La primera respuesta del equipo queda fechada (para saber cuánto tardó la atención); si quien escribe es el solicitante, el ticket se reabre.
+        ...(isReplyFromStaff && !ticket.firstResponseAt ? { firstResponseAt: new Date() } : {}),
+        ...(!isReplyFromStaff ? { resolvedAt: null } : {}),
+      },
     });
 
     if (isReplyFromStaff) {
@@ -160,6 +167,50 @@ export class SupportService {
     this.gateway.emitNewMessage(ticketId, messageWithAuthor ?? message);
 
     return message;
+  }
+
+  /** Quiénes pueden ser responsables de un ticket (administradores y soporte activos). */
+  async listStaff() {
+    const users = await this.prisma.user.findMany({
+      where: { globalRole: { in: ["ADMIN", "SUPPORT"] }, status: "ACTIVE" },
+      select: { id: true, firstName: true, lastName: true, displayName: true, globalRole: true },
+      orderBy: [{ firstName: "asc" }],
+    });
+    return users.map((u) => ({ id: u.id, name: u.displayName ?? `${u.firstName} ${u.lastName}`, role: u.globalRole }));
+  }
+
+  /**
+   * Atención del ticket por el equipo: estado (incluye resolver y cerrar, que antes no se podía), responsable y plazo. Antes los estados RESOLVED y
+   * CLOSED existían pero nada los asignaba, así que ningún ticket se podía dar por atendido.
+   */
+  async updateAttention(
+    actorId: string,
+    ticketId: string,
+    input: { status?: "OPEN" | "IN_PROGRESS" | "WAITING_USER" | "RESOLVED" | "CLOSED"; assigneeId?: string | null; dueAt?: string | null },
+  ) {
+    const ticket = await this.prisma.supportTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) throw new NotFoundException("Ticket no encontrado");
+    if (input.assigneeId) {
+      const assignee = await this.prisma.user.findFirst({ where: { id: input.assigneeId, globalRole: { in: ["ADMIN", "SUPPORT"] }, status: "ACTIVE" } });
+      if (!assignee) throw new BadRequestException("El responsable debe ser un administrador o personal de soporte activo.");
+    }
+    const closing = input.status === "RESOLVED" || input.status === "CLOSED";
+    const updated = await this.prisma.supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.status ? { resolvedAt: closing ? ticket.resolvedAt ?? new Date() : null } : {}),
+        ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+        ...(input.dueAt !== undefined ? { dueAt: input.dueAt ? new Date(input.dueAt) : null } : {}),
+      },
+      include: { assignee: this.assigneeSelect },
+    });
+    if (input.status && closing && ticket.status !== input.status) {
+      const creator = await this.prisma.user.findUnique({ where: { id: ticket.createdById } });
+      if (creator) await this.notifications.sendSupportTicketUpdate(creator.email, ticket.subject, creator.id, ticket.id).catch(() => undefined);
+    }
+    void actorId;
+    return updated;
   }
 
   /** Borrador de respuesta con IA para que soporte/admin lo revise antes de enviarlo. */

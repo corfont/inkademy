@@ -71,6 +71,10 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
       setError("Completa cliente, precio, y fechas de inicio/fin.");
       return;
     }
+    if (new Date(form.endsAt) <= new Date(form.startsAt)) {
+      setError("El vencimiento debe ser posterior a la fecha de inicio.");
+      return;
+    }
     await run(async () => {
       await platformLicenseApi.create({
         clientName: form.clientName,
@@ -124,8 +128,9 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
               </Select>
             </div>
             <div>
-              <Label htmlFor="pl-price">Precio</Label>
+              <Label htmlFor="pl-price">Importe por ciclo de facturación</Label>
               <Input id="pl-price" type="number" min="0" step="0.01" value={form.priceAmount} onChange={(e) => setForm((f) => ({ ...f, priceAmount: e.target.value }))} />
+              <p className="mt-1 text-xs text-ash-500">Lo que se cobra en cada ciclo (mensual o anual), no el total de la vigencia.</p>
             </div>
             <div>
               <Label htmlFor="pl-currency">Moneda</Label>

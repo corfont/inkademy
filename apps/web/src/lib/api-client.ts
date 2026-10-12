@@ -357,6 +357,8 @@ export interface AuditLogEntryDTO {
   action: string;
   entity: string;
   entityId: string | null;
+  /** Nombre legible del objeto afectado, si todavía existe. */
+  entityLabel?: string | null;
   before: unknown;
   after: unknown;
   createdAt: string;
@@ -655,6 +657,10 @@ export const supportApi = {
     apiFetch<{ id: string; title: string; charCount: number }>(`/support/tickets/${id}/save-as-knowledge`, { method: "POST", accessToken }),
   // Indicador de "pendientes" al costado de Soporte en el menú del admin.
   pendingCount: (accessToken?: string | null) => apiFetch<number>("/support/tickets/pending-count", { accessToken, cache: "no-store" }),
+  // Atención del equipo: estado (resolver y cerrar), responsable y plazo.
+  staff: (accessToken?: string | null) => apiFetch<{ id: string; name: string; role: string }[]>("/support/tickets/staff", { accessToken, cache: "no-store" }),
+  updateAttention: (id: string, input: { status?: string; assigneeId?: string | null; dueAt?: string | null }, accessToken?: string | null) =>
+    apiFetch<any>(`/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
 };
 
 // ---------------------------------------------------------------------------
@@ -690,7 +696,7 @@ export const chatbotApi = {
 // ---------------------------------------------------------------------------
 export const adminApi = {
   kpis: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpis", { accessToken, cache: "no-store" }),
-  kpiCharts: (accessToken?: string | null) => apiFetch<any>("/admin/dashboard/kpi-charts", { accessToken, cache: "no-store" }),
+  kpiCharts: (accessToken?: string | null, months?: number) => apiFetch<any>("/admin/dashboard/kpi-charts", { accessToken, cache: "no-store", query: { months } }),
   exceptions: (accessToken?: string | null) => apiFetch<AdminExceptionDTO[]>("/admin/exceptions", { accessToken }),
   // `mine: true` fuerza el acotado "solo mis cursos asignados" aunque la
   // cuenta también tenga ADMIN/SUPPORT como rol secundario — lo usa

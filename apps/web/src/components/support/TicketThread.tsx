@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles, BookMarked, Check, Bot, Radio } from "lucide-react";
 import { supportApi, ApiError } from "@/lib/api-client";
 import { getSupportSocket } from "@/lib/socket";
-import { Textarea } from "@/components/ui/Input";
+import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
@@ -37,6 +37,85 @@ function authorName(author: any) {
     [author?.firstName, author?.lastName].filter(Boolean).join(" ") ||
     author?.email ||
     "Usuario"
+  );
+}
+
+const fechaHora = (iso: string) => new Date(iso).toLocaleString("es-PE", { dateStyle: "medium", timeStyle: "short" });
+
+/** Quién atiende, hasta cuándo, cuándo se respondió por primera vez y cuándo se resolvió: lo ve el solicitante y el equipo. */
+function AttentionSummary({ ticket }: { ticket: any }) {
+  const responsable = ticket.assignee ? ticket.assignee.displayName ?? `${ticket.assignee.firstName} ${ticket.assignee.lastName}` : null;
+  const vencido = ticket.dueAt && !ticket.resolvedAt && new Date(ticket.dueAt) < new Date();
+  return (
+    <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+      <div className="flex gap-1.5"><dt className="text-ash-500">Recibido:</dt><dd className="text-ink-800">{fechaHora(ticket.createdAt)}</dd></div>
+      <div className="flex gap-1.5"><dt className="text-ash-500">Responsable:</dt><dd className="text-ink-800">{responsable ?? "Sin asignar"}</dd></div>
+      <div className="flex gap-1.5"><dt className="text-ash-500">Primera respuesta:</dt><dd className="text-ink-800">{ticket.firstResponseAt ? fechaHora(ticket.firstResponseAt) : "Aún no"}</dd></div>
+      <div className="flex gap-1.5"><dt className="text-ash-500">Plazo de atención:</dt><dd className={vencido ? "font-medium text-danger" : "text-ink-800"}>{ticket.dueAt ? `${fechaHora(ticket.dueAt)}${vencido ? " (vencido)" : ""}` : "Sin plazo"}</dd></div>
+      {ticket.resolvedAt && <div className="flex gap-1.5"><dt className="text-ash-500">Resuelto:</dt><dd className="text-ink-800">{fechaHora(ticket.resolvedAt)}</dd></div>}
+    </dl>
+  );
+}
+
+/** Solo para soporte/admin: cambiar estado, asignar responsable y fijar plazo. */
+function AttentionControls({ ticket, onChanged }: { ticket: any; onChanged: () => void }) {
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const [status, setStatus] = useState<string>(ticket.status);
+  const [assigneeId, setAssigneeId] = useState<string>(ticket.assigneeId ?? "");
+  const [dueAt, setDueAt] = useState<string>(ticket.dueAt ? new Date(ticket.dueAt).toISOString().slice(0, 10) : "");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    supportApi.staff().then(setStaff).catch(() => setStaff([]));
+  }, []);
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await supportApi.updateAttention(ticket.id, {
+        status,
+        assigneeId: assigneeId || null,
+        // El plazo es una fecha: vence al terminar ese día (hora de Lima).
+        dueAt: dueAt ? new Date(`${dueAt}T23:59:59-05:00`).toISOString() : null,
+      });
+      setMsg("Guardado.");
+      onChanged();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : "No pudimos guardar los cambios.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-3 grid gap-3 rounded-lg border border-paper-border bg-paper-muted p-3 sm:grid-cols-4">
+      <div>
+        <Label htmlFor="tk-status">Estado</Label>
+        <Select id="tk-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="OPEN">Abierto</option>
+          <option value="IN_PROGRESS">En progreso</option>
+          <option value="WAITING_USER">Esperando al solicitante</option>
+          <option value="RESOLVED">Resuelto</option>
+          <option value="CLOSED">Cerrado</option>
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="tk-assignee">Responsable</Label>
+        <Select id="tk-assignee" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+          <option value="">Sin asignar</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="tk-due">Plazo de atención</Label>
+        <Input id="tk-due" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+      </div>
+      <div className="flex items-end gap-2">
+        <Button size="sm" disabled={busy} onClick={save}>{busy ? "Guardando…" : "Guardar"}</Button>
+        {msg && <span className="text-xs text-ash-600">{msg}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -168,6 +247,8 @@ export function TicketThread({ ticket, backHref, isStaffView = false }: { ticket
           </div>
         </div>
         <p className="text-sm text-ash-500">Categoría: {ticket.category}</p>
+        <AttentionSummary ticket={ticket} />
+        {isStaffView && <AttentionControls ticket={ticket} onChanged={() => router.refresh()} />}
         {isStaffView && (
           <div className="mt-2">
             <Button size="sm" variant="outline" disabled={saving || saved} onClick={handleSaveAsKnowledge}>

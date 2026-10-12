@@ -4,6 +4,7 @@ import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { GrantFreeAccessForm } from "@/components/admin/GrantFreeAccessForm";
 import { CourtesyGrantsHistory } from "@/components/admin/CourtesyGrantsHistory";
+import Link from "next/link";
 import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Cortesías (admin)" };
@@ -22,6 +23,9 @@ export default async function AdminGrantsPage() {
           No se genera ninguna orden ni comprobante SUNAT.
         </p>
       </div>
+      <p className="-mt-6 text-sm text-ash-600">
+        ¿Quieres avisar de la cortesía por correo? <Link href="/admin/marketing" className="font-medium text-ink-800 underline">Ir a Marketing por correo →</Link>
+      </p>
       <GrantFreeAccessForm />
       {!live && <Callout variant="info">No pudimos conectar con la API — no se muestra el historial real de cortesías por ahora.</Callout>}
       <CourtesyGrantsHistory grants={grants} areas={areas} />

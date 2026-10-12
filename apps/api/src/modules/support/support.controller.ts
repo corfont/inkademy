@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { createSupportTicketSchema } from "@inkademy/shared";
 import type { CreateSupportTicketInput } from "@inkademy/shared";
@@ -7,7 +7,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
-import { addSupportMessageSchema } from "../../common/validation/local-schemas";
+import { addSupportMessageSchema, updateTicketAttentionSchema } from "../../common/validation/local-schemas";
 import { SupportService } from "./support.service";
 
 function isGlobalStaff(user: RequestUser) {
@@ -41,6 +41,26 @@ export class SupportController {
   @ApiOperation({ summary: "Cantidad de tickets sin ninguna respuesta todavía — para el indicador del menú" })
   countPending() {
     return this.supportService.countPending();
+  }
+
+  @Get("staff")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Personas que pueden ser responsables de un ticket" })
+  staff() {
+    return this.supportService.listStaff();
+  }
+
+  @Patch(":id")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Cambia el estado, el responsable o el plazo de atención de un ticket" })
+  updateAttention(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateTicketAttentionSchema)) dto: { status?: "OPEN" | "IN_PROGRESS" | "WAITING_USER" | "RESOLVED" | "CLOSED"; assigneeId?: string | null; dueAt?: string | null },
+  ) {
+    return this.supportService.updateAttention(user.id, id, dto);
   }
 
   @Get(":id")
