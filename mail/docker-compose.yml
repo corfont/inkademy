@@ -1,0 +1,77 @@
+# Servidor de correo propio de Inkademy en el VPS (envío Y recepción): docker-mailserver + webmail Roundcube.
+# Datos fuera del repo: /home/deploy/mail-data (buzones, estado, configuración y claves DKIM).
+# Arranque: cd /home/deploy/apps/inkademy/mail && docker compose up -d   (solo después de que mail.inkademy.lat apunte a este VPS y Caddy tenga su certificado)
+name: inkademy-mail
+
+services:
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: inkademy-mailserver
+    hostname: mail.inkademy.lat
+    restart: unless-stopped
+    cap_add: [NET_ADMIN] # fail2ban
+    ports:
+      - "25:25" # recepción de otros servidores
+      - "465:465" # envío autenticado (TLS)
+      - "587:587" # envío autenticado (STARTTLS)
+      - "993:993" # IMAP con TLS (Outlook, celular). El 143 sin cifrado NO se publica.
+    volumes:
+      - /home/deploy/mail-data/mail-data:/var/mail
+      - /home/deploy/mail-data/mail-state:/var/mail-state
+      - /home/deploy/mail-data/mail-logs:/var/log/mail
+      - /home/deploy/mail-data/config:/tmp/docker-mailserver
+      - caddy_data:/caddy-data:ro # el certificado de mail.inkademy.lat lo emite y renueva Caddy
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: America/Lima
+      ONE_DIR: "1"
+      LOG_LEVEL: info
+      POSTMASTER_ADDRESS: postmaster@inkademy.lat
+      SSL_TYPE: manual
+      SSL_CERT_PATH: /caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/mail.inkademy.lat/mail.inkademy.lat.crt
+      SSL_KEY_PATH: /caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/mail.inkademy.lat/mail.inkademy.lat.key
+      # Antispam, DKIM y DMARC los resuelve Rspamd; los motores antiguos se apagan.
+      ENABLE_RSPAMD: "1"
+      ENABLE_OPENDKIM: "0"
+      ENABLE_OPENDMARC: "0"
+      ENABLE_POLICYD_SPF: "0"
+      ENABLE_AMAVIS: "0"
+      ENABLE_SPAMASSASSIN: "0"
+      ENABLE_CLAMAV: "0" # antivirus: usa ~1 GB de RAM; se puede activar más adelante
+      ENABLE_POSTGREY: "0"
+      ENABLE_FAIL2BAN: "1"
+      ENABLE_POP3: "0"
+      SPOOF_PROTECTION: "1"
+      # Las aplicaciones de Inkademy (api, worker) envían por la red interna de Docker sin contraseña: solo esas redes conectadas están permitidas.
+      PERMIT_DOCKER: connected-networks
+    networks:
+      default:
+        aliases: [mail.inkademy.lat] # el webmail llega al servidor por su nombre real (certificado válido) sin salir a internet
+      inkademy_default: {}
+
+  webmail:
+    image: roundcube/roundcubemail:latest-apache
+    container_name: inkademy-webmail
+    restart: unless-stopped
+    depends_on: [mailserver]
+    ports:
+      - "127.0.0.1:8095:80" # solo lo ve Caddy (https://mail.inkademy.lat)
+    volumes:
+      - /home/deploy/mail-data/roundcube:/var/roundcube/db
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: sqlite
+      ROUNDCUBEMAIL_DEFAULT_HOST: ssl://mail.inkademy.lat
+      ROUNDCUBEMAIL_DEFAULT_PORT: "993"
+      ROUNDCUBEMAIL_SMTP_SERVER: ssl://mail.inkademy.lat
+      ROUNDCUBEMAIL_SMTP_PORT: "465"
+      ROUNDCUBEMAIL_SKIN: elastic
+      ROUNDCUBEMAIL_PLUGINS: archive,zipdownload
+
+volumes:
+  caddy_data:
+    external: true
+    name: crm_caddy_data
+
+networks:
+  inkademy_default:
+    external: true
