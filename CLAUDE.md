@@ -208,3 +208,9 @@ Migraciones aplicadas: `20261012180000_quote_leads`, `20261012190000_catalog_fil
   (lo no mapeado cae en "sistema"; la gestión de roles es solo de administradores completos). Quien no tiene rol sigue siendo administrador completo. Menú filtrado en `admin/layout.tsx`.
   Verificado con la compilación real y un doble de la BD (no con una cuenta restringida real: no se crean cuentas en producción). Pantalla: Admin → Roles de administrador.
 - Pendiente sin decisión: nota/puntaje del SCORM visible al alumno (el usuario lo dejó para revisar).
+
+## Revisión previa al lanzamiento (12-oct-2026)
+Informe completo y priorizado en `REVIEW.md` (qué se corrigió hoy y qué sigue pendiente). Lo que cambia cómo se trabaja aquí: las pasarelas de pago rechazan en producción sin clave real
+(`ALLOW_PAYMENT_SIMULATION=true` para simular a propósito); el bucket solo es público en `materials/ scorm/ certificates/ subtitles/ avatars/ admin-uploads/` (prefijos privados:
+`StorageService.PRIVATE_PREFIXES`, se sirven con `getAccessUrl()`, enlace firmado con la dirección pública); un rol de administrador acotado no puede crear/modificar usuarios ni ver respaldos;
+`AdminModuleGuard` normaliza la ruta a minúsculas y cubre `/grants` y `/orders/:id/cancel`; certificados HTML con variables escapadas y sin JavaScript. Respaldo diario `scripts/backup-db.sh`.

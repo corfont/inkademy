@@ -13,6 +13,10 @@ async function bootstrap() {
   // para verificar la firma del webhook de Stripe) y luego parsear JSON manualmente.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   const config = app.get(ConfigService);
+  // Estos ajustes de Express deben ir ANTES de cualquier app.use (el router se crea con la primera): detrás de Caddy, sin "trust proxy" todas las peticiones parecen venir de la IP del proxy
+  // y el límite de velocidad (login, registro...) se comparte entre TODOS los usuarios; y las rutas no deben distinguirse solo por mayúsculas ("/ADMIN/users").
+  app.set("trust proxy", 1);
+  app.set("case sensitive routing", true);
 
   app.use(
     express.json({
@@ -22,9 +26,6 @@ async function bootstrap() {
     }),
   );
   app.use(express.urlencoded({ extended: true }));
-  // Detrás de Caddy: sin esto todas las peticiones parecen venir de la IP del proxy y el límite de velocidad (login, registro...) se comparte entre TODOS los usuarios.
-  app.set("trust proxy", 1);
-  app.set("case sensitive routing", true);
   app.use(cookieParser());
   // Hallazgo de auditoría (REVIEW.md #2.4): fuera de las rutas SCORM (que ya
   // setean su propio CSP a mano, ver scorm.controller.ts), el resto de la

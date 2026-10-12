@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "inkademy-api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@inkademy/api", "run", "dev"],
+      "port": 4000
+    },
+    {
+      "name": "inkademy-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "WEB_PORT=3001 pnpm --filter @inkademy/web run dev"],
+      "port": 3001
+    }
+  ]
+}

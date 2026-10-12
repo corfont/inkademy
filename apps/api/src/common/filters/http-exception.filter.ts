@@ -35,6 +35,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = (b.message as string | string[]) ?? exception.message;
         error = (b.error as string) ?? HttpStatus[statusCode] ?? exception.name;
       }
+    } else if (exception instanceof Error && exception.message.startsWith("Origin no permitido por CORS")) {
+      // Un origen no autorizado no es un fallo del servidor: 403 y sin ruido de ERROR en los registros.
+      statusCode = HttpStatus.FORBIDDEN;
+      message = "Origen no permitido";
+      error = "Forbidden";
+      response.status(statusCode).json({ statusCode, message, error });
+      return;
     } else if (exception instanceof Error) {
       // Hallazgo de auditoría (REVIEW.md #2.5): antes esto reenviaba
       // exception.message TAL CUAL al cliente — para un error no controlado
