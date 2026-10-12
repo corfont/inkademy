@@ -171,3 +171,14 @@ Pedido directo del usuario (excepción a «Inkademy no se toca» de `../CLAUDE.m
 - **Certificados**: «Regenerar» ya no borra el PDF actual antes de tener el nuevo (si la generación fallaba, quedaba para siempre «generando…»).
 - **Regalías**: la fecha de fin ya era opcional (vacía = indefinida); ahora se ve explícito en la pantalla.
 - **Pendiente propuesto, sin construir**: pantalla de bienvenida/introducción del curso (video, imagen, PPT) antes de las clases; reproductor de video propio (hoy es el `<video>` nativo del navegador).
+
+## Matriz de hallazgos de un revisor externo (10/12-oct-2026)
+
+Se verificó cada uno de los 49 hallazgos contra el código (no se asumió que fueran ciertos). Desplegado en dos tandas; migraciones aplicadas a mano contra Postgres con `IF NOT EXISTS` (mismo patrón que arriba): `support_ticket_attention`, `backup_verification`, `notification_trace`, `course_welcome`.
+- **Reportes en Excel**: `report-kit.ts` anota todo lo que dibuja (indicadores, tablas, gráficos) en `ctx.sheets/kpis/notes` y `reportCollector` (AsyncLocalStorage) lo recoge; `report-xlsx.ts` arma el .xlsx. El Excel sale del mismo generador del PDF, así nunca difieren. Endpoints `admin/reports/:key.xlsx` y `admin/finance/report.xlsx`; claves nuevas `horas-dictadas-docentes` y `liquidaciones-docentes`.
+- **Backups**: el worker calcula SHA-256, vuelve a leer lo guardado, abre el zip y compara filas por tabla (`verifyBackup`); la pantalla distingue «archivo generado», «integridad verificada» y «recuperación probada» (esta última la registra una persona: el sistema no puede restaurar sobre la base real).
+- **Notificaciones**: `Notification.errorMessage/attempts`; FAILED solo tras agotar reintentos; `admin/notifications/log` y `/test`.
+- **Soporte**: `SupportTicket.assigneeId/dueAt/firstResponseAt/resolvedAt` y `PATCH support/tickets/:id` (antes RESOLVED/CLOSED nunca se asignaban).
+- **Base de conocimiento de la IA**: acepta .docx (lector de zip propio con `zlib`, sin dependencia nueva) y, si supera el tope, elige los fragmentos más relevantes a la pregunta en vez de cortar el final.
+- **Aviso a cursos guardados**: al crearse la primera clase próxima de un curso, `notifyCourseDatesConfirmed` avisa en la campana a quien lo guardó (correo solo con consentimiento de marketing).
+- **Pendiente por decisión del dueño** (ver el informe): certificado con horas/fechas, encuesta por categorías, programas (comprar uno no matricula sus cursos), cotización pública, roles finos de administración, datos bancarios de regalías, referidos (Ley 29733).
