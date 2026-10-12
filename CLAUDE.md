@@ -182,3 +182,13 @@ Se verificó cada uno de los 49 hallazgos contra el código (no se asumió que f
 - **Base de conocimiento de la IA**: acepta .docx (lector de zip propio con `zlib`, sin dependencia nueva) y, si supera el tope, elige los fragmentos más relevantes a la pregunta en vez de cortar el final.
 - **Aviso a cursos guardados**: al crearse la primera clase próxima de un curso, `notifyCourseDatesConfirmed` avisa en la campana a quien lo guardó (correo solo con consentimiento de marketing).
 - **Pendiente por decisión del dueño** (ver el informe): certificado con horas/fechas, encuesta por categorías, programas (comprar uno no matricula sus cursos), cotización pública, roles finos de administración, datos bancarios de regalías, referidos (Ley 29733).
+
+## Matriz de hallazgos, 3.ª tanda (12-oct-2026) — desplegada
+
+Migraciones aplicadas en producción: `20261012150000_payment_and_contract_details` (datos de pago/contrato, vigencia de licencias),
+`20261012160000_audit_log_hidden` (ocultar en vez de borrar auditoría), `20261012170000_rating_dimensions` (4 dimensiones sembradas).
+Supuestos tomados por defecto (el usuario no respondió las preguntas): cuenta bancaria de regalías reutiliza la del perfil; método de pago
+«convenio» solamente; estado de licencia derivado de su fecha; cortesía con fecha de fin (no de inicio); ajustes auditados con `diffForAudit`;
+etiquetas de certificado `courseHours`/`coursePeriod` (hay que colocarlas en el editor de la plantilla); calificación por dimensiones con
+aspectos a mejorar. Pendiente de decisión: compra de Programa → matrícula de cursos hijos, roles finos de administrador, formulario público de
+cotización, perfil académico/referidos, filtros de catálogo, tarjetas clicables del dashboard de empresa.
