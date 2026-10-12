@@ -190,5 +190,21 @@ Migraciones aplicadas en producción: `20261012150000_payment_and_contract_detai
 Supuestos tomados por defecto (el usuario no respondió las preguntas): cuenta bancaria de regalías reutiliza la del perfil; método de pago
 «convenio» solamente; estado de licencia derivado de su fecha; cortesía con fecha de fin (no de inicio); ajustes auditados con `diffForAudit`;
 etiquetas de certificado `courseHours`/`coursePeriod` (hay que colocarlas en el editor de la plantilla); calificación por dimensiones con
-aspectos a mejorar. Pendiente de decisión: compra de Programa → matrícula de cursos hijos, roles finos de administrador, formulario público de
-cotización, perfil académico/referidos, filtros de catálogo, tarjetas clicables del dashboard de empresa.
+aspectos a mejorar. Las decisiones pendientes se resolvieron después (ver sección siguiente).
+
+## Decisiones de la matriz resueltas (12-oct-2026) — desplegadas
+
+Migraciones aplicadas: `20261012180000_quote_leads`, `20261012190000_catalog_filters`, `20261012200000_academic_profile_referrals`, `20261012210000_admin_roles`.
+- **Programas**: comprar, recibir de cortesía o asignar un cupo B2B de un Programa matricula al alumno en cada curso (`EnrollmentService.enrollProgramCourses`,
+  idempotente; si ya tiene el curso activo/completado, ese avance cuenta). El avance del programa es el promedio de sus cursos obligatorios y al completarlos todos
+  se emite el certificado del programa (`CertificateService.issueForProgram`). El aula de un programa (`ProgramView`) lista sus cursos. Se repartieron los 2 programas
+  que ya existían en producción.
+- **Cotización pública** (`POST /public/quote-requests`, 5 por 10 min por IP, campo trampa `website`): guarda un `QuoteLead`, avisa al correo de contacto de la plataforma,
+  acusa recibo y registra el contacto en el CRM (`/api/integraciones/partners`, solo con RUC de 11 dígitos). Se atiende en Admin → Cotizaciones.
+- **Catálogo**: `Course.weeklyHours/classDays/skills` (los declara el admin en el editor) y filtros `weeklyLoad`, `classDay`, `skill`; opciones de competencias en `GET /catalog/filter-options`.
+- **Panel de empresa**: las 4 tarjetas abren su detalle (`/empresa/[id]/detalle?kpi=progress|risk`, colaboradores, cupos).
+- **Perfil académico y referidos**: campos en `User`; `GET /profile/referral` crea el código la primera vez; el registro acepta `?ref=`. Nunca se piden contactos de terceros.
+- **Roles de administrador por módulo**: `AdminRole` + `User.adminRoleId`; `AdminModuleGuard` (guard global) aplica el rol en todas las rutas `/admin/*` según `adminModuleForApiPath`
+  (lo no mapeado cae en "sistema"; la gestión de roles es solo de administradores completos). Quien no tiene rol sigue siendo administrador completo. Menú filtrado en `admin/layout.tsx`.
+  Verificado con la compilación real y un doble de la BD (no con una cuenta restringida real: no se crean cuentas en producción). Pantalla: Admin → Roles de administrador.
+- Pendiente sin decisión: nota/puntaje del SCORM visible al alumno (el usuario lo dejó para revisar).

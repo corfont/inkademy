@@ -224,6 +224,6 @@ export const publicQuoteRequestSchema = z.object({
   interest: z.string().trim().max(200).optional().or(z.literal("")),
   message: z.string().trim().min(10, "Cuéntanos un poco más (mínimo 10 caracteres)").max(3000),
   // Campo trampa para bots: un usuario real nunca lo ve ni lo llena.
-  website: z.string().max(0).optional().or(z.literal("")),
+  website: z.string().max(500).optional(),
 });
 export type PublicQuoteRequestInput = z.infer<typeof publicQuoteRequestSchema>;
