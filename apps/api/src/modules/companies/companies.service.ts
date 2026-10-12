@@ -153,7 +153,8 @@ export class CompaniesService {
         ...(filters.team ? { team: filters.team } : {}),
         ...(filters.role ? { role: filters.role as "COMPANY_ADMIN" | "PARTICIPANT" } : {}),
       },
-      include: { user: true },
+      // Solo lo necesario para mostrar a la persona: antes se devolvía el usuario completo (documento, teléfono, dirección, datos bancarios...).
+      include: { user: { select: { id: true, email: true, firstName: true, lastName: true, displayName: true, avatarUrl: true } } },
       orderBy: { createdAt: "desc" },
     });
   }

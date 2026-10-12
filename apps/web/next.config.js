@@ -38,6 +38,10 @@ const nextConfig = {
   // producción los agregara. Sin X-Frame-Options, cualquier página del
   // sitio (login incluido) podía enmarcarse en un iframe de terceros
   // (clickjacking).
+  async redirects() {
+    // Los navegadores piden /favicon.ico siempre: se atiende con el icono de marca en vez de un 404 en cada página.
+    return [{ source: "/favicon.ico", destination: "/icon.png", permanent: false }];
+  },
   async headers() {
     return [
       {

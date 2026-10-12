@@ -36,7 +36,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ c
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
         aria-pressed={visible}
-        tabIndex={-1}
         className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-ash-500 hover:text-ink-900"
       >
         {visible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}

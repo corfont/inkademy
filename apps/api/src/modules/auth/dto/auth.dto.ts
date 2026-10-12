@@ -13,6 +13,8 @@ export class RegisterDto {
   @ApiProperty() lastName!: string;
   @ApiPropertyOptional({ enum: ["es", "en"] }) locale?: string;
   @ApiPropertyOptional() marketingConsentEmail?: boolean;
+  @ApiPropertyOptional() referralCode?: string;
+  @ApiPropertyOptional() acceptTerms?: boolean;
 }
 
 export class LoginDto {

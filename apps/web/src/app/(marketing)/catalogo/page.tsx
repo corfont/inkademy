@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import type { CatalogFilters, CourseCardDTO } from "@inkademy/shared";
 import { getTranslations } from "next-intl/server";
 import { catalogApi } from "@/lib/api-client";
-import { withFallback } from "@/lib/safe-fetch";
+import { withFallback, MOCKS_ENABLED } from "@/lib/safe-fetch";
 import { MOCK_AREAS, MOCK_COURSES } from "@/lib/mock-data";
 import { FilterBar } from "@/components/catalog/FilterBar";
 import { SortSelect } from "@/components/catalog/SortSelect";
@@ -45,7 +45,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     level: searchParams.level as CatalogFilters["level"],
     type: searchParams.type as CatalogFilters["type"],
     language: searchParams.language,
-    certificationOnly: searchParams.certificationOnly === "true",
+    certificationOnly: searchParams.certificationOnly === "true" ? true : undefined,
     minPrice: searchParams.minPrice ? Number(searchParams.minPrice) : undefined,
     maxPrice: searchParams.maxPrice ? Number(searchParams.maxPrice) : undefined,
     // Antes se aplicaban client-side, DESPUÉS de que la API ya había
@@ -61,10 +61,10 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
 
   const { data: filterOptions } = await withFallback(() => catalogApi.filterOptions(), { skills: [] as string[] });
   const [{ data: areas }, { data: courseResult, live }] = await Promise.all([
-    withFallback(() => catalogApi.areas(), MOCK_AREAS),
+    withFallback(() => catalogApi.areas(), MOCKS_ENABLED ? MOCK_AREAS : []),
     withFallback(
       () => catalogApi.courses(filters),
-      { items: filterMock(filters), total: filterMock(filters).length, page: 1, pageSize: 12 },
+      MOCKS_ENABLED ? { items: filterMock(filters), total: filterMock(filters).length, page: 1, pageSize: 12 } : { items: [] as typeof MOCK_COURSES, total: 0, page: 1, pageSize: 12 },
     ),
   ]);
 

@@ -325,7 +325,8 @@ export class AssessmentService {
     if (attempt.status !== "IN_PROGRESS") throw new BadRequestException("Este intento ya fue enviado");
 
     const questionIds = input.answers.map((a) => a.questionId);
-    const questions = await this.prisma.question.findMany({ where: { id: { in: questionIds } } });
+    // Solo preguntas DE ESTE examen: antes se aceptaban ids de otros exámenes y sus puntos se sumaban al intento.
+    const questions = await this.prisma.question.findMany({ where: { id: { in: questionIds }, assessmentId: attempt.assessmentId } });
     const questionById = new Map(questions.map((q) => [q.id, q]));
 
     let pendingReviewCount = 0;
@@ -653,7 +654,7 @@ export class AssessmentService {
       .sort((a, b) => b.totalPending - a.totalPending);
   }
 
-  async getAttempt(attemptId: string, userId: string, isPrivileged: boolean) {
+  async getAttempt(attemptId: string, userId: string, isPrivileged: boolean, teacherUserId?: string) {
     const attempt = await this.prisma.assessmentAttempt.findUnique({
       where: { id: attemptId },
       include: { answers: true, assessment: true },
@@ -661,6 +662,11 @@ export class AssessmentService {
     if (!attempt) throw new NotFoundException("Intento no encontrado");
     if (!isPrivileged && attempt.userId !== userId) {
       throw new ForbiddenException("No puedes ver el intento de otro usuario");
+    }
+    // Un docente (que no es administrador) solo ve intentos de los cursos donde él es parte del equipo: antes cualquier docente podía leer respuestas y archivos de cualquier alumno.
+    if (teacherUserId && attempt.userId !== teacherUserId) {
+      const onStaff = await this.prisma.courseStaff.findFirst({ where: { userId: teacherUserId, courseId: attempt.assessment.courseId }, select: { id: true } });
+      if (!onStaff) throw new ForbiddenException("No eres parte del equipo de este curso");
     }
 
     const submissionUrl = attempt.submissionAssetId ? await this.storageService.getAccessUrl(attempt.submissionAssetId) : null;

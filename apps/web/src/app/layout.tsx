@@ -35,6 +35,14 @@ const workSans = Work_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://inkademy.lat"),
+  openGraph: {
+    type: "website",
+    siteName: "Inkademy",
+    locale: "es_PE",
+    images: [{ url: "/icon.png", width: 512, height: 512, alt: "Inkademy" }],
+  },
+  twitter: { card: "summary", title: "Inkademy" },
   title: {
     default: "Inkademy — Capacitación profesional para personas y empresas",
     template: "%s · Inkademy",

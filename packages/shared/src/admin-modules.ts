@@ -30,13 +30,19 @@ const API_SEGMENT_MODULE: Record<string, AdminModuleKey | null> = {
   "email-campaigns": "marketing", "mailing-lists": "marketing",
   "chatbot-documents": "soporte", nps: "soporte", notifications: "soporte", "notification-settings": "soporte",
   reports: "reportes", exceptions: "reportes", "course-ratings": "reportes",
-  backups: "sistema", "zona-de-pruebas": "sistema", "audit-log": "sistema", settings: "sistema", "chatbot-settings": "sistema",
+  "zona-de-pruebas": "sistema", "audit-log": "sistema", settings: "sistema", "chatbot-settings": "sistema",
   "email-server-settings": "sistema",
   dashboard: null, "my-courses": null, "my-agenda": null,
 };
 
 /** Segmentos que solo puede usar un administrador completo (no uno con rol acotado): hoy, la gestión de los propios roles. */
-const OWNER_ONLY_SEGMENTS = new Set(["admin-roles"]);
+const OWNER_ONLY_SEGMENTS = new Set(["admin-roles", "backups"]); // los respaldos contienen todos los secretos del sistema
+
+/** Rutas de staff que NO cuelgan de /admin pero mueven dinero o accesos: también respetan el rol acotado. */
+const EXTRA_ROUTES: { pattern: RegExp; module: AdminModuleKey }[] = [
+  { pattern: /^\/grants(\/|$)/, module: "usuarios" },
+  { pattern: /^\/orders\/[^/]+\/cancel(-test)?$/, module: "comercial" },
+];
 
 /**
  * Módulo que protege una ruta de la API. Devuelve:
@@ -46,7 +52,9 @@ const OWNER_ONLY_SEGMENTS = new Set(["admin-roles"]);
  * - un módulo (las rutas /admin/* sin mapa explícito caen en "sistema": lo desconocido es lo más restringido).
  */
 export function adminModuleForApiPath(path: string): AdminModuleKey | "__owner__" | null | undefined {
-  const clean = path.split("?")[0].replace(/\/+$/, "");
+  // Express enruta sin distinguir mayúsculas ("/ADMIN/users" llega al mismo controlador): se normaliza antes de comparar y se colapsan las barras repetidas.
+  const clean = path.split("?")[0].replace(/\/{2,}/g, "/").replace(/\/+$/, "").toLowerCase();
+  for (const route of EXTRA_ROUTES) if (route.pattern.test(clean)) return route.module;
   const match = clean.match(/^\/admin\/([^/]+)/);
   if (!match) return undefined;
   const segment = match[1];
@@ -64,7 +72,7 @@ const WEB_PAGE_MODULE: Record<string, AdminModuleKey | "__owner__"> = {
   marketing: "marketing",
   soporte: "soporte", sugerencias: "soporte", "encuestas-nps": "soporte", notificaciones: "soporte",
   reportes: "reportes", calificaciones: "reportes",
-  apariencia: "sistema", "asistente-ia": "sistema", configuracion: "sistema", backups: "sistema", auditoria: "sistema", "zona-de-pruebas": "sistema",
+  apariencia: "sistema", "asistente-ia": "sistema", configuracion: "sistema", backups: "__owner__", auditoria: "sistema", "zona-de-pruebas": "sistema",
   roles: "__owner__",
 };
 

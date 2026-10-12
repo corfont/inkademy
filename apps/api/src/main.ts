@@ -22,6 +22,9 @@ async function bootstrap() {
     }),
   );
   app.use(express.urlencoded({ extended: true }));
+  // Detrás de Caddy: sin esto todas las peticiones parecen venir de la IP del proxy y el límite de velocidad (login, registro...) se comparte entre TODOS los usuarios.
+  app.set("trust proxy", 1);
+  app.set("case sensitive routing", true);
   app.use(cookieParser());
   // Hallazgo de auditoría (REVIEW.md #2.4): fuera de las rutas SCORM (que ya
   // setean su propio CSP a mano, ver scorm.controller.ts), el resto de la

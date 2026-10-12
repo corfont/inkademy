@@ -5,6 +5,8 @@ import type { CreateCompanyInput, InviteCollaboratorInput, RequestQuoteInput, Up
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { CompanyRoles } from "../../common/decorators/company-roles.decorator";
 import { CompanyGuard } from "../../common/guards/company.guard";
+import { RolesGuard } from "../../common/guards/roles.guard";
+import { Roles } from "../../common/decorators/roles.decorator";
 import { TenantContextInterceptor } from "../../common/interceptors/tenant-context.interceptor";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
@@ -113,8 +115,10 @@ export class CompaniesController {
 
   // Adicional al contrato explícito: alta manual de un seat pool (además de
   // la compra vía /checkout con seatPoolQty), útil para asignaciones admin.
+  // SOLO administradores de la plataforma: crear cupos es "regalar" matrículas. Antes cualquier usuario podía crear una empresa, crearse cupos y asignárselos gratis.
   @Post(":companyId/seat-pools")
-  @UseGuards(CompanyGuard)
+  @UseGuards(RolesGuard, CompanyGuard)
+  @Roles("ADMIN")
   @CompanyRoles("COMPANY_ADMIN")
   @ApiOperation({ summary: "Crea manualmente un pool de cupos B2B" })
   createSeatPool(@Param("companyId") companyId: string, @Body(new ZodValidationPipe(createSeatPoolSchema)) dto: any) {
@@ -122,7 +126,8 @@ export class CompaniesController {
   }
 
   @Patch(":companyId/seat-pools/:poolId/renew")
-  @UseGuards(CompanyGuard)
+  @UseGuards(RolesGuard, CompanyGuard)
+  @Roles("ADMIN")
   @CompanyRoles("COMPANY_ADMIN")
   @ApiOperation({ summary: "Extiende el vencimiento de un pool de cupos (renovación, sin pasar por checkout/pago)" })
   renewSeatPool(

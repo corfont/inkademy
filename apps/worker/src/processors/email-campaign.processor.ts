@@ -104,10 +104,13 @@ async function resolveAudience(filter: AudienceFilter | null | undefined) {
       status: "active",
       marketingConsentEmail: true,
       globalRole: (filter?.globalRole as never) ?? undefined,
-      ...(enrolledUserIds ? { id: { in: enrolledUserIds } } : {}),
-      ...(inactiveBeforeUserIds ? { id: { in: inactiveBeforeUserIds } } : {}),
-      ...(enrollmentStatusUserIds ? { id: { in: enrollmentStatusUserIds } } : {}),
-      ...(recentPurchaserIds?.length ? { id: { notIn: recentPurchaserIds } } : {}),
+      // Cada condición sobre el id va en su propio objeto dentro de AND: como claves repetidas `id` en un mismo objeto la última pisaba a las anteriores y se perdían filtros.
+      AND: [
+        ...(enrolledUserIds ? [{ id: { in: enrolledUserIds } }] : []),
+        ...(inactiveBeforeUserIds ? [{ id: { in: inactiveBeforeUserIds } }] : []),
+        ...(enrollmentStatusUserIds ? [{ id: { in: enrollmentStatusUserIds } }] : []),
+        ...(recentPurchaserIds?.length ? [{ id: { notIn: recentPurchaserIds } }] : []),
+      ],
       ...(filter?.interests?.length ? { interests: { hasSome: filter.interests } } : {}),
       ...(filter?.countries?.length ? { country: { in: filter.countries } } : {}),
       ...(filter?.companyId ? { companyMemberships: { some: { companyId: filter.companyId } } } : {}),

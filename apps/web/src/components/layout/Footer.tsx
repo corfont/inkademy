@@ -24,7 +24,7 @@ export function Footer() {
             <li><Link href="/catalogo" className="hover:text-ink-800">{t("catalog")}</Link></li>
             <li><Link href="/empresas" className="hover:text-ink-800">{t("companies")}</Link></li>
             <li><Link href="/ayuda" className="hover:text-ink-800">{t("help")}</Link></li>
-            <li><Link href="/verificar/demo" className="hover:text-ink-800">{t("verifyCertificate")}</Link></li>
+            <li><Link href="/verificar" className="hover:text-ink-800">{t("verifyCertificate")}</Link></li>
           </ul>
         </nav>
 

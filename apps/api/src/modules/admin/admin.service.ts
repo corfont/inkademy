@@ -1577,10 +1577,13 @@ export class AdminService {
         status: "active",
         marketingConsentEmail: true,
         globalRole: (filter?.globalRole as never) ?? undefined,
-        ...(enrolledUserIds ? { id: { in: enrolledUserIds } } : {}),
-        ...(inactiveBeforeUserIds ? { id: { in: inactiveBeforeUserIds } } : {}),
-        ...(enrollmentStatusUserIds ? { id: { in: enrollmentStatusUserIds } } : {}),
-        ...(recentPurchaserIds?.length ? { id: { notIn: recentPurchaserIds } } : {}),
+        // Cada condición sobre el id va en su propio objeto dentro de AND: como claves repetidas `id` en un mismo objeto la última pisaba a las anteriores y se perdían filtros.
+        AND: [
+          ...(enrolledUserIds ? [{ id: { in: enrolledUserIds } }] : []),
+          ...(inactiveBeforeUserIds ? [{ id: { in: inactiveBeforeUserIds } }] : []),
+          ...(enrollmentStatusUserIds ? [{ id: { in: enrollmentStatusUserIds } }] : []),
+          ...(recentPurchaserIds?.length ? [{ id: { notIn: recentPurchaserIds } }] : []),
+        ],
         ...(filter?.interests?.length ? { interests: { hasSome: filter.interests } } : {}),
         ...(filter?.countries?.length ? { country: { in: filter.countries } } : {}),
         ...(filter?.companyId ? { companyMemberships: { some: { companyId: filter.companyId } } } : {}),
@@ -1866,6 +1869,11 @@ export class AdminService {
   async generateTeacherLiquidation(input: { teacherId: string; periodStart: string; periodEnd: string }, actorId?: string) {
     const periodStart = new Date(input.periodStart);
     const periodEnd = new Date(input.periodEnd);
+    // Las fechas del periodo son de calendario (medianoche UTC). Las sesiones y registros tienen hora real: el periodo va de las 00:00 de Lima (UTC-5) del primer día
+    // hasta antes de las 00:00 de Lima del día siguiente al último. Antes se comparaba contra medianoche UTC y se perdía todo el último día.
+    const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
+    const queryStart = new Date(periodStart.getTime() + LIMA_OFFSET_MS);
+    const queryEndExclusive = new Date(periodEnd.getTime() + 24 * 60 * 60 * 1000 + LIMA_OFFSET_MS);
 
     // "Nada impide generar la misma liquidación dos veces con números
     // distintos si cambió la tarifa entre medio, sin dejar rastro de que
@@ -1900,7 +1908,7 @@ export class AdminService {
     const rateByCourse = new Map(rates.filter((r) => r.courseId).map((r) => [r.courseId as string, r]));
 
     const sessions = await this.prisma.liveSession.findMany({
-      where: { teacherId: input.teacherId, startsAt: { gte: periodStart, lte: periodEnd }, status: { not: "CANCELLED" } },
+      where: { teacherId: input.teacherId, startsAt: { gte: queryStart, lt: queryEndExclusive }, status: { not: "CANCELLED" } },
     });
 
     let hoursTeaching = 0;
@@ -1953,14 +1961,14 @@ export class AdminService {
     }
 
     const activityLogs = await this.prisma.teacherActivityLog.findMany({
-      where: { teacherId: input.teacherId, loggedAt: { gte: periodStart, lte: periodEnd } },
+      where: { teacherId: input.teacherId, loggedAt: { gte: queryStart, lt: queryEndExclusive } },
     });
     const hoursOtherActivities = activityLogs.reduce((sum, a) => sum + a.hours, 0);
     const otherActivitiesRate = Number(globalRate?.hourlyRateOtherActivities ?? rates[0].hourlyRateOtherActivities);
     const grossFromActivities = hoursOtherActivities * otherActivitiesRate;
 
     const unclaimedAdvances = await this.prisma.teacherAdvance.findMany({
-      where: { teacherId: input.teacherId, liquidationId: null, grantedAt: { lte: periodEnd } },
+      where: { teacherId: input.teacherId, liquidationId: null, grantedAt: { lt: queryEndExclusive } },
     });
     const advancesDeducted = unclaimedAdvances.reduce((sum, a) => sum + Number(a.amount), 0);
 
@@ -2003,6 +2011,8 @@ export class AdminService {
   async waiveTeacherLiquidationDeduction(id: string, reason: string, actorId?: string) {
     const liquidation = await this.prisma.teacherLiquidation.findUnique({ where: { id } });
     if (!liquidation) throw new NotFoundException("Liquidación no encontrada");
+    if (liquidation.deductionsWaived) throw new BadRequestException("Las deducciones de esta liquidación ya fueron perdonadas");
+    if (liquidation.status === "PAID") throw new BadRequestException("La liquidación ya fue pagada: no se pueden perdonar sus deducciones");
     const restoredGross = Number(liquidation.grossAmount) + Number(liquidation.deductions);
     const updated = await this.prisma.teacherLiquidation.update({
       where: { id },

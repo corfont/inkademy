@@ -136,6 +136,8 @@ model User {
   // lista de contactos de terceros — quien recibe el enlace decide por sí mismo si se registra (Ley 29733).
   referralCode       String?   @unique
   referredByUserId   String?
+  // Momento en que aceptó los Términos y la Política de Privacidad al registrarse (evidencia de consentimiento, Ley 29733).
+  termsAcceptedAt    DateTime?
   referredBy         User?     @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
   referrals          User[]    @relation("UserReferrals")
 

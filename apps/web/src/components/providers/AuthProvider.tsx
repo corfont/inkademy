@@ -10,7 +10,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
-  register: (input: { email: string; password: string; firstName: string; lastName: string; locale?: "es" | "en"; marketingConsentEmail?: boolean }) => Promise<AuthUser>;
+  register: (input: { email: string; password: string; firstName: string; lastName: string; locale?: "es" | "en"; marketingConsentEmail?: boolean; referralCode?: string; acceptTerms?: boolean }) => Promise<AuthUser>;
   logout: () => Promise<void>;
   setUser: (u: AuthUser | null) => void;
 }

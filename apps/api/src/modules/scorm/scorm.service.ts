@@ -1,8 +1,9 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import AdmZip from "adm-zip";
 import { XMLParser } from "fast-xml-parser";
 import type { PrismaClient } from "@inkademy/db";
+import { EnrollmentService } from "../enrollment/enrollment.service";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { StorageService } from "../../storage/storage.service";
 import { contentTypeFromPath } from "./scorm-content-type";
@@ -64,7 +65,10 @@ export class ScormService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly storage: StorageService,
     private readonly jwt: JwtService,
+    private readonly enrollmentService: EnrollmentService,
   ) {}
+
+  private readonly logger = new Logger(ScormService.name);
 
   /**
    * Desempaqueta el .zip y sube cada archivo a S3/MinIO bajo
@@ -581,6 +585,17 @@ export class ScormService {
           scormInteractions: input.interactions?.length ? (input.interactions as never) : undefined,
         },
       });
+      // Una lección SCORM completada cuenta para el avance del curso (y por tanto para desbloquear el examen y el certificado): antes quedaba en el avance viejo.
+      if (completed) {
+        const lesson = await this.prisma.lesson.findUnique({ where: { id: ownerId }, select: { module: { select: { courseId: true } } } });
+        if (lesson?.module?.courseId) {
+          try {
+            await this.enrollmentService.recomputeProgress(enrollmentId, lesson.module.courseId, userId);
+          } catch (err) {
+            this.logger.error(`No se pudo recalcular el avance tras completar la lección SCORM ${ownerId}: ${(err as Error).message}`);
+          }
+        }
+      }
       return;
     }
 

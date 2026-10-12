@@ -68,6 +68,9 @@ export class AttemptsController {
   @Get(":id")
   @ApiOperation({ summary: "Estado/resultado de un intento" })
   get(@CurrentUser() user: RequestUser, @Param("id") id: string) {
-    return this.assessmentService.getAttempt(id, user.id, user.globalRole === "ADMIN" || user.globalRole === "TEACHER");
+    const roles = user.roles ?? [user.globalRole];
+    const isAdmin = roles.includes("ADMIN") || roles.includes("SUPPORT");
+    const isTeacher = roles.includes("TEACHER");
+    return this.assessmentService.getAttempt(id, user.id, isAdmin || isTeacher, isAdmin ? undefined : user.id);
   }
 }

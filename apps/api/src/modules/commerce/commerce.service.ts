@@ -305,7 +305,8 @@ export class CommerceService {
     // ganar la carrera (la que de verdad actualiza la fila), sin necesidad
     // de un $transaction para todo el método completo.
     const claimed = await this.prisma.order.updateMany({
-      where: { id: order.id, status: { not: "PAID" } },
+      // Una orden cancelada o reembolsada no se reactiva por un webhook tardío; PENDING y FAILED sí (reintento de pago).
+      where: { id: order.id, status: { in: ["PENDING", "FAILED"] } },
       data: { status: "PAID" },
     });
     if (claimed.count === 0) {
@@ -379,13 +380,13 @@ export class CommerceService {
     }
 
     const receiptUrl = order.payments.find((p) => p.status === "SUCCEEDED")?.receiptUrl ?? undefined;
-    await this.notifications.sendReceipt(
-      order.user.email,
-      order.id,
-      decimalToString(order.total),
-      order.currency,
-      order.userId,
-    );
+    // El correo del recibo es un efecto secundario: si falla, la compra ya está pagada y matriculada y NO debe devolver un error que haga reintentar el webhook
+    // (el reintento vería la orden PAID y saldría sin completar la factura ni el CRM).
+    try {
+      await this.notifications.sendReceipt(order.user.email, order.id, decimalToString(order.total), order.currency, order.userId);
+    } catch (err) {
+      this.logger.error(`No se pudo encolar el recibo de la orden ${order.id}: ${(err as Error).message}`);
+    }
 
     // "Podría pasar que la institución nos diga que los que van a facturar
     // son ellos y ellos nos transfieren después" — si algún curso de la

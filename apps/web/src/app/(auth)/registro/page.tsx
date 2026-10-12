@@ -5,7 +5,9 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { registerSchema, type RegisterInput } from "@inkademy/shared";
+import { z } from "zod";
+import { safeNext } from "@/lib/safe-redirect";
+import { registerSchema } from "@inkademy/shared";
 import { useTranslations, useLocale } from "next-intl";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ApiError } from "@/lib/api-client";
@@ -14,6 +16,12 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+
+// El formulario web exige aceptar los Términos y la Política de Privacidad (la API solo registra la fecha si viene aceptado).
+const registerFormSchema = registerSchema.extend({
+  acceptTerms: z.literal(true, { errorMap: () => ({ message: "Debes aceptar los Términos y la Política de Privacidad para crear tu cuenta" }) }),
+});
+type RegisterInput = z.input<typeof registerFormSchema>;
 
 export default function RegisterPage() {
   return (
@@ -31,7 +39,7 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   // Preserva a dónde iba el visitante (p.ej. volver a /checkout?courseId=...
   // tras crear su cuenta desde ahí en vez de iniciar sesión).
-  const next = searchParams.get("next");
+  const next = safeNext(searchParams.get("next"));
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -39,7 +47,7 @@ function RegisterForm() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
-    resolver: zodResolver(registerSchema),
+    resolver: zodResolver(registerFormSchema),
     defaultValues: { locale, marketingConsentEmail: false, referralCode: searchParams.get("ref") ?? undefined },
   });
 
@@ -83,6 +91,19 @@ function RegisterForm() {
             <Input id="password" type="password" autoComplete="new-password" error={errors.password?.message} {...register("password")} />
             <p className="mt-1 text-xs text-ash-500">{t("passwordHint")}</p>
             <FieldError>{errors.password?.message}</FieldError>
+          </div>
+          <div>
+            <Checkbox
+              id="acceptTerms"
+              label={
+                <span>
+                  Acepto los <Link href="/legales/terminos" target="_blank" className="font-medium text-ink-700 underline">Términos y condiciones</Link> y la{" "}
+                  <Link href="/legales/privacidad" target="_blank" className="font-medium text-ink-700 underline">Política de privacidad</Link>.
+                </span>
+              }
+              {...register("acceptTerms")}
+            />
+            <FieldError>{errors.acceptTerms?.message}</FieldError>
           </div>
           <Checkbox id="marketingConsentEmail" label={t("marketingConsent")} {...register("marketingConsentEmail")} />
           <Button type="submit" size="lg" disabled={isSubmitting}>

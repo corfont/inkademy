@@ -11,6 +11,7 @@ import {
   Res,
   UnauthorizedException,
   UseGuards,
+  ForbiddenException,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
@@ -103,6 +104,14 @@ export class AuthController {
   @Post("refresh")
   @ApiOperation({ summary: "Renueva el accessToken usando la cookie de refresh" })
   async refresh(@Req() req: Request & { cookies?: Record<string, string> }, @Res({ passthrough: true }) res: Response) {
+    // El refresh solo lo pide la web (otro origen del mismo sitio). Si la petición es del MISMO origen que la API, viene de contenido servido por la propia API
+    // (un paquete SCORM de un docente ejecuta JS ahí): se rechaza para que no pueda robar la sesión del alumno.
+    const fetchSite = String(req.headers["sec-fetch-site"] ?? "");
+    const origin = String(req.headers.origin ?? "");
+    const host = String(req.headers.host ?? "");
+    if (fetchSite === "same-origin" || (origin && host && new URL(origin).host === host)) {
+      throw new ForbiddenException("Solicitud no permitida");
+    }
     const token = req.cookies?.[REFRESH_COOKIE];
     const { accessToken, user } = await this.authService.refresh(token);
     this.setRefreshCookie(res, this.authService.signRefreshToken(user));

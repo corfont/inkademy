@@ -1,5 +1,6 @@
 "use client";
 
+import { safeNext } from "@/lib/safe-redirect";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -98,7 +99,7 @@ function LoginForm() {
     setServerError(null);
     try {
       const user = await login(values.email, values.password);
-      const next = searchParams.get("next");
+      const next = safeNext(searchParams.get("next"));
       // Cada rol cae en su propio panel — antes ADMIN y TEACHER también
       // aterrizaban en /campus por defecto.
       const home = roleHomeHref(user.globalRole);
@@ -202,7 +203,7 @@ function LoginForm() {
         <p className="mt-6 text-center text-sm text-ash-600">
           {t("noAccount")}{" "}
           <Link
-            href={searchParams.get("next") ? `/registro?next=${encodeURIComponent(searchParams.get("next")!)}` : "/registro"}
+            href={safeNext(searchParams.get("next")) ? `/registro?next=${encodeURIComponent(safeNext(searchParams.get("next"))!)}` : "/registro"}
             className="font-medium text-ink-700 hover:underline"
           >
             {t("createAccount")}

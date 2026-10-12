@@ -36,7 +36,7 @@ export function Dialog({
         aria-labelledby={titleId}
         tabIndex={-1}
         className={cn(
-          "relative z-10 w-full max-w-lg animate-slide-up rounded-lg bg-paper p-6 shadow-raised",
+          "relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-lg animate-slide-up overflow-y-auto rounded-lg bg-paper p-6 shadow-raised",
           className,
         )}
       >

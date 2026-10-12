@@ -93,6 +93,17 @@ export class PayPalProvider implements PaymentProvider {
       // `params.token` es el orderId ya aprobado por el comprador en el
       // botón de PayPal del frontend — acá solo se captura, nunca se crea
       // ni se confía en un monto nuevo.
+      // Antes de capturar se comprueba que la orden aprobada por el comprador es POR EL MONTO de este carrito: sin esto se podía aprobar una orden barata y usarla para pagar un curso caro.
+      const detailRes = await fetch(`${this.baseUrl}/v2/checkout/orders/${encodeURIComponent(params.token)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const detail = await detailRes.json().catch(() => ({}));
+      const approved = detail?.purchase_units?.[0]?.amount;
+      const expected = (params.amountInMinorUnits / 100).toFixed(2);
+      if (!detailRes.ok || !approved || Number(approved.value).toFixed(2) !== expected || String(approved.currency_code).toUpperCase() !== params.currency) {
+        this.logger.error(`PayPal: la orden ${params.token} no coincide con el monto del carrito (esperado ${expected} ${params.currency}) — captura rechazada`);
+        return { success: false, failureMessage: "El monto aprobado en PayPal no coincide con tu compra. No se hizo ningún cobro." };
+      }
       const res = await fetch(`${this.baseUrl}/v2/checkout/orders/${encodeURIComponent(params.token)}/capture`, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },

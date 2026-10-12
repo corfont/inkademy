@@ -17,11 +17,13 @@ export const strongPasswordSchema = z
 export const registerSchema = z.object({
   email: z.string().email(),
   password: strongPasswordSchema,
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
   locale: z.enum(["es", "en"]).default("es"),
   marketingConsentEmail: z.boolean().default(false),
   referralCode: z.string().trim().max(20).optional(),
+  // Aceptación de Términos y Privacidad: el formulario web la exige; la API la registra con fecha si viene en true.
+  acceptTerms: z.boolean().optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -45,8 +47,8 @@ export const completeProfileSchema = z.object({
   // Antes /campus/perfil dejaba editar estos campos pero PATCH /profile no
   // los aceptaba en absoluto — el nombre/idioma/zona horaria nunca se
   // guardaban de verdad, ni al tener éxito ni al fallar la llamada.
-  firstName: z.string().min(1).optional(),
-  lastName: z.string().min(1).optional(),
+  firstName: z.string().trim().min(1).max(80).optional(),
+  lastName: z.string().trim().min(1).max(80).optional(),
   locale: z.enum(["es", "en"]).optional(),
   timezone: z.string().optional(),
   documentType: z.string().optional(),

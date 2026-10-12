@@ -397,8 +397,8 @@ function CoursePartnershipRow({
         {(partnership.startDate || partnership.endDate) && (
           <span className="text-ash-500">
             {" "}
-            ({partnership.startDate ? new Date(partnership.startDate).toLocaleDateString("es-PE") : "…"} —{" "}
-            {partnership.endDate ? new Date(partnership.endDate).toLocaleDateString("es-PE") : "…"})
+            ({partnership.startDate ? new Date(partnership.startDate).toLocaleDateString("es-PE", { timeZone: "UTC" }) : "…"} —{" "}
+            {partnership.endDate ? new Date(partnership.endDate).toLocaleDateString("es-PE", { timeZone: "UTC" }) : "…"})
           </span>
         )}
       </span>

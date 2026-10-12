@@ -18,6 +18,12 @@ import { ApiError } from "./api-client";
  * siguen cayendo al fallback, para no romper páginas públicas cuando la API
  * todavía no está desplegada o un curso puntual no existe.
  */
+/**
+ * Los datos de ejemplo (mock-data) son solo para desarrollo: en producción, si la API falla, una página pública NO debe mostrar cursos ni certificados inventados.
+ * Se pueden volver a permitir con NEXT_PUBLIC_ALLOW_MOCKS=true (por ejemplo, en una demo sin API).
+ */
+export const MOCKS_ENABLED = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_MOCKS === "true";
+
 export async function withFallback<T>(fn: () => Promise<T>, fallback: T): Promise<{ data: T; live: boolean }> {
   try {
     const data = await fn();

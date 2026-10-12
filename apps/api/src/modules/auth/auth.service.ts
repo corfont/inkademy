@@ -80,6 +80,7 @@ export class AuthService {
     let user = await this.prisma.user.create({
       data: {
         referredByUserId: referrer?.id ?? null,
+        termsAcceptedAt: input.acceptTerms ? new Date() : null,
         email: input.email,
         passwordHash,
         firstName: input.firstName,

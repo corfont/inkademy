@@ -1,5 +1,6 @@
 "use client";
 
+import { safeNext } from "@/lib/safe-redirect";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -50,7 +51,7 @@ function CompleteProfileForm() {
   // docente que llegaba con ese "next" terminaba viendo el campus de
   // alumno pese a tener el rol correcto en la base de datos. Un `next`
   // fuera de las tres áreas (p.ej. volver a /checkout) se respeta siempre.
-  const requestedNext = searchParams.get("next");
+  const requestedNext = safeNext(searchParams.get("next"));
   const next = requestedNext && !belongsToOtherRoleArea(requestedNext, roleHome) ? requestedNext : roleHome;
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<CompleteProfileInput>({
     resolver: zodResolver(completeProfileSchema),

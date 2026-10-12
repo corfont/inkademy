@@ -166,7 +166,7 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
                         )}
                       </td>
                       <td className="p-2">
-                        {new Date(l.periodStart).toLocaleDateString("es-PE")} — {new Date(l.periodEnd).toLocaleDateString("es-PE")}
+                        {new Date(l.periodStart).toLocaleDateString("es-PE", { timeZone: "UTC" })} — {new Date(l.periodEnd).toLocaleDateString("es-PE", { timeZone: "UTC" })}
                       </td>
                       <td className="p-2">{l.hoursTeaching}h</td>
                       <td className="p-2">{l.hoursOtherActivities}h</td>

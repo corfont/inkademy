@@ -53,13 +53,14 @@ export const catalogFiltersSchema = z.object({
   language: z.string().optional(),
   minPrice: z.coerce.number().optional(),
   maxPrice: z.coerce.number().optional(),
-  certificationOnly: z.coerce.boolean().optional(),
+  // z.coerce.boolean() convierte el texto "false" en true: aquí "false" (y "0") es falso de verdad.
+  certificationOnly: z.preprocess((v) => (v === "false" || v === "0" ? false : v), z.coerce.boolean()).optional(),
   // "duration/liveOnly nunca llegaban al backend" — el Zod schema (sin
   // .strict()) los descartaba en silencio de la query aunque el frontend sí
   // los mandara, así que terminaban filtrándose client-side sobre una sola
   // página ya paginada — ver CatalogService.listCourses.
   duration: z.enum(["short", "medium", "long"]).optional(),
-  liveOnly: z.coerce.boolean().optional(),
+  liveOnly: z.preprocess((v) => (v === "false" || v === "0" ? false : v), z.coerce.boolean()).optional(),
   // Dedicación semanal (light ≤ 3 h, medium 4–6 h, intensive > 6 h), día de clase y competencia — los declara el admin en cada curso.
   weeklyLoad: z.enum(["light", "medium", "intensive"]).optional(),
   classDay: z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]).optional(),
@@ -738,7 +739,8 @@ export const reorderModulesSchema = z.object({
 });
 
 export const submitFileAttemptSchema = z.object({
-  submissionAssetId: z.string().min(1),
+  // Solo archivos subidos como respuesta de examen: sin este prefijo se podría pedir el enlace firmado de CUALQUIER objeto privado (respaldos, informes...).
+  submissionAssetId: z.string().min(1).startsWith("attempt-submissions/"),
   submissionMimeType: z.string().min(1),
 });
 

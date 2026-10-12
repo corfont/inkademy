@@ -34,7 +34,7 @@ export default async function MyLiquidationsPage() {
             <CardContent className="flex flex-col gap-2 p-6">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-ink-900">
-                  {new Date(l.periodStart).toLocaleDateString("es-PE")} — {new Date(l.periodEnd).toLocaleDateString("es-PE")}
+                  {new Date(l.periodStart).toLocaleDateString("es-PE", { timeZone: "UTC" })} — {new Date(l.periodEnd).toLocaleDateString("es-PE", { timeZone: "UTC" })}
                 </p>
                 <Badge variant={l.status === "PAID" ? "success" : l.status === "APPROVED" ? "warning" : "outline"}>{l.status}</Badge>
               </div>

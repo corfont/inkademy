@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 type RoleRow = {
   id: string;
@@ -63,11 +64,15 @@ export function AdminRolesManager({ roles }: { roles: RoleRow[] }) {
   const [description, setDescription] = useState("");
   const [permissions, setPermissions] = useState<Record<string, string>>({});
   const [assignEmail, setAssignEmail] = useState<Record<string, string>>({});
+  // Las acciones que quitan acceso o borran piden confirmación antes de ejecutarse.
+  const [confirm, setConfirm] = useState<{ title: string; message: string; label: string; danger?: boolean; action: () => Promise<unknown>; success: string } | null>(null);
 
   function startEdit(role: RoleRow | null) {
     setError(null);
     setOk(null);
     setEditing(role ? role.id : "new");
+    // El formulario aparece arriba de la lista: se lleva la vista hasta él.
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     setName(role?.name ?? "");
     setDescription(role?.description ?? "");
     setPermissions({ ...(role?.permissions ?? {}) });
@@ -155,10 +160,19 @@ export function AdminRolesManager({ roles }: { roles: RoleRow[] }) {
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => startEdit(role)}>Editar</Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => adminApi.updateAdminRole(role.id, { active: !role.active }, getClientAccessToken()), role.active ? "Rol desactivado." : "Rol activado.")}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    const toggle = () => adminApi.updateAdminRole(role.id, { active: !role.active }, getClientAccessToken());
+                    if (!role.active) return run(toggle, "Rol activado.");
+                    setConfirm({ title: "Desactivar rol", message: `Las ${role.users.length} persona(s) con el rol «${role.name}» perderán el acceso al panel de administración hasta que lo actives otra vez.`, label: "Desactivar", danger: true, action: toggle, success: "Rol desactivado." });
+                  }}
+                >
                   {role.active ? "Desactivar" : "Activar"}
                 </Button>
-                <Button size="sm" variant="ghost" disabled={busy || role.users.length > 0} title={role.users.length > 0 ? "Quita primero a sus usuarios" : undefined} onClick={() => run(() => adminApi.deleteAdminRole(role.id, getClientAccessToken()), "Rol eliminado.")}>
+                <Button size="sm" variant="ghost" disabled={busy || role.users.length > 0} title={role.users.length > 0 ? "Quita primero a sus usuarios" : undefined} onClick={() => setConfirm({ title: "Eliminar rol", message: `Se eliminará el rol «${role.name}». Esta acción no se puede deshacer.`, label: "Eliminar", danger: true, action: () => adminApi.deleteAdminRole(role.id, getClientAccessToken()), success: "Rol eliminado." })}>
                   Eliminar
                 </Button>
               </div>
@@ -179,7 +193,7 @@ export function AdminRolesManager({ roles }: { roles: RoleRow[] }) {
                   {role.users.map((u) => (
                     <li key={u.id} className="flex items-center justify-between text-sm">
                       <span>{u.firstName} {u.lastName} · <span className="text-ash-500">{u.email}</span></span>
-                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => adminApi.assignAdminRole(u.id, null, getClientAccessToken()), "Rol quitado: vuelve a ser administrador completo.")}>Quitar</Button>
+                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm({ title: "Quitar el rol", message: `${u.firstName} ${u.lastName} volverá a ser administrador COMPLETO, con acceso a todos los módulos.`, label: "Quitar rol", danger: true, action: () => adminApi.assignAdminRole(u.id, null, getClientAccessToken()), success: "Rol quitado: vuelve a ser administrador completo." })}>Quitar</Button>
                     </li>
                   ))}
                 </ul>
@@ -192,6 +206,21 @@ export function AdminRolesManager({ roles }: { roles: RoleRow[] }) {
           </CardContent>
         </Card>
       ))}
+      <ConfirmDialog
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title={confirm?.title ?? ""}
+        message={confirm?.message ?? ""}
+        confirmLabel={confirm?.label}
+        danger={confirm?.danger}
+        busy={busy}
+        onConfirm={async () => {
+          const c = confirm;
+          if (!c) return;
+          await run(c.action, c.success);
+          setConfirm(null);
+        }}
+      />
     </div>
   );
 }

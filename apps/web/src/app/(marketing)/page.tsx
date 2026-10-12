@@ -2,7 +2,7 @@ import Link from "next/link";
 import { GraduationCap, Building2 } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { catalogApi } from "@/lib/api-client";
-import { withFallback } from "@/lib/safe-fetch";
+import { withFallback, MOCKS_ENABLED } from "@/lib/safe-fetch";
 import { MOCK_AREAS, MOCK_SECTIONS } from "@/lib/mock-data";
 import { SearchBox } from "@/components/catalog/SearchBox";
 import { SectionCarousel } from "@/components/catalog/SectionCarousel";
@@ -15,8 +15,8 @@ export default async function HomePage() {
   const locale = await getLocale();
 
   const [{ data: areas }, { data: sections, live }] = await Promise.all([
-    withFallback(() => catalogApi.areas(), MOCK_AREAS),
-    withFallback(() => catalogApi.sections(), MOCK_SECTIONS),
+    withFallback(() => catalogApi.areas(), MOCKS_ENABLED ? MOCK_AREAS : []),
+    withFallback(() => catalogApi.sections(), MOCKS_ENABLED ? MOCK_SECTIONS : (Object.fromEntries(Object.keys(MOCK_SECTIONS).map((k) => [k, []])) as unknown as typeof MOCK_SECTIONS)),
   ]);
 
   return (

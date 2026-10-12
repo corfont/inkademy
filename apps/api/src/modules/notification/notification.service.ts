@@ -194,8 +194,9 @@ export class NotificationService {
       EMAIL_JOBS.COMPANY_INVITE,
       {
         to,
-        subject: `Te invitaron a ${companyName} en Inkademy`,
-        html: `<p>Fuiste invitado a formar parte del equipo de ${companyName} en Inkademy.</p>`,
+        subject: `Te invitaron a ${companyName.replace(/[\r\n]/g, " ")} en Inkademy`,
+        // El nombre de la empresa lo escribe cualquier usuario: se escapa para que no inyecte HTML ni enlaces en un correo que sale desde Inkademy.
+        html: `<p>Fuiste invitado a formar parte del equipo de ${companyName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")} en Inkademy.</p>`,
       },
       inviteUserId,
     );

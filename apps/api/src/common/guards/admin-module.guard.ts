@@ -46,6 +46,10 @@ export class AdminModuleGuard implements CanActivate {
     if (module === "__owner__") throw new ForbiddenException("Solo un administrador completo puede gestionar los roles");
 
     const write = !["GET", "HEAD", "OPTIONS"].includes(String(request.method).toUpperCase());
+    // Crear o modificar usuarios permite darse a sí mismo (o a otro) rol de administrador completo o restablecer contraseñas de administradores: un rol acotado solo puede MIRAR usuarios.
+    if (module === "usuarios" && write && /^\/admin\/users/i.test(String(request.originalUrl ?? ""))) {
+      throw new ForbiddenException("Crear o modificar usuarios solo lo puede hacer un administrador completo");
+    }
     if (!adminPermissionAllows(access.permissions, module, write)) {
       throw new ForbiddenException(write ? "Tu rol solo permite ver esta sección, no modificarla" : "Tu rol no tiene acceso a esta sección");
     }

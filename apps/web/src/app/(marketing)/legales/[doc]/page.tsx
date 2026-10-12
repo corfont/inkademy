@@ -10,7 +10,8 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: { params: { doc: string } }): Promise<Metadata> {
-  return { title: VALID_DOCS.includes(params.doc as LegalDoc) ? params.doc : "Legal" };
+  const TITLES: Record<string, string> = { privacidad: "Política de privacidad", terminos: "Términos y condiciones", cookies: "Política de cookies" };
+  return { title: TITLES[params.doc] ?? "Legal" };
 }
 
 const CONTENT: Record<LegalDoc, string[]> = {

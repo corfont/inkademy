@@ -92,6 +92,8 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   // "Iconos más modernos, tipografía y colores del manual de marca" —
   // recuadros de datos clave en vez de una lista de texto plano, con el
   // azul de marca (#586BD8 → indigo) como acento consistente.
+  // Primera sesión que todavía no pasó (la lista viene ordenada por fecha): mostrar una sesión vieja como "la próxima" confunde al visitante.
+  const nextLive = (course.liveSessions ?? []).find((s: { startsAt: string }) => new Date(s.startsAt).getTime() > Date.now());
   const keyFacts = [
     { icon: Layers, label: MODALITY_LABEL[course.modality]?.[locale as "es" | "en"] ?? course.modality },
     { icon: Clock, label: formatDuration(course.durationHours, course.durationUnit, locale as "es" | "en") },
@@ -101,8 +103,8 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
       : []),
     { icon: BookOpen, label: totalLessons === 1 ? t("lessonCountOne") : t("lessonsCount", { count: totalLessons }) },
     { icon: Globe2, label: course.language === "en" ? "Inglés" : course.language === "pt" ? "Portugués" : "Español" },
-    ...(course.liveSessions?.[0]
-      ? [{ icon: CalendarClock, label: formatDateTime(course.liveSessions[0].startsAt, locale, course.liveSessions[0].timezone) }]
+    ...(nextLive
+      ? [{ icon: CalendarClock, label: formatDateTime(nextLive.startsAt, locale, nextLive.timezone) }]
       : []),
   ];
 

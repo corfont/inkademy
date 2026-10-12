@@ -52,6 +52,15 @@ function pickLocale(text: LocalizedText, locale: string): string {
   return text[locale] ?? text.es ?? Object.values(text)[0] ?? "";
 }
 
+/** Escapa texto que viene de personas (nombre del alumno, del curso, de la empresa...) antes de insertarlo en la plantilla HTML: si no, un nombre con <script> o <iframe> se ejecutaría en el navegador del worker. */
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function escapeVars(vars: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, typeof v === "string" ? escapeHtml(v) : v]));
+}
+
 function renderPlaceholders(html: string, vars: Record<string, string>): string {
   return html.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => vars[key] ?? "");
 }
@@ -308,7 +317,7 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     const institutionSignatureUrl = institutionSignatureAssetId ? getPublicUrl(institutionSignatureAssetId) : null;
     const partnerSignatureUrl = partnerSignatureAssetId ? getPublicUrl(partnerSignatureAssetId) : null;
     const html = renderPlaceholders(certificate.template.htmlTemplate, {
-      ...textVars,
+      ...escapeVars(textVars),
       qrDataUrl,
       appUrl,
       logo: `<img src="${logoUrl}" alt="Inkademy" />`,
@@ -324,6 +333,21 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     });
     try {
       const page = await browser.newPage();
+      // Defensa en profundidad: el certificado no necesita JavaScript, y solo puede cargar recursos de datos (data:) o de la dirección pública del almacenamiento;
+      // nunca servicios internos de la red de Docker.
+      await page.setJavaScriptEnabled(false);
+      const allowedHosts = [process.env.S3_PUBLIC_BASE_URL, process.env.APP_URL].filter(Boolean).map((u) => { try { return new URL(u as string).host; } catch { return ""; } });
+      await page.setRequestInterception(true);
+      page.on("request", (req) => {
+        const url = req.url();
+        if (url.startsWith("data:") || url === "about:blank") return void req.continue();
+        try {
+          if (allowedHosts.includes(new URL(url).host)) return void req.continue();
+        } catch {
+          // URL inválida: se bloquea.
+        }
+        void req.abort();
+      });
       await page.setContent(html, { waitUntil: "networkidle0" });
       pdfBuffer = Buffer.from(await page.pdf({ format: "A4", landscape: true, printBackground: true }));
     } finally {

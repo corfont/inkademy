@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { CheckCircle2, XCircle, ShieldAlert, FileDown } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
-import { certificateApi } from "@/lib/api-client";
-import { withFallback } from "@/lib/safe-fetch";
-import { MOCK_CERTIFICATES } from "@/lib/mock-data";
+import { certificateApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { formatDate, localize } from "@/lib/format";
 
@@ -13,21 +11,15 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
   const t = await getTranslations("verify");
   const locale = await getLocale();
 
-  const matchingMock = MOCK_CERTIFICATES.find((c) => c.code === params.codigo);
-  // Shape exacto de `GET /certificates/verify/:code`
-  // (ver apps/api/src/modules/certificate/certificate.service.ts#verifyByCode).
-  const fallback = matchingMock
-    ? {
-        valid: true,
-        code: matchingMock.code,
-        status: "VALID" as const,
-        holderName: "Alumno de ejemplo",
-        title: matchingMock.title,
-        issuedAt: matchingMock.issuedAt,
-      }
-    : { valid: false, code: params.codigo, status: "VALID" as const, holderName: "", title: {}, issuedAt: null as string | null };
-
-  const { data: result } = await withFallback(() => certificateApi.verify(params.codigo), fallback);
+  type VerifyResult = Awaited<ReturnType<typeof certificateApi.verify>>;
+  let result: VerifyResult = { valid: false, code: params.codigo, status: "VALID", holderName: "", title: {}, issuedAt: null } as VerifyResult;
+  let unavailable = false;
+  try {
+    result = await certificateApi.verify(params.codigo);
+  } catch (err) {
+    // 404 = código inexistente (se muestra como "no encontrado"); cualquier otro fallo es del servicio y NUNCA se debe presentar como válido ni como inválido.
+    if (!(err instanceof ApiError && err.statusCode === 404)) unavailable = true;
+  }
   const revoked = result.status === "REVOKED";
 
   return (
@@ -37,7 +29,13 @@ export default async function VerifyCertificatePage({ params }: { params: { codi
         <p className="mt-2 text-sm text-ash-600">{t("subtitle")}</p>
 
         <div className="mt-8 rounded-md border border-paper-border p-6">
-          {revoked ? (
+          {unavailable ? (
+            <div className="flex flex-col items-center gap-2 text-ash-600">
+              <ShieldAlert className="h-10 w-10" aria-hidden="true" />
+              <p className="font-medium">No pudimos verificar el certificado en este momento.</p>
+              <p className="text-sm">Intenta de nuevo en unos minutos. Si el problema continúa, escríbenos desde el centro de ayuda.</p>
+            </div>
+          ) : revoked ? (
             <div className="flex flex-col items-center gap-2 text-danger">
               <ShieldAlert className="h-10 w-10" aria-hidden="true" />
               <p className="font-medium">{t("revoked")}</p>
