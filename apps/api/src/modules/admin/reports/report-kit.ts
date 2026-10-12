@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb } from "pdf-lib";
@@ -74,7 +75,24 @@ export interface ReportContext {
   title: string;
   watermarkText: string;
   generatedAt: Date;
+  /**
+   * Todo lo que se dibuja (tablas, gráficos, indicadores) también se anota acá, para poder entregar el MISMO reporte en Excel sin duplicar
+   * consultas ni fórmulas: el .xlsx sale de lo que el PDF acaba de mostrar.
+   */
+  heading: string;
+  notes: string[];
+  kpis: [string, string][];
+  sheets: ReportSheet[];
 }
+
+export interface ReportSheet {
+  name: string;
+  header: string[];
+  rows: (string | number)[][];
+}
+
+/** Si hay un colector activo (ver generateXlsx), cada reporte que se crea se registra en él. */
+export const reportCollector = new AsyncLocalStorage<ReportContext[]>();
 
 async function embedLogo(doc: PDFDocument, logoBytes?: Buffer | null): Promise<PDFImage | null> {
   if (!logoBytes) return null;
@@ -158,8 +176,13 @@ export async function createReport(opts: {
     title: opts.title,
     watermarkText: opts.watermarkText ?? "INKADEMY",
     generatedAt: new Date(),
+    heading: "",
+    notes: [],
+    kpis: [],
+    sheets: [],
   };
   newPage(ctx);
+  reportCollector.getStore()?.push(ctx);
   return ctx;
 }
 
@@ -168,12 +191,15 @@ export function ensureSpace(ctx: ReportContext, neededHeight: number) {
 }
 
 export function drawTitle(ctx: ReportContext, text: string, opts: { gapAfter?: number } = {}) {
+  ctx.heading = text;
+  ctx.notes.push(text);
   ensureSpace(ctx, 24);
   ctx.page.drawText(text, { x: MARGIN, y: ctx.y, size: 14, font: ctx.fonts.bold, color: rgb(0.11, 0.12, 0.22) });
   ctx.y -= 14 + (opts.gapAfter ?? 10);
 }
 
 export function drawSubtitle(ctx: ReportContext, text: string, opts: { gapAfter?: number } = {}) {
+  ctx.notes.push(text);
   ensureSpace(ctx, 18);
   ctx.page.drawText(text, { x: MARGIN, y: ctx.y, size: 10, font: ctx.fonts.regular, color: rgb(0.45, 0.46, 0.52) });
   ctx.y -= 10 + (opts.gapAfter ?? 12);
@@ -261,6 +287,7 @@ export interface TableColumn {
 
 /** Tabla con encabezado en negrita, franjas zebra y salto de página automático. */
 export function drawTable(ctx: ReportContext, columns: TableColumn[], rows: string[][], opts: { gapAfter?: number } = {}) {
+  ctx.sheets.push({ name: ctx.heading || "Datos", header: columns.map((c) => c.header), rows: rows.map((r) => [...r]) });
   const totalUnits = columns.reduce((s, c) => s + c.width, 0);
   const widths = columns.map((c) => (c.width / totalUnits) * CONTENT_WIDTH);
   const rowHeight = 16;
@@ -323,6 +350,7 @@ export interface BarDatum {
  * pedidos, sin sumar una dependencia de renderizado pesada.
  */
 export function drawBarChart(ctx: ReportContext, opts: { title: string; seriesLabel: string; data: BarDatum[]; height?: number }) {
+  ctx.sheets.push({ name: opts.title, header: ["Elemento", opts.seriesLabel], rows: opts.data.map((d) => [d.label, d.value]) });
   const chartHeight = opts.height ?? 160;
   const titleSize = 12;
   ensureSpace(ctx, titleSize + chartHeight + 40);
@@ -382,6 +410,7 @@ const KPI_TONE_COLOR: Record<NonNullable<KpiDatum["tone"]>, ReturnType<typeof rg
  */
 export function drawKpiRow(ctx: ReportContext, data: KpiDatum[]) {
   if (data.length === 0) return;
+  data.forEach((d) => ctx.kpis.push([d.label, d.value]));
   const cardHeight = 46;
   const gap = 10;
   const cardsPerRow = Math.min(3, data.length);
@@ -419,6 +448,7 @@ export interface ComboDatum {
  * versión en pantalla, para que el PDF se sienta como el mismo dashboard.
  */
 export function drawComboChart(ctx: ReportContext, opts: { title: string; data: ComboDatum[]; breakEvenIncome?: number | null; height?: number }) {
+  ctx.sheets.push({ name: opts.title, header: ["Periodo", "Ingresos", "Gastos", "Utilidad"], rows: opts.data.map((d) => [d.label, d.income, d.expenses, d.profit]) });
   const chartHeight = opts.height ?? 170;
   const titleSize = 12;
   ensureSpace(ctx, titleSize + chartHeight + 50);
@@ -515,6 +545,7 @@ export interface DonutDatum {
  * así que ese flip interno no distorsiona el resultado.
  */
 export function drawDonutChart(ctx: ReportContext, opts: { title: string; data: DonutDatum[]; centerLabel?: string; radius?: number }) {
+  ctx.sheets.push({ name: opts.title, header: ["Concepto", "Valor"], rows: opts.data.map((d) => [d.label, d.value]) });
   const titleSize = 12;
   const radius = opts.radius ?? 65;
   const holeRadius = radius * 0.55;

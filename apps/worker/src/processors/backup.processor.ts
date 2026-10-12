@@ -1,7 +1,8 @@
 import type { Job } from "bullmq";
 import { prisma } from "@inkademy/db";
 import type { BackupGenerateJobData } from "../queues";
-import { buildFullBackup } from "../lib/backup";
+import { createHash } from "node:crypto";
+import { buildFullBackup, verifyBackup } from "../lib/backup";
 import { uploadBuffer } from "../lib/storage";
 import { createLogger } from "../lib/logger";
 
@@ -20,15 +21,30 @@ export async function processBackupGenerateJob(job: Job<BackupGenerateJobData>):
   });
 
   try {
-    const { zipBuffer, sizeBytes, modelCounts } = await buildFullBackup();
+    const { zipBuffer, sizeBytes, modelCounts, fileErrorCount } = await buildFullBackup();
+    const sha256 = createHash("sha256").update(zipBuffer).digest("hex");
     const key = `backups/${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
     const { assetId } = await uploadBuffer(key, zipBuffer, "application/zip");
 
+    // Generado ≠ comprobado: se vuelve a leer lo guardado y se verifica antes de dar el respaldo por bueno.
+    const verification = await verifyBackup(assetId, sha256, modelCounts);
     await prisma.backupRecord.update({
       where: { id: record.id },
-      data: { status: "DONE", s3Key: assetId, sizeBytes, modelCounts, finishedAt: new Date() },
+      data: {
+        status: "DONE",
+        s3Key: assetId,
+        sizeBytes,
+        modelCounts,
+        finishedAt: new Date(),
+        sha256,
+        fileErrorCount,
+        rowCount: verification.rowCount,
+        verificationStatus: verification.ok ? "OK" : "FAILED",
+        verifiedAt: new Date(),
+        verificationNote: verification.note,
+      },
     });
-    logger.info("backup generado", { backupRecordId: record.id, sizeBytes, trigger });
+    logger.info("backup generado", { backupRecordId: record.id, sizeBytes, trigger, verified: verification.ok });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     await prisma.backupRecord.update({

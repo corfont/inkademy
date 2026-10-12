@@ -2,7 +2,8 @@ import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common"
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../../common/prisma/prisma.module";
 import { AdminService } from "../admin.service";
-import { createReport, drawBarChart, drawParagraph, drawSubtitle, drawTable, drawTitle, finalizeReport, type ReportContext } from "./report-kit";
+import { createReport, drawBarChart, drawParagraph, drawSubtitle, drawTable, drawTitle, finalizeReport, reportCollector, type ReportContext } from "./report-kit";
+import { buildXlsx } from "./report-xlsx";
 import { buildFinancialReportPdf } from "../finance-report.pdf";
 
 const fullName =(u: { firstName?: string | null; lastName?: string | null; email?: string } | null | undefined) =>
@@ -42,6 +43,8 @@ export class ReportsService {
     { key: "estado-financiero", label: "Estado financiero (EEFF)", description: "Ingresos, IGV, detracción, comisiones y saldo — mismo reporte de /admin/finanzas con el nuevo formato." },
     { key: "liquidaciones-pendientes", label: "Liquidaciones de docentes pendientes", description: "Docentes con liquidaciones en borrador o aprobadas sin pagar." },
     { key: "certificados-emitidos", label: "Certificados emitidos", description: "Certificados emitidos en el periodo, por curso." },
+    { key: "horas-dictadas-docentes", label: "Horas dictadas por docente", description: "Cada clase con la conexión del docente, minutos programados y pagables, más el balance por docente." },
+    { key: "liquidaciones-docentes", label: "Liquidaciones de docentes", description: "Todas las liquidaciones (borrador, aprobadas y pagadas) con bruto, descuentos, adelantos y neto." },
   ];
 
   private async logoBytes(): Promise<Buffer | null> {
@@ -67,8 +70,22 @@ export class ReportsService {
     return { fromDate, toDate };
   }
 
-  async generate(key: string, params: { from?: string; to?: string }): Promise<{ pdf: Buffer; filename: string }> {
+  /**
+   * El mismo reporte en Excel: se ejecuta el generador del PDF con un colector y se arma el .xlsx con lo que ese reporte dibujó (indicadores, tablas
+   * y gráficos), así el Excel y el PDF nunca difieren.
+   */
+  async generateXlsx(key: string, params: { from?: string; to?: string; teacherId?: string; courseId?: string }): Promise<{ xlsx: Buffer; filename: string }> {
+    const contexts: ReportContext[] = [];
+    const { filename } = await reportCollector.run(contexts, () => this.generate(key, params));
+    return { xlsx: buildXlsx(contexts), filename: filename.replace(/\.pdf$/i, ".xlsx") };
+  }
+
+  async generate(key: string, params: { from?: string; to?: string; teacherId?: string; courseId?: string }): Promise<{ pdf: Buffer; filename: string }> {
     switch (key) {
+      case "horas-dictadas-docentes":
+        return this.horasDictadasDocentes(params);
+      case "liquidaciones-docentes":
+        return this.liquidacionesDocentes(params);
       case "alumnos-registrados":
         return this.alumnosRegistrados();
       case "cursos-vs-alumnos":
@@ -256,6 +273,79 @@ export class ReportsService {
       ]),
     );
     return { pdf: await finalizeReport(ctx), filename: "inkademy-liquidaciones-pendientes.pdf" };
+  }
+
+  private async horasDictadasDocentes(params: { from?: string; to?: string; teacherId?: string; courseId?: string }) {
+    const report = await this.adminService.listTeacherSessionHours({
+      teacherId: params.teacherId,
+      courseId: params.courseId,
+      from: params.from ? new Date(params.from) : undefined,
+      to: params.to ? new Date(`${params.to}T23:59:59.999Z`) : undefined,
+    });
+    const lima = (d: Date | string | null) => (d ? new Date(d).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short", timeZone: "America/Lima" }) : "—");
+    const hours = (min: number) => (min / 60).toFixed(2);
+    const ctx = await this.open("Horas dictadas por docente");
+    drawTitle(ctx, "Horas dictadas por docente");
+    drawSubtitle(ctx, `${report.sessions.length} clases${params.from || params.to ? ` · Periodo: ${params.from ?? "inicio"} a ${params.to ?? "hoy"}` : ""}.`);
+    drawTable(
+      ctx,
+      [
+        { header: "Docente", width: 2 },
+        { header: "Horas programadas", width: 1.4, align: "right" },
+        { header: "Horas pagables", width: 1.4, align: "right" },
+        { header: "Clases", width: 0.8, align: "right" },
+      ],
+      report.byTeacher.map((t) => [t.teacherName, hours(t.scheduledMinutes), hours(t.payableMinutes), String(t.sessions)]),
+    );
+    ctx.heading = "Detalle por clase";
+    drawTable(
+      ctx,
+      [
+        { header: "Docente", width: 1.8 },
+        { header: "Curso", width: 2.2 },
+        { header: "Inicio", width: 1.5 },
+        { header: "Conexión", width: 1.5 },
+        { header: "Desconexión", width: 1.5 },
+        { header: "Prog. (min)", width: 1, align: "right" },
+        { header: "Pagable (min)", width: 1.1, align: "right" },
+      ],
+      report.sessions.map((s) => [s.teacherName, ((s.courseTitle as Record<string, string>)?.es ?? "Curso"), lima(s.startsAt), lima(s.joinedAt), lima(s.leftAt), String(s.scheduledMinutes), String(s.payableMinutes)]),
+    );
+    return { pdf: await finalizeReport(ctx), filename: "inkademy-horas-dictadas-docentes.pdf" };
+  }
+
+  private async liquidacionesDocentes(params: { teacherId?: string }) {
+    const liquidations = await this.adminService.listTeacherLiquidations(params.teacherId);
+    const money = (l: { currency: string }, n: unknown) => `${l.currency === "USD" ? "US$" : "S/"} ${Number(n).toFixed(2)}`;
+    const ctx = await this.open("Liquidaciones de docentes");
+    drawTitle(ctx, "Liquidaciones de docentes");
+    drawSubtitle(ctx, `${liquidations.length} liquidaciones.`);
+    drawTable(
+      ctx,
+      [
+        { header: "Docente", width: 2 },
+        { header: "Periodo", width: 1.8 },
+        { header: "H. dictado", width: 0.9, align: "right" },
+        { header: "H. otras", width: 0.9, align: "right" },
+        { header: "Bruto", width: 1.1, align: "right" },
+        { header: "Descuento", width: 1.1, align: "right" },
+        { header: "Adelantos", width: 1.1, align: "right" },
+        { header: "Neto", width: 1.1, align: "right" },
+        { header: "Estado", width: 1 },
+      ],
+      liquidations.map((l) => [
+        fullName(l.teacher),
+        `${l.periodStart.toLocaleDateString("es-PE")} — ${l.periodEnd.toLocaleDateString("es-PE")}`,
+        String(l.hoursTeaching),
+        String(l.hoursOtherActivities),
+        money(l, l.grossAmount),
+        `${money(l, l.deductions)}${l.deductionsWaived ? " (perdonado)" : ""}`,
+        money(l, l.advancesDeducted),
+        money(l, l.netAmount),
+        l.status,
+      ]),
+    );
+    return { pdf: await finalizeReport(ctx), filename: "inkademy-liquidaciones-docentes.pdf" };
   }
 
   private async certificadosEmitidos(params: { from?: string; to?: string }) {

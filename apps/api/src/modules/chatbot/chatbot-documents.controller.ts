@@ -8,8 +8,8 @@ import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { ChatbotDocumentsService } from "./chatbot-documents.service";
 import { fileMimeFilter } from "../../common/utils/file-filter";
 
-// PDF/TXT/MD — lo único que ChatbotDocumentsService sabe extraer como texto.
-const CHATBOT_DOC_MIME_PREFIXES = ["application/pdf", "text/plain", "text/markdown"];
+// PDF, Word (.docx), TXT y MD — lo que ChatbotDocumentsService sabe extraer como texto.
+const CHATBOT_DOC_MIME_PREFIXES = ["application/pdf", "text/plain", "text/markdown", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"];
 
 const updateChatbotDocumentSchema = z.object({ active: z.boolean().optional() });
 
@@ -25,6 +25,13 @@ export class ChatbotDocumentsController {
   @ApiOperation({ summary: "Lista los documentos de referencia del asistente de IA" })
   list() {
     return this.documents.list();
+  }
+
+  @Get("knowledge-size")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Cuánto texto hay en la base de conocimiento frente al tope que se envía a la IA" })
+  knowledgeSize() {
+    return this.documents.knowledgeSize();
   }
 
   @Post()

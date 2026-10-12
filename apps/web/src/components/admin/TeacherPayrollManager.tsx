@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
+import { ReportDownloadButtons } from "./ReportDownloadButtons";
 
 const FREQ_LABEL: Record<string, string> = { DAILY: "Diario", WEEKLY: "Semanal", MONTHLY: "Mensual", END_OF_COURSE: "Al finalizar el curso" };
 
@@ -129,6 +130,7 @@ export function TeacherLiquidationsOverview({ teachers }: { teachers: any[] }) {
               ))}
             </Select>
           </div>
+          <ReportDownloadButtons reportKey="liquidaciones-docentes" params={{ teacherId: teacherFilter }} />
           {liquidations.length === 0 ? (
             <p className="text-sm text-ash-500">Todavía no hay liquidaciones generadas.</p>
           ) : (

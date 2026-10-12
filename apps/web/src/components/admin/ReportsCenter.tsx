@@ -5,6 +5,7 @@ import { FileDown } from "lucide-react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { getClientAccessToken } from "@/lib/auth";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ReportDownloadButtons } from "./ReportDownloadButtons";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 
@@ -47,10 +48,7 @@ export function ReportsCenter({ catalog }: { catalog: { key: string; label: stri
                 <h3 className="font-serif text-base font-semibold text-ink-900">{r.label}</h3>
               </div>
               <p className="-mt-1 text-xs text-ash-500">{r.description}</p>
-              <Button size="sm" variant="outline" disabled={downloadingKey === r.key} onClick={() => download(r.key)} className="self-start">
-                <FileDown className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                {downloadingKey === r.key ? "Generando…" : "Descargar PDF"}
-              </Button>
+              <ReportDownloadButtons reportKey={r.key} />
             </CardContent>
           </Card>
         ))}

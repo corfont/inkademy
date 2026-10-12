@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +22,10 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [size, setSize] = useState<{ totalChars: number; limit: number } | null>(null);
+  useEffect(() => {
+    adminApi.chatbotKnowledgeSize().then(setSize).catch(() => setSize(null));
+  }, [documents]);
 
   // Antes solo se podía subir un documento a la vez (FileDropzone sin
   // `multiple`) — con una base de conocimiento real (varios manuales, FAQs,
@@ -126,11 +130,17 @@ export function ChatbotDocumentsManager({ documents }: { documents: any[] }) {
         </div>
       )}
 
+      {size && size.totalChars > size.limit && (
+        <Callout variant="info">
+          Tu base de conocimiento tiene {size.totalChars.toLocaleString("es-PE")} caracteres y a la IA se le envían como máximo {size.limit.toLocaleString("es-PE")} por respuesta.
+          No se pierde nada: en cada pregunta se eligen los fragmentos más relevantes. Si notas que no usa un documento, hazlo más específico o desactiva los que ya no apliquen.
+        </Callout>
+      )}
       <FileDropzone
-        accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+        accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
         busy={uploading}
         label="Subir documentos"
-        hint="PDF con texto real, o .txt/.md — puedes elegir o soltar varios a la vez"
+        hint="PDF con texto real, Word (.docx), o .txt/.md — puedes elegir o soltar varios a la vez"
         onFile={handleUpload}
         multiple
       />

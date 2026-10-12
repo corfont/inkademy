@@ -143,6 +143,8 @@ export class LiveSessionService {
       organizerUpn,
     });
 
+    // ¿Antes de esta no había ninguna clase próxima? Entonces es la primera fecha confirmada: se avisa a quienes guardaron el curso.
+    const upcomingBefore = await this.prisma.liveSession.count({ where: { courseId: input.courseId, status: "SCHEDULED", endsAt: { gt: new Date() } } });
     const created = await this.prisma.liveSession.create({
       data: {
         courseId: input.courseId,
@@ -158,6 +160,7 @@ export class LiveSessionService {
         joinUrl: meeting.joinUrl,
       },
     });
+    if (upcomingBefore === 0) await this.notifications.notifyCourseDatesConfirmed(input.courseId, input.startsAt).catch((e) => this.logger.warn(`No se pudo avisar la fecha a los guardados: ${String(e)}`));
     // Los alumnos que ya estaban matriculados la ven en su agenda (con el botón para entrar) desde el primer momento.
     await this.calendarService.addLiveSessionToEnrolled(created.id).catch(() => undefined);
     return created;
@@ -217,6 +220,7 @@ export class LiveSessionService {
     const subject = ((input.title as Record<string, string>)?.es ?? (course.title as Record<string, string>).es) ?? course.slug;
     const seriesId = `series-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
 
+    const upcomingBefore = await this.prisma.liveSession.count({ where: { courseId: input.courseId, status: "SCHEDULED", endsAt: { gt: new Date() } } });
     const created = [];
     for (const occ of occurrences) {
       const meeting = await this.resolveProvider(providerType).createMeeting({ subject, startsAt: occ.startsAt, endsAt: occ.endsAt, organizerUpn });
@@ -240,6 +244,7 @@ export class LiveSessionService {
       );
     }
     for (const s of created) await this.calendarService.addLiveSessionToEnrolled(s.id).catch(() => undefined);
+    if (upcomingBefore === 0 && created.length > 0) await this.notifications.notifyCourseDatesConfirmed(input.courseId, created[0].startsAt).catch((e) => this.logger.warn(`No se pudo avisar la fecha a los guardados: ${String(e)}`));
     return created;
   }
 

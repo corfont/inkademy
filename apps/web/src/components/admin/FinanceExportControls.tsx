@@ -52,6 +52,20 @@ export function FinanceExportControls({ availableYears }: { availableYears: numb
     }
   }
 
+  async function handleDownloadXlsx() {
+    setDownloading(true);
+    setError(null);
+    try {
+      const token = getClientAccessToken();
+      if (!token) throw new ApiError(401, "Inicia sesión de nuevo.");
+      await adminApi.downloadFinancialReportXlsx(currentParams(), token);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos generar el Excel.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleEmail() {
     setSending(true);
     setError(null);
@@ -100,6 +114,9 @@ export function FinanceExportControls({ availableYears }: { availableYears: numb
       )}
       <Button size="sm" variant="outline" disabled={downloading} onClick={handleDownload}>
         {downloading ? "Generando…" : "Descargar PDF"}
+      </Button>
+      <Button size="sm" variant="outline" disabled={downloading} onClick={handleDownloadXlsx}>
+        {downloading ? "Generando…" : "Descargar Excel"}
       </Button>
       <div className="flex items-end gap-2">
         <div>

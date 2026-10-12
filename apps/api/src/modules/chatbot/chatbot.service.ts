@@ -39,7 +39,7 @@ export class ChatbotService {
     // ChatbotDocumentsService.createFromText) — si hay alguno activo, se le
     // agregan como fuente de información al prompt para que las respuestas
     // dejen de ser genéricas y usen ese contenido real.
-    const contextText = await this.documents.getActiveContextText();
+    const contextText = await this.documents.getActiveContextText(message);
     const systemPrompt = contextText
       ? `${basePrompt}\n\nUsa la siguiente información de referencia para responder cuando sea relevante — si la pregunta no tiene que ver con esto, respóndela igual con tu conocimiento general:\n${contextText}`
       : basePrompt;
@@ -67,7 +67,7 @@ export class ChatbotService {
    * que si una duda similar ya se respondió bien antes, el borrador la usa.
    */
   async draftReply(input: { instructions: string; conversation: string }): Promise<{ draft: string }> {
-    const contextText = await this.documents.getActiveContextText();
+    const contextText = await this.documents.getActiveContextText(input.conversation.slice(-1500));
     const systemPrompt = [
       "Eres el equipo de soporte/administración de Inkademy, una plataforma peruana de cursos y capacitación online.",
       "Redacta en español un borrador de respuesta profesional, breve, cordial y concreto para la persona que escribió el mensaje de abajo.",
@@ -97,7 +97,7 @@ export class ChatbotService {
       const row = await this.prisma.chatbotSettings.findUnique({ where: { id: SETTINGS_ID } });
       if (!row?.enabled || !(row.apiKey || process.env.GEMINI_API_KEY)) return { resolved: false };
 
-      const contextText = await this.documents.getActiveContextText();
+      const contextText = await this.documents.getActiveContextText(`${input.subject} ${input.message}`);
       const systemPrompt = [
         "Eres soporte de Inkademy, una plataforma peruana de cursos y capacitación online.",
         `Se abrió un ticket de soporte — categoría "${input.category}", asunto "${input.subject}".`,

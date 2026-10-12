@@ -1,3 +1,5 @@
+import { reportCollector, type ReportContext } from "./reports/report-kit";
+import { buildXlsx } from "./reports/report-xlsx";
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -1142,6 +1144,28 @@ export class AdminController {
     res.send(pdf);
   }
 
+  @Get("finance/report.xlsx")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga el estado financiero del periodo en Excel (mismos datos que el PDF)" })
+  async downloadFinancialReportXlsx(
+    @Res() res: Response,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("period") period?: string,
+    @Query("year") year?: string,
+    @Query("months") months?: string,
+  ) {
+    const contexts: ReportContext[] = [];
+    const { periodLabel } = await reportCollector.run(contexts, () =>
+      this.adminService.getFinancialReportPdf({ from, to, period, year: year ? Number(year) : undefined, months: months ? Number(months) : undefined }),
+    );
+    res.set({
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="inkademy-finanzas-${periodLabel.replace(/\s+/g, "-")}.xlsx"`,
+    });
+    res.send(buildXlsx(contexts));
+  }
+
   @Post("finance/report/email")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Envía el estado financiero del periodo por correo, en PDF adjunto" })
@@ -1304,6 +1328,13 @@ export class AdminController {
   @ApiOperation({ summary: "Encola la generación de un backup completo ahora mismo" })
   generateBackupNow(@CurrentUser() user: RequestUser) {
     return this.adminService.generateBackupNow(user.id);
+  }
+
+  @Post("backups/:id/restore-test")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Registra que se probó restaurar este backup (quién, cuándo y qué resultó)" })
+  markBackupRestoreTested(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() body: { note?: string }) {
+    return this.adminService.markBackupRestoreTested(id, String(body?.note ?? "").slice(0, 500), user.id);
   }
 
   @Get("backups/:id/download-url")

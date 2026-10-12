@@ -34,10 +34,15 @@ export async function processEmailJob(job: Job<EmailJobPayload>): Promise<void> 
 
   try {
     await sendMail({ to, subject, html, text, attachments });
-    await markNotification(job.name, to, notificationId, "SENT");
+    await markNotification(job.name, to, notificationId, "SENT", { attempts: job.attemptsMade + 1 });
   } catch (err) {
     logger.error("fallo al enviar email", { jobId: job.id, jobName: job.name, to, err: String(err) });
-    await markNotification(job.name, to, notificationId, "FAILED");
+    // «Fallido» solo cuando se agotaron los reintentos; mientras queden, sigue pendiente (con el motivo del último intento).
+    const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    await markNotification(job.name, to, notificationId, isLastAttempt ? "FAILED" : "PENDING", {
+      attempts: job.attemptsMade + 1,
+      errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500),
+    });
     throw err; // deja que BullMQ reintente según su política de backoff
   }
 }
@@ -46,13 +51,15 @@ async function markNotification(
   template: string,
   to: string,
   notificationId: string | undefined,
-  status: "SENT" | "FAILED",
+  status: "SENT" | "FAILED" | "PENDING",
+  trace: { attempts?: number; errorMessage?: string } = {},
 ): Promise<void> {
+  const traceData = { attempts: trace.attempts, errorMessage: status === "SENT" ? null : trace.errorMessage };
   try {
     if (notificationId) {
       await prisma.notification.update({
         where: { id: notificationId },
-        data: { status, sentAt: status === "SENT" ? new Date() : undefined },
+        data: { status, sentAt: status === "SENT" ? new Date() : undefined, ...traceData },
       });
       return;
     }
@@ -67,7 +74,7 @@ async function markNotification(
     if (!pending) return;
     await prisma.notification.update({
       where: { id: pending.id },
-      data: { status, sentAt: status === "SENT" ? new Date() : undefined },
+      data: { status, sentAt: status === "SENT" ? new Date() : undefined, ...traceData },
     });
   } catch (err) {
     // Nunca tirar el job por no poder actualizar el registro de trazabilidad.

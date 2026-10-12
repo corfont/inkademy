@@ -3319,6 +3319,18 @@ export class AdminService {
     });
   }
 
+  /**
+   * Una persona deja constancia de que PROBÓ restaurar este respaldo (en un entorno de prueba) y qué resultó. Es lo único que distingue «tenemos un
+   * archivo» de «sabemos que podemos recuperarnos»: el sistema no puede probarlo por sí solo sin tocar la base real.
+   */
+  async markBackupRestoreTested(id: string, note: string, actorId: string) {
+    const record = await this.prisma.backupRecord.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException("Backup no encontrado");
+    const updated = await this.prisma.backupRecord.update({ where: { id }, data: { restoreTestedAt: new Date(), restoreTestedNote: note.trim() || null } });
+    await logAudit(this.prisma, { actorId, action: "BACKUP_RESTORE_TESTED", entity: "BackupRecord", entityId: id, after: { note } });
+    return updated;
+  }
+
   async generateBackupNow(actorId: string) {
     await this.backupQueue.add(BACKUP_JOBS.GENERATE, { trigger: "MANUAL", triggeredById: actorId });
     return { queued: true };

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { ReportDownloadButtons } from "./ReportDownloadButtons";
 
 function pickEs(text: unknown): string {
   const t = text as Record<string, string> | null | undefined;
@@ -92,6 +93,9 @@ export function TeacherSessionHoursReport({ teachers, courses }: { teachers: any
                 </option>
               ))}
             </Select>
+          </div>
+          <div className="sm:col-span-4">
+            <ReportDownloadButtons reportKey="horas-dictadas-docentes" params={{ teacherId, courseId, from, to }} />
           </div>
           <div>
             <Label htmlFor="tsh-from">Desde</Label>

@@ -54,6 +54,69 @@ export class NotificationService {
     this.logger.log(`Job "${jobName}" encolado en cola "${QUEUE_NAMES.EMAIL}" -> ${payload.to}`);
   }
 
+  /**
+   * Correo de prueba para el administrador: pasa por la misma cola y el mismo servidor de correo que los avisos reales, y deja su fila en el historial
+   * con el resultado (enviado o el motivo del fallo). Se crea la fila ANTES de encolar para que el worker la actualice exactamente.
+   */
+  async sendTestEmail(to: string, userId: string) {
+    const notification = await this.prisma.notification.create({ data: { userId, channel: "EMAIL", template: EMAIL_JOBS.GENERIC, title: "Prueba de notificaciones", status: "PENDING" } });
+    await this.emailQueue.add(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: "Prueba de notificaciones — Inkademy",
+        html: `<p>Este es un correo de prueba enviado desde Inkademy el ${new Date().toLocaleString("es-PE", { timeZone: "America/Lima" })} (hora de Lima). Si lo estás leyendo, el servidor de correo y la cola de envíos funcionan.</p>`,
+        meta: { userId, notificationId: notification.id },
+      },
+      { attempts: 3, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: true, removeOnFail: 100 },
+    );
+    return { queued: true, to, notificationId: notification.id };
+  }
+
+  /**
+   * «Avísame cuando haya fecha»: cuando un curso pasa de no tener ninguna clase en vivo próxima a tener una, se avisa a quienes lo guardaron y todavía no
+   * están matriculados. Siempre dentro de la plataforma (campana); por correo solo a quien aceptó recibir correos de marketing, para no escribirle a
+   * alguien que no lo autorizó solo por haber guardado un curso.
+   */
+  async notifyCourseDatesConfirmed(courseId: string, startsAt: Date): Promise<number> {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId }, select: { id: true, slug: true, title: true } });
+    if (!course) return 0;
+    const titulo = (course.title as Record<string, string>)?.es ?? "el curso";
+    const saved = await this.prisma.savedCourse.findMany({
+      where: { courseId, user: { status: "ACTIVE" }, NOT: { user: { enrollments: { some: { courseId, status: { in: ["ACTIVE", "COMPLETED"] } } } } } },
+      select: { user: { select: { id: true, email: true, firstName: true, marketingConsentEmail: true } } },
+    });
+    const cuando = startsAt.toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Lima" });
+    const appUrl = this.config.get<string>("APP_URL") ?? "http://localhost:3000";
+    for (const { user } of saved) {
+      await this.prisma.notification.create({
+        data: {
+          userId: user.id,
+          channel: "IN_APP",
+          template: "course.dates-confirmed",
+          type: "GENERIC",
+          title: `Ya hay fecha para «${titulo}»`,
+          body: `Empieza el ${cuando}. Inscríbete antes de que se llenen los cupos.`,
+          url: `/cursos/${course.slug}`,
+          status: "SENT",
+          sentAt: new Date(),
+        },
+      });
+      if (user.marketingConsentEmail) {
+        await this.enqueueEmail(
+          EMAIL_JOBS.GENERIC,
+          {
+            to: user.email,
+            subject: `Ya hay fecha para «${titulo}»`,
+            html: `<p>Hola ${user.firstName}, guardaste «${titulo}» y ya tiene fecha de inicio: <b>${cuando}</b>. <a href="${appUrl}/cursos/${course.slug}">Ver el curso</a>.</p>`,
+          },
+          user.id,
+        );
+      }
+    }
+    return saved.length;
+  }
+
   sendWelcome(to: string, firstName: string, userId: string) {
     return this.enqueueEmail(
       EMAIL_JOBS.WELCOME,

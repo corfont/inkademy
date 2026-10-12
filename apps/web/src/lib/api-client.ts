@@ -348,6 +348,14 @@ export interface BackupRecordDTO {
   createdAt: string;
   finishedAt: string | null;
   triggeredBy?: { firstName: string; lastName: string } | null;
+  sha256?: string | null;
+  verificationStatus?: "OK" | "FAILED" | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
+  fileErrorCount?: number;
+  rowCount?: number | null;
+  restoreTestedAt?: string | null;
+  restoreTestedNote?: string | null;
 }
 
 export interface AuditLogEntryDTO {
@@ -804,6 +812,35 @@ export const adminApi = {
     a.remove();
     URL.revokeObjectURL(url);
   },
+  // Descarga un reporte en PDF o Excel (mismos datos), con los filtros que se pasen (periodo, docente, curso).
+  downloadReport: async (key: string, format: "pdf" | "xlsx", params: Record<string, string | undefined>, accessToken: string) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "") as [string, string][]).toString();
+    const res = await fetch(`${API_URL}/admin/reports/${key}.${format}?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, format === "xlsx" ? "No pudimos generar el Excel." : "No pudimos generar el PDF.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `inkademy-${key}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  downloadFinancialReportXlsx: async (params: { from?: string; to?: string; period?: string; year?: number; months?: number }, accessToken: string) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][]).toString();
+    const res = await fetch(`${API_URL}/admin/finance/report.xlsx?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, "No pudimos generar el Excel.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "inkademy-finanzas.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
   profitAndLoss: (months: number | undefined, accessToken?: string | null) =>
     apiFetch<any>("/admin/finance/profit-and-loss", { accessToken, query: { months }, cache: "no-store" }),
   pendingReview: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-review", { accessToken }),
@@ -1176,6 +1213,7 @@ export const adminApi = {
   chatbotSettings: (accessToken?: string | null) => apiFetch<ChatbotSettingsDTO>("/admin/chatbot-settings", { accessToken, cache: "no-store" }),
   updateChatbotSettings: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<ChatbotSettingsDTO>("/admin/chatbot-settings", { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  chatbotKnowledgeSize: (accessToken?: string | null) => apiFetch<{ totalChars: number; limit: number }>("/admin/chatbot-documents/knowledge-size", { accessToken, cache: "no-store" }),
   chatbotDocuments: (accessToken?: string | null) =>
     apiFetch<any[]>("/admin/chatbot-documents", { accessToken, cache: "no-store" }),
   uploadChatbotDocument: (file: File, title: string | undefined, accessToken?: string | null) => {
@@ -1229,6 +1267,8 @@ export const adminApi = {
   backups: (accessToken?: string | null) => apiFetch<BackupRecordDTO[]>("/admin/backups", { accessToken, cache: "no-store" }),
   generateBackupNow: (accessToken?: string | null) =>
     apiFetch<{ queued: boolean }>("/admin/backups/generate", { method: "POST", accessToken }),
+  markBackupRestoreTested: (id: string, note: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/backups/${id}/restore-test`, { method: "POST", body: JSON.stringify({ note }), accessToken }),
   getBackupDownloadUrl: (id: string, accessToken?: string | null) =>
     apiFetch<{ url: string }>(`/admin/backups/${id}/download-url`, { accessToken }),
 
@@ -1343,6 +1383,10 @@ export const notificationsApi = {
       cache: "no-store",
     }),
   unreadCount: (accessToken?: string | null) => apiFetch<{ count: number }>("/notifications/unread-count", { accessToken, cache: "no-store" }),
+  // Comprobación para el administrador: historial de envíos y correo de prueba.
+  log: (params: { channel?: string; status?: string; template?: string; from?: string; to?: string; page?: number }, accessToken?: string | null) =>
+    apiFetch<{ rows: any[]; total: number; page: number; pageSize: number; failedLast7d: number }>("/admin/notifications/log", { accessToken, query: params, cache: "no-store" }),
+  sendTest: (accessToken?: string | null) => apiFetch<{ queued: boolean; to: string }>("/admin/notifications/test", { method: "POST", accessToken }),
   markRead: (id: string, accessToken?: string | null) => apiFetch<{ ok: boolean }>(`/notifications/${id}/read`, { method: "PATCH", accessToken }),
   markAllRead: (accessToken?: string | null) => apiFetch<{ ok: boolean }>("/notifications/read-all", { method: "POST", accessToken }),
 

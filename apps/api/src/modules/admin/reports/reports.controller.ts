@@ -22,9 +22,32 @@ export class ReportsController {
   @Get(":key.pdf")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Descarga un reporte PDF por su clave" })
-  async download(@Param("key") key: string, @Query("from") from: string | undefined, @Query("to") to: string | undefined, @Res() res: Response) {
-    const { pdf, filename } = await this.reports.generate(key, { from, to });
+  async download(
+    @Param("key") key: string,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("teacherId") teacherId: string | undefined,
+    @Query("courseId") courseId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { pdf, filename } = await this.reports.generate(key, { from, to, teacherId, courseId });
     res.set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${filename}"` });
     res.send(pdf);
+  }
+
+  @Get(":key.xlsx")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga el mismo reporte en Excel (.xlsx)" })
+  async downloadXlsx(
+    @Param("key") key: string,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Query("teacherId") teacherId: string | undefined,
+    @Query("courseId") courseId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const { xlsx, filename } = await this.reports.generateXlsx(key, { from, to, teacherId, courseId });
+    res.set({ "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${filename}"` });
+    res.send(xlsx);
   }
 }

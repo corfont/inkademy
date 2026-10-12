@@ -1672,9 +1672,13 @@ model Notification {
   readAt    DateTime?
   sentAt    DateTime?
   createdAt DateTime            @default(now())
+  // Trazabilidad del envío: por qué falló y cuántos intentos se hicieron (FAILED solo después del último intento).
+  errorMessage String?
+  attempts     Int              @default(0)
 
   @@index([userId])
   @@index([userId, channel, readAt, createdAt])
+  @@index([status, createdAt])
 }
 
 /// Configuración de qué notificaciones se envían y por qué canal(es),
@@ -2373,4 +2377,14 @@ model BackupRecord {
   errorMessage  String?
   createdAt     DateTime      @default(now())
   finishedAt    DateTime?
+  // «Listo» (archivo generado) no demuestra que el respaldo sirva: acá queda la huella del archivo, la comprobación de integridad (se releyó lo que
+  // quedó guardado y se compararon los conteos con la base) y, aparte, si alguien probó restaurarlo.
+  sha256              String?
+  verificationStatus  String? // OK | FAILED
+  verifiedAt          DateTime?
+  verificationNote    String?
+  fileErrorCount      Int       @default(0) // archivos incrustados (certificados, facturas…) que no se pudieron incluir
+  rowCount            Int?
+  restoreTestedAt     DateTime?
+  restoreTestedNote   String?
 }

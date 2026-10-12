@@ -37,6 +37,21 @@ export function BackupManager({ backups }: { backups: BackupRecordDTO[] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testNote, setTestNote] = useState("");
+
+  async function handleRestoreTested(id: string) {
+    setError(null);
+    try {
+      await adminApi.markBackupRestoreTested(id, testNote);
+      setTestingId(null);
+      setTestNote("");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo registrar la prueba.");
+    }
+  }
 
   const hasPending = backups.some((b) => b.status === "PENDING" || b.status === "RUNNING");
 
@@ -90,23 +105,60 @@ export function BackupManager({ backups }: { backups: BackupRecordDTO[] }) {
             <Card key={b.id}>
               <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-ink-900">{new Date(b.createdAt).toLocaleString("es-PE")}</span>
-                    <Badge variant={STATUS_VARIANT[b.status]}>{STATUS_LABEL[b.status]}</Badge>
+                    <Badge variant={STATUS_VARIANT[b.status]}>{b.status === "DONE" ? "Archivo generado" : STATUS_LABEL[b.status]}</Badge>
+                    {b.status === "DONE" && (
+                      <Badge variant={b.verificationStatus === "OK" ? "success" : b.verificationStatus === "FAILED" ? "danger" : "outline"}>
+                        {b.verificationStatus === "OK" ? "Integridad verificada" : b.verificationStatus === "FAILED" ? "Integridad con problemas" : "Integridad sin verificar"}
+                      </Badge>
+                    )}
+                    {b.status === "DONE" && (
+                      <Badge variant={b.restoreTestedAt ? "success" : "warning"}>{b.restoreTestedAt ? "Recuperación probada" : "Recuperación sin probar"}</Badge>
+                    )}
                   </div>
                   <p className="text-xs text-ash-500">
                     {b.trigger === "MANUAL" ? "Manual" : "Automático (semanal)"}
                     {b.triggeredBy && ` — ${b.triggeredBy.firstName} ${b.triggeredBy.lastName}`}
                     {b.status === "DONE" && ` · ${formatBytes(b.sizeBytes)}`}
                     {b.status === "DONE" && b.modelCounts && ` · ${Object.keys(b.modelCounts).length} tablas`}
+                    {b.status === "DONE" && b.rowCount != null && ` · ${b.rowCount.toLocaleString("es-PE")} filas`}
                     {b.status === "FAILED" && b.errorMessage && ` · ${b.errorMessage}`}
                   </p>
+                  {b.status === "DONE" && (
+                    <p className="mt-1 text-xs text-ash-500">
+                      {b.verifiedAt ? `Comprobado el ${new Date(b.verifiedAt).toLocaleString("es-PE")}: ${b.verificationNote ?? ""}` : "Este respaldo es anterior a la comprobación automática."}
+                      {(b.fileErrorCount ?? 0) > 0 && <span className="font-medium text-warning"> · {b.fileErrorCount} archivo(s) incrustados no se pudieron incluir.</span>}
+                      {b.restoreTestedAt && ` · Restauración probada el ${new Date(b.restoreTestedAt).toLocaleDateString("es-PE")}${b.restoreTestedNote ? `: ${b.restoreTestedNote}` : ""}.`}
+                    </p>
+                  )}
+                  {openId === b.id && b.modelCounts && (
+                    <div className="mt-2 max-h-48 overflow-auto rounded-md bg-paper-muted p-2 text-xs text-ash-700">
+                      {Object.entries(b.modelCounts)
+                        .filter(([, n]) => n > 0)
+                        .map(([model, n]) => (
+                          <span key={model} className="mr-3 inline-block">{model}: <b>{n}</b></span>
+                        ))}
+                      {b.sha256 && <p className="mt-2 break-all text-ash-500">SHA-256: {b.sha256}</p>}
+                    </div>
+                  )}
+                  {testingId === b.id && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <input value={testNote} onChange={(e) => setTestNote(e.target.value)} placeholder="Qué se probó y qué resultó (ej. restaurado en un entorno de prueba, todo correcto)" className="min-w-[18rem] flex-1 rounded-md border border-paper-border bg-paper px-2 py-1.5 text-xs" />
+                      <Button size="sm" onClick={() => handleRestoreTested(b.id)}>Guardar</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setTestingId(null)}>Cancelar</Button>
+                    </div>
+                  )}
                 </div>
                 {b.status === "DONE" && (
-                  <Button size="sm" variant="outline" disabled={downloadingId === b.id} onClick={() => handleDownload(b.id)}>
-                    <Download className="h-4 w-4" aria-hidden="true" />
-                    {downloadingId === b.id ? "Abriendo…" : "Descargar"}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setOpenId(openId === b.id ? null : b.id)}>{openId === b.id ? "Ocultar detalle" : "Ver detalle"}</Button>
+                    {!b.restoreTestedAt && <Button size="sm" variant="ghost" onClick={() => setTestingId(b.id)}>Registrar prueba de restauración</Button>}
+                    <Button size="sm" variant="outline" disabled={downloadingId === b.id} onClick={() => handleDownload(b.id)}>
+                      <Download className="h-4 w-4" aria-hidden="true" />
+                      {downloadingId === b.id ? "Abriendo…" : "Descargar"}
+                    </Button>
+                  </div>
                 )}
               </CardContent>
             </Card>

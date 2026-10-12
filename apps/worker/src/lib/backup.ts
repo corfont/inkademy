@@ -69,6 +69,8 @@ export interface FullBackupResult {
   zipBuffer: Buffer;
   sizeBytes: number;
   modelCounts: Record<string, number>;
+  /** Archivos incrustados que no se pudieron incluir (anotados con su error en el manifiesto). */
+  fileErrorCount: number;
 }
 
 export async function buildFullBackup(): Promise<FullBackupResult> {
@@ -108,5 +110,44 @@ export async function buildFullBackup(): Promise<FullBackupResult> {
   );
 
   const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-  return { zipBuffer, sizeBytes: zipBuffer.length, modelCounts };
+  return { zipBuffer, sizeBytes: zipBuffer.length, modelCounts, fileErrorCount: manifest.filter((m) => m.error).length };
+}
+
+export interface BackupVerification {
+  ok: boolean;
+  note: string;
+  rowCount: number;
+}
+
+/**
+ * Comprueba que el respaldo que quedó GUARDADO sirve: se vuelve a leer del almacenamiento, se compara su huella con la del archivo generado, se abre
+ * el zip y, tabla por tabla, se cuenta que el JSON tenga tantas filas como las que se leyeron de la base. No reemplaza una restauración de prueba
+ * (eso lo registra una persona), pero descarta un archivo cortado, corrupto o incompleto.
+ */
+export async function verifyBackup(storedKey: string, expectedSha256: string, modelCounts: Record<string, number>): Promise<BackupVerification> {
+  const crypto = await import("node:crypto");
+  try {
+    const stored = await getObjectBuffer(storedKey);
+    const sha = crypto.createHash("sha256").update(stored).digest("hex");
+    if (sha !== expectedSha256) return { ok: false, rowCount: 0, note: "La huella del archivo guardado no coincide con la del generado: el archivo se alteró o se cortó al subirlo." };
+    const zip = await JSZip.loadAsync(stored);
+    const manifestFile = zip.file("manifest.json");
+    if (!manifestFile) return { ok: false, rowCount: 0, note: "El zip no trae manifest.json." };
+    let rowCount = 0;
+    const problemas: string[] = [];
+    for (const [model, expected] of Object.entries(modelCounts)) {
+      const file = zip.file(`data/${model}.json`);
+      if (!file) {
+        problemas.push(`falta ${model}`);
+        continue;
+      }
+      const rows = JSON.parse(await file.async("string")) as unknown[];
+      rowCount += rows.length;
+      if (rows.length !== expected) problemas.push(`${model}: ${rows.length} de ${expected} filas`);
+    }
+    if (problemas.length) return { ok: false, rowCount, note: `Diferencias encontradas: ${problemas.slice(0, 5).join("; ")}${problemas.length > 5 ? "…" : ""}` };
+    return { ok: true, rowCount, note: `Archivo íntegro: ${Object.keys(modelCounts).length} tablas y ${rowCount} filas coinciden con la base.` };
+  } catch (err) {
+    return { ok: false, rowCount: 0, note: `No se pudo comprobar: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
