@@ -11,6 +11,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly client: S3Client;
+  // Cliente solo para FIRMAR enlaces: usa la dirección pública del almacenamiento (el endpoint interno, p. ej. http://minio:9000, no existe para un navegador).
+  private readonly presignClient: S3Client;
   private readonly bucket: string;
   private readonly publicBaseUrl?: string;
 
@@ -26,6 +28,34 @@ export class StorageService {
         secretAccessKey: this.config.get<string>("S3_SECRET_KEY", ""),
       },
     });
+    let presignEndpoint = this.config.get<string>("S3_ENDPOINT");
+    try {
+      if (this.publicBaseUrl) presignEndpoint = new URL(this.publicBaseUrl).origin;
+    } catch {
+      // URL pública inválida: se firma con el endpoint interno.
+    }
+    this.presignClient = new S3Client({
+      endpoint: presignEndpoint,
+      region: this.config.get<string>("S3_REGION", "us-east-1"),
+      forcePathStyle: this.config.get<string>("S3_FORCE_PATH_STYLE", "true") === "true",
+      credentials: {
+        accessKeyId: this.config.get<string>("S3_ACCESS_KEY", ""),
+        secretAccessKey: this.config.get<string>("S3_SECRET_KEY", ""),
+      },
+    });
+  }
+
+  /** Carpetas del almacenamiento que NO son de lectura pública (respaldos, respuestas de exámenes, informes y documentos del asistente): solo se entregan con enlace firmado. */
+  static readonly PRIVATE_PREFIXES = ["backups/", "attempt-submissions/", "admin-reports/", "chatbot-docs/"];
+
+  isPrivateKey(key: string): boolean {
+    return StorageService.PRIVATE_PREFIXES.some((p) => key.startsWith(p));
+  }
+
+  /** Enlace para que el navegador lea el objeto: firmado y con vencimiento si es privado; directo si es público. */
+  async getAccessUrl(key: string, expiresInSeconds = 3600): Promise<string | null> {
+    if (this.isPrivateKey(key)) return this.getSignedUrl(key, expiresInSeconds);
+    return this.getPublicUrl(key);
   }
 
   async uploadBuffer(key: string, body: Buffer, contentType: string): Promise<string> {
@@ -43,7 +73,7 @@ export class StorageService {
 
   async getSignedUrl(key: string, expiresInSeconds = 900): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    return getSignedUrl(this.presignClient, command, { expiresIn: expiresInSeconds });
   }
 
   /** Descarga el contenido completo de un objeto (usado para armar el ZIP de certificados en batch). */

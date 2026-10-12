@@ -566,7 +566,9 @@ export class AssessmentService {
       orderBy: { submittedAt: "asc" },
     });
     const now = Date.now();
-    return rows.map((r) => ({
+    // Las respuestas de los alumnos son privadas: el enlace se firma con vencimiento (1 hora) en vez de ser público.
+    const submissionUrls = await Promise.all(rows.map((r) => (r.submissionAssetId ? this.storageService.getAccessUrl(r.submissionAssetId) : Promise.resolve(null))));
+    return rows.map((r, i) => ({
       attemptId: r.id,
       userId: r.userId,
       userName: `${r.user.firstName} ${r.user.lastName}`,
@@ -576,7 +578,7 @@ export class AssessmentService {
       courseTitle: r.assessment.course.title,
       submittedAt: r.submittedAt,
       daysSincePending: r.submittedAt ? Math.floor((now - r.submittedAt.getTime()) / 86_400_000) : 0,
-      submissionUrl: r.submissionAssetId ? this.storageService.getPublicUrl(r.submissionAssetId) : null,
+      submissionUrl: submissionUrls[i],
       submissionMimeType: r.submissionMimeType,
       sourceFileUrl: r.assessment.sourceFileAssetId ? this.storageService.getPublicUrl(r.assessment.sourceFileAssetId) : null,
     }));
@@ -661,6 +663,7 @@ export class AssessmentService {
       throw new ForbiddenException("No puedes ver el intento de otro usuario");
     }
 
+    const submissionUrl = attempt.submissionAssetId ? await this.storageService.getAccessUrl(attempt.submissionAssetId) : null;
     // No exponer `correctAnswer` de las preguntas ni intentos de otros usuarios.
     return {
       id: attempt.id,
@@ -671,7 +674,7 @@ export class AssessmentService {
       score: attempt.score,
       status: attempt.status,
       isFileUpload: Boolean(attempt.assessment.sourceFileAssetId),
-      submissionUrl: attempt.submissionAssetId ? this.storageService.getPublicUrl(attempt.submissionAssetId) : null,
+      submissionUrl,
       answers: attempt.answers.map((a) => ({
         questionId: a.questionId,
         response: a.response,

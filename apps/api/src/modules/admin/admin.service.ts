@@ -2712,7 +2712,7 @@ export class AdminService {
     const { pdf, periodLabel } = await this.buildFinancialReport(params);
     const key = `admin-reports/finanzas-${randomUUID()}.pdf`;
     await this.storageService.uploadBuffer(key, pdf, "application/pdf");
-    const url = this.storageService.getPublicUrl(key) ?? (await this.storageService.getSignedUrl(key, 60 * 60 * 24 * 7));
+    const url = await this.storageService.getSignedUrl(key, 60 * 60 * 24 * 7);
     await this.notificationService.sendFinancialReport(to, url, periodLabel);
     return { sent: true, to };
   }

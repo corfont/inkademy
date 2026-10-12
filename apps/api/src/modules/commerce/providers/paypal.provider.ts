@@ -1,6 +1,7 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { ChargeParams, ChargeResult, PaymentProvider, RefundParams, RefundResult } from "./payment-provider.interface";
+import { paymentSimulationAllowed, PAYMENTS_NOT_CONFIGURED } from "./simulation";
 
 /**
  * Adapter de PayPal (compradores internacionales, tercer método junto a
@@ -55,6 +56,7 @@ export class PayPalProvider implements PaymentProvider {
   /** Crea la orden (sin capturar) — el frontend la usa para renderizar el botón de aprobación de PayPal. */
   async createOrder(params: { amountInMinorUnits: number; currency: "USD" }): Promise<string> {
     if (!this.configured) {
+      if (!paymentSimulationAllowed(this.config)) throw new ServiceUnavailableException(PAYMENTS_NOT_CONFIGURED);
       this.logger.warn("PAYPAL_CLIENT_ID/SECRET no configuradas — simulando orden de PayPal (modo dev)");
       return `sim_paypal_order_${Date.now()}`;
     }
@@ -78,6 +80,11 @@ export class PayPalProvider implements PaymentProvider {
 
   async charge(params: ChargeParams): Promise<ChargeResult> {
     if (!this.configured || params.token.startsWith("sim_")) {
+      // Con PayPal configurado, un token "sim_…" lo puede mandar cualquiera: solo vale donde la simulación está permitida.
+      if (!paymentSimulationAllowed(this.config)) {
+        this.logger.error("Cobro PayPal rechazado: orden simulada o PayPal sin configurar en producción");
+        return { success: false, failureMessage: PAYMENTS_NOT_CONFIGURED };
+      }
       this.logger.warn("PAYPAL_CLIENT_ID/SECRET no configuradas (u orden simulada) — simulando cobro exitoso (modo dev)");
       return { success: true, providerRef: `sim_paypal_capture_${Date.now()}` };
     }
@@ -106,6 +113,7 @@ export class PayPalProvider implements PaymentProvider {
 
   async refund(params: RefundParams): Promise<RefundResult> {
     if (!this.configured || params.providerRef.startsWith("sim_")) {
+      if (!paymentSimulationAllowed(this.config)) return { success: false, failureMessage: "No se puede reembolsar: el cargo no es real o PayPal no está configurado." };
       this.logger.warn("PAYPAL_CLIENT_ID/SECRET no configuradas (o cargo simulado) — simulando reembolso (modo dev)");
       return { success: true, providerRefundRef: `sim_refund_${Date.now()}` };
     }

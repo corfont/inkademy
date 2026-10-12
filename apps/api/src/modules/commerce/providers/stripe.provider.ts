@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Stripe from "stripe";
 import type { ChargeParams, ChargeResult, PaymentProvider, RefundParams, RefundResult } from "./payment-provider.interface";
+import { paymentSimulationAllowed, PAYMENTS_NOT_CONFIGURED } from "./simulation";
 
 /** Adapter de Stripe (compradores internacionales) usando el SDK oficial `stripe`. */
 @Injectable()
@@ -17,6 +18,10 @@ export class StripeProvider implements PaymentProvider {
 
   async charge(params: ChargeParams): Promise<ChargeResult> {
     if (!this.stripe) {
+      if (!paymentSimulationAllowed(this.config)) {
+        this.logger.error("STRIPE_SECRET_KEY no configurada en producción — cobro rechazado (la simulación está apagada)");
+        return { success: false, failureMessage: PAYMENTS_NOT_CONFIGURED };
+      }
       this.logger.warn("STRIPE_SECRET_KEY no configurada — simulando cobro exitoso (modo dev)");
       return { success: true, providerRef: `sim_stripe_${Date.now()}` };
     }
@@ -52,6 +57,7 @@ export class StripeProvider implements PaymentProvider {
 
   async refund(params: RefundParams): Promise<RefundResult> {
     if (!this.stripe || params.providerRef.startsWith("sim_")) {
+      if (!paymentSimulationAllowed(this.config)) return { success: false, failureMessage: "No se puede reembolsar: el cargo no es real o Stripe no está configurado." };
       this.logger.warn("STRIPE_SECRET_KEY no configurada (o cargo simulado) — simulando reembolso (modo dev)");
       return { success: true, providerRefundRef: `sim_refund_${Date.now()}` };
     }

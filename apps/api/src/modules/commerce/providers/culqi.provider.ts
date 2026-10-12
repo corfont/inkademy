@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { ChargeParams, ChargeResult, PaymentProvider, RefundParams, RefundResult } from "./payment-provider.interface";
+import { paymentSimulationAllowed, PAYMENTS_NOT_CONFIGURED } from "./simulation";
 
 /**
  * Adapter de Culqi (Perú: tarjetas, Yape, PagoEfectivo) — llama directo al
@@ -21,6 +22,10 @@ export class CulqiProvider implements PaymentProvider {
 
   async charge(params: ChargeParams): Promise<ChargeResult> {
     if (!this.secretKey) {
+      if (!paymentSimulationAllowed(this.config)) {
+        this.logger.error("CULQI_SECRET_KEY no configurada en producción — cobro rechazado (la simulación está apagada)");
+        return { success: false, failureMessage: PAYMENTS_NOT_CONFIGURED };
+      }
       this.logger.warn("CULQI_SECRET_KEY no configurada — simulando cobro exitoso (modo dev)");
       return { success: true, providerRef: `sim_culqi_${Date.now()}` };
     }
@@ -70,8 +75,8 @@ export class CulqiProvider implements PaymentProvider {
    */
   async verifyChargeSucceeded(chargeId: string): Promise<boolean> {
     if (!this.secretKey || chargeId.startsWith("sim_")) {
-      // Modo dev sin secret key configurada: no hay nada real que verificar.
-      return true;
+      // Un cargo "sim_…" solo se acepta donde la simulación está permitida (desarrollo): en producción cualquiera podría mandar un webhook con ese id y marcar una orden como pagada.
+      return paymentSimulationAllowed(this.config);
     }
     try {
       const res = await fetch(`https://api.culqi.com/v2/charges/${encodeURIComponent(chargeId)}`, {
@@ -93,6 +98,7 @@ export class CulqiProvider implements PaymentProvider {
 
   async refund(params: RefundParams): Promise<RefundResult> {
     if (!this.secretKey || params.providerRef.startsWith("sim_")) {
+      if (!paymentSimulationAllowed(this.config)) return { success: false, failureMessage: "No se puede reembolsar: el cargo no es real o Culqi no está configurado." };
       this.logger.warn("CULQI_SECRET_KEY no configurada (o cargo simulado) — simulando reembolso (modo dev)");
       return { success: true, providerRefundRef: `sim_refund_${Date.now()}` };
     }
