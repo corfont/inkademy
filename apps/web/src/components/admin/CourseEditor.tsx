@@ -263,6 +263,9 @@ function GeneralInfoSection({
   const [areas, setAreas] = useState<any[]>([]);
   const [areaId, setAreaId] = useState(course.areaId ?? course.area?.id ?? "");
   const [durationHours, setDurationHours] = useState(String(course.durationHours ?? "0"));
+  const [weeklyHours, setWeeklyHours] = useState(course.weeklyHours ? String(course.weeklyHours) : "");
+  const [classDays, setClassDays] = useState<string[]>(course.classDays ?? []);
+  const [skillsText, setSkillsText] = useState<string>((course.skills ?? []).join(", "));
   const [durationUnit, setDurationUnit] = useState(course.durationUnit ?? "HOURS");
   const [coverImageAssetId, setCoverImageAssetId] = useState(course.coverImageAssetId ?? null);
   const [coverWarning, setCoverWarning] = useState<string | null>(null);
@@ -451,6 +454,36 @@ function GeneralInfoSection({
             </div>
           </div>
         </Dialog>
+        <div className="flex flex-col gap-4 rounded-md border border-paper-border p-3">
+          <p className="text-sm font-medium text-ink-900">Para filtrar en el catálogo</p>
+          <div>
+            <Label htmlFor="edit-weekly">Dedicación semanal (horas por semana)</Label>
+            <Input id="edit-weekly" type="number" min="0" step="0.5" value={weeklyHours} onChange={(e) => setWeeklyHours(e.target.value)} placeholder="Ej. 4" />
+          </div>
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-medium text-ash-700">Días en que hay clase</legend>
+            <div className="flex flex-wrap gap-2">
+              {[["MON", "Lun"], ["TUE", "Mar"], ["WED", "Mié"], ["THU", "Jue"], ["FRI", "Vie"], ["SAT", "Sáb"], ["SUN", "Dom"]].map(([code, label]) => {
+                const on = classDays.includes(code);
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setClassDays((d) => (on ? d.filter((x) => x !== code) : [...d, code]))}
+                    className={`rounded-md border px-3 py-1 text-sm ${on ? "border-indigo-600 bg-indigo-600 text-white" : "border-paper-border text-ink-700"}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+          <div>
+            <Label htmlFor="edit-skills">Competencias que desarrolla (separadas por coma)</Label>
+            <Input id="edit-skills" value={skillsText} onChange={(e) => setSkillsText(e.target.value)} placeholder="Liderazgo, Comunicación, Excel" />
+          </div>
+        </div>
         <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
           <div>
             <Label htmlFor="edit-duration">Duración</Label>
@@ -546,6 +579,9 @@ function GeneralInfoSection({
                 language,
                 areaId,
                 durationHours: Number(durationHours),
+                weeklyHours: weeklyHours.trim() ? Number(weeklyHours) : null,
+                classDays,
+                skills: Array.from(new Set(skillsText.split(",").map((s) => s.trim()).filter(Boolean))),
                 durationUnit,
                 coverImageAssetId,
                 syllabusAssetId,

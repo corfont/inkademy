@@ -65,6 +65,9 @@ export class CatalogService {
       areaSlug: course.area.slug,
       durationHours: course.durationHours,
       durationUnit: course.durationUnit,
+      weeklyHours: course.weeklyHours,
+      classDays: course.classDays,
+      skills: course.skills,
       language: course.language,
       coverImageUrl: course.coverImageAssetId
         ? this.storage.getPublicUrl(course.coverImageAssetId)
@@ -135,6 +138,13 @@ export class CatalogService {
     return rows.map((r) => this.toCourseCard(r as unknown as CourseWithRelations));
   }
 
+  /** Competencias declaradas en los cursos publicados, para el filtro del catálogo. */
+  async filterOptions() {
+    const rows = await this.prisma.course.findMany({ where: { status: "PUBLISHED" }, select: { skills: true } });
+    const skills = Array.from(new Set(rows.flatMap((r) => r.skills))).sort((a, b) => a.localeCompare(b, "es"));
+    return { skills };
+  }
+
   async listAreas(): Promise<AreaSummary[]> {
     const areas = await this.prisma.area.findMany({ orderBy: { order: "asc" } });
     return areas.map((a) => ({
@@ -170,6 +180,11 @@ export class CatalogService {
     else if (filters.duration === "long") where.durationHours = { gt: 20 };
     // "Solo en vivo" — mismo criterio que nextLiveSessionAt en toCourseCard:
     // tiene al menos una sesión programada todavía por dictarse.
+    if (filters.weeklyLoad === "light") where.weeklyHours = { lte: 3 };
+    else if (filters.weeklyLoad === "medium") where.weeklyHours = { gt: 3, lte: 6 };
+    else if (filters.weeklyLoad === "intensive") where.weeklyHours = { gt: 6 };
+    if (filters.classDay) where.classDays = { has: filters.classDay };
+    if (filters.skill) where.skills = { has: filters.skill };
     if (filters.liveOnly) where.liveSessions = { some: { status: "SCHEDULED", startsAt: { gt: new Date() } } };
     if (filters.q) {
       // "Buscar por el nombre real del curso no encuentra nada" — antes SOLO

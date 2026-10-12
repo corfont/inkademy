@@ -21,6 +21,7 @@ export const registerSchema = z.object({
   lastName: z.string().min(1),
   locale: z.enum(["es", "en"]).default("es"),
   marketingConsentEmail: z.boolean().default(false),
+  referralCode: z.string().trim().max(20).optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -70,6 +71,10 @@ export const completeProfileSchema = z.object({
   bankName: z.string().optional(),
   bankAccountNumber: z.string().optional(),
   bankAccountCci: z.string().optional(),
+  educationLevel: z.enum(["SECUNDARIA", "TECNICO", "UNIVERSITARIO", "POSGRADO", "OTRO"]).optional(),
+  institution: z.string().trim().max(160).optional(),
+  studyField: z.string().trim().max(160).optional(),
+  graduationYear: z.coerce.number().int().min(1950).max(2100).optional(),
 });
 export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 
@@ -205,3 +210,20 @@ export const createSupportTicketSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
 });
 export type CreateSupportTicketInput = z.infer<typeof createSupportTicketSchema>;
+
+// Formulario público de /empresas (sin sesión). Los valores de los menús desplegables son cerrados.
+export const QUOTE_LEAD_SEATS_RANGES = ["1-10", "11-50", "51-200", "200+"] as const;
+export const publicQuoteRequestSchema = z.object({
+  legalName: z.string().trim().min(2, "Indica el nombre o razón social").max(200),
+  taxIdType: z.enum(["RUC", "OTRO"]).default("RUC"),
+  taxId: z.string().trim().max(30).optional().or(z.literal("")),
+  contactName: z.string().trim().min(2, "Indica tu nombre").max(120),
+  contactEmail: z.string().trim().email("Correo no válido").max(200),
+  contactPhone: z.string().trim().max(40).optional().or(z.literal("")),
+  seatsRange: z.enum(QUOTE_LEAD_SEATS_RANGES),
+  interest: z.string().trim().max(200).optional().or(z.literal("")),
+  message: z.string().trim().min(10, "Cuéntanos un poco más (mínimo 10 caracteres)").max(3000),
+  // Campo trampa para bots: un usuario real nunca lo ve ni lo llena.
+  website: z.string().max(0).optional().or(z.literal("")),
+});
+export type PublicQuoteRequestInput = z.infer<typeof publicQuoteRequestSchema>;

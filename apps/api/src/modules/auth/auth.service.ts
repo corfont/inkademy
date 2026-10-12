@@ -73,8 +73,13 @@ export class AuthService {
     if (existing) throw new ConflictException("Ya existe una cuenta con ese correo");
 
     const passwordHash = await argon2.hash(input.password);
+    // Código de referido de quien lo invitó: si no existe, se ignora (el registro nunca falla por eso).
+    const referrer = input.referralCode
+      ? await this.prisma.user.findUnique({ where: { referralCode: input.referralCode.toUpperCase() }, select: { id: true } })
+      : null;
     let user = await this.prisma.user.create({
       data: {
+        referredByUserId: referrer?.id ?? null,
         email: input.email,
         passwordHash,
         firstName: input.firstName,

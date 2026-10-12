@@ -9,25 +9,10 @@ import { StorageService } from "../../storage/storage.service";
 import { QUEUE_NAMES, RECOMMENDATION_JOBS } from "../../common/queues/queue.constants";
 import { CertificateService } from "../certificate/certificate.service";
 import { CatalogService } from "../catalog/catalog.service";
+import { computeAccessExpiresAt } from "../../common/utils/access-policy";
 import { CalendarService } from "../calendar/calendar.service";
 import { computeCourseScore } from "../assessment/course-score";
 
-function computeAccessExpiresAt(policy: AccessDurationPolicy, from: Date): Date | null {
-  const date = new Date(from);
-  if (policy === "DAYS_7") {
-    date.setDate(date.getDate() + 7);
-    return date;
-  }
-  if (policy === "DAYS_30") {
-    date.setDate(date.getDate() + 30);
-    return date;
-  }
-  if (policy === "MONTHS_6") {
-    date.setMonth(date.getMonth() + 6);
-    return date;
-  }
-  return null; // PERMANENT
-}
 
 @Injectable()
 export class EnrollmentService {
@@ -609,6 +594,7 @@ export class EnrollmentService {
     if (!enrollment || enrollment.userId !== userId) {
       throw new NotFoundException("Matrícula no encontrada");
     }
+    if (enrollment.offeringKind === "PROGRAM") return this.getProgramDetail(enrollment);
 
     // El acceso se corta apenas pasa accessExpiresAt, sin depender de que el
     // sweep del worker ya haya marcado la matrícula EXPIRED — el corte es
@@ -1010,13 +996,139 @@ export class EnrollmentService {
    */
   async refreshCompletionStatus(enrollmentId: string): Promise<void> {
     const enrollment = await this.prisma.enrollment.findUnique({ where: { id: enrollmentId } });
-    if (!enrollment || enrollment.status === "COMPLETED" || enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
+    if (!enrollment || enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
       return;
     }
-    const approval = await this.computeApprovalMissing(enrollment.courseId, enrollmentId);
-    if (approval.missing.length === 0) {
-      await this.prisma.enrollment.update({ where: { id: enrollmentId }, data: { status: "COMPLETED", completedAt: new Date() } });
+    if (enrollment.status !== "COMPLETED") {
+      const approval = await this.computeApprovalMissing(enrollment.courseId, enrollmentId);
+      if (approval.missing.length === 0) {
+        await this.prisma.enrollment.update({ where: { id: enrollmentId }, data: { status: "COMPLETED", completedAt: new Date() } });
+      }
     }
+    // Si este curso forma parte de un programa que el alumno tiene, el avance del programa depende de él.
+    await this.refreshProgramsForCourse(enrollment.userId, enrollment.courseId);
+  }
+
+  /** Vista del alumno de un Programa: sus cursos, con el avance y el enlace a la matrícula de cada uno. */
+  private async getProgramDetail(enrollment: { id: string; userId: string; programId: string | null; status: string; progressPct: number; accessExpiresAt: Date | null; certificate: { id: string; revoked: boolean } | null }) {
+    const program = enrollment.programId
+      ? await this.prisma.program.findUnique({
+          where: { id: enrollment.programId },
+          include: { courses: { orderBy: { order: "asc" }, include: { course: { select: { id: true, title: true, coverImageAssetId: true } } } } },
+        })
+      : null;
+    const children = program
+      ? await this.prisma.enrollment.findMany({
+          where: { userId: enrollment.userId, offeringKind: "COURSE", courseId: { in: program.courses.map((c) => c.courseId) }, status: { in: ["ACTIVE", "COMPLETED"] } },
+          orderBy: { enrolledAt: "desc" },
+          select: { id: true, courseId: true, status: true, progressPct: true },
+        })
+      : [];
+    return {
+      kind: "PROGRAM" as const,
+      id: enrollment.id,
+      title: (program?.title as Record<string, string>) ?? {},
+      description: (program?.description as Record<string, string> | null) ?? null,
+      status: enrollment.status,
+      progressPct: enrollment.progressPct,
+      accessExpiresAt: enrollment.accessExpiresAt?.toISOString() ?? null,
+      certificateAvailable: Boolean(enrollment.certificate && !enrollment.certificate.revoked),
+      courses: (program?.courses ?? []).map((pc) => {
+        const mine = children.find((e) => e.courseId === pc.courseId && e.status === "COMPLETED") ?? children.find((e) => e.courseId === pc.courseId);
+        return {
+          courseId: pc.courseId,
+          title: (pc.course.title as Record<string, string>) ?? {},
+          coverImageUrl: pc.course.coverImageAssetId ? this.storage.getPublicUrl(pc.course.coverImageAssetId) : null,
+          isRequired: pc.isRequired,
+          enrollmentId: mine?.id ?? null,
+          status: mine?.status ?? null,
+          progressPct: mine?.progressPct ?? 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Comprar (o recibir) un Programa matricula al alumno en CADA curso del programa, cada uno con su avance, examen y calendario propios.
+   * Si el alumno ya tiene un curso activo o completado (p. ej. lo compró antes), no se duplica: ese avance cuenta para el programa.
+   * Idempotente: se puede llamar otra vez (por ejemplo al agregar un curso nuevo al programa) y solo crea lo que falte.
+   */
+  async enrollProgramCourses(programEnrollmentId: string): Promise<{ created: number }> {
+    const pe = await this.prisma.enrollment.findUnique({
+      where: { id: programEnrollmentId },
+      include: { program: { include: { courses: { include: { course: true }, orderBy: { order: "asc" } } } } },
+    });
+    if (!pe || pe.offeringKind !== "PROGRAM" || !pe.program) return { created: 0 };
+    let created = 0;
+    for (const pc of pe.program.courses) {
+      const existing = await this.prisma.enrollment.findFirst({
+        where: { userId: pe.userId, offeringKind: "COURSE", courseId: pc.courseId, status: { in: ["ACTIVE", "COMPLETED"] } },
+      });
+      if (existing) continue;
+      const accessExpiresAt = pe.accessExpiresAt ?? computeAccessExpiresAt(pc.course.accessDurationPolicy, new Date());
+      const child = await this.prisma.enrollment.create({
+        data: {
+          userId: pe.userId,
+          offeringKind: "COURSE",
+          courseId: pc.courseId,
+          companyId: pe.companyId,
+          source: pe.source,
+          accessExpiresAt,
+        },
+      });
+      await this.calendarService.scheduleForEnrollment(pe.userId, pc.course, accessExpiresAt);
+      await this.recomputeProgress(child.id, pc.courseId, pe.userId);
+      created += 1;
+    }
+    await this.refreshProgramProgress(pe.id);
+    return { created };
+  }
+
+  /** Recalcula los programas activos del alumno que incluyen este curso. */
+  private async refreshProgramsForCourse(userId: string, courseId: string): Promise<void> {
+    const programEnrollments = await this.prisma.enrollment.findMany({
+      where: {
+        userId,
+        offeringKind: "PROGRAM",
+        status: "ACTIVE",
+        program: { courses: { some: { courseId } } },
+      },
+      select: { id: true },
+    });
+    for (const pe of programEnrollments) await this.refreshProgramProgress(pe.id);
+  }
+
+  /**
+   * Avance del programa = promedio del avance de sus cursos obligatorios (si no hay ninguno marcado obligatorio, de todos).
+   * Se completa cuando todos esos cursos están COMPLETED; ahí se emite el certificado del programa.
+   */
+  async refreshProgramProgress(programEnrollmentId: string): Promise<void> {
+    const pe = await this.prisma.enrollment.findUnique({
+      where: { id: programEnrollmentId },
+      include: { program: { include: { courses: true } } },
+    });
+    if (!pe || pe.offeringKind !== "PROGRAM" || !pe.program || pe.program.courses.length === 0) return;
+    const required = pe.program.courses.filter((c) => c.isRequired);
+    const counted = required.length > 0 ? required : pe.program.courses;
+    const children = await this.prisma.enrollment.findMany({
+      where: { userId: pe.userId, offeringKind: "COURSE", courseId: { in: counted.map((c) => c.courseId) }, status: { in: ["ACTIVE", "COMPLETED"] } },
+      select: { courseId: true, status: true, progressPct: true },
+    });
+    let total = 0;
+    let allDone = true;
+    for (const c of counted) {
+      const mine = children.filter((e) => e.courseId === c.courseId);
+      const done = mine.some((e) => e.status === "COMPLETED");
+      const best = done ? 100 : Math.max(0, ...mine.map((e) => e.progressPct));
+      total += best;
+      if (!done) allDone = false;
+    }
+    const progressPct = Math.round((total / counted.length) * 100) / 100;
+    await this.prisma.enrollment.update({ where: { id: pe.id }, data: { progressPct } });
+    if (allDone && pe.status === "ACTIVE") {
+      await this.prisma.enrollment.update({ where: { id: pe.id }, data: { status: "COMPLETED", completedAt: new Date() } });
+    }
+    if (allDone) await this.certificateService.issueForProgram(pe.id);
   }
 
   /**

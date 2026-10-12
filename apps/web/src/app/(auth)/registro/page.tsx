@@ -40,7 +40,7 @@ function RegisterForm() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { locale, marketingConsentEmail: false },
+    defaultValues: { locale, marketingConsentEmail: false, referralCode: searchParams.get("ref") ?? undefined },
   });
 
   async function onSubmit(values: RegisterInput) {

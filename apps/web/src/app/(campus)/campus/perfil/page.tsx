@@ -8,6 +8,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { authApi, catalogApi, ApiError, type FullProfileDTO } from "@/lib/api-client";
 import { ChangePasswordCard } from "@/components/campus/ChangePasswordCard";
 import { MyCompanySection } from "@/components/campus/MyCompanySection";
+import { ReferralCard } from "@/components/campus/ReferralCard";
 import { updateSessionUser } from "@/lib/auth";
 import { MOCK_AREAS } from "@/lib/mock-data";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -53,6 +54,10 @@ interface ProfileFormValues {
   bankName: string;
   bankAccountNumber: string;
   bankAccountCci: string;
+  educationLevel: string;
+  institution: string;
+  studyField: string;
+  graduationYear: string;
 }
 
 function toFormValues(p: FullProfileDTO | null, fallbackFirstName: string, fallbackLastName: string, fallbackLocale: string, fallbackTimezone: string): ProfileFormValues {
@@ -83,6 +88,10 @@ function toFormValues(p: FullProfileDTO | null, fallbackFirstName: string, fallb
     bankName: p?.bankName ?? "",
     bankAccountNumber: p?.bankAccountNumber ?? "",
     bankAccountCci: p?.bankAccountCci ?? "",
+    educationLevel: p?.educationLevel ?? "",
+    institution: p?.institution ?? "",
+    studyField: p?.studyField ?? "",
+    graduationYear: p?.graduationYear ? String(p.graduationYear) : "",
   };
 }
 
@@ -167,6 +176,10 @@ export default function ProfilePage() {
         bankName: values.bankName || undefined,
         bankAccountNumber: values.bankAccountNumber || undefined,
         bankAccountCci: values.bankAccountCci || undefined,
+        educationLevel: values.educationLevel || undefined,
+        institution: values.institution || undefined,
+        studyField: values.studyField || undefined,
+        graduationYear: values.graduationYear ? Number(values.graduationYear) : undefined,
       });
       setUser(updated);
       updateSessionUser(updated);
@@ -273,6 +286,35 @@ export default function ProfilePage() {
           <div className="mt-4">
             <Label htmlFor="address">{t("address")}</Label>
             <Input id="address" {...register("address")} />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Perfil académico</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="educationLevel">Nivel de estudios</Label>
+              <Select id="educationLevel" {...register("educationLevel")}>
+                <option value="">Prefiero no indicarlo</option>
+                <option value="SECUNDARIA">Secundaria</option>
+                <option value="TECNICO">Técnico</option>
+                <option value="UNIVERSITARIO">Universitario</option>
+                <option value="POSGRADO">Posgrado</option>
+                <option value="OTRO">Otro</option>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="graduationYear">Año de egreso</Label>
+              <Input id="graduationYear" type="number" min="1950" max="2100" {...register("graduationYear")} />
+            </div>
+            <div>
+              <Label htmlFor="institution">Institución</Label>
+              <Input id="institution" {...register("institution")} />
+            </div>
+            <div>
+              <Label htmlFor="studyField">Carrera o especialidad</Label>
+              <Input id="studyField" {...register("studyField")} />
+            </div>
           </div>
         </section>
 
@@ -403,6 +445,8 @@ export default function ProfilePage() {
       <div className="mt-8 max-w-2xl">
         <MyCompanySection />
       </div>
+
+      <ReferralCard />
 
       <ChangePasswordCard />
     </div>

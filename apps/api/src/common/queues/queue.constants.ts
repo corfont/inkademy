@@ -33,6 +33,8 @@ export const EMAIL_JOBS = {
   COMPANY_INVITE: "email.company-invite",
   CERTIFICATE_READY: "email.certificate-ready",
   SUPPORT_TICKET_UPDATE: "email.support-ticket-update",
+  QUOTE_LEAD_TEAM: "email.quote-lead-team",
+  QUOTE_LEAD_ACK: "email.quote-lead-ack",
   LIVE_SESSION_RESCHEDULED: "email.live-session-rescheduled",
   CERTIFICATE_COPY: "email.certificate-copy",
   ACCOUNT_LOCKED: "email.account-locked",

@@ -24,6 +24,12 @@ export class CatalogController {
     return this.catalogService.listCourses(query);
   }
 
+  @Get("catalog/filter-options")
+  @ApiOperation({ summary: "Opciones de filtro dinámicas (competencias)" })
+  filterOptions() {
+    return this.catalogService.filterOptions();
+  }
+
   @Get("catalog/sections")
   @ApiOperation({ summary: "Secciones curadas para la home del catálogo" })
   getSections() {

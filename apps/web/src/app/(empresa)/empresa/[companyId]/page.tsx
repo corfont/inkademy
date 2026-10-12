@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Users, Ticket, TrendingUp, AlertTriangle } from "lucide-react";
+import Link from "next/link";
 import { getTranslations, getLocale } from "next-intl/server";
 import { companyApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
@@ -22,11 +23,13 @@ export default async function CompanyDashboardPage({ params }: { params: { compa
     { ...MOCK_COMPANY_DASHBOARD, companyId: params.companyId },
   );
 
+  // Cada tarjeta abre el detalle de lo que cuenta: quiénes son, cuántos cupos hay por oferta, quién va más atrasado.
+  const base = `/empresa/${params.companyId}`;
   const kpis = [
-    { label: t("activeParticipants"), value: dashboard.activeParticipants, icon: Users, accent: "bg-indigo-50 text-indigo-600" },
-    { label: t("seatsAvailable"), value: dashboard.seatsAvailable, icon: Ticket, accent: "bg-gold-100 text-gold-700" },
-    { label: t("averageProgress"), value: `${Math.round(dashboard.averageProgressPct)}%`, icon: TrendingUp, accent: "bg-success-bg text-success" },
-    { label: t("atRisk"), value: dashboard.atRiskParticipants, icon: AlertTriangle, accent: "bg-danger-bg text-danger" },
+    { label: t("activeParticipants"), value: dashboard.activeParticipants, icon: Users, accent: "bg-indigo-50 text-indigo-600", href: `${base}/colaboradores` },
+    { label: t("seatsAvailable"), value: dashboard.seatsAvailable, icon: Ticket, accent: "bg-gold-100 text-gold-700", href: `${base}/cupos` },
+    { label: t("averageProgress"), value: `${Math.round(dashboard.averageProgressPct)}%`, icon: TrendingUp, accent: "bg-success-bg text-success", href: `${base}/detalle?kpi=progress` },
+    { label: t("atRisk"), value: dashboard.atRiskParticipants, icon: AlertTriangle, accent: "bg-danger-bg text-danger", href: `${base}/detalle?kpi=risk` },
   ];
 
   return (
@@ -39,15 +42,18 @@ export default async function CompanyDashboardPage({ params }: { params: { compa
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi) => (
-          <Card key={kpi.label} className="transition-shadow hover:shadow-raised">
+          <Link key={kpi.label} href={kpi.href} className="block rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600">
+          <Card className="h-full transition-shadow hover:shadow-raised">
             <CardContent className="p-5">
               <span className={`flex h-10 w-10 items-center justify-center rounded-full ${kpi.accent}`}>
                 <kpi.icon className="h-5 w-5" aria-hidden="true" />
               </span>
               <p className="mt-3 font-serif text-3xl font-semibold text-ink-900">{kpi.value}</p>
               <p className="text-sm text-ash-500">{kpi.label}</p>
+              <p className="mt-2 text-xs font-medium text-indigo-600">Ver detalle →</p>
             </CardContent>
           </Card>
+          </Link>
         ))}
       </div>
 

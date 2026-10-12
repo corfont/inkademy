@@ -15,6 +15,7 @@ import { decimalToString } from "../../common/utils/money";
 import { INVOICE_JOBS, QUEUE_NAMES } from "../../common/queues/queue.constants";
 import { logAudit } from "../admin/audit-log.util";
 import { NotificationService } from "../notification/notification.service";
+import { computeAccessExpiresAt } from "../../common/utils/access-policy";
 import { CalendarService } from "../calendar/calendar.service";
 import { EnrollmentService } from "../enrollment/enrollment.service";
 import { CulqiProvider } from "./providers/culqi.provider";
@@ -43,22 +44,6 @@ interface GrantFreeAccessInput {
   note: string;
 }
 
-function computeAccessExpiresAt(policy: AccessDurationPolicy, from: Date): Date | null {
-  const date = new Date(from);
-  if (policy === "DAYS_7") {
-    date.setDate(date.getDate() + 7);
-    return date;
-  }
-  if (policy === "DAYS_30") {
-    date.setDate(date.getDate() + 30);
-    return date;
-  }
-  if (policy === "MONTHS_6") {
-    date.setMonth(date.getMonth() + 6);
-    return date;
-  }
-  return null; // PERMANENT
-}
 
 @Injectable()
 export class CommerceService {
@@ -388,6 +373,8 @@ export class CommerceService {
           await this.calendarService.scheduleForEnrollment(order.userId, course, accessExpiresAt);
           await this.enrollmentService.recomputeProgress(enrollment.id, item.courseId, order.userId);
         }
+      } else if (item.offeringKind === "PROGRAM" && item.programId) {
+        await this.enrollmentService.enrollProgramCourses(enrollment.id);
       }
     }
 
@@ -869,6 +856,8 @@ export class CommerceService {
         await this.calendarService.scheduleForEnrollment(userId, course, accessExpiresAt);
         await this.enrollmentService.recomputeProgress(enrollment.id, courseId, userId);
       }
+    } else if (input.offeringKind === "PROGRAM" && programId) {
+      await this.enrollmentService.enrollProgramCourses(enrollment.id);
     }
 
     await logAudit(this.prisma, {

@@ -31,6 +31,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/auditoria",
   "/admin/notificaciones",
   "/admin/licencias",
+  "/admin/roles",
 ];
 
 export function middleware(request: NextRequest) {

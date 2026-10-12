@@ -99,4 +99,43 @@ export class CrmBridgeProvider {
       return { sincronizado: false, motivo: "error_red" };
     }
   }
+
+  /**
+   * Registra en el CRM un contacto comercial (prospecto) que todavía no compró nada, p. ej. una empresa que pidió cotización desde el formulario público.
+   * Solo con RUC peruano válido (11 dígitos): sin documento no hay forma de que el CRM lo identifique sin duplicarlo. NUNCA lanza.
+   */
+  async sincronizarContacto(params: {
+    docType: "RUC" | null;
+    docNumber?: string | null;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+  }): Promise<{ sincronizado: boolean; motivo?: string }> {
+    if (!this.baseUrl || !this.secret) return { sincronizado: false, motivo: "sin_configurar" };
+    const doc = (params.docNumber ?? "").replace(/\s/g, "");
+    if (params.docType !== "RUC" || !/^\d{11}$/.test(doc)) return { sincronizado: false, motivo: "sin_ruc_valido" };
+    try {
+      const res = await fetch(`${this.baseUrl}/api/integraciones/partners`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.secret}` },
+        body: JSON.stringify({
+          docType: "RUC",
+          docNumber: doc,
+          name: params.name.trim(),
+          ...(params.email ? { email: params.email } : {}),
+          ...(params.phone ? { phone: params.phone } : {}),
+          isCustomer: false,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`El CRM rechazó el contacto ${doc}: ${res.status}`);
+        return { sincronizado: false, motivo: "crm_rechazo" };
+      }
+      return { sincronizado: true };
+    } catch (err) {
+      this.logger.warn(`No se pudo contactar al CRM para el contacto ${doc}: ${err instanceof Error ? err.message : "error"}`);
+      return { sincronizado: false, motivo: "error_red" };
+    }
+  }
 }

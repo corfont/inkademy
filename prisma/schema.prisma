@@ -126,6 +126,24 @@ model User {
   marketingConsentWhatsapp Boolean   @default(false)
   profileCompletedAt       DateTime?
 
+  // Perfil académico (opcional): para que el equipo conozca al alumno y recomiende mejor.
+  educationLevel     String? // SECUNDARIA | TECNICO | UNIVERSITARIO | POSGRADO | OTRO
+  institution        String?
+  studyField         String? // carrera o especialidad
+  graduationYear     Int?
+
+  // Referidos: cada alumno tiene un código propio (se crea la primera vez que lo pide) y un enlace de registro con ese código. Nunca se pide la
+  // lista de contactos de terceros — quien recibe el enlace decide por sí mismo si se registra (Ley 29733).
+  referralCode       String?   @unique
+  referredByUserId   String?
+  referredBy         User?     @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referrals          User[]    @relation("UserReferrals")
+
+  // Rol de administrador acotado: null = administrador completo (como siempre). Con un rol asignado, el usuario solo entra a los módulos que ese rol
+  // permite (ver AdminRole y AdminModuleGuard).
+  adminRoleId        String?
+  adminRole          AdminRole? @relation(fields: [adminRoleId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -336,6 +354,10 @@ model Course {
   subtitleLanguages     String[]             @default([])
   durationHours         Float
   durationUnit          DurationUnit         @default(HOURS)
+  // Datos que el admin declara para que el alumno filtre el catálogo: dedicación semanal, días en que hay clase y competencias que se desarrollan.
+  weeklyHours           Float?
+  classDays             String[]             @default([]) // MON, TUE, WED, THU, FRI, SAT, SUN
+  skills                String[]             @default([])
   coverImageAssetId     String?
   syllabusAssetId       String? // sílabo del curso (PDF/Word) — visible para el alumno en el aula
   // Introducción opcional ANTES de las clases (video, imagen, PDF, presentación o enlace) con un botón «Comenzar el curso» — para que el alumno
@@ -2431,4 +2453,55 @@ model BackupRecord {
   rowCount            Int?
   restoreTestedAt     DateTime?
   restoreTestedNote   String?
+}
+
+// ---------------------------------------------------------------------------
+// SOLICITUDES PÚBLICAS DE COTIZACIÓN (formulario de /empresas, sin sesión)
+// ---------------------------------------------------------------------------
+
+enum QuoteLeadStatus {
+  NEW
+  CONTACTED
+  CLOSED
+}
+
+// Una empresa que todavía no está en la plataforma pide una cotización: se guarda acá, se avisa al equipo por correo y se registra como contacto
+// en el CRM. Cuando ventas la atiende pasa a CONTACTED; al cerrarse (o descartarse) a CLOSED.
+model QuoteLead {
+  id              String          @id @default(uuid())
+  legalName       String
+  taxIdType       String? // RUC | OTRO
+  taxId           String?
+  contactName     String?
+  contactEmail    String
+  contactPhone    String?
+  seatsRange      String? // 1-10 | 11-50 | 51-200 | 200+
+  interest        String? // curso/programa elegido de la lista, o "Otro"
+  message         String          @db.Text
+  status          QuoteLeadStatus @default(NEW)
+  internalNotes   String?         @db.Text
+  crmSyncedAt     DateTime?
+  crmSyncNote     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// ROLES DE ADMINISTRADOR POR MÓDULO
+// ---------------------------------------------------------------------------
+
+// Rol que el administrador crea y edita: para cada módulo del panel (ver ADMIN_MODULES en @inkademy/shared) da "VIEW" (solo mirar) o "EDIT" (mirar y
+// cambiar); un módulo ausente = sin acceso. `permissions` es { [módulo]: "VIEW" | "EDIT" }.
+model AdminRole {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  permissions Json     @default("{}")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
 }

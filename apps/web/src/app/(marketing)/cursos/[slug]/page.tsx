@@ -95,6 +95,10 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const keyFacts = [
     { icon: Layers, label: MODALITY_LABEL[course.modality]?.[locale as "es" | "en"] ?? course.modality },
     { icon: Clock, label: formatDuration(course.durationHours, course.durationUnit, locale as "es" | "en") },
+    ...(course.weeklyHours ? [{ icon: Clock, label: locale === "en" ? `${course.weeklyHours} h per week` : `${course.weeklyHours} h por semana` }] : []),
+    ...(course.classDays && course.classDays.length > 0
+      ? [{ icon: CalendarClock, label: `${locale === "en" ? "Classes" : "Clases"}: ${course.classDays.map((d: string) => ({ MON: "Lun", TUE: "Mar", WED: "Mié", THU: "Jue", FRI: "Vie", SAT: "Sáb", SUN: "Dom" } as Record<string, string>)[d] ?? d).join(", ")}` }]
+      : []),
     { icon: BookOpen, label: totalLessons === 1 ? t("lessonCountOne") : t("lessonsCount", { count: totalLessons }) },
     { icon: Globe2, label: course.language === "en" ? "Inglés" : course.language === "pt" ? "Portugués" : "Español" },
     ...(course.liveSessions?.[0]

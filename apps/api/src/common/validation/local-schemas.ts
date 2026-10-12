@@ -60,6 +60,10 @@ export const catalogFiltersSchema = z.object({
   // página ya paginada — ver CatalogService.listCourses.
   duration: z.enum(["short", "medium", "long"]).optional(),
   liveOnly: z.coerce.boolean().optional(),
+  // Dedicación semanal (light ≤ 3 h, medium 4–6 h, intensive > 6 h), día de clase y competencia — los declara el admin en cada curso.
+  weeklyLoad: z.enum(["light", "medium", "intensive"]).optional(),
+  classDay: z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]).optional(),
+  skill: z.string().trim().max(60).optional(),
   sort: z.enum(["newest", "priceAsc", "priceDesc", "bestSelling"]).optional(),
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().optional(),
@@ -99,6 +103,9 @@ export const upsertCourseSchema = z.object({
   subtitleLanguages: z.array(z.string()).optional(),
   durationHours: z.number().positive(),
   durationUnit: z.enum(["HOURS", "WEEKS", "MONTHS"]).optional(),
+  weeklyHours: z.number().positive().max(80).nullable().optional(),
+  classDays: z.array(z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"])).max(7).optional(),
+  skills: z.array(z.string().trim().min(1).max(60)).max(12).optional(),
   coverImageAssetId: z.string().optional(),
   syllabusAssetId: z.string().optional().nullable(),
   welcomeEnabled: z.boolean().optional(),

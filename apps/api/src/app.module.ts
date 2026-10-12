@@ -24,6 +24,9 @@ import { PlatformLicenseModule } from "./modules/platform-license/platform-licen
 import { SupportModule } from "./modules/support/support.module";
 import { CompaniesModule } from "./modules/companies/companies.module";
 import { AdminModule } from "./modules/admin/admin.module";
+import { AdminRolesModule } from "./modules/admin-roles/admin-roles.module";
+import { AdminModuleGuard } from "./common/guards/admin-module.guard";
+import { QuoteLeadsModule } from "./modules/quote-leads/quote-leads.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
 import { ChatbotModule } from "./modules/chatbot/chatbot.module";
@@ -68,6 +71,8 @@ import { PlatformCoreModule } from "./modules/platform-core/platform-core.module
     SupportModule,
     CompaniesModule,
     AdminModule,
+    QuoteLeadsModule,
+    AdminRolesModule,
     SettingsModule,
     SuggestionsModule,
     ChatbotModule,
@@ -80,6 +85,8 @@ import { PlatformCoreModule } from "./modules/platform-core/platform-core.module
     // necesitar sesión), JwtAuthGuard después (autenticación/@Public()).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Después de JwtAuthGuard (necesita req.user): aplica el rol de administrador acotado en las rutas /admin/*.
+    { provide: APP_GUARD, useClass: AdminModuleGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     // Defensa en profundidad: nunca dejar salir `passwordHash` aunque algún
     // endpoint use `include: { user: true }` — ver el comentario del

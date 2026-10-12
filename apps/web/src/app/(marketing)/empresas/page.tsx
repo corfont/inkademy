@@ -2,11 +2,15 @@ import type { Metadata } from "next";
 import { Building2, LineChart, Users } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { QuoteForm } from "@/components/marketing/QuoteForm";
+import { catalogApi } from "@/lib/api-client";
+import { withFallback } from "@/lib/safe-fetch";
 
 export const metadata: Metadata = { title: "Empresas" };
 
 export default async function CompaniesPage() {
   const t = await getTranslations("companies");
+  const { data: catalog } = await withFallback(() => catalogApi.courses({ pageSize: 100 } as never), { items: [] as { title: Record<string, string> }[] } as never);
+  const interests = Array.from(new Set(((catalog as { items: { title: Record<string, string> }[] }).items ?? []).map((c) => c.title?.es).filter((x): x is string => Boolean(x))));
 
   const benefits = [
     { icon: Building2, title: t("benefit1Title"), body: t("benefit1Body") },
@@ -43,7 +47,7 @@ export default async function CompaniesPage() {
           <h2 className="font-serif text-2xl font-semibold text-ink-900">{t("formTitle")}</h2>
           <p className="mt-2 text-ash-600">{t("formSubtitle")}</p>
           <div className="mt-8">
-            <QuoteForm />
+            <QuoteForm interests={interests} />
           </div>
         </div>
       </section>

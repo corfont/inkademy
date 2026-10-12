@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { localize } from "@/lib/format";
 
-export function FilterBar({ areas }: { areas: AreaSummary[] }) {
+export function FilterBar({ areas, skills = [] }: { areas: AreaSummary[]; skills?: string[] }) {
   const t = useTranslations("catalog.filters");
   const locale = useLocale();
   const router = useRouter();
@@ -27,6 +27,9 @@ export function FilterBar({ areas }: { areas: AreaSummary[] }) {
     maxPrice: searchParams.get("maxPrice") ?? "",
     duration: searchParams.get("duration") ?? "",
     liveOnly: searchParams.get("liveOnly") === "true",
+    weeklyLoad: searchParams.get("weeklyLoad") ?? "",
+    classDay: searchParams.get("classDay") ?? "",
+    skill: searchParams.get("skill") ?? "",
   });
 
   function apply() {
@@ -52,6 +55,9 @@ export function FilterBar({ areas }: { areas: AreaSummary[] }) {
       maxPrice: "",
       duration: "",
       liveOnly: false,
+      weeklyLoad: "",
+      classDay: "",
+      skill: "",
     });
     const q = searchParams.get("q");
     router.push(`${pathname}${q ? `?q=${encodeURIComponent(q)}` : ""}`);
@@ -129,6 +135,38 @@ export function FilterBar({ areas }: { areas: AreaSummary[] }) {
           <option value="long">{locale === "en" ? "Over 20 hours" : "Más de 20 horas"}</option>
         </Select>
       </div>
+
+      <div>
+        <Label htmlFor="filter-weekly">{locale === "en" ? "Weekly time" : "Dedicación semanal"}</Label>
+        <Select id="filter-weekly" value={state.weeklyLoad} onChange={(e) => setState((s) => ({ ...s, weeklyLoad: e.target.value }))}>
+          <option value="">{t("allModalities")}</option>
+          <option value="light">{locale === "en" ? "Up to 3 hours a week" : "Hasta 3 horas por semana"}</option>
+          <option value="medium">{locale === "en" ? "4 to 6 hours a week" : "De 4 a 6 horas por semana"}</option>
+          <option value="intensive">{locale === "en" ? "Over 6 hours a week" : "Más de 6 horas por semana"}</option>
+        </Select>
+      </div>
+
+      <div>
+        <Label htmlFor="filter-day">{locale === "en" ? "Class day" : "Día de clase"}</Label>
+        <Select id="filter-day" value={state.classDay} onChange={(e) => setState((s) => ({ ...s, classDay: e.target.value }))}>
+          <option value="">{t("allModalities")}</option>
+          {[["MON", "Lunes", "Monday"], ["TUE", "Martes", "Tuesday"], ["WED", "Miércoles", "Wednesday"], ["THU", "Jueves", "Thursday"], ["FRI", "Viernes", "Friday"], ["SAT", "Sábado", "Saturday"], ["SUN", "Domingo", "Sunday"]].map(([code, es, en]) => (
+            <option key={code} value={code}>{locale === "en" ? en : es}</option>
+          ))}
+        </Select>
+      </div>
+
+      {skills.length > 0 && (
+        <div>
+          <Label htmlFor="filter-skill">{locale === "en" ? "Skill you will build" : "Competencia que desarrollas"}</Label>
+          <Select id="filter-skill" value={state.skill} onChange={(e) => setState((s) => ({ ...s, skill: e.target.value }))}>
+            <option value="">{t("allModalities")}</option>
+            {skills.map((sk) => (
+              <option key={sk} value={sk}>{sk}</option>
+            ))}
+          </Select>
+        </div>
+      )}
 
       <fieldset>
         <legend className="mb-1.5 text-sm font-medium text-ash-700">{t("price")}</legend>

@@ -297,6 +297,28 @@ export class NotificationService {
     );
   }
 
+  /** Aviso al equipo comercial de una nueva solicitud de cotización del formulario público. */
+  sendQuoteLeadToTeam(to: string, lead: { legalName: string; taxId?: string | null; contactName?: string | null; contactEmail: string; contactPhone?: string | null; seatsRange?: string | null; interest?: string | null; message: string }) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return this.enqueueEmail(EMAIL_JOBS.QUOTE_LEAD_TEAM, {
+      to,
+      subject: `Nueva solicitud de cotización: ${lead.legalName}`,
+      html: `<p><b>${esc(lead.legalName)}</b>${lead.taxId ? ` (${esc(lead.taxId)})` : ""} pidió una cotización.</p>
+<ul><li>Contacto: ${esc(lead.contactName ?? "—")} · ${esc(lead.contactEmail)}${lead.contactPhone ? ` · ${esc(lead.contactPhone)}` : ""}</li>
+<li>Personas a capacitar: ${esc(lead.seatsRange ?? "—")}</li><li>Interés: ${esc(lead.interest || "—")}</li></ul>
+<p>${esc(lead.message).replace(/\n/g, "<br>")}</p><p>Se atiende desde Admin → Cotizaciones → Solicitudes.</p>`,
+    });
+  }
+
+  /** Acuse de recibo para quien pidió la cotización. */
+  sendQuoteLeadAck(to: string, contactName: string | null | undefined) {
+    return this.enqueueEmail(EMAIL_JOBS.QUOTE_LEAD_ACK, {
+      to,
+      subject: "Recibimos tu solicitud de cotización — Inkademy",
+      html: `<p>Hola${contactName ? ` ${contactName.replace(/[<>&]/g, "")}` : ""}, recibimos tu solicitud. Nuestro equipo comercial te escribirá en breve con una propuesta.</p>`,
+    });
+  }
+
   async sendSupportTicketUpdate(to: string, subject: string, userId: string, ticketId?: string) {
     await this.enqueueEmail(
       EMAIL_JOBS.SUPPORT_TICKET_UPDATE,

@@ -169,6 +169,10 @@ export interface FullProfileDTO extends AuthUser {
   bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountCci: string | null;
+  educationLevel: "SECUNDARIA" | "TECNICO" | "UNIVERSITARIO" | "POSGRADO" | "OTRO" | null;
+  institution: string | null;
+  studyField: string | null;
+  graduationYear: number | null;
 }
 
 export const authApi = {
@@ -184,6 +188,9 @@ export const authApi = {
   exchangeOAuthCode: (code: string) => apiFetch<{ accessToken: string }>("/auth/exchange", { query: { code } }),
   forgotPassword: (email: string) => apiFetch<void>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (input: { token: string; password: string }) => apiFetch<void>("/auth/reset-password", { method: "POST", body: JSON.stringify(input) }),
+  adminAccess: (accessToken?: string | null) =>
+    apiFetch<{ restricted: boolean; active: boolean; permissions: Record<string, "VIEW" | "EDIT"> }>("/profile/admin-access", { accessToken, cache: "no-store" }),
+  referral: (accessToken?: string | null) => apiFetch<{ code: string | null; registered: number; enrolled: number }>("/profile/referral", { accessToken, cache: "no-store" }),
   getFullProfile: (accessToken?: string | null) => apiFetch<FullProfileDTO>("/profile", { accessToken, cache: "no-store" }),
   completeProfile: (input: unknown, accessToken?: string | null) => apiFetch<AuthUser>("/profile", { method: "PATCH", body: JSON.stringify(input), accessToken }),
   uploadAvatar: (file: File) => {
@@ -400,6 +407,7 @@ export const settingsApi = {
 // build/deploy, aunque la API ya tuviera el dato nuevo.
 export const catalogApi = {
   areas: () => apiFetch<AreaSummary[]>("/areas", { cache: "no-store" }),
+  filterOptions: () => apiFetch<{ skills: string[] }>("/catalog/filter-options", { cache: "no-store" }),
   courses: (filters: CatalogFilters = {}) =>
     apiFetch<{ items: CourseCardDTO[]; total: number; page: number; pageSize: number }>("/courses", {
       query: filters as Record<string, any>,
@@ -638,6 +646,8 @@ export const companyApi = {
     apiFetch<any>(`/companies/${id}/seat-pools/${poolId}/renew`, { method: "PATCH", body: JSON.stringify({ months }), accessToken }),
   reports: (id: string, query: Record<string, string | undefined> = {}, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/reports`, { query, accessToken }),
+  publicQuoteRequest: (input: unknown) =>
+    apiFetch<{ received: boolean }>("/public/quote-requests", { method: "POST", body: JSON.stringify(input) }),
   requestQuote: (id: string, input: unknown, accessToken?: string | null) =>
     apiFetch<any>(`/companies/${id}/quotes`, { method: "POST", body: JSON.stringify(input), accessToken }),
   quotes: (id: string, accessToken?: string | null) => apiFetch<any[]>(`/companies/${id}/quotes`, { accessToken }),
@@ -950,6 +960,9 @@ export const adminApi = {
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
   // --- Pipeline comercial (cotizaciones B2B) ---
   quotes: (accessToken?: string | null) => apiFetch<any[]>("/admin/quotes", { accessToken, cache: "no-store" }),
+  quoteLeads: (accessToken?: string | null) => apiFetch<any[]>("/admin/quote-leads", { accessToken, cache: "no-store" }),
+  updateQuoteLead: (id: string, input: { status?: "NEW" | "CONTACTED" | "CLOSED"; internalNotes?: string | null }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/quote-leads/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   respondToQuote: (id: string, input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>(`/admin/quotes/${id}/respond`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   convertQuote: (id: string, accessToken?: string | null) =>
@@ -1149,6 +1162,17 @@ export const adminApi = {
       body: JSON.stringify({ orderedAssessmentIds }),
       accessToken,
     }),
+
+  // --- Roles de administrador por módulo ---
+  adminRoles: (accessToken?: string | null) => apiFetch<any[]>("/admin/admin-roles", { accessToken, cache: "no-store" }),
+  createAdminRole: (input: unknown, accessToken?: string | null) =>
+    apiFetch<any>("/admin/admin-roles", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateAdminRole: (id: string, input: unknown, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/admin-roles/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
+  deleteAdminRole: (id: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/admin-roles/${id}`, { method: "DELETE", accessToken }),
+  assignAdminRole: (userId: string, adminRoleId: string | null, accessToken?: string | null) =>
+    apiFetch<any>("/admin/admin-roles/assign", { method: "PUT", body: JSON.stringify({ userId, adminRoleId }), accessToken }),
 
   // --- Usuarios y roles ---
   users: (params: { q?: string; role?: string; pageSize?: number } = {}, accessToken?: string | null) =>

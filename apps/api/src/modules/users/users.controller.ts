@@ -23,6 +23,12 @@ export class UsersController {
     return this.usersService.getProfile(user.id);
   }
 
+  @Get("referral")
+  @ApiOperation({ summary: "Código de referido del usuario y cuántas personas se registraron con él" })
+  async getReferral(@CurrentUser() user: RequestUser) {
+    return this.usersService.getReferral(user.id);
+  }
+
   @Patch()
   @ApiOperation({ summary: "Completa/actualiza el perfil progresivo del usuario (persona natural)" })
   @ApiBody({ type: CompleteProfileDto })

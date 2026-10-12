@@ -25,6 +25,26 @@ export class UsersService {
     return user;
   }
 
+  /** Código y enlace personal de referido, y cuántas personas se registraron con él. El código se crea la primera vez que se pide. */
+  async getReferral(userId: string) {
+    let user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { referralCode: true } });
+    if (!user.referralCode) {
+      for (let i = 0; i < 5 && !user.referralCode; i += 1) {
+        const code = randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+        try {
+          user = await this.prisma.user.update({ where: { id: userId }, data: { referralCode: code }, select: { referralCode: true } });
+        } catch {
+          // Choque improbable con otro código: se reintenta con uno nuevo.
+        }
+      }
+    }
+    const [registered, enrolled] = await Promise.all([
+      this.prisma.user.count({ where: { referredByUserId: userId } }),
+      this.prisma.user.count({ where: { referredByUserId: userId, enrollments: { some: {} } } }),
+    ]);
+    return { code: user.referralCode, registered, enrolled };
+  }
+
   async completeProfile(userId: string, input: CompleteProfileInput) {
     const current = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 

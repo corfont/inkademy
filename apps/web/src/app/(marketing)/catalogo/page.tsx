@@ -59,6 +59,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     pageSize: 12,
   };
 
+  const { data: filterOptions } = await withFallback(() => catalogApi.filterOptions(), { skills: [] as string[] });
   const [{ data: areas }, { data: courseResult, live }] = await Promise.all([
     withFallback(() => catalogApi.areas(), MOCK_AREAS),
     withFallback(
@@ -85,7 +86,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
       <div className="grid gap-8 lg:grid-cols-[16rem_1fr]">
         <aside aria-label={t("filters.title")}>
           <Suspense fallback={null}>
-            <FilterBar areas={areas} />
+            <FilterBar areas={areas} skills={filterOptions.skills} />
           </Suspense>
         </aside>
 

@@ -5,6 +5,7 @@ import { withFallback } from "@/lib/safe-fetch";
 import { buildMockClassroom, MOCK_COURSES } from "@/lib/mock-data";
 import { ACCESS_TOKEN_COOKIE } from "@/lib/auth";
 import { Classroom } from "@/components/campus/Classroom";
+import { ProgramView } from "@/components/campus/ProgramView";
 import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Aula" };
@@ -31,7 +32,7 @@ export default async function ClassroomPage({ params }: { params: { enrollmentId
           Mostrando datos de referencia; no pudimos conectar con la API.
         </Callout>
       )}
-      <Classroom detail={detail} />
+      {(detail as { kind?: string }).kind === "PROGRAM" ? <ProgramView detail={detail as never} /> : <Classroom detail={detail} />}
     </div>
   );
 }

@@ -299,6 +299,8 @@ export class CompaniesService {
         await this.calendarService.scheduleForEnrollment(userId, course, pool.expiresAt ?? null);
         await this.enrollmentService.recomputeProgress(enrollment.id, pool.courseId, userId);
       }
+    } else if (pool.programId) {
+      await this.enrollmentService.enrollProgramCourses(enrollment.id);
     }
 
     return enrollment;
@@ -401,6 +403,9 @@ export class CompaniesService {
           status: e.status,
           // Para poder ordenar "quién acabó primero" — null si aún no completó.
           completedAt: e.completedAt?.toISOString() ?? null,
+          enrolledAt: e.enrolledAt.toISOString(),
+          // Mismo criterio que getDashboard().atRiskParticipants: activo, menos de 30 % de avance y más de 14 días matriculado.
+          atRisk: e.status === "ACTIVE" && e.progressPct < 30 && e.enrolledAt < new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
         };
       });
 

@@ -60,6 +60,9 @@ export interface CourseCardDTO {
   areaSlug: string;
   durationHours: number;
   durationUnit?: "HOURS" | "WEEKS" | "MONTHS";
+  weeklyHours?: number | null;
+  classDays?: string[];
+  skills?: string[];
   language?: string;
   coverImageUrl?: string | null;
   teacherName?: string | null;
@@ -116,6 +119,9 @@ export interface CatalogFilters {
   // combinaban con otro filtro). Ahora viajan como cualquier otro filtro.
   duration?: "short" | "medium" | "long";
   liveOnly?: boolean;
+  weeklyLoad?: "light" | "medium" | "intensive";
+  classDay?: "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+  skill?: string;
   sort?: "newest" | "priceAsc" | "priceDesc" | "bestSelling";
   page?: number;
   pageSize?: number;

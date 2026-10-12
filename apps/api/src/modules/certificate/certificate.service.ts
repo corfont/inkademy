@@ -233,6 +233,81 @@ export class CertificateService {
   }
 
   /**
+   * Certificado de un Programa/Diplomado: se emite cuando el alumno completó todos sus cursos obligatorios
+   * (ver EnrollmentService.refreshProgramProgress). Idempotente: uno solo por alumno y programa.
+   */
+  async issueForProgram(enrollmentId: string): Promise<void> {
+    const enrollment = await this.prisma.enrollment.findUnique({
+      where: { id: enrollmentId },
+      include: { certificate: true, user: true, program: true },
+    });
+    if (!enrollment || enrollment.certificate || enrollment.offeringKind !== "PROGRAM" || !enrollment.programId || !enrollment.program) return;
+    if (!enrollment.program.certificationIncluded) return;
+    const existing = await this.prisma.certificate.findFirst({
+      where: { userId: enrollment.userId, programId: enrollment.programId, revoked: false },
+    });
+    if (existing) return;
+
+    let template = null as Awaited<ReturnType<typeof this.prisma.certificateTemplate.findFirst>>;
+    if (enrollment.program.certificateTemplateId) {
+      template = await this.prisma.certificateTemplate.findFirst({ where: { id: enrollment.program.certificateTemplateId, active: true } });
+    }
+    if (!template) {
+      template = await this.prisma.certificateTemplate.findFirst({ where: { active: true, locale: enrollment.user.locale }, orderBy: { version: "desc" } });
+    }
+    if (!template) template = await this.prisma.certificateTemplate.findFirst({ where: { active: true } });
+    if (!template) {
+      this.logger.warn("No hay CertificateTemplate activo — no se puede emitir el certificado del programa todavía");
+      return;
+    }
+
+    const deliveredTo = enrollment.companyId
+      ? ((await this.prisma.company.findUnique({ where: { id: enrollment.companyId } }))?.certificateDeliveryTarget ?? "STUDENT")
+      : "STUDENT";
+
+    const certificate = await this.prisma.certificate.create({
+      data: {
+        userId: enrollment.userId,
+        programId: enrollment.programId,
+        enrollmentId: enrollment.id,
+        templateId: template.id,
+        templateVersion: template.version,
+        deliveredTo,
+        criteriaSnapshot: { kind: "PROGRAM", achievedProgressPct: enrollment.progressPct },
+      },
+    });
+
+    try {
+      await this.certificateQueue.add(
+        CERTIFICATE_JOBS.GENERATE,
+        { certificateId: certificate.id },
+        { attempts: 3, backoff: { type: "exponential", delay: 10000 }, removeOnComplete: true, removeOnFail: 100 },
+      );
+    } catch (err) {
+      this.logger.error(`No se pudo encolar el PDF del certificado de programa ${certificate.id}: ${(err as Error).message}`);
+    }
+
+    const title = ((enrollment.program.title as Record<string, string>) ?? {}).es ?? "tu programa";
+    const verificationUrl = this.verificationUrl(certificate.code);
+    const recipients: string[] = [];
+    if (deliveredTo === "STUDENT" || deliveredTo === "BOTH") recipients.push(enrollment.user.email);
+    if (deliveredTo === "COMPANY_ADMIN" || deliveredTo === "BOTH") {
+      const admins = await this.prisma.companyMembership.findMany({
+        where: { companyId: enrollment.companyId!, role: "COMPANY_ADMIN", status: "ACTIVE" },
+        include: { user: true },
+      });
+      recipients.push(...admins.map((m) => m.user.email));
+    }
+    for (const email of recipients) {
+      try {
+        await this.notifications.sendCertificateReady(email, title, verificationUrl, enrollment.userId);
+      } catch (err) {
+        this.logger.error(`No se pudo avisar por correo el certificado ${certificate.id} a ${email}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /**
    * Vuelve a generar el PDF de un certificado ya emitido — el worker solo
    * renderiza una vez ("el certificado ya tiene PDF generado, se omite"),
    * así que si el admin configura/actualiza la firma del docente o de la

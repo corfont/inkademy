@@ -41,7 +41,8 @@ import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { roleHomeHref } from "@/lib/auth";
-import { supportApi, suggestionsApi } from "@/lib/api-client";
+import { supportApi, suggestionsApi, authApi } from "@/lib/api-client";
+import { adminModuleForWebHref, adminPermissionAllows, type AdminPermissions } from "@inkademy/shared";
 
 // Cada cuánto se refresca el contador de pendientes en el menú — no hace
 // falta tiempo real, solo que no quede muy desactualizado mientras el
@@ -57,6 +58,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // sugerencias sin responder.
   const [pendingSupport, setPendingSupport] = useState(0);
   const [pendingSuggestions, setPendingSuggestions] = useState(0);
+  // Rol de administrador acotado: si el usuario lo tiene, el menú solo muestra los módulos que ese rol permite (null = administrador completo o aún cargando).
+  const [adminAccess, setAdminAccess] = useState<{ restricted: boolean; active: boolean; permissions: AdminPermissions } | null>(null);
+
+  useEffect(() => {
+    authApi.adminAccess().then(setAdminAccess).catch(() => setAdminAccess(null));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +138,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // más detallado, en campus/layout.tsx). Este bloque vive solo dentro de
   // /admin — nunca hace falta excluir ADMIN/SUPPORT (el rol nativo de
   // esta área) para evitar duplicados. (`roles` ya se calculó arriba.)
+  if (roles.includes("ADMIN")) {
+    navItems.push({ href: "/admin/roles", label: "Roles de administrador", icon: KeyRound, colorClassName: "bg-cyan-400/20 text-cyan-300" });
+  }
   if (roles.includes("TEACHER")) {
     navItems.push(
       { href: "/docente", label: "Panel de docente", icon: LayoutDashboard, section: "Docente", colorClassName: "bg-slate-400/20 text-slate-300" },
@@ -168,7 +178,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <SidebarShell
-      navItems={navItems}
+      navItems={navItems.filter((item) => {
+        if (!adminAccess?.restricted) return true;
+        const module = adminModuleForWebHref(item.href);
+        if (module === null) return true; // inicio del panel y enlaces de otras áreas (docente, alumno…)
+        if (module === "__owner__") return false;
+        return adminAccess.active && adminPermissionAllows(adminAccess.permissions, module, false);
+      })}
       // "Al tener más de un rol... el botón Inicio me lleva al inicio de
       // ESE rol nomás" — antes cada layout pasaba su propia área fija
       // ("/admin" acá); ahora resuelve el home REAL del usuario según su

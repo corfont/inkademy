@@ -3,6 +3,7 @@ import { adminApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { QuotesPipelineManager } from "@/components/admin/QuotesPipelineManager";
+import { QuoteLeadsManager } from "@/components/admin/QuoteLeadsManager";
 import { Callout } from "@/components/ui/Callout";
 
 export const metadata: Metadata = { title: "Cotizaciones (admin)" };
@@ -10,6 +11,7 @@ export const metadata: Metadata = { title: "Cotizaciones (admin)" };
 export default async function AdminQuotesPage() {
   const accessToken = getServerAccessToken();
   const { data: quotes, live } = await withFallback(() => adminApi.quotes(accessToken), [] as any[]);
+  const { data: leads } = await withFallback(() => adminApi.quoteLeads(accessToken), [] as any[]);
   const { data: courses } = await withFallback(() => adminApi.courses(accessToken), [] as any[]);
   const { data: programs } = await withFallback(() => adminApi.programs(accessToken), [] as any[]);
 
@@ -23,6 +25,7 @@ export default async function AdminQuotesPage() {
         </p>
       </div>
       {!live && <Callout variant="info">No pudimos conectar con la API — no se muestran cotizaciones reales por ahora.</Callout>}
+      <QuoteLeadsManager leads={leads} />
       <QuotesPipelineManager quotes={quotes} courses={courses} programs={programs} />
     </div>
   );
