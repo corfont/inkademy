@@ -73,9 +73,15 @@ export class EnrollmentController {
   submitRating(
     @CurrentUser() user: RequestUser,
     @Param("id") id: string,
-    @Body(new ZodValidationPipe(submitCourseRatingSchema)) dto: { stars: number; comment?: string },
+    @Body(new ZodValidationPipe(submitCourseRatingSchema)) dto: { stars: number; comment?: string; dimensions?: { dimensionId: string; stars: number }[]; improvements?: string[] },
   ) {
-    return this.enrollmentService.submitRating(user.id, id, dto.stars, dto.comment);
+    return this.enrollmentService.submitRating(user.id, id, dto.stars, dto.comment, dto.dimensions, dto.improvements);
+  }
+
+  @Get("rating-form")
+  @ApiOperation({ summary: "Categorías activas y aspectos a mejorar que se ofrecen al calificar un curso" })
+  ratingForm() {
+    return this.enrollmentService.getRatingForm();
   }
 
   @Get("recommendations")

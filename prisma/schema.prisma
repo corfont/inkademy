@@ -810,11 +810,37 @@ model CourseRating {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   courseId     String
   course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  stars        Int // 1-5
+  stars        Int // 1-5 (calificación general)
   comment      String?    @db.Text
+  // Aspectos a mejorar que marcó el alumno (claves de RATING_IMPROVEMENT_OPTIONS en @inkademy/shared).
+  improvements String[]   @default([])
   createdAt    DateTime   @default(now())
+  answers      CourseRatingAnswer[]
 
   @@index([courseId])
+}
+
+/// Categorías en las que el alumno califica un curso al terminarlo (contenido, docente, plataforma, soporte…): configurables por el administrador.
+model RatingDimension {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  label     String
+  active    Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  answers   CourseRatingAnswer[]
+}
+
+model CourseRatingAnswer {
+  id          String          @id @default(uuid())
+  ratingId    String
+  rating      CourseRating    @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  dimensionId String
+  dimension   RatingDimension @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+  stars       Int // 1-5
+
+  @@unique([ratingId, dimensionId])
+  @@index([dimensionId])
 }
 
 // "Hay una opción de Guardados. ¿Cómo guardo un curso? ¿Para qué sirve?" —
@@ -1216,6 +1242,10 @@ model PartnerInstitution {
   active           Boolean            @default(true)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
+  // Cómo paga la institución a Inkademy (transferencia, cheque, etc.) y las indicaciones propias de esa institución.
+  paymentMethod    String? // TRANSFER | CHEQUE | OTHER
+  paymentNotes     String?            @db.Text
+  paymentTermsDays Int? // plazo habitual de pago, en días
 
   courses CoursePartnership[]
 }
@@ -1269,6 +1299,11 @@ model PlatformLicense {
   endsAt        DateTime
   status        PlatformLicenseStatus @default(ACTIVE)
   notes         String?               @db.Text
+  // Relación comercial: documento que respalda las condiciones y a quién contactar.
+  contractRef   String?
+  contactName   String?
+  contactEmail  String?
+  contactPhone  String?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
@@ -1829,6 +1864,8 @@ model AuditLog {
   before    Json?
   after     Json?
   createdAt DateTime @default(now())
+  // «Eliminar» una cortesía del listado ya no borra la bitácora: solo la oculta de esa pantalla (la auditoría debe poder sustentar lo ocurrido).
+  hiddenAt  DateTime?
 
   @@index([entity, entityId])
 }
@@ -2298,6 +2335,13 @@ model RoyaltyRecipient {
   active       Boolean            @default(true)
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
+  // Cómo se le paga: datos bancarios (si está vinculado a una cuenta con datos bancarios propios, se usan esos cuando estos están vacíos).
+  bankName       String?
+  accountHolder  String?
+  accountNumber  String?
+  accountCci     String?
+  documentType   String? // DNI | RUC | CE
+  documentNumber String?
 
   courses CourseRoyalty[]
 }

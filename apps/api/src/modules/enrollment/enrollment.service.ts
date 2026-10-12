@@ -1,3 +1,4 @@
+import { RATING_IMPROVEMENT_OPTIONS } from "@inkademy/shared";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
 import type { Queue } from "bullmq";
@@ -1158,7 +1159,19 @@ export class EnrollmentService {
    * calificación se reintenta la emisión del certificado por si era el
    * único requisito pendiente (ver CertificateService.checkAndIssueIfEligible).
    */
-  async submitRating(userId: string, enrollmentId: string, stars: number, comment?: string) {
+  async getRatingForm() {
+    const dimensions = await this.prisma.ratingDimension.findMany({ where: { active: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }], select: { id: true, key: true, label: true } });
+    return { dimensions, improvements: RATING_IMPROVEMENT_OPTIONS };
+  }
+
+  async submitRating(
+    userId: string,
+    enrollmentId: string,
+    stars: number,
+    comment?: string,
+    dimensions?: { dimensionId: string; stars: number }[],
+    improvements?: string[],
+  ) {
     const enrollment = await this.prisma.enrollment.findUnique({ where: { id: enrollmentId } });
     if (!enrollment || enrollment.userId !== userId) {
       throw new NotFoundException("Matrícula no encontrada");
@@ -1177,11 +1190,24 @@ export class EnrollmentService {
       await this.refreshCompletionStatus(enrollmentId);
       return { saved: true };
     }
-    await this.prisma.courseRating.upsert({
+    const validImprovements = (improvements ?? []).filter((k) => RATING_IMPROVEMENT_OPTIONS.some((o) => o.key === k));
+    const rating = await this.prisma.courseRating.upsert({
       where: { enrollmentId },
-      create: { enrollmentId, userId, courseId: enrollment.courseId, stars, comment: comment ?? null },
-      update: { stars, comment: comment ?? null },
+      create: { enrollmentId, userId, courseId: enrollment.courseId, stars, comment: comment ?? null, improvements: validImprovements },
+      update: { stars, comment: comment ?? null, improvements: validImprovements },
     });
+    if (dimensions && dimensions.length > 0) {
+      // Solo categorías que existen y están activas; una por categoría.
+      const active = new Set((await this.prisma.ratingDimension.findMany({ where: { active: true }, select: { id: true } })).map((d) => d.id));
+      const unique = new Map(dimensions.filter((d) => active.has(d.dimensionId)).map((d) => [d.dimensionId, d.stars]));
+      for (const [dimensionId, dStars] of unique) {
+        await this.prisma.courseRatingAnswer.upsert({
+          where: { ratingId_dimensionId: { ratingId: rating.id, dimensionId } },
+          create: { ratingId: rating.id, dimensionId, stars: dStars },
+          update: { stars: dStars },
+        });
+      }
+    }
     await this.certificateService.checkAndIssueIfEligible(enrollmentId);
     // La calificación suele ser lo ÚLTIMO que falta (material y examen ya
     // aprobados) — sin esto, la matrícula se quedaba ACTIVE para siempre

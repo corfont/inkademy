@@ -24,6 +24,8 @@ export const CERTIFICATE_TAGS: CertificateTagDef[] = [
   { tag: "courseStartDate", kind: "text", label: "Fecha de inicio de curso", sample: "3 de marzo de 2026" },
   { tag: "courseEndDate", kind: "text", label: "Fecha fin de curso", sample: "24 de abril de 2026" },
   { tag: "courseDuration", kind: "text", label: "Duración del curso (horas/días/meses)", sample: "40 horas" },
+  { tag: "courseHours", kind: "text", label: "Horas totales (siempre en horas; en un programa, la suma de sus cursos)", sample: "100 horas" },
+  { tag: "coursePeriod", kind: "text", label: "Periodo del curso («del … al …»)", sample: "del 11 de junio de 2026 al 15 de noviembre de 2026" },
   { tag: "issuedDate", kind: "text", label: "Fecha de emisión", sample: "24 de agosto de 2026" },
   { tag: "finalScore", kind: "text", label: "Nota", sample: "17.8" },
   { tag: "code", kind: "text", label: "Código de verificación", sample: "INK-2026-00456" },

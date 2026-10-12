@@ -25,6 +25,9 @@ const KNOWN_ENTITIES = [
   "SunatSettings",
   "EmailServerSettings",
   "LiveSession",
+  "ChatbotSettings",
+  "NotificationSettings",
+  "BackupRecord",
 ];
 
 /** Nombre en español de cada tipo de objeto y de cada acción; el código técnico se conserva en el detalle de cada registro. */
@@ -44,6 +47,9 @@ const ENTITY_LABEL: Record<string, string> = {
   SunatSettings: "Configuración SUNAT",
   EmailServerSettings: "Servidor de correo",
   LiveSession: "Clase en vivo",
+  ChatbotSettings: "Asistente de IA",
+  NotificationSettings: "Notificaciones",
+  BackupRecord: "Respaldo",
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -70,6 +76,10 @@ const ACTION_LABEL: Record<string, string> = {
   USER_DELETE: "Usuario eliminado",
   USER_PASSWORD_RESET: "Contraseña de usuario restablecida",
   USER_UPDATE: "Usuario actualizado",
+  CHATBOT_SETTINGS_UPDATE: "Asistente de IA modificado",
+  NOTIFICATION_SETTINGS_UPDATE: "Notificaciones modificadas",
+  PLATFORM_SETTINGS_UPDATE: "Apariencia de la plataforma modificada",
+  BACKUP_RESTORE_TESTED: "Prueba de restauración de un respaldo registrada",
 };
 const accionLegible = (code: string) => ACTION_LABEL[code] ?? code.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 

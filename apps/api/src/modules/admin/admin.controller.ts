@@ -69,6 +69,7 @@ import {
   updateTeacherLiquidationStatusSchema,
   emailFinancialReportSchema,
   setCourseStaffCanEditSchema,
+  upsertRatingDimensionSchema,
 } from "../../common/validation/local-schemas";
 import { respondToQuoteSchema, type ScormLocale } from "@inkademy/shared";
 import { AssessmentService } from "../assessment/assessment.service";
@@ -1342,6 +1343,29 @@ export class AdminController {
   @ApiOperation({ summary: "URL firmada (15 min) para descargar un backup ya generado" })
   getBackupDownloadUrl(@Param("id") id: string) {
     return this.adminService.getBackupDownloadUrl(id);
+  }
+
+  // --- Categorías de la calificación de cursos ---
+
+  @Get("rating-dimensions")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Categorías en las que el alumno califica un curso" })
+  listRatingDimensions() {
+    return this.adminService.listRatingDimensions();
+  }
+
+  @Post("rating-dimensions")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Crea una categoría de calificación" })
+  createRatingDimension(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertRatingDimensionSchema)) dto: { label?: string; active?: boolean; order?: number }) {
+    return this.adminService.upsertRatingDimension(null, dto, user.id);
+  }
+
+  @Patch("rating-dimensions/:id")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Renombra, activa/desactiva u ordena una categoría de calificación" })
+  updateRatingDimension(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body(new ZodValidationPipe(upsertRatingDimensionSchema)) dto: { label?: string; active?: boolean; order?: number }) {
+    return this.adminService.upsertRatingDimension(id, dto, user.id);
   }
 
   // --- Auditoría genérica ---

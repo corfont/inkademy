@@ -189,6 +189,7 @@ export function PartnerInstitutionManager({ institutions, courses }: { instituti
               </div>
             </div>
 
+            <PartnerPaymentEditor inst={inst} busy={busy} run={run} />
             <CoursePartnershipEditor institutionId={inst.id} assigned={inst.courses ?? []} courses={courses} busy={busy} run={run} />
           </CardContent>
         </Card>
@@ -410,5 +411,60 @@ function CoursePartnershipRow({
         </Button>
       </span>
     </li>
+  );
+}
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = { TRANSFER: "Transferencia electrónica", CHEQUE: "Cheque", OTHER: "Otro" };
+
+/** Cómo paga la institución a Inkademy: transferencia, cheque u otro, con las indicaciones propias (p. ej. «cheque a nombre de…, se recoge en Tesorería») y el plazo habitual. */
+function PartnerPaymentEditor({ inst, busy, run }: { inst: any; busy: boolean; run: (a: () => Promise<unknown>) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState<string>(inst.paymentMethod ?? "");
+  const [notes, setNotes] = useState<string>(inst.paymentNotes ?? "");
+  const [days, setDays] = useState<string>(inst.paymentTermsDays != null ? String(inst.paymentTermsDays) : "");
+  return (
+    <div className="rounded-md border border-paper-border p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-ash-600">
+          {inst.paymentMethod ? `Cómo nos paga: ${PAYMENT_METHOD_LABEL[inst.paymentMethod] ?? inst.paymentMethod}${inst.paymentTermsDays != null ? ` · plazo ${inst.paymentTermsDays} días` : ""}${inst.paymentNotes ? ` · ${inst.paymentNotes}` : ""}` : <span className="font-medium text-warning">Falta registrar cómo nos paga</span>}
+        </p>
+        <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>{open ? "Cerrar" : "Forma de pago"}</Button>
+      </div>
+      {open && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label htmlFor={`pp-m-${inst.id}`}>Forma de pago</Label>
+            <Select id={`pp-m-${inst.id}`} value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option value="">Sin definir</option>
+              <option value="TRANSFER">Transferencia electrónica</option>
+              <option value="CHEQUE">Cheque</option>
+              <option value="OTHER">Otro</option>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor={`pp-d-${inst.id}`}>Plazo habitual (días)</Label>
+            <Input id={`pp-d-${inst.id}`} type="number" min="0" max="365" value={days} onChange={(e) => setDays(e.target.value)} />
+          </div>
+          <div className="sm:col-span-3">
+            <Label htmlFor={`pp-n-${inst.id}`}>Indicaciones (a nombre de quién, dónde se recoge, cuenta de destino…)</Label>
+            <Input id={`pp-n-${inst.id}`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <div className="sm:col-span-3">
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await adminApi.updatePartnerInstitution(inst.id, { paymentMethod: method || null, paymentNotes: notes.trim() || null, paymentTermsDays: days ? Number(days) : null });
+                  setOpen(false);
+                })
+              }
+            >
+              Guardar forma de pago
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

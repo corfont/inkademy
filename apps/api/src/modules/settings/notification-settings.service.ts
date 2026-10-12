@@ -1,3 +1,4 @@
+import { diffForAudit, logAudit } from "../admin/audit-log.util";
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -45,12 +46,15 @@ export class NotificationSettingsService {
     });
   }
 
-  async update(input: UpsertNotificationSettingsInput) {
+  async update(input: UpsertNotificationSettingsInput, actorId?: string) {
+    const previous = await this.get();
     await this.prisma.notificationSettings.upsert({
       where: { id: SETTINGS_ID },
       create: { id: SETTINGS_ID, ...input },
       update: input,
     });
+    const { before, after, changed } = diffForAudit(previous as unknown as Record<string, unknown>, input as unknown as Record<string, unknown>);
+    if (changed) await logAudit(this.prisma, { actorId, action: "NOTIFICATION_SETTINGS_UPDATE", entity: "NotificationSettings", entityId: SETTINGS_ID, before, after });
     return this.get();
   }
 }

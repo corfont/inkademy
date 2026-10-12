@@ -24,3 +24,28 @@ export function logAudit(
 ) {
   return prisma.auditLog.create({ data: input as never });
 }
+
+const SECRET_KEY = /pass|secret|token|apikey|api_key|key_?pem|cert_?pem|solpassword/i;
+
+/**
+ * Qué cambió entre lo guardado y lo que se pide guardar, SIN secretos: devuelve solo los campos que de verdad cambian, con su valor anterior y
+ * nuevo. Un secreto (contraseña, clave, certificado) nunca se guarda: solo queda constancia de que se cambió («(modificado)»).
+ */
+export function diffForAudit(before: Record<string, unknown> | null | undefined, input: Record<string, unknown>, extraSecretKeys: string[] = []) {
+  const prev = before ?? {};
+  const secret = (k: string) => SECRET_KEY.test(k) || extraSecretKeys.includes(k);
+  const b: Record<string, unknown> = {};
+  const a: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (v === undefined) continue;
+    if (secret(k)) {
+      if (v) a[k] = "(modificado)";
+      continue;
+    }
+    if (JSON.stringify(prev[k] ?? null) !== JSON.stringify(v ?? null)) {
+      b[k] = prev[k] ?? null;
+      a[k] = v ?? null;
+    }
+  }
+  return { before: b, after: a, changed: Object.keys(a).length > 0 };
+}

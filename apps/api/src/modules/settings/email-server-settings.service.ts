@@ -1,3 +1,4 @@
+import { diffForAudit } from "../admin/audit-log.util";
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -44,6 +45,7 @@ export class EmailServerSettingsService {
 
   async update(input: UpsertEmailServerSettingsInput, actorId?: string) {
     const { password, ...rest } = input;
+    const previous = await this.get();
     const data: Record<string, unknown> = { ...rest };
     if (password) data.password = password;
 
@@ -53,7 +55,7 @@ export class EmailServerSettingsService {
       update: data,
     });
     // Nunca se guarda la contraseña en el log, solo qué campos cambiaron y quién.
-    await logAudit(this.prisma, { actorId, action: "EMAIL_SERVER_SETTINGS_UPDATE", entity: "EmailServerSettings", entityId: SETTINGS_ID, after: { changedFields: Object.keys(input) } });
+    await logAudit(this.prisma, { actorId, action: "EMAIL_SERVER_SETTINGS_UPDATE", entity: "EmailServerSettings", entityId: SETTINGS_ID, ...(({ before, after }) => ({ before, after: { ...after, changedFields: Object.keys(input) } }))(diffForAudit(previous as unknown as Record<string, unknown>, input as unknown as Record<string, unknown>)) });
     return this.get();
   }
 }

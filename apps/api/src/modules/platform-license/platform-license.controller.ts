@@ -17,6 +17,10 @@ const upsertPlatformLicenseSchema = z.object({
   endsAt: z.string().datetime(),
   status: z.enum(["ACTIVE", "EXPIRING_SOON", "EXPIRED", "CANCELLED"]).optional(),
   notes: z.string().optional().nullable(),
+  contractRef: z.string().max(200).optional().nullable(),
+  contactName: z.string().max(160).optional().nullable(),
+  contactEmail: z.string().email().optional().nullable().or(z.literal("")),
+  contactPhone: z.string().max(40).optional().nullable(),
 });
 
 const updatePlatformLicenseSchema = upsertPlatformLicenseSchema.partial();

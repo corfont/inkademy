@@ -28,8 +28,32 @@ export interface UpsertPlatformLicenseInput {
 export class PlatformLicenseService {
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
 
-  list() {
-    return this.prisma.platformLicense.findMany({ orderBy: { endsAt: "asc" } });
+  /**
+   * Estado de la LICENCIA derivado de las fechas (el campo guardado era 100 % manual: una licencia vencida podía seguir «activa» y quedar sin aviso)
+   * y próxima fecha de facturación según el ciclo. La vigencia contractual y las fechas de cobro son cosas distintas: una licencia puede estar
+   * vigente y tener una cuota por cobrar.
+   */
+  private decorate<T extends { status: string; startsAt: Date; endsAt: Date; billingCycle: string }>(l: T) {
+    const now = Date.now();
+    let effectiveStatus = l.status;
+    if (l.status !== "CANCELLED") {
+      if (l.endsAt.getTime() < now) effectiveStatus = "EXPIRED";
+      else if (l.endsAt.getTime() - now <= 30 * 86_400_000) effectiveStatus = "EXPIRING_SOON";
+      else effectiveStatus = "ACTIVE";
+    }
+    let nextBillingDate: Date | null = null;
+    if (effectiveStatus !== "CANCELLED" && effectiveStatus !== "EXPIRED") {
+      const d = new Date(l.startsAt);
+      const step = l.billingCycle === "MONTHLY" ? 1 : 12;
+      while (d.getTime() <= now && d.getTime() < l.endsAt.getTime()) d.setUTCMonth(d.getUTCMonth() + step);
+      nextBillingDate = d.getTime() <= l.endsAt.getTime() ? d : null;
+    }
+    return { ...l, effectiveStatus, nextBillingDate };
+  }
+
+  async list() {
+    const rows = await this.prisma.platformLicense.findMany({ orderBy: { endsAt: "asc" } });
+    return rows.map((r) => this.decorate(r));
   }
 
   async get(id: string) {

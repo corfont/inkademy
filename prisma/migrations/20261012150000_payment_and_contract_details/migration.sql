@@ -1,0 +1,13 @@
+ALTER TABLE "RoyaltyRecipient" ADD COLUMN IF NOT EXISTS "bankName" TEXT;
+ALTER TABLE "RoyaltyRecipient" ADD COLUMN IF NOT EXISTS "accountHolder" TEXT;
+ALTER TABLE "RoyaltyRecipient" ADD COLUMN IF NOT EXISTS "accountNumber" TEXT;
+ALTER TABLE "RoyaltyRecipient" ADD COLUMN IF NOT EXISTS "accountCci" TEXT;
+ALTER TABLE "RoyaltyRecipient" ADD COLUMN IF NOT EXISTS "documentType" TEXT;
+ALTER TABLE "RoyaltyRecipient" ADD COLUMN IF NOT EXISTS "documentNumber" TEXT;
+ALTER TABLE "PartnerInstitution" ADD COLUMN IF NOT EXISTS "paymentMethod" TEXT;
+ALTER TABLE "PartnerInstitution" ADD COLUMN IF NOT EXISTS "paymentNotes" TEXT;
+ALTER TABLE "PartnerInstitution" ADD COLUMN IF NOT EXISTS "paymentTermsDays" INTEGER;
+ALTER TABLE "PlatformLicense" ADD COLUMN IF NOT EXISTS "contractRef" TEXT;
+ALTER TABLE "PlatformLicense" ADD COLUMN IF NOT EXISTS "contactName" TEXT;
+ALTER TABLE "PlatformLicense" ADD COLUMN IF NOT EXISTS "contactEmail" TEXT;
+ALTER TABLE "PlatformLicense" ADD COLUMN IF NOT EXISTS "contactPhone" TEXT;

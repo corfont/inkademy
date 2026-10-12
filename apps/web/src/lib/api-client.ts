@@ -440,11 +440,13 @@ export const meApi = {
     apiFetch<{ content: string; updatedAt: string | null }>(`/me/lessons/${lessonId}/notes`, { method: "PATCH", body: JSON.stringify({ content }) }),
   // "Marcar las estrellas que considera del curso y poner un comentario
   // debajo" — al terminar el curso, ver CourseRatingPrompt.
-  submitRating: (enrollmentId: string, stars: number, comment?: string) =>
+  submitRating: (enrollmentId: string, stars: number, comment?: string, dimensions?: { dimensionId: string; stars: number }[], improvements?: string[]) =>
     apiFetch<{ saved: boolean }>(`/me/enrollments/${enrollmentId}/rating`, {
       method: "POST",
-      body: JSON.stringify({ stars, comment }),
+      body: JSON.stringify({ stars, comment, dimensions, improvements }),
     }),
+  // Categorías activas y aspectos a mejorar que se ofrecen al calificar.
+  ratingForm: () => apiFetch<{ dimensions: { id: string; key: string; label: string }[]; improvements: { key: string; label: string }[] }>("/me/rating-form", { cache: "no-store" }),
   // "Si vuelves a llevar el curso es gratis" — matrícula nueva sin checkout.
   retakeCourse: (enrollmentId: string) =>
     apiFetch<{ enrollmentId: string }>(`/me/enrollments/${enrollmentId}/retake`, { method: "POST" }),
@@ -494,6 +496,7 @@ export const commerceApi = {
       userEmail?: string;
       companyId?: string;
       seatPoolQty?: number;
+      accessEndsAt?: string;
       note: string;
     },
     accessToken?: string,
@@ -857,6 +860,10 @@ export const adminApi = {
   pendingFileReviews: (accessToken?: string | null) => apiFetch<any[]>("/admin/attempts/pending-file-reviews", { accessToken }),
   gradeFileAttempt: (attemptId: string, input: { score: number; passed: boolean }, accessToken?: string | null) =>
     apiFetch<any>(`/admin/attempts/${attemptId}/grade-file`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  ratingDimensions: (accessToken?: string | null) => apiFetch<any[]>("/admin/rating-dimensions", { accessToken, cache: "no-store" }),
+  createRatingDimension: (input: { label: string }, accessToken?: string | null) => apiFetch<any>("/admin/rating-dimensions", { method: "POST", body: JSON.stringify(input), accessToken }),
+  updateRatingDimension: (id: string, input: { label?: string; active?: boolean; order?: number }, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/rating-dimensions/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   teacherGradingWorkload: (accessToken?: string | null) => apiFetch<any[]>("/admin/teacher-grading-workload", { accessToken, cache: "no-store" }),
   certificateTemplates: (accessToken?: string | null) => apiFetch<any[]>("/admin/certificate-templates", { accessToken }),
   createCertificateTemplate: (input: Record<string, unknown>, accessToken?: string | null) =>
@@ -1412,6 +1419,13 @@ export interface PlatformLicenseDTO {
   endsAt: string;
   status: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "CANCELLED";
   notes: string | null;
+  contractRef?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  /** Estado calculado por fechas (el guardado es manual). */
+  effectiveStatus?: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "CANCELLED";
+  nextBillingDate?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1426,6 +1440,10 @@ export type UpsertPlatformLicenseInput = {
   endsAt: string;
   status?: PlatformLicenseDTO["status"];
   notes?: string | null;
+  contractRef?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 };
 
 export const platformLicenseApi = {

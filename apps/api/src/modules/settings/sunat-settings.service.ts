@@ -1,3 +1,4 @@
+import { diffForAudit } from "../admin/audit-log.util";
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -65,6 +66,7 @@ export class SunatSettingsService {
 
   async update(input: UpsertSunatSettingsInput, actorId?: string) {
     const { solPassword, certPem, certKeyPem, ...rest } = input;
+    const previous = await this.get();
     const data: Record<string, unknown> = { ...rest };
     // Solo se toca el secreto si vino un valor no vacío — un string vacío o
     // ausente significa "no lo cambies", no "bórralo".
@@ -85,7 +87,8 @@ export class SunatSettingsService {
       action: "SUNAT_SETTINGS_UPDATE",
       entity: "SunatSettings",
       entityId: SETTINGS_ID,
-      after: { changedFields: Object.keys(input) },
+      // Valores anteriores y nuevos de lo que cambió (nunca los secretos): sustenta, por ejemplo, desde cuándo rige un IGV distinto.
+      ...(({ before, after }) => ({ before, after: { ...after, changedFields: Object.keys(input) } }))(diffForAudit(previous as unknown as Record<string, unknown>, input as unknown as Record<string, unknown>)),
     });
     return this.get();
   }

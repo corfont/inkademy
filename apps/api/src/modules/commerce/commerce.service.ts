@@ -39,6 +39,7 @@ interface GrantFreeAccessInput {
   userEmail?: string;
   companyId?: string;
   seatPoolQty?: number;
+  accessEndsAt?: string;
   note: string;
 }
 
@@ -808,6 +809,12 @@ export class CommerceService {
     }
     const title = ((offeringTitle as Record<string, string>) ?? {}).es ?? "un curso de Inkademy";
 
+    if (input.accessEndsAt && input.companyId) {
+      throw new BadRequestException("La fecha límite aplica a cortesías a una persona; los cupos de empresa no tienen vencimiento propio.");
+    }
+    const accessEndsAt = input.accessEndsAt ? new Date(`${input.accessEndsAt}T23:59:59-05:00`) : null;
+    if (accessEndsAt && accessEndsAt.getTime() <= Date.now()) throw new BadRequestException("La fecha límite del acceso debe ser posterior a hoy.");
+
     if (input.companyId) {
       if (!input.seatPoolQty) throw new BadRequestException("seatPoolQty es requerido al otorgar a una empresa");
       const company = await this.prisma.company.findUnique({ where: { id: input.companyId } });
@@ -850,7 +857,8 @@ export class CommerceService {
       throw new BadRequestException("Este usuario ya tiene una matrícula activa en esta oferta");
     }
 
-    const accessExpiresAt = accessDurationPolicy ? computeAccessExpiresAt(accessDurationPolicy, new Date()) : null;
+    // Si el admin fijó una fecha límite, manda sobre la duración normal del curso.
+    const accessExpiresAt = accessEndsAt ?? (accessDurationPolicy ? computeAccessExpiresAt(accessDurationPolicy, new Date()) : null);
     const enrollment = await this.prisma.enrollment.create({
       data: { userId, offeringKind: input.offeringKind, courseId, programId, source: "ADMIN_GRANTED", accessExpiresAt },
     });
@@ -868,7 +876,7 @@ export class CommerceService {
       action: "GRANT_FREE_ACCESS",
       entity: input.offeringKind === "COURSE" ? "Course" : "Program",
       entityId: courseId ?? programId,
-      after: { userId, note: input.note },
+      after: { userId, note: input.note, accessEndsAt: accessExpiresAt ? accessExpiresAt.toISOString() : null },
     });
 
     await this.notifications.sendFreeAccessGranted(user.email, title, userId);

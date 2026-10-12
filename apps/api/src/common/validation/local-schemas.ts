@@ -31,6 +31,15 @@ export const upsertLessonNoteSchema = z.object({
 export const submitCourseRatingSchema = z.object({
   stars: z.number().int().min(1).max(5),
   comment: z.string().max(2000).optional(),
+  // Calificación por categoría (contenido, docente, plataforma…) y aspectos a mejorar: opcionales, no bloquean el certificado.
+  dimensions: z.array(z.object({ dimensionId: z.string().uuid(), stars: z.number().int().min(1).max(5) })).max(12).optional(),
+  improvements: z.array(z.string().max(60)).max(12).optional(),
+});
+
+export const upsertRatingDimensionSchema = z.object({
+  label: z.string().min(2).max(80).optional(),
+  active: z.boolean().optional(),
+  order: z.number().int().min(0).max(100).optional(),
 });
 
 export const catalogFiltersSchema = z.object({
@@ -482,6 +491,9 @@ export const upsertPartnerInstitutionSchema = z.object({
   feeCurrency: z.enum(["PEN", "USD"]).optional(),
   invoicesDirectly: z.boolean().optional(),
   active: z.boolean().optional(),
+  paymentMethod: z.enum(["TRANSFER", "CHEQUE", "OTHER"]).nullable().optional(),
+  paymentNotes: z.string().max(2000).nullable().optional(),
+  paymentTermsDays: z.number().int().min(0).max(365).nullable().optional(),
 });
 
 export const addCoursePartnershipSchema = z.object({
@@ -554,6 +566,13 @@ export const upsertRoyaltyRecipientSchema = z.object({
   feePercent: z.number().min(0).max(100).optional(),
   feeCurrency: z.enum(["PEN", "USD"]).optional(),
   active: z.boolean().optional(),
+  bankName: z.string().max(120).nullable().optional(),
+  accountHolder: z.string().max(160).nullable().optional(),
+  accountNumber: z.string().max(40).nullable().optional(),
+  // CCI peruano: 20 dígitos (se acepta con espacios o guiones y se normaliza).
+  accountCci: z.string().max(30).nullable().optional().refine((v) => !v || /^\d{20}$/.test(v.replace(/[\s-]/g, "")), "El CCI debe tener 20 dígitos."),
+  documentType: z.enum(["DNI", "RUC", "CE"]).nullable().optional(),
+  documentNumber: z.string().max(20).nullable().optional(),
 });
 
 export const addCourseRoyaltySchema = z.object({
@@ -624,6 +643,8 @@ export const grantFreeAccessSchema = z
     userEmail: z.string().email().optional(),
     companyId: z.string().uuid().optional(),
     seatPoolQty: z.number().int().positive().optional(),
+    // Hasta cuándo tiene acceso quien recibe la cortesía (fecha, al final de ese día en hora de Lima). Vacío = la duración normal del curso.
+    accessEndsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     note: z.string().min(3),
   })
   .refine((v) => Boolean(v.userEmail) !== Boolean(v.companyId), {

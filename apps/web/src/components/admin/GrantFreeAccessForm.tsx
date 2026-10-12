@@ -18,6 +18,7 @@ export function GrantFreeAccessForm() {
   const [companyId, setCompanyId] = useState("");
   const [seatPoolQty, setSeatPoolQty] = useState("1");
   const [note, setNote] = useState("");
+  const [accessEndsAt, setAccessEndsAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -86,6 +87,7 @@ export function GrantFreeAccessForm() {
         userEmail: recipientKind === "PERSON" ? selectedUser?.email : undefined,
         companyId: recipientKind === "COMPANY" ? companyId : undefined,
         seatPoolQty: recipientKind === "COMPANY" ? Number(seatPoolQty) : undefined,
+        accessEndsAt: recipientKind === "PERSON" && accessEndsAt ? accessEndsAt : undefined,
         note,
       });
       setSuccess(
@@ -241,6 +243,14 @@ export function GrantFreeAccessForm() {
                 <Label htmlFor="seatPoolQty">Cupos gratuitos</Label>
                 <Input id="seatPoolQty" type="number" min="1" required value={seatPoolQty} onChange={(e) => setSeatPoolQty(e.target.value)} />
               </div>
+            </div>
+          )}
+
+          {recipientKind === "PERSON" && (
+            <div className="max-w-xs">
+              <Label htmlFor="accessEndsAt">Acceso hasta (opcional)</Label>
+              <Input id="accessEndsAt" type="date" value={accessEndsAt} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setAccessEndsAt(e.target.value)} />
+              <p className="mt-1 text-xs text-ash-500">Vacío = la duración normal del curso. Con fecha, el acceso termina al final de ese día.</p>
             </div>
           )}
 

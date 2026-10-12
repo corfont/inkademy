@@ -42,8 +42,8 @@ export class SettingsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN")
   @ApiOperation({ summary: "Actualiza la identidad visual de la plataforma" })
-  update(@Body(new ZodValidationPipe(upsertSettingsSchema)) dto: any) {
-    return this.settingsService.update(dto);
+  update(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertSettingsSchema)) dto: any) {
+    return this.settingsService.update(dto, user.id);
   }
 
   @Get("admin/sunat-settings")
@@ -78,8 +78,8 @@ export class SettingsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN")
   @ApiOperation({ summary: "Actualiza la configuración del asistente de IA" })
-  updateChatbotSettings(@Body(new ZodValidationPipe(upsertChatbotSettingsSchema)) dto: any) {
-    return this.chatbotSettingsService.update(dto);
+  updateChatbotSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertChatbotSettingsSchema)) dto: any) {
+    return this.chatbotSettingsService.update(dto, user.id);
   }
 
   @Get("admin/email-server-settings")
@@ -114,7 +114,7 @@ export class SettingsController {
   @UseGuards(RolesGuard)
   @Roles("ADMIN")
   @ApiOperation({ summary: "Actualiza qué notificaciones se envían y por qué canal(es)" })
-  updateNotificationSettings(@Body(new ZodValidationPipe(upsertNotificationSettingsSchema)) dto: any) {
-    return this.notificationSettingsService.update(dto);
+  updateNotificationSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(upsertNotificationSettingsSchema)) dto: any) {
+    return this.notificationSettingsService.update(dto, user.id);
   }
 }

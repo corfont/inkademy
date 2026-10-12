@@ -1,3 +1,4 @@
+import { diffForAudit, logAudit } from "../admin/audit-log.util";
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -109,8 +110,9 @@ export class SettingsService {
     };
   }
 
-  async update(input: Partial<Omit<typeof DEFAULTS, "id">>) {
-    return this.prisma.platformSettings.upsert({
+  async update(input: Partial<Omit<typeof DEFAULTS, "id">>, actorId?: string) {
+    const previous = await this.get();
+    const updated = await this.prisma.platformSettings.upsert({
       where: { id: SETTINGS_ID },
       // `as never`: los campos Json (courseCardFields, certificateEmailText)
       // aceptan `null` en runtime pero Prisma exige el sentinel especial
@@ -119,5 +121,8 @@ export class SettingsService {
       create: { id: SETTINGS_ID, ...input } as never,
       update: input as never,
     });
+    const { before, after, changed } = diffForAudit(previous as unknown as Record<string, unknown>, input as unknown as Record<string, unknown>);
+    if (changed) await logAudit(this.prisma, { actorId, action: "PLATFORM_SETTINGS_UPDATE", entity: "PlatformSettings", entityId: SETTINGS_ID, before, after });
+    return updated;
   }
 }

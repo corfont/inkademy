@@ -149,6 +149,7 @@ export function RoyaltyRecipientManager({ recipients, courses }: { recipients: a
               </div>
             </div>
 
+            <PaymentDetailsEditor recipient={r} busy={busy} run={run} />
             <CourseRoyaltyEditor royaltyRecipientId={r.id} assigned={r.courses ?? []} courses={courses} busy={busy} run={run} />
           </CardContent>
         </Card>
@@ -338,6 +339,77 @@ function CourseRoyaltyEditor({
           Asignar
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Cómo se le paga a quien recibe regalías: titular, banco, cuenta y CCI. Si el destinatario está vinculado a una cuenta de la plataforma con sus propios
+ * datos bancarios y aquí no se llenó nada, se muestran esos (sin duplicar a mano lo que la persona ya registró en su perfil).
+ */
+function PaymentDetailsEditor({ recipient, busy, run }: { recipient: any; busy: boolean; run: (a: () => Promise<unknown>) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({
+    accountHolder: recipient.accountHolder ?? "",
+    bankName: recipient.bankName ?? "",
+    accountNumber: recipient.accountNumber ?? "",
+    accountCci: recipient.accountCci ?? "",
+    documentType: (recipient.documentType ?? "") as "" | "DNI" | "RUC" | "CE",
+    documentNumber: recipient.documentNumber ?? "",
+  });
+  const own = recipient.accountNumber || recipient.accountCci;
+  const fromUser = !own && (recipient.user?.bankAccountNumber || recipient.user?.bankAccountCci);
+  return (
+    <div className="rounded-md border border-paper-border p-3 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-ash-600">
+          {own
+            ? `Pago: ${recipient.bankName ?? "banco no indicado"} · cuenta ${recipient.accountNumber ?? "—"}${recipient.accountCci ? ` · CCI ${recipient.accountCci}` : ""}${recipient.accountHolder ? ` · titular ${recipient.accountHolder}` : ""}`
+            : fromUser
+              ? `Pago (de su perfil): ${recipient.user.bankName ?? "banco no indicado"} · cuenta ${recipient.user.bankAccountNumber ?? "—"}${recipient.user.bankAccountCci ? ` · CCI ${recipient.user.bankAccountCci}` : ""}`
+              : <span className="font-medium text-warning">Sin datos de pago registrados</span>}
+        </p>
+        <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>{open ? "Cerrar" : "Datos de pago"}</Button>
+      </div>
+      {open && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div><Label htmlFor={`rp-h-${recipient.id}`}>Titular de la cuenta</Label><Input id={`rp-h-${recipient.id}`} value={f.accountHolder} onChange={(e) => setF({ ...f, accountHolder: e.target.value })} /></div>
+          <div><Label htmlFor={`rp-b-${recipient.id}`}>Banco</Label><Input id={`rp-b-${recipient.id}`} value={f.bankName} onChange={(e) => setF({ ...f, bankName: e.target.value })} /></div>
+          <div><Label htmlFor={`rp-n-${recipient.id}`}>N.º de cuenta</Label><Input id={`rp-n-${recipient.id}`} value={f.accountNumber} onChange={(e) => setF({ ...f, accountNumber: e.target.value })} /></div>
+          <div><Label htmlFor={`rp-c-${recipient.id}`}>CCI (20 dígitos)</Label><Input id={`rp-c-${recipient.id}`} value={f.accountCci} inputMode="numeric" onChange={(e) => setF({ ...f, accountCci: e.target.value })} /></div>
+          <div>
+            <Label htmlFor={`rp-dt-${recipient.id}`}>Documento del titular</Label>
+            <Select id={`rp-dt-${recipient.id}`} value={f.documentType} onChange={(e) => setF({ ...f, documentType: e.target.value as "" | "DNI" | "RUC" | "CE" })}>
+              <option value="">—</option>
+              <option value="DNI">DNI</option>
+              <option value="RUC">RUC</option>
+              <option value="CE">Carné de extranjería</option>
+            </Select>
+          </div>
+          <div><Label htmlFor={`rp-dn-${recipient.id}`}>N.º de documento</Label><Input id={`rp-dn-${recipient.id}`} value={f.documentNumber} onChange={(e) => setF({ ...f, documentNumber: e.target.value })} /></div>
+          <div className="sm:col-span-3">
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await adminApi.updateRoyaltyRecipient(recipient.id, {
+                    accountHolder: f.accountHolder.trim() || null,
+                    bankName: f.bankName.trim() || null,
+                    accountNumber: f.accountNumber.trim() || null,
+                    accountCci: f.accountCci.replace(/[\s-]/g, "") || null,
+                    documentType: f.documentType || null,
+                    documentNumber: f.documentNumber.trim() || null,
+                  });
+                  setOpen(false);
+                })
+              }
+            >
+              Guardar datos de pago
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

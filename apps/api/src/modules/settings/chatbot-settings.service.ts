@@ -1,3 +1,4 @@
+import { diffForAudit, logAudit } from "../admin/audit-log.util";
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@inkademy/db";
 import { PRISMA } from "../../common/prisma/prisma.module";
@@ -42,8 +43,9 @@ export class ChatbotSettingsService {
     };
   }
 
-  async update(input: UpsertChatbotSettingsInput) {
+  async update(input: UpsertChatbotSettingsInput, actorId?: string) {
     const { apiKey, ...rest } = input;
+    const previous = await this.get();
     const data: Record<string, unknown> = { ...rest };
     if (apiKey) data.apiKey = apiKey;
 
@@ -52,6 +54,8 @@ export class ChatbotSettingsService {
       create: { id: SETTINGS_ID, ...data },
       update: data,
     });
+    const { before, after, changed } = diffForAudit(previous as unknown as Record<string, unknown>, input as unknown as Record<string, unknown>);
+    if (changed) await logAudit(this.prisma, { actorId, action: "CHATBOT_SETTINGS_UPDATE", entity: "ChatbotSettings", entityId: SETTINGS_ID, before, after });
     return this.get();
   }
 }

@@ -3,3 +3,4 @@ export * from "./types";
 export * from "./validation";
 export * from "./certificate-tags";
 export * from "./scorm-authoring";
+export * from "./rating";

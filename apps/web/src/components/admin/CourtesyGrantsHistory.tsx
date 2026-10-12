@@ -122,7 +122,7 @@ export function CourtesyGrantsHistory({ grants, areas }: { grants: any[]; areas:
                     )}
                   </td>
                   <td className="p-3 text-ash-600">{g.authorizedBy}</td>
-                  <td className="p-3 text-ash-500">{g.note ?? "—"}</td>
+                  <td className="p-3 text-ash-500">{g.note ?? "—"}{g.accessEndsAt ? ` · acceso hasta ${new Date(g.accessEndsAt).toLocaleDateString("es-PE", { timeZone: "America/Lima" })}` : ""}</td>
                   <td className="p-3 text-right">
                     <Button size="sm" variant="ghost" className="text-ash-600 hover:text-danger" disabled={busy} onClick={() => setDeleteTargetIds([g.id])}>
                       Eliminar

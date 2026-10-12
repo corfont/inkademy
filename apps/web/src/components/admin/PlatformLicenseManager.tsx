@@ -50,6 +50,10 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
     startsAt: "",
     endsAt: "",
     notes: "",
+    contractRef: "",
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
   });
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
@@ -86,8 +90,12 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
         startsAt: new Date(form.startsAt).toISOString(),
         endsAt: new Date(form.endsAt).toISOString(),
         notes: form.notes || null,
+        contractRef: form.contractRef || null,
+        contactName: form.contactName || null,
+        contactEmail: form.contactEmail || null,
+        contactPhone: form.contactPhone || null,
       });
-      setForm({ clientName: "", domain: "", deploymentUrl: "", billingCycle: "ANNUAL", priceAmount: "", currency: "PEN", startsAt: "", endsAt: "", notes: "" });
+      setForm({ clientName: "", domain: "", deploymentUrl: "", billingCycle: "ANNUAL", priceAmount: "", currency: "PEN", startsAt: "", endsAt: "", notes: "", contractRef: "", contactName: "", contactEmail: "", contactPhone: "" });
     });
   }
 
@@ -149,6 +157,22 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
             </div>
           </div>
           <div>
+            <Label htmlFor="pl-contract">Referencia del contrato (opcional)</Label>
+            <Input id="pl-contract" value={form.contractRef} placeholder="N.º de contrato u orden de servicio" onChange={(e) => setForm((f) => ({ ...f, contractRef: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="pl-contact">Contacto responsable (opcional)</Label>
+            <Input id="pl-contact" value={form.contactName} onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="pl-cemail">Correo del contacto</Label>
+            <Input id="pl-cemail" type="email" value={form.contactEmail} onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="pl-cphone">Teléfono del contacto</Label>
+            <Input id="pl-cphone" value={form.contactPhone} onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))} />
+          </div>
+          <div>
             <Label htmlFor="pl-notes">Notas (opcional)</Label>
             <Input id="pl-notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
           </div>
@@ -168,12 +192,17 @@ export function PlatformLicenseManager({ licenses }: { licenses: PlatformLicense
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-ink-900">{license.clientName}</span>
-                  <Badge variant={STATUS_VARIANT[license.status]}>{STATUS_LABEL[license.status]}</Badge>
+                  <Badge variant={STATUS_VARIANT[license.effectiveStatus ?? license.status]}>{STATUS_LABEL[license.effectiveStatus ?? license.status]}</Badge>
                 </div>
                 <p className="mt-1 text-sm text-ash-500">
                   {license.currency} {Number(license.priceAmount).toLocaleString("es-PE", { minimumFractionDigits: 2 })} ·{" "}
                   {license.billingCycle === "MONTHLY" ? "mensual" : "anual"} · vence el {toDateInput(license.endsAt)}
                   {license.domain ? ` · ${license.domain}` : ""}
+                </p>
+                <p className="text-xs text-ash-500">
+                  {license.nextBillingDate ? `Próxima facturación: ${toDateInput(license.nextBillingDate)}` : "Sin próxima facturación"}
+                  {license.contractRef ? ` · Contrato: ${license.contractRef}` : ""}
+                  {license.contactName ? ` · Contacto: ${license.contactName}${license.contactPhone ? ` (${license.contactPhone})` : ""}` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">

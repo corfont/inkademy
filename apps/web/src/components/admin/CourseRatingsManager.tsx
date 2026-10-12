@@ -105,6 +105,41 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
             </CardContent>
           </Card>
 
+          {(data.dimensions ?? []).length > 0 && (
+            <Card>
+              <CardContent className="p-6">
+                <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Calificación por categoría</h2>
+                <div className="flex flex-col gap-2">
+                  {data.dimensions.map((d: any) => (
+                    <div key={d.id} className="flex items-center gap-3 text-sm">
+                      <span className="w-48 flex-none text-ash-700">{d.label}</span>
+                      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-paper-muted">
+                        <div className="h-full rounded-full bg-gold-400" style={{ width: `${(d.avg / 5) * 100}%` }} />
+                      </div>
+                      <span className="w-28 flex-none text-right text-xs text-ash-600">{d.avg.toFixed(1)} / 5 · {d.count} resp.</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {(data.improvements ?? []).length > 0 && (
+            <Card>
+              <CardContent className="p-6">
+                <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Aspectos que los alumnos piden mejorar</h2>
+                <div className="flex flex-col gap-1.5">
+                  {data.improvements.map((i: any) => (
+                    <div key={i.key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-ash-700">{i.label}</span>
+                      <span className="rounded-full bg-paper-muted px-2 py-0.5 text-xs text-ash-600">{i.count} alumno{i.count === 1 ? "" : "s"}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardContent className="p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -146,6 +181,9 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
                           <MessageCircle className="mt-0.5 h-4 w-4 flex-none text-ash-400" aria-hidden="true" />
                           <div>
                             <p className="text-sm text-ink-800">{r.comment}</p>
+                            {(r.answers ?? []).length > 0 && (
+                              <p className="mt-1 text-xs text-ash-500">{r.answers.map((a: any) => `${a.dimension}: ${a.stars}/5`).join(" · ")}</p>
+                            )}
                             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ash-500">
                               <StarRow stars={r.stars} /> · {r.studentName} · {localize(r.courseTitle, "es")} · {formatDate(r.createdAt, "es")}
                             </p>
@@ -161,5 +199,63 @@ export function CourseRatingsManager({ initial }: { initial: any }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Categorías en las que el alumno califica: el administrador las renombra, activa o desactiva y agrega nuevas. */
+export function RatingDimensionsManager({ initial }: { initial: any[] }) {
+  const [dims, setDims] = useState(initial);
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reload() {
+    setDims(await adminApi.ratingDimensions());
+  }
+  async function toggle(d: any) {
+    setBusy(true);
+    try {
+      await adminApi.updateRatingDimension(d.id, { active: !d.active });
+      await reload();
+    } catch {
+      setError("No se pudo cambiar la categoría.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function add() {
+    if (label.trim().length < 2) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await adminApi.createRatingDimension({ label: label.trim() });
+      setLabel("");
+      await reload();
+    } catch {
+      setError("No se pudo crear la categoría.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 p-6">
+        <h2 className="font-serif text-lg font-semibold text-ink-900">Categorías de la calificación</h2>
+        <p className="text-sm text-ash-500">Lo que el alumno califica con estrellas al terminar un curso, además de la calificación general. Desactivar una categoría la oculta a los alumnos pero conserva sus respuestas.</p>
+        <ul className="flex flex-col divide-y divide-paper-border rounded-md border border-paper-border">
+          {dims.map((d) => (
+            <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <span className={d.active ? "text-ink-900" : "text-ash-400 line-through"}>{d.label}</span>
+              <button type="button" disabled={busy} onClick={() => toggle(d)} className="rounded-md border border-paper-border px-2.5 py-1 text-xs hover:bg-paper-muted">{d.active ? "Desactivar" : "Activar"}</button>
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-2">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nueva categoría (ej. Utilidad para mi trabajo)" className="h-10 flex-1 rounded-md border border-paper-border bg-paper px-3 text-sm" />
+          <button type="button" disabled={busy || label.trim().length < 2} onClick={add} className="rounded-md bg-ink-800 px-3 text-sm font-medium text-paper disabled:opacity-50">Agregar</button>
+        </div>
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </CardContent>
+    </Card>
   );
 }

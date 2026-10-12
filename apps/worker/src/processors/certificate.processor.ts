@@ -151,13 +151,38 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     WEEKS: ["semana", "semanas"],
     MONTHS: ["mes", "meses"],
   };
+  // Horas REALES del curso (número): si está dado en horas, ese valor; si está en semanas o meses no se puede convertir a horas por aritmética, así que se
+  // suman las horas de las clases en vivo programadas y de las lecciones. Para un programa/diplomado, la suma de las horas de sus cursos. (Antes salía
+  // «8 semanas» y, en un diplomado, vacío — lo que no sirve para acreditar el mínimo de horas que exigen los concursos del Estado.)
+  async function courseHoursOf(courseId: string, unit: string, declaredHours: number): Promise<number | null> {
+    if (unit === "HOURS") return declaredHours;
+    const [sessions, lessons] = await Promise.all([
+      prisma.liveSession.findMany({ where: { courseId, status: { not: "CANCELLED" } }, select: { startsAt: true, endsAt: true } }),
+      prisma.lesson.findMany({ where: { module: { courseId } }, select: { durationMinutes: true } }),
+    ]);
+    const live = sessions.reduce((s, x) => s + (x.endsAt.getTime() - x.startsAt.getTime()) / 3_600_000, 0);
+    const recorded = lessons.reduce((s, l) => s + (l.durationMinutes ?? 0), 0) / 60;
+    const total = Math.round((live + recorded) * 10) / 10;
+    return total > 0 ? total : null;
+  }
+  let hoursNumber: number | null = null;
+  if (certificate.course) {
+    hoursNumber = await courseHoursOf(certificate.course.id, certificate.course.durationUnit, certificate.course.durationHours);
+  } else if (certificate.programId) {
+    const items = await prisma.programCourse.findMany({ where: { programId: certificate.programId }, include: { course: { select: { id: true, durationUnit: true, durationHours: true } } } });
+    const parts = await Promise.all(items.map((i) => courseHoursOf(i.course.id, i.course.durationUnit, i.course.durationHours)));
+    const known = parts.filter((h): h is number => h !== null);
+    hoursNumber = known.length > 0 ? Math.round(known.reduce((s, h) => s + h, 0) * 10) / 10 : null;
+  }
+  const hoursText = hoursNumber !== null ? `${hoursNumber} ${hoursNumber === 1 ? "hora" : "horas"}` : "";
   const courseDuration = certificate.course
-    ? (() => {
+    ? hoursText ||
+      (() => {
         const [singular, plural] = DURATION_UNIT_ES[certificate.course!.durationUnit] ?? DURATION_UNIT_ES.HOURS;
         const hours = certificate.course!.durationHours;
         return `${hours} ${hours === 1 ? singular : plural}`;
       })()
-    : "";
+    : hoursText;
   const issuedDate = certificate.issuedAt.toLocaleDateString(locale === "en" ? "en-US" : "es-PE", {
     year: "numeric",
     month: "long",
@@ -192,8 +217,21 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
   // cohorte propias); lo que sí tiene fecha real es la matrícula del alumno
   // (Enrollment.enrolledAt/completedAt), que es lo que de verdad varía
   // persona por persona y es lo que un certificado debería reflejar.
-  const courseStartDate = certificate.enrollment?.enrolledAt ? dateFmt(certificate.enrollment.enrolledAt) : "";
-  const courseEndDate = certificate.enrollment?.completedAt ? dateFmt(certificate.enrollment.completedAt) : issuedDate;
+  // Cursos con clases en vivo: las fechas del CURSO (primera y última clase); cursos grabados: las de la matrícula del alumno.
+  let courseStartDate = certificate.enrollment?.enrolledAt ? dateFmt(certificate.enrollment.enrolledAt) : "";
+  let courseEndDate = certificate.enrollment?.completedAt ? dateFmt(certificate.enrollment.completedAt) : issuedDate;
+  if (certificate.courseId) {
+    const [first, last] = await Promise.all([
+      prisma.liveSession.findFirst({ where: { courseId: certificate.courseId, status: { not: "CANCELLED" } }, orderBy: { startsAt: "asc" }, select: { startsAt: true } }),
+      prisma.liveSession.findFirst({ where: { courseId: certificate.courseId, status: { not: "CANCELLED" } }, orderBy: { endsAt: "desc" }, select: { endsAt: true } }),
+    ]);
+    if (first && last) {
+      courseStartDate = dateFmt(first.startsAt);
+      courseEndDate = dateFmt(last.endsAt);
+    }
+  }
+  // Frase lista para el diploma: «del 11 de junio de 2026 al 15 de noviembre de 2026».
+  const coursePeriod = courseStartDate && courseEndDate ? (locale === "en" ? `from ${courseStartDate} to ${courseEndDate}` : `del ${courseStartDate} al ${courseEndDate}`) : "";
   const companyName = certificate.enrollment?.company?.legalName ?? "";
 
   // Convenio institucional (3ra firma) — "a veces se tiene un convenio con
@@ -231,6 +269,8 @@ export async function processCertificateGenerateJob(job: Job<CertificateGenerate
     courseStartDate,
     courseEndDate,
     courseDuration,
+    courseHours: hoursText,
+    coursePeriod,
     issuedDate,
     finalScore: certificate.finalScore != null ? certificate.finalScore.toFixed(1) : "Aprobado",
     code: certificate.code,

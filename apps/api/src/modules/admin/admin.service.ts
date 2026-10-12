@@ -1,3 +1,4 @@
+import { RATING_IMPROVEMENT_OPTIONS } from "@inkademy/shared";
 import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
@@ -1405,7 +1406,7 @@ export class AdminService {
         // "Puede ser un docente, un personal externo, inclusive un alumno"
         // — se muestra el rol de la cuenta vinculada (si hay una) para que
         // el admin vea de un vistazo de qué tipo de persona se trata.
-        user: { select: { id: true, firstName: true, lastName: true, email: true, globalRole: true } },
+        user: { select: { id: true, firstName: true, lastName: true, email: true, globalRole: true, bankName: true, bankAccountNumber: true, bankAccountCci: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -2067,6 +2068,7 @@ export class AdminService {
     const logs = await this.prisma.auditLog.findMany({
       where: {
         action: "GRANT_FREE_ACCESS",
+        hiddenAt: null,
         ...(filters.year
           ? { createdAt: { gte: new Date(`${filters.year}-01-01`), lt: new Date(`${filters.year + 1}-01-01`) } }
           : {}),
@@ -2107,6 +2109,7 @@ export class AdminService {
         beneficiaryName: l.company ? l.company.legalName : beneficiaryUser ? `${beneficiaryUser.firstName} ${beneficiaryUser.lastName}` : "—",
         seatPoolQty: typeof after?.seatPoolQty === "number" ? after.seatPoolQty : null,
         note: typeof after?.note === "string" ? after.note : null,
+        accessEndsAt: typeof after?.accessEndsAt === "string" ? after.accessEndsAt : null,
       };
     });
 
@@ -2116,8 +2119,9 @@ export class AdminService {
   }
 
   async deleteCourtesyGrants(ids: string[]) {
-    await this.prisma.auditLog.deleteMany({ where: { id: { in: ids }, action: "GRANT_FREE_ACCESS" } });
-    return { deleted: ids.length };
+    // Se oculta del listado de cortesías, pero el registro de auditoría se conserva (antes se borraba la evidencia).
+    const r = await this.prisma.auditLog.updateMany({ where: { id: { in: ids }, action: "GRANT_FREE_ACCESS" }, data: { hiddenAt: new Date() } });
+    return { deleted: r.count };
   }
 
   /**
@@ -2133,10 +2137,22 @@ export class AdminService {
   async listCourseRatings(filters: { courseId?: string } = {}) {
     const ratings = await this.prisma.courseRating.findMany({
       where: filters.courseId ? { courseId: filters.courseId } : {},
-      include: { user: true, course: true },
+      include: { user: true, course: true, answers: { include: { dimension: { select: { id: true, label: true } } } } },
       orderBy: { createdAt: "desc" },
     });
     const total = ratings.length;
+    // Promedio por categoría y conteo de «aspectos a mejorar»: lo que antes no se podía saber (solo había una estrella general y un comentario).
+    const byDim = new Map<string, { id: string; label: string; sum: number; count: number }>();
+    const improvementCount = new Map<string, number>();
+    for (const r of ratings) {
+      for (const a of r.answers) {
+        const d = byDim.get(a.dimensionId) ?? { id: a.dimensionId, label: a.dimension.label, sum: 0, count: 0 };
+        d.sum += a.stars;
+        d.count += 1;
+        byDim.set(a.dimensionId, d);
+      }
+      for (const k of r.improvements) improvementCount.set(k, (improvementCount.get(k) ?? 0) + 1);
+    }
     const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     let sum = 0;
     for (const r of ratings) {
@@ -2153,16 +2169,42 @@ export class AdminService {
       avgStars: total > 0 ? sum / total : null,
       distribution,
       courses: courses.map((c) => ({ id: c.id, title: c.title })),
+      dimensions: [...byDim.values()].map((d) => ({ id: d.id, label: d.label, avg: d.sum / d.count, count: d.count })),
+      improvements: [...improvementCount.entries()]
+        .map(([key, count]) => ({ key, label: RATING_IMPROVEMENT_OPTIONS.find((o) => o.key === key)?.label ?? key, count }))
+        .sort((a, b) => b.count - a.count),
       responses: ratings.map((r) => ({
         id: r.id,
         stars: r.stars,
         comment: r.comment,
+        improvements: r.improvements,
+        answers: r.answers.map((a) => ({ dimension: a.dimension.label, stars: a.stars })),
         courseId: r.courseId,
         courseTitle: r.course.title,
         studentName: r.user.displayName ?? `${r.user.firstName} ${r.user.lastName}`,
         createdAt: r.createdAt.toISOString(),
       })),
     };
+  }
+
+  // Categorías de la calificación (administrables).
+  listRatingDimensions() {
+    return this.prisma.ratingDimension.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
+  }
+
+  async upsertRatingDimension(id: string | null, input: { label?: string; active?: boolean; order?: number }, actorId?: string) {
+    if (id) {
+      const before = await this.prisma.ratingDimension.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException("Categoría no encontrada");
+      const updated = await this.prisma.ratingDimension.update({ where: { id }, data: input });
+      await logAudit(this.prisma, { actorId, action: "RATING_DIMENSION_UPDATE", entity: "RatingDimension", entityId: id, before: before as never, after: input });
+      return updated;
+    }
+    if (!input.label) throw new BadRequestException("Indica el nombre de la categoría.");
+    const key = input.label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || `cat-${Date.now()}`;
+    const created = await this.prisma.ratingDimension.create({ data: { key: `${key}-${Date.now().toString(36)}`, label: input.label, order: input.order ?? 50 } });
+    await logAudit(this.prisma, { actorId, action: "RATING_DIMENSION_CREATE", entity: "RatingDimension", entityId: created.id, after: input });
+    return created;
   }
 
   // --- Empresas ---

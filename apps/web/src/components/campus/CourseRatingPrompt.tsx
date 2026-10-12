@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Star, PartyPopper } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +31,14 @@ export function CourseRatingPrompt({
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Categorías (contenido, docente, plataforma…) y aspectos a mejorar: opcionales, no bloquean el certificado.
+  const [form, setForm] = useState<{ dimensions: { id: string; label: string }[]; improvements: { key: string; label: string }[] } | null>(null);
+  const [dimStars, setDimStars] = useState<Record<string, number>>({});
+  const [improve, setImprove] = useState<string[]>([]);
+  useEffect(() => {
+    if (!open || form) return;
+    meApi.ratingForm().then(setForm).catch(() => setForm({ dimensions: [], improvements: [] }));
+  }, [open, form]);
 
   async function handleSubmit() {
     if (stars === 0) {
@@ -40,7 +48,13 @@ export function CourseRatingPrompt({
     setSaving(true);
     setError(null);
     try {
-      await meApi.submitRating(enrollmentId, stars, comment.trim() || undefined);
+      await meApi.submitRating(
+        enrollmentId,
+        stars,
+        comment.trim() || undefined,
+        Object.entries(dimStars).map(([dimensionId, s]) => ({ dimensionId, stars: s })),
+        improve,
+      );
       onSubmitted();
     } catch {
       setError("No se pudo guardar tu calificación. Intenta de nuevo.");
@@ -78,6 +92,38 @@ export function CourseRatingPrompt({
             </button>
           ))}
         </div>
+        {form && form.dimensions.length > 0 && (
+          <div className="w-full rounded-lg border border-paper-border p-3 text-left">
+            <p className="mb-2 text-sm font-medium text-ink-900">¿Cómo calificas cada aspecto? <span className="font-normal text-ash-500">(opcional)</span></p>
+            <div className="flex flex-col gap-2">
+              {form.dimensions.map((d) => (
+                <div key={d.id} className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-ash-700">{d.label}</span>
+                  <span className="flex gap-0.5" role="radiogroup" aria-label={d.label}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button key={n} type="button" role="radio" aria-checked={dimStars[d.id] === n} aria-label={`${n} de 5`} onClick={() => setDimStars((m) => ({ ...m, [d.id]: n }))} className="p-0.5">
+                        <Star className={cn("h-5 w-5", n <= (dimStars[d.id] ?? 0) ? "fill-warning text-warning" : "fill-none text-ash-300")} strokeWidth={1.5} />
+                      </button>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {form && form.improvements.length > 0 && (
+          <div className="w-full rounded-lg border border-paper-border p-3 text-left">
+            <p className="mb-2 text-sm font-medium text-ink-900">¿Qué deberíamos mejorar? <span className="font-normal text-ash-500">(puedes marcar varios)</span></p>
+            <div className="flex flex-col gap-1.5">
+              {form.improvements.map((o) => (
+                <label key={o.key} className="flex items-center gap-2 text-sm text-ash-700">
+                  <input type="checkbox" checked={improve.includes(o.key)} onChange={(e) => setImprove((cur) => (e.target.checked ? [...cur, o.key] : cur.filter((k) => k !== o.key)))} />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
