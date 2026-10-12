@@ -1058,6 +1058,7 @@ export const upsertSettingsSchema = z.object({
       showNextLiveSession: z.boolean().optional(),
       showCertificationBadge: z.boolean().optional(),
       showRating: z.boolean().optional(),
+      showPricesToVisitors: z.boolean().optional(),
     })
     .optional(),
   institutionSignatureAssetId: z.string().optional().nullable(),

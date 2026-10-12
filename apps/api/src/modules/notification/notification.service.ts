@@ -311,6 +311,40 @@ export class NotificationService {
     });
   }
 
+  /** Constancia del Libro de Reclamaciones para el consumidor (con folio y plazo de respuesta). */
+  sendComplaintAck(to: string, c: { folio: string; kind: string; fullName: string; description: string; request: string; dueAt: Date }) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const due = c.dueAt.toLocaleDateString("es-PE", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
+    return this.enqueueEmail(EMAIL_JOBS.COMPLAINT_ACK, {
+      to,
+      subject: `Constancia de ${c.kind === "QUEJA" ? "queja" : "reclamo"} ${c.folio} — Inkademy`,
+      html: `<p>Hola ${esc(c.fullName)}, registramos tu ${c.kind === "QUEJA" ? "queja" : "reclamo"} en nuestro Libro de Reclamaciones.</p>
+<p><b>Folio:</b> ${c.folio}<br><b>Plazo de respuesta:</b> hasta el ${due} (15 días hábiles)</p>
+<p><b>Detalle:</b><br>${esc(c.description).replace(/\n/g, "<br>")}</p><p><b>Tu pedido:</b><br>${esc(c.request).replace(/\n/g, "<br>")}</p>
+<p>Esta constancia es tu comprobante. Si no estás conforme con la respuesta puedes acudir a INDECOPI (0800-4-4040).</p>`,
+    });
+  }
+
+  /** Aviso al equipo de un nuevo reclamo o queja. */
+  sendComplaintToTeam(to: string, c: { folio: string; kind: string; fullName: string; service: string; dueAt: Date }) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return this.enqueueEmail(EMAIL_JOBS.COMPLAINT_TEAM, {
+      to,
+      subject: `Nuevo ${c.kind === "QUEJA" ? "QUEJA" : "RECLAMO"} ${c.folio}`,
+      html: `<p>Se registró un ${c.kind === "QUEJA" ? "queja" : "reclamo"} (${c.folio}) de ${esc(c.fullName)} sobre «${esc(c.service)}». Plazo legal: ${c.dueAt.toLocaleDateString("es-PE", { timeZone: "UTC" })}. Se atiende en Admin → Reclamos.</p>`,
+    });
+  }
+
+  /** Respuesta formal al consumidor. */
+  sendComplaintResponse(to: string, c: { folio: string; fullName: string; response: string }) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return this.enqueueEmail(EMAIL_JOBS.COMPLAINT_RESPONSE, {
+      to,
+      subject: `Respuesta a tu reclamo ${c.folio} — Inkademy`,
+      html: `<p>Hola ${esc(c.fullName)}, esta es la respuesta a tu registro ${c.folio}:</p><p>${esc(c.response).replace(/\n/g, "<br>")}</p><p>Si no estás conforme, puedes acudir a INDECOPI (0800-4-4040).</p>`,
+    });
+  }
+
   /** Acuse de recibo para quien pidió la cotización. */
   sendQuoteLeadAck(to: string, contactName: string | null | undefined) {
     return this.enqueueEmail(EMAIL_JOBS.QUOTE_LEAD_ACK, {

@@ -429,12 +429,13 @@ export function AppearanceForm({ settings }: { settings: PlatformSettingsDTO }) 
                 ["showNextLiveSession", "Próxima fecha en vivo"],
                 ["showCertificationBadge", "Insignia de certificación"],
                 ["showRating", "Calificación y reseñas"],
+                ["showPricesToVisitors", "Mostrar precios a visitantes sin sesión"],
               ] as const
             ).map(([key, label]) => (
               <label key={key} className="flex items-center gap-2 text-sm text-ink-700">
                 <input
                   type="checkbox"
-                  checked={form.courseCardFields[key]}
+                  checked={Boolean(form.courseCardFields[key])}
                   onChange={(e) => setForm((f) => ({ ...f, courseCardFields: { ...f.courseCardFields, [key]: e.target.checked } }))}
                 />
                 {label}

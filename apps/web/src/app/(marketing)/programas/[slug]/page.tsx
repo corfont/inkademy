@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
-import { catalogApi } from "@/lib/api-client";
+import { catalogApi, settingsApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_PROGRAM } from "@/lib/mock-data";
@@ -26,6 +26,7 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
   const t = await getTranslations("programDetail");
   const tc = await getTranslations("common");
   const isAuthenticated = Boolean(getServerAccessToken());
+  const showPrices = isAuthenticated || (await settingsApi.get().catch(() => null))?.courseCardFields?.showPricesToVisitors === true;
 
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
   const { data: program, live } = await withFallback(() => catalogApi.program(params.slug), fallback);
@@ -75,7 +76,7 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg border border-paper-border bg-paper p-6 shadow-card">
-            {isAuthenticated ? (
+            {showPrices ? (
               <>
                 <p className="text-sm text-ash-500 line-through">{formatPrice(program.separatePriceTotal, program.priceCurrency, locale)}</p>
                 <p className="mt-1 font-serif text-3xl font-semibold text-gold-600">

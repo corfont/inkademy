@@ -98,6 +98,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/cortesias", label: "Cortesías", icon: Gift, colorClassName: "bg-rose-400/20 text-rose-300" },
     { href: "/admin/reportes", label: "Reportes", icon: FileDown, colorClassName: "bg-indigo-400/20 text-indigo-300" },
     { href: "/admin/soporte", label: t("support"), icon: LifeBuoy, badgeCount: pendingSupport, colorClassName: "bg-red-400/20 text-red-300" },
+    { href: "/admin/reclamos", label: "Libro de Reclamaciones", icon: BookOpen, colorClassName: "bg-rose-400/20 text-rose-300" },
     { href: "/admin/sugerencias", label: "Sugerencias", icon: MessageSquarePlus, badgeCount: pendingSuggestions, colorClassName: "bg-fuchsia-400/20 text-fuchsia-300" },
     { href: "/admin/certificados", label: t("certificates"), icon: Award, colorClassName: "bg-purple-400/20 text-purple-300" },
     { href: "/admin/evaluaciones-pendientes", label: t("pendingReview"), icon: ClipboardCheck, colorClassName: "bg-lime-400/20 text-lime-300" },

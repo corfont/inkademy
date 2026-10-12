@@ -2,6 +2,8 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Select } from "@/components/ui/Input";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 
 const OPTIONS = [
   { value: "newest", label: "Más recientes" },
@@ -20,6 +22,11 @@ export function SortSelect() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const { courseCardFields } = useBrandSettings();
+  // Quien no ve los precios tampoco necesita ordenar por precio.
+  const canSeePrices = Boolean(user) || Boolean(courseCardFields.showPricesToVisitors);
+  const options = canSeePrices ? OPTIONS : OPTIONS.filter((o) => !o.value.startsWith("price"));
   const current = searchParams.get("sort") ?? "newest";
 
   function handleChange(value: string) {
@@ -31,7 +38,7 @@ export function SortSelect() {
 
   return (
     <Select value={current} onChange={(e) => handleChange(e.target.value)} className="w-auto text-sm" aria-label="Ordenar por">
-      {OPTIONS.map((o) => (
+      {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
         </option>

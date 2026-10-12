@@ -26,6 +26,7 @@ import { CompaniesModule } from "./modules/companies/companies.module";
 import { AdminModule } from "./modules/admin/admin.module";
 import { AdminRolesModule } from "./modules/admin-roles/admin-roles.module";
 import { AdminModuleGuard } from "./common/guards/admin-module.guard";
+import { ComplaintsModule } from "./modules/complaints/complaints.module";
 import { QuoteLeadsModule } from "./modules/quote-leads/quote-leads.module";
 import { SettingsModule } from "./modules/settings/settings.module";
 import { SuggestionsModule } from "./modules/suggestions/suggestions.module";
@@ -72,6 +73,7 @@ import { PlatformCoreModule } from "./modules/platform-core/platform-core.module
     CompaniesModule,
     AdminModule,
     QuoteLeadsModule,
+    ComplaintsModule,
     AdminRolesModule,
     SettingsModule,
     SuggestionsModule,

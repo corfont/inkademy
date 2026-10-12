@@ -8,6 +8,8 @@ import { Select, Label, Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { localize } from "@/lib/format";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { useBrandSettings } from "@/components/providers/BrandSettingsProvider";
 
 export function FilterBar({ areas, skills = [] }: { areas: AreaSummary[]; skills?: string[] }) {
   const t = useTranslations("catalog.filters");
@@ -15,6 +17,9 @@ export function FilterBar({ areas, skills = [] }: { areas: AreaSummary[]; skills
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const { courseCardFields } = useBrandSettings();
+  const canSeePrices = Boolean(user) || Boolean(courseCardFields.showPricesToVisitors);
 
   const [state, setState] = useState({
     areaSlug: searchParams.get("areaSlug") ?? "",
@@ -168,6 +173,7 @@ export function FilterBar({ areas, skills = [] }: { areas: AreaSummary[]; skills
         </div>
       )}
 
+      {canSeePrices && (
       <fieldset>
         <legend className="mb-1.5 text-sm font-medium text-ash-700">{t("price")}</legend>
         <div className="flex gap-2">
@@ -189,6 +195,7 @@ export function FilterBar({ areas, skills = [] }: { areas: AreaSummary[]; skills
           />
         </div>
       </fieldset>
+      )}
 
       <Checkbox
         id="filter-certification"

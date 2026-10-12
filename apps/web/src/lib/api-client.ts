@@ -216,6 +216,8 @@ export interface CourseCardFields {
   showNextLiveSession: boolean;
   showCertificationBadge: boolean;
   showRating: boolean;
+  /** Si es false (por defecto), quien no inició sesión ve «Inicia sesión para ver el precio». */
+  showPricesToVisitors?: boolean;
 }
 
 export interface PlatformSettingsDTO {
@@ -389,6 +391,10 @@ export interface AuditLogFilter {
   page?: number;
   pageSize?: number;
 }
+
+export const complaintsApi = {
+  create: (input: unknown) => apiFetch<{ folio: string; dueAt: string }>("/public/complaints", { method: "POST", body: JSON.stringify(input) }),
+};
 
 export const settingsApi = {
   // "no-store": la propia pantalla de /admin/apariencia promete que los
@@ -960,6 +966,9 @@ export const adminApi = {
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
   // --- Pipeline comercial (cotizaciones B2B) ---
   quotes: (accessToken?: string | null) => apiFetch<any[]>("/admin/quotes", { accessToken, cache: "no-store" }),
+  complaints: (accessToken?: string | null) => apiFetch<any[]>("/admin/complaints", { accessToken, cache: "no-store" }),
+  respondComplaint: (id: string, response: string, accessToken?: string | null) =>
+    apiFetch<any>(`/admin/complaints/${id}/respond`, { method: "PATCH", body: JSON.stringify({ response }), accessToken }),
   quoteLeads: (accessToken?: string | null) => apiFetch<any[]>("/admin/quote-leads", { accessToken, cache: "no-store" }),
   updateQuoteLead: (id: string, input: { status?: "NEW" | "CONTACTED" | "CLOSED"; internalNotes?: string | null }, accessToken?: string | null) =>
     apiFetch<any>(`/admin/quote-leads/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),

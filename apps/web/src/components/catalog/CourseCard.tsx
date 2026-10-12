@@ -137,7 +137,7 @@ export function CourseCard({ course }: { course: CourseCardDTO }) {
           )}
           {course.b2bAvailable && isProgram ? (
             <span className="font-serif text-base font-semibold text-ink-900">{t("requestProposal")}</span>
-          ) : user ? (
+          ) : user || fields.showPricesToVisitors ? (
             <div className="flex flex-col">
               {isOnSale && course.originalPriceAmount && (
                 <span className="text-xs text-ash-500 line-through">

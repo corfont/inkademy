@@ -2507,3 +2507,41 @@ model AdminRole {
 
   users User[]
 }
+
+// ---------------------------------------------------------------------------
+// LIBRO DE RECLAMACIONES (Ley 29571, D.S. 011-2011-PCM) — copia del formulario de inkapitales.com
+// ---------------------------------------------------------------------------
+
+enum ComplaintKind {
+  RECLAMO // disconformidad con el servicio contratado
+  QUEJA // disconformidad con la atención recibida
+}
+
+enum ComplaintStatus {
+  PENDING
+  RESPONDED
+}
+
+// Cada registro tiene un folio correlativo (LR-AAAA-NNNNNN) y un plazo de 15 días hábiles para responder; el consumidor recibe la constancia por correo.
+model Complaint {
+  id            String          @id @default(uuid())
+  number        Int             @unique @default(autoincrement())
+  kind          ComplaintKind
+  fullName      String
+  docType       String // DNI | RUC | CE | PASAPORTE
+  docNumber     String
+  email         String
+  phone         String
+  service       String
+  description   String          @db.Text
+  request       String          @db.Text
+  status        ComplaintStatus @default(PENDING)
+  dueAt         DateTime
+  response      String?         @db.Text
+  respondedAt   DateTime?
+  respondedById String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([status, createdAt])
+}

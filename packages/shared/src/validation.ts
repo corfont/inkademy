@@ -213,6 +213,32 @@ export const createSupportTicketSchema = z.object({
 });
 export type CreateSupportTicketInput = z.infer<typeof createSupportTicketSchema>;
 
+// Libro de Reclamaciones público (mismos campos que el de inkapitales.com).
+export const COMPLAINT_DOC_TYPES = ["DNI", "RUC", "CE", "PASAPORTE"] as const;
+export const COMPLAINT_SERVICES = [
+  "Curso, programa o diplomado contratado",
+  "Certificado",
+  "Pagos y facturación",
+  "Plataforma / campus virtual",
+  "Clases en vivo",
+  "Atención al cliente",
+  "Otro",
+] as const;
+export const complaintSchema = z.object({
+  kind: z.enum(["RECLAMO", "QUEJA"]),
+  fullName: z.string().trim().min(3, "Indica tus nombres y apellidos").max(160),
+  docType: z.enum(COMPLAINT_DOC_TYPES),
+  docNumber: z.string().trim().min(5, "Indica tu número de documento").max(20),
+  email: z.string().trim().email("Correo no válido").max(200),
+  phone: z.string().trim().min(6, "Indica un teléfono de contacto").max(30),
+  service: z.enum(COMPLAINT_SERVICES),
+  description: z.string().trim().min(15, "Describe lo ocurrido (mínimo 15 caracteres)").max(4000),
+  request: z.string().trim().min(10, "Indica qué solicitas (mínimo 10 caracteres)").max(2000),
+  // Campo trampa para bots.
+  website: z.string().max(500).optional(),
+});
+export type ComplaintInput = z.infer<typeof complaintSchema>;
+
 // Formulario público de /empresas (sin sesión). Los valores de los menús desplegables son cerrados.
 export const QUOTE_LEAD_SEATS_RANGES = ["1-10", "11-50", "51-200", "200+"] as const;
 export const publicQuoteRequestSchema = z.object({

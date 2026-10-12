@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, BookOpen, CalendarClock, Clock, GraduationCap, Globe2, Layers, Radio, Star, Target } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
-import { catalogApi, meApi } from "@/lib/api-client";
+import { catalogApi, settingsApi, meApi } from "@/lib/api-client";
 import { withFallback } from "@/lib/safe-fetch";
 import { getServerAccessToken } from "@/lib/server-auth";
 import { MOCK_COURSE_DETAIL, MOCK_COURSES } from "@/lib/mock-data";
@@ -41,6 +41,8 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const tc = await getTranslations("common");
   const accessToken = getServerAccessToken();
   const isAuthenticated = Boolean(accessToken);
+  // Configurable en Admin → Apariencia: por defecto el visitante sin sesión no ve el precio.
+  const showPrices = isAuthenticated || (await settingsApi.get().catch(() => null))?.courseCardFields?.showPricesToVisitors === true;
 
   const fallback = MOCK_COURSE_DETAIL[params.slug];
   const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback);
@@ -296,7 +298,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
                     <BadgeCheck className="h-4 w-4" aria-hidden="true" />
                     Ya tienes acceso a este curso
                   </p>
-                ) : isAuthenticated ? (
+                ) : showPrices ? (
                   <>
                     {course.isOnSale && course.originalPriceAmount && (
                       <p className="mt-1 text-sm text-ash-500 line-through">

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /** Páginas públicas fijas más los cursos publicados (si la API no responde, queda solo lo fijo: nunca se cae el sitemap). */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const fixed: MetadataRoute.Sitemap = ["", "/catalogo", "/empresas", "/ayuda", "/verificar", "/legales/privacidad", "/legales/terminos", "/legales/cookies"].map((path) => ({
+  const fixed: MetadataRoute.Sitemap = ["", "/catalogo", "/empresas", "/ayuda", "/verificar", "/libro-de-reclamaciones", "/legales/privacidad", "/legales/terminos", "/legales/cookies"].map((path) => ({
     url: `${SITE}${path}`,
     lastModified: now,
   }));

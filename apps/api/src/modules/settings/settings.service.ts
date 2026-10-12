@@ -12,6 +12,8 @@ const DEFAULT_COURSE_CARD_FIELDS = {
   showNextLiveSession: true,
   showCertificationBadge: true,
   showRating: false,
+  // Precios visibles para visitantes sin sesión: apagado por defecto (se ve «Inicia sesión para ver el precio»).
+  showPricesToVisitors: false,
 };
 
 const DEFAULTS = {
