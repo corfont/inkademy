@@ -300,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## 8. Etapa 2 — avance por pantalla (componentes compartidos de listado)
 
-Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: usuarios, empresas, soporte, auditoría y resto.
+Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: empresas, soporte, auditoría y resto.
 
 | ID | Módulo | Estado | Evidencia | Notas |
 |---|---|---|---|---|
@@ -328,10 +328,16 @@ Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se 
 | KPI | Matrículas (4 tarjetas) | Hecho | `ADM/matriculas/page.tsx` | Clicables; el resumen coincide con la base (total, activas, completadas, vencidas, extemporáneas) |
 | TBL-30/31/32 | Matrículas | Parcial | `matriculas/loading.tsx`, `EmptyState` | Cuatro vacíos distintos verificados en HTML; el esqueleto no se vio visualmente |
 | FRM-25 | Ampliar plazo de matrícula | Hecho | `ExtendAccessControl.tsx` | Verificado de punta a punta: se guarda 31-dic-2027 23:59:59 hora de Lima (04:59:59Z), la pantalla muestra «31 dic 2027» (antes mostraba el día siguiente) y la EXPIRED vuelve a ACTIVE; queda en auditoría |
+| TBL-10/11 | Usuarios | Hecho | `ADM/usuarios/page.tsx`, `admin.service.ts` usersWhere | Búsqueda por palabras («HUGO quis» → 1 = base), filtros rol (incluye 9 docentes que lo son solo como rol secundario), estado y fecha de alta (borde 23:30/00:30 en hora de Lima verificado); SQL/comillas no rompe |
+| TBL-12/15/20 | Usuarios | Hecho | `parseListQuery`, `Pagination` | Páginas de 50 y de 10 cubren los 84 usuarios sin repetir; orden por alta, correo, apellido/nombre y estado en ambos sentidos; elimina el tope silencioso de 100/2000 en la pantalla; selector de orden propio porque la galería no tiene encabezados |
+| TBL-40/62, REP-08 | Usuarios | Hecho | `GET /admin/users/export.xlsx\|csv` | SOLO ADMIN (SUPPORT: 403 y sin botón); Excel 17 filas = 17 en la base; **verificado que no salen teléfono, documento, cuenta bancaria, dirección ni ciudad** (minimización de datos); `=CMD(` neutralizado; auditado |
+| TBL-60 | Usuarios | Hecho | `@Roles` | SUPPORT ve la lista pero no exporta; token inválido: 401; formato inválido: 404; filas sin `passwordHash` |
+| TBL-30/31/32 | Usuarios | Parcial | `usuarios/loading.tsx`, `EmptyState` | Vacíos verificados en HTML; esqueleto no visto |
+| TBL-25 | Usuarios | Parcial | `UsersManager.tsx` | Las agrupaciones (tipo de cuenta, dominio, progreso) se conservaron pero ahora aplican solo a la página visible, y la pantalla lo avisa |
 
 ## Resumen
 
-Hechos 57 · Parciales 148 · Faltan 60 · No aplica 4 · No verificado 11 *(280 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
+Hechos 61 · Parciales 150 · Faltan 60 · No aplica 4 · No verificado 11 *(286 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
 
 ## Pendientes ordenados por impacto
 
