@@ -45,7 +45,7 @@ export default async function CourseDetailPage({ params }: { params: { slug: str
   const showPrices = isAuthenticated || (await settingsApi.get().catch(() => null))?.courseCardFields?.showPricesToVisitors === true;
 
   const fallback = MOCK_COURSE_DETAIL[params.slug];
-  const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback);
+  const { data: course, live } = await withFallback(() => catalogApi.course(params.slug), fallback, { notFoundOk: true });
 
   if (!course) notFound();
 

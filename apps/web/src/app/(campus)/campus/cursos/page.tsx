@@ -21,7 +21,7 @@ export default async function MyCoursesPage() {
 
   const [{ data: enrollments, live }, { data: saved }] = await Promise.all([
     withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS),
-    withFallback(() => meApi.savedCourses(accessToken), []),
+    withFallback(() => meApi.savedCourses(accessToken), [], { soft: true }),
   ]);
 
   // "¿Cuál es la diferencia entre la pestaña En Progreso y Próximos?" —

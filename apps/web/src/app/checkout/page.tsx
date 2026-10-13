@@ -98,16 +98,22 @@ function CheckoutForm() {
       });
   }, []);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   useEffect(() => {
+    // Los datos de ejemplo solo existen en desarrollo (MOCKS_ENABLED): en
+    // producción, si el curso o programa no se puede cargar, NO se muestra
+    // un precio ni un título inventados — se avisa y se bloquea el pago.
+    setLoadFailed(false);
     if (courseId) {
       const mock = MOCK_COURSES.find((c) => c.id === courseId) ?? MOCK_COURSES[0];
-      withFallback(
-        () => catalogApi.courses({ page: 1, pageSize: 50 }).then((r) => r.items.find((c) => c.id === courseId) ?? mock),
-        mock,
-      ).then(({ data }) => setCourse(data));
+      withFallback(() => catalogApi.course(courseId) as unknown as Promise<CourseCardDTO>, mock)
+        .then(({ data }) => setCourse(data))
+        .catch(() => setLoadFailed(true));
     } else if (programId) {
-      const mock = programId === MOCK_PROGRAM.id ? MOCK_PROGRAM : MOCK_PROGRAM;
-      withFallback(() => catalogApi.program(mock.slug), mock).then(({ data }) => setProgram(data));
+      withFallback(() => catalogApi.program(programId), MOCK_PROGRAM)
+        .then(({ data }) => setProgram(data))
+        .catch(() => setLoadFailed(true));
     }
   }, [courseId, programId]);
 
@@ -284,6 +290,11 @@ function CheckoutForm() {
             </Card>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+              {loadFailed && (
+                <Callout variant="danger">
+                  No pudimos cargar los datos de este curso o programa, así que no es seguro cobrar. Recarga la página; si el problema continúa, escríbenos.
+                </Callout>
+              )}
               {status === "error" && errorMessage && <Callout variant="danger">{errorMessage}</Callout>}
 
               <Card>
@@ -496,7 +507,7 @@ function CheckoutForm() {
               </Card>
 
               {!usePayPalWidget && (
-                <Button type="submit" size="lg" disabled={status === "processing"}>
+                <Button type="submit" size="lg" disabled={status === "processing" || loadFailed || (!course && !program)}>
                   {status === "processing" ? t("processing") : `${t("pay")} ${formatPrice(amount, currency, locale)}`}
                 </Button>
               )}

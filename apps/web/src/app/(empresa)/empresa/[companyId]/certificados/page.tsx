@@ -32,8 +32,8 @@ export default async function CompanyCertificatesPage({ params }: { params: { co
     MOCK_ROWS.map((r) => ({ id: r.id, holderName: r.holderName, title: r.courseTitle, issuedAt: r.issuedAt, code: r.code })),
   );
   const [{ data: memberships }, { data: settings }] = await Promise.all([
-    withFallback(() => companyApi.mine(accessToken), [] as { companyId: string; role: string }[]),
-    withFallback(() => companyApi.certificateSettings(params.companyId, accessToken), { certificateDeliveryTarget: "STUDENT" as const }),
+    withFallback(() => companyApi.mine(accessToken), [] as { companyId: string; role: string }[], { soft: true }),
+    withFallback(() => companyApi.certificateSettings(params.companyId, accessToken), { certificateDeliveryTarget: "STUDENT" as const }, { soft: true }),
   ]);
   const isCompanyAdmin = memberships.some((m) => m.companyId === params.companyId && m.role === "COMPANY_ADMIN");
 

@@ -15,8 +15,8 @@ export default async function HomePage() {
   const locale = await getLocale();
 
   const [{ data: areas }, { data: sections, live }] = await Promise.all([
-    withFallback(() => catalogApi.areas(), MOCKS_ENABLED ? MOCK_AREAS : []),
-    withFallback(() => catalogApi.sections(), MOCKS_ENABLED ? MOCK_SECTIONS : (Object.fromEntries(Object.keys(MOCK_SECTIONS).map((k) => [k, []])) as unknown as typeof MOCK_SECTIONS)),
+    withFallback(() => catalogApi.areas(), MOCKS_ENABLED ? MOCK_AREAS : [], { soft: true }),
+    withFallback(() => catalogApi.sections(), MOCKS_ENABLED ? MOCK_SECTIONS : (Object.fromEntries(Object.keys(MOCK_SECTIONS).map((k) => [k, []])) as unknown as typeof MOCK_SECTIONS), { soft: true }),
   ]);
 
   return (

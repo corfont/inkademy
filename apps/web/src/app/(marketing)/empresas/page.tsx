@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Empresas" };
 
 export default async function CompaniesPage() {
   const t = await getTranslations("companies");
-  const { data: catalog } = await withFallback(() => catalogApi.courses({ pageSize: 100 } as never), { items: [] as { title: Record<string, string> }[] } as never);
+  const { data: catalog } = await withFallback(() => catalogApi.courses({ pageSize: 100 } as never), { items: [] as { title: Record<string, string> }[] } as never, { soft: true });
   const interests = Array.from(new Set(((catalog as { items: { title: Record<string, string> }[] }).items ?? []).map((c) => c.title?.es).filter((x): x is string => Boolean(x))));
 
   const benefits = [

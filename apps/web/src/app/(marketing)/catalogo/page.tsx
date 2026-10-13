@@ -59,12 +59,13 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     pageSize: 12,
   };
 
-  const { data: filterOptions } = await withFallback(() => catalogApi.filterOptions(), { skills: [] as string[] });
+  const { data: filterOptions } = await withFallback(() => catalogApi.filterOptions(), { skills: [] as string[] }, { soft: true });
   const [{ data: areas }, { data: courseResult, live }] = await Promise.all([
-    withFallback(() => catalogApi.areas(), MOCKS_ENABLED ? MOCK_AREAS : []),
+    withFallback(() => catalogApi.areas(), MOCKS_ENABLED ? MOCK_AREAS : [], { soft: true }),
     withFallback(
       () => catalogApi.courses(filters),
       MOCKS_ENABLED ? { items: filterMock(filters), total: filterMock(filters).length, page: 1, pageSize: 12 } : { items: [] as typeof MOCK_COURSES, total: 0, page: 1, pageSize: 12 },
+      { soft: true },
     ),
   ]);
 

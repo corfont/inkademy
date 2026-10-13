@@ -29,7 +29,7 @@ export default async function ProgramDetailPage({ params }: { params: { slug: st
   const showPrices = isAuthenticated || (await settingsApi.get().catch(() => null))?.courseCardFields?.showPricesToVisitors === true;
 
   const fallback = params.slug === MOCK_PROGRAM.slug ? MOCK_PROGRAM : undefined;
-  const { data: program, live } = await withFallback(() => catalogApi.program(params.slug), fallback);
+  const { data: program, live } = await withFallback(() => catalogApi.program(params.slug), fallback, { notFoundOk: true });
 
   if (!program) notFound();
 

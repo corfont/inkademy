@@ -25,7 +25,7 @@ export default async function CampusDashboardPage() {
 
   const [{ data: enrollments, live }, { data: certificates }] = await Promise.all([
     withFallback(() => meApi.enrollments(undefined, accessToken), MOCK_ENROLLMENTS),
-    withFallback(() => meApi.certificates(accessToken), []),
+    withFallback(() => meApi.certificates(accessToken), [], { soft: true }),
   ]);
 
   const inProgress = enrollments.filter((e) => e.status === "ACTIVE");

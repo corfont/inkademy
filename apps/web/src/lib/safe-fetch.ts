@@ -24,12 +24,36 @@ import { ApiError } from "./api-client";
  */
 export const MOCKS_ENABLED = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_MOCKS === "true";
 
-export async function withFallback<T>(fn: () => Promise<T>, fallback: T): Promise<{ data: T; live: boolean }> {
+/**
+ * Opciones de `withFallback` — solo cambian el comportamiento en PRODUCCIÓN
+ * (en desarrollo los datos de ejemplo siguen sirviendo, ver MOCKS_ENABLED).
+ *
+ * - `notFoundOk`: un 404 real es una respuesta válida ("no existe") y cae al
+ *   valor de respaldo (típicamente `undefined` → la página llama a `notFound()`).
+ * - `soft`: la llamada es secundaria o de una página pública que debe seguir
+ *   viéndose aunque la API falle; cae al respaldo ante cualquier error.
+ *
+ * Sin ninguna de las dos, en producción un fallo de red, un 5xx o un 404
+ * se RELANZA: el `error.tsx` del segmento muestra "no pudimos cargar" con
+ * Reintentar, en vez de dejar al alumno, la empresa o el administrador
+ * mirando datos de ejemplo o una lista vacía que parece real (hallazgo de
+ * COMPLETITUD.md: FE-41, TBL-33, DSH-06).
+ */
+export type FallbackOptions = { notFoundOk?: boolean; soft?: boolean };
+
+export async function withFallback<T>(
+  fn: () => Promise<T>,
+  fallback: T,
+  opts: FallbackOptions = {},
+): Promise<{ data: T; live: boolean }> {
   try {
     const data = await fn();
     return { data, live: true };
   } catch (err) {
     if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 403)) {
+      throw err;
+    }
+    if (!MOCKS_ENABLED && !opts.soft && !(opts.notFoundOk && err instanceof ApiError && err.statusCode === 404)) {
       throw err;
     }
     return { data: fallback, live: false };

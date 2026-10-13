@@ -26,6 +26,17 @@ type CourseWithRelations = Course & {
   ratings: { stars: number; userId: string }[];
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Los detalles públicos aceptan el slug o el id: el checkout recibe solo el
+ * id (?courseId= / ?programId=) y antes tenía que adivinar el curso en la
+ * primera página del listado, cayendo a un curso de ejemplo si no estaba.
+ */
+function slugOrId(value: string): { id: string } | { slug: string } {
+  return UUID_RE.test(value) ? { id: value } : { slug: value };
+}
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -252,7 +263,7 @@ export class CatalogService {
     // por su slug. La vista de administración usa GET /admin/courses/:id
     // (AdminService.getCourseDetail), que no pasa por este método.
     const course = await this.prisma.course.findFirst({
-      where: { slug, status: "PUBLISHED" },
+      where: { ...slugOrId(slug), status: "PUBLISHED" },
       include: {
         ...courseCardInclude,
         modules: { orderBy: { order: "asc" }, include: { lessons: { orderBy: { order: "asc" } } } },
@@ -322,7 +333,7 @@ export class CatalogService {
     // un diplomado en DRAFT o ARCHIVED seguía siendo visible por su slug en
     // esta ruta pública, sin importar lo que el admin haya elegido mostrar.
     const program = await this.prisma.program.findFirst({
-      where: { slug, status: "PUBLISHED" },
+      where: { ...slugOrId(slug), status: "PUBLISHED" },
       include: {
         courses: {
           orderBy: { order: "asc" },
