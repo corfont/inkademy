@@ -300,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## 8. Etapa 2 — avance por pantalla (componentes compartidos de listado)
 
-Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: empresas, soporte, auditoría y resto.
+Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: empresas, soporte, reclamos, cotizaciones, certificados y resto.
 
 | ID | Módulo | Estado | Evidencia | Notas |
 |---|---|---|---|---|
@@ -334,10 +334,14 @@ Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se 
 | TBL-60 | Usuarios | Hecho | `@Roles` | SUPPORT ve la lista pero no exporta; token inválido: 401; formato inválido: 404; filas sin `passwordHash` |
 | TBL-30/31/32 | Usuarios | Parcial | `usuarios/loading.tsx`, `EmptyState` | Vacíos verificados en HTML; esqueleto no visto |
 | TBL-25 | Usuarios | Parcial | `UsersManager.tsx` | Las agrupaciones (tipo de cuenta, dominio, progreso) se conservaron pero ahora aplican solo a la página visible, y la pantalla lo avisa |
+| MOD-32 | Auditoría (consulta y exportación) | Hecho | `AuditLogViewer.tsx`, `admin.service.ts` exportAuditLog | Verificado en producción con 68 eventos de prueba: filtros por usuario (palabras, correo), entidad, acción (contiene) y fechas en hora de Lima (borde 23:30/00:30 correcto); páginas sin repetir; Excel y CSV con acción y tipo de objeto en español, fecha real, antes/después como texto, hoja Filtros y fórmula neutralizada; la exportación deja su propio evento |
+| TBL-60 | Auditoría | Hecho | `@Roles("ADMIN")` | SUPPORT: 403 en lista y en ambas exportaciones |
+| MOD-32 | Etiquetas de auditoría | Hecho | `packages/shared/src/audit-labels.ts` | 26 entidades y 46 acciones en español compartidas entre pantalla y exportación; antes las acciones nuevas (matrículas, reportes, privacidad, roles, copia externa) salían como código crudo |
+| TBL-13/20 | Auditoría | Parcial | `AuditLogViewer.tsx` | La pantalla sigue siendo de estado local (los filtros no viven en la URL) y pagina de 30 en 30 con rango y total; no se probó la interacción en un navegador |
 
 ## Resumen
 
-Hechos 61 · Parciales 150 · Faltan 60 · No aplica 4 · No verificado 11 *(286 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
+Hechos 64 · Parciales 151 · Faltan 60 · No aplica 4 · No verificado 11 *(290 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
 
 ## Pendientes ordenados por impacto
 
