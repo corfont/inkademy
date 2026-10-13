@@ -4,12 +4,14 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundEx
 import { InjectQueue } from "@nestjs/bullmq";
 import type { Queue } from "bullmq";
 import * as argon2 from "argon2";
-import type { PrismaClient } from "@inkademy/db";
+import type { Prisma, PrismaClient } from "@inkademy/db";
 import type { AdminExceptionDTO, ScormLocale } from "@inkademy/shared";
 import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { normalizePage } from "../../common/utils/pagination";
 import { QUEUE_NAMES, SUBTITLES_JOBS, BACKUP_JOBS } from "../../common/queues/queue.constants";
+import { limaDayRange, parseListQuery } from "../../common/utils/list-query";
+import { buildCsv, buildSimpleXlsx, type ExportSheet } from "../../common/utils/export";
 import { logAudit } from "./audit-log.util";
 import { StorageService } from "../../storage/storage.service";
 import { NotificationService } from "../notification/notification.service";
@@ -2260,29 +2262,54 @@ export class AdminService {
    * un `include` encadenado, para poder ordenar/mostrar por curso y por
    * área (categoría) del curso.
    */
-  async listOrders(q?: string, sortBy?: string) {
-    const orders = await this.prisma.order.findMany({
-      where: q
-        ? {
-            OR: [
-              { id: q },
-              { user: { email: { contains: q, mode: "insensitive" } } },
-              { buyerLegalName: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : undefined,
-      include: { user: true, electronicInvoice: true, company: true, items: true },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    });
+  // ---- Órdenes: listado con filtros, orden y paginación en el servidor, y exportación del MISMO conjunto filtrado ----
 
+  static readonly ORDER_SORTS = ["date", "total", "status", "buyer", "company"] as const;
+  static readonly ORDER_STATUSES = ["PENDING", "PAID", "FAILED", "REFUNDED", "CANCELLED"] as const;
+  /** Tope de filas por exportación: más que esto debe acotarse con filtros (no se carga todo en memoria ni se agota el tiempo de espera). */
+  static readonly EXPORT_MAX_ROWS = 20000;
+
+  private ordersWhere(f: { q?: string; status?: string; currency?: string; from?: string; to?: string }): Prisma.OrderWhereInput {
+    const and: Prisma.OrderWhereInput[] = [];
+    const q = f.q?.trim();
+    if (q) {
+      and.push({
+        OR: [
+          // El id es un UUID: solo se compara si lo parece (comparar «ana» con una columna uuid sería un error de la base).
+          ...(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q) ? [{ id: q }] : []),
+          { user: { email: { contains: q, mode: "insensitive" as const } } },
+          { buyerLegalName: { contains: q, mode: "insensitive" as const } },
+          { company: { legalName: { contains: q, mode: "insensitive" as const } } },
+        ],
+      });
+    }
+    if ((AdminService.ORDER_STATUSES as readonly string[]).includes(String(f.status))) and.push({ status: f.status as never });
+    if (f.currency && /^[A-Z]{3}$/.test(f.currency)) and.push({ currency: f.currency });
+    const range = limaDayRange(f.from, f.to);
+    if (range.gte || range.lte) and.push({ createdAt: range });
+    return and.length ? { AND: and } : {};
+  }
+
+  private static readonly ORDER_SELECT = {
+    id: true,
+    status: true,
+    total: true,
+    currency: true,
+    buyerLegalName: true,
+    createdAt: true,
+    user: { select: { email: true } },
+    company: { select: { legalName: true } },
+    electronicInvoice: { select: { status: true } },
+    items: { select: { courseId: true } },
+  } satisfies Prisma.OrderSelect;
+
+  private async mapOrderRows(orders: Prisma.OrderGetPayload<{ select: typeof AdminService.ORDER_SELECT }>[]) {
     const courseIds = Array.from(new Set(orders.flatMap((o) => o.items.map((i) => i.courseId).filter((id): id is string => Boolean(id)))));
     const courses = courseIds.length
-      ? await this.prisma.course.findMany({ where: { id: { in: courseIds } }, include: { area: true } })
+      ? await this.prisma.course.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true, area: { select: { name: true } } } })
       : [];
     const courseById = new Map(courses.map((c) => [c.id, c]));
-
-    let rows = orders.map((o) => {
+    return orders.map((o) => {
       const firstCourse = o.items.map((i) => (i.courseId ? courseById.get(i.courseId) : null)).find(Boolean);
       return {
         id: o.id,
@@ -2298,25 +2325,94 @@ export class AdminService {
         createdAt: o.createdAt.toISOString(),
       };
     });
+  }
 
-    switch (sortBy) {
-      case "company":
-        rows = rows.sort((a, b) => (a.companyName ?? "￿").localeCompare(b.companyName ?? "￿"));
-        break;
-      case "course":
-        rows = rows.sort((a, b) => (a.courseTitle?.es ?? "￿").localeCompare(b.courseTitle?.es ?? "￿"));
-        break;
-      case "status":
-        rows = rows.sort((a, b) => a.status.localeCompare(b.status));
-        break;
-      case "category":
-        rows = rows.sort((a, b) => (a.categoryName?.es ?? "￿").localeCompare(b.categoryName?.es ?? "￿"));
-        break;
-      default:
-        // ya vienen ordenadas por fecha desc desde la consulta
-        break;
+  private ordersOrderBy(sort: (typeof AdminService.ORDER_SORTS)[number], dir: "asc" | "desc"): Prisma.OrderOrderByWithRelationInput[] {
+    const primary: Prisma.OrderOrderByWithRelationInput =
+      sort === "total" ? { total: dir }
+      : sort === "status" ? { status: dir }
+      : sort === "buyer" ? { buyerLegalName: dir }
+      : sort === "company" ? { company: { legalName: dir } }
+      : { createdAt: dir };
+    // Desempate estable: sin él, la misma consulta puede devolver filas repetidas u omitidas entre páginas.
+    return [primary, { id: "asc" }];
+  }
+
+  async listOrders(
+    filter: { q?: string; status?: string; currency?: string; from?: string; to?: string },
+    rawQuery: { page?: unknown; pageSize?: unknown; sort?: unknown; dir?: unknown },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.ORDER_SORTS, defaultSort: "date", defaultDir: "desc" });
+    const where = this.ordersWhere(filter);
+    const [total, orders, paid] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({ where, orderBy: this.ordersOrderBy(query.sort, query.dir), skip: query.skip, take: query.take, select: AdminService.ORDER_SELECT }),
+      // Total PAGADO del conjunto filtrado, por moneda (nunca se mezclan soles y dólares).
+      this.prisma.order.groupBy({ by: ["currency"], where: { AND: [where, { status: "PAID" }] }, _sum: { total: true } }),
+    ]);
+    return {
+      rows: await this.mapOrderRows(orders),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      sort: query.sort,
+      dir: query.dir,
+      paidByCurrency: paid.map((r) => ({ currency: r.currency, total: decimalToString(r._sum.total ?? 0) })),
+    };
+  }
+
+  /** Exporta el MISMO conjunto filtrado y ordenado que ve la pantalla (sin paginar), con tipos reales y la hoja «Filtros». */
+  async exportOrders(
+    filter: { q?: string; status?: string; currency?: string; from?: string; to?: string },
+    rawQuery: { sort?: unknown; dir?: unknown },
+    format: "xlsx" | "csv",
+    actor: { id: string; email?: string },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.ORDER_SORTS, defaultSort: "date", defaultDir: "desc" });
+    const where = this.ordersWhere(filter);
+    const count = await this.prisma.order.count({ where });
+    if (count > AdminService.EXPORT_MAX_ROWS) {
+      throw new BadRequestException(`El filtro devuelve ${count.toLocaleString("es-PE")} órdenes y el máximo por descarga es ${AdminService.EXPORT_MAX_ROWS.toLocaleString("es-PE")}. Acota el rango de fechas o el estado.`);
     }
-    return rows.slice(0, 50);
+    const orders = await this.prisma.order.findMany({ where, orderBy: this.ordersOrderBy(query.sort, query.dir), select: AdminService.ORDER_SELECT });
+    const rows = await this.mapOrderRows(orders);
+    const es = (t: Record<string, string> | null) => (t ? t.es ?? Object.values(t)[0] ?? null : null);
+    const sheet: ExportSheet<(typeof rows)[number]> = {
+      sheetName: "Órdenes",
+      rows,
+      columns: [
+        { header: "Id de orden", width: 38, value: (r) => r.id },
+        { header: "Fecha", type: "datetime", width: 18, value: (r) => new Date(r.createdAt) },
+        { header: "Comprador", width: 30, value: (r) => r.buyerLegalName ?? r.userEmail },
+        { header: "Correo", width: 30, value: (r) => r.userEmail },
+        { header: "Empresa", width: 28, value: (r) => r.companyName },
+        { header: "Curso", width: 36, value: (r) => es(r.courseTitle) },
+        { header: "Categoría", width: 22, value: (r) => es(r.categoryName) },
+        { header: "Moneda", width: 9, value: (r) => r.currency },
+        { header: "Total", type: "money", width: 12, value: (r) => Number(r.total) },
+        { header: "Estado", width: 13, value: (r) => ({ PAID: "Pagada", PENDING: "Pendiente", FAILED: "Fallida", REFUNDED: "Reembolsada", CANCELLED: "Cancelada" })[r.status] ?? r.status },
+        { header: "Comprobante", width: 14, value: (r) => r.invoiceStatus },
+      ],
+      criteria: [
+        ["Listado", "Órdenes"],
+        ["Generado el", new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }) + " (hora de Lima)"],
+        ["Generado por", actor.email ?? actor.id],
+        ["Búsqueda", filter.q?.trim() || "—"],
+        ["Estado", filter.status || "todos"],
+        ["Moneda", filter.currency || "todas"],
+        ["Desde", filter.from || "—"],
+        ["Hasta", filter.to || "—"],
+        ["Orden", `${query.sort} (${query.dir === "asc" ? "ascendente" : "descendente"})`],
+        ["Filas", String(rows.length)],
+      ],
+    };
+    await logAudit(this.prisma, {
+      actorId: actor.id,
+      action: "LIST_EXPORT",
+      entity: "Order",
+      after: { format, rows: rows.length, filters: filter },
+    });
+    return { buffer: format === "csv" ? buildCsv(sheet) : buildSimpleXlsx(sheet), rows: rows.length };
   }
 
   /**

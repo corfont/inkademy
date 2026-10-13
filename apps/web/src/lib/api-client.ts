@@ -346,6 +346,30 @@ export interface MailingListDTO {
   createdBy?: { firstName: string; lastName: string } | null;
 }
 
+export interface AdminOrderRowDTO {
+  id: string;
+  status: string;
+  total: string;
+  currency: string;
+  userEmail: string;
+  buyerLegalName: string | null;
+  companyName: string | null;
+  courseTitle: Record<string, string> | null;
+  categoryName: Record<string, string> | null;
+  invoiceStatus: string | null;
+  createdAt: string;
+}
+
+export interface AdminOrdersPage {
+  rows: AdminOrderRowDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  dir: "asc" | "desc";
+  paidByCurrency: { currency: string; total: string }[];
+}
+
 export interface BackupRecordDTO {
   id: string;
   trigger: "MANUAL" | "SCHEDULED";
@@ -767,8 +791,33 @@ export const adminApi = {
     apiFetch<any>(`/admin/programs/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   createProgram: (input: Record<string, unknown>, accessToken?: string | null) =>
     apiFetch<any>("/admin/programs", { method: "POST", body: JSON.stringify(input), accessToken }),
-  orders: (q: string | undefined, accessToken?: string | null, sortBy?: string) =>
-    apiFetch<any[]>("/admin/orders", { accessToken, query: { ...(q ? { q } : {}), ...(sortBy ? { sortBy } : {}) } }),
+  orders: (params: Record<string, string>, accessToken?: string | null) =>
+    apiFetch<AdminOrdersPage>("/admin/orders", { accessToken, query: params, cache: "no-store" }),
+  // Descarga un listado exportado (Excel/CSV) con los mismos filtros de la pantalla; el nombre del archivo lo decide el servidor.
+  downloadList: async (path: string, params: Record<string, string>, accessToken: string) => {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_URL}/admin/${path}${query ? `?${query}` : ""}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) {
+      let message = "No pudimos generar el archivo.";
+      try {
+        const body = (await res.json()) as { message?: string | string[] };
+        if (body.message) message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
+      } catch {
+        // cuerpo no JSON: se deja el mensaje genérico
+      }
+      throw new ApiError(res.status, message);
+    }
+    const filename = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "listado";
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement("a");
+    el.href = url;
+    el.download = filename;
+    document.body.appendChild(el);
+    el.click();
+    el.remove();
+    URL.revokeObjectURL(url);
+  },
   ordersSummary: (accessToken?: string | null) => apiFetch<any>("/admin/orders/summary", { accessToken, cache: "no-store" }),
   // --- Matrículas: ampliar plazo de acceso como caso especial ---
   enrollments: (q: string | undefined, accessToken?: string | null) =>

@@ -1,6 +1,6 @@
 import { reportCollector, type ReportContext } from "./reports/report-kit";
 import { buildXlsx } from "./reports/report-xlsx";
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -1047,9 +1047,32 @@ export class AdminController {
 
   @Get("orders")
   @Roles("ADMIN", "SUPPORT")
-  @ApiOperation({ summary: "Busca órdenes por id, email del comprador o razón social — ordenable por empresa/fecha/curso/estado/categoría" })
-  listOrders(@Query("q") q?: string, @Query("sortBy") sortBy?: string) {
-    return this.adminService.listOrders(q, sortBy);
+  @ApiOperation({ summary: "Órdenes con búsqueda, filtros (estado, moneda, fechas), orden por columna y paginación en el servidor" })
+  listOrders(@Query() query: Record<string, string>) {
+    return this.adminService.listOrders(
+      { q: query.q, status: query.status, currency: query.currency, from: query.from, to: query.to },
+      { page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir },
+    );
+  }
+
+  // Exporta el MISMO conjunto filtrado que ve la pantalla (sin paginar). Excel con números y fechas reales, CSV con BOM; queda en auditoría.
+  @Get("orders/export.:format")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga las órdenes filtradas en Excel (.xlsx) o CSV" })
+  async exportOrders(@CurrentUser() user: RequestUser, @Param("format") format: string, @Query() query: Record<string, string>, @Res() res: Response) {
+    if (format !== "xlsx" && format !== "csv") throw new NotFoundException();
+    const { buffer } = await this.adminService.exportOrders(
+      { q: query.q, status: query.status, currency: query.currency, from: query.from, to: query.to },
+      { sort: query.sort, dir: query.dir },
+      format,
+      { id: user.id, email: user.email },
+    );
+    const stamp = new Date().toLocaleString("sv-SE", { timeZone: "America/Lima" }).slice(0, 16).replace(" ", "_").replace(":", "");
+    res.set({
+      "Content-Type": format === "csv" ? "text/csv; charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="ordenes_${stamp}.${format}"`,
+    });
+    res.send(buffer);
   }
 
   // listOrders() limita a las últimas 200 (evita traer la tabla completa
