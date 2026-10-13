@@ -38,7 +38,6 @@ export function ComplaintsManager({ complaints }: { complaints: Complaint[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const pending = complaints.filter((c) => c.status === "PENDING").length;
 
   async function respond(c: Complaint) {
     setBusy(c.id);
@@ -57,10 +56,8 @@ export function ComplaintsManager({ complaints }: { complaints: Complaint[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {pending > 0 && <Badge variant="warning">{pending} sin responder</Badge>}
       {error && <Callout variant="danger">{error}</Callout>}
       {ok && <Callout variant="success">{ok}</Callout>}
-      {complaints.length === 0 && <p className="text-sm text-ash-500">Todavía no se registró ningún reclamo ni queja.</p>}
       {complaints.map((c) => {
         const overdue = c.status === "PENDING" && new Date(c.dueAt).getTime() < Date.now();
         return (

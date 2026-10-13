@@ -360,6 +360,15 @@ export interface AdminOrderRowDTO {
   createdAt: string;
 }
 
+export interface AdminComplaintsPage {
+  rows: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  dir: "asc" | "desc";
+}
+
 export interface AdminUsersPage {
   rows: any[];
   total: number;
@@ -1064,7 +1073,10 @@ export const adminApi = {
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
   // --- Pipeline comercial (cotizaciones B2B) ---
   quotes: (accessToken?: string | null) => apiFetch<any[]>("/admin/quotes", { accessToken, cache: "no-store" }),
-  complaints: (accessToken?: string | null) => apiFetch<any[]>("/admin/complaints", { accessToken, cache: "no-store" }),
+  complaints: (params: Record<string, string>, accessToken?: string | null) =>
+    apiFetch<AdminComplaintsPage>("/admin/complaints", { accessToken, query: params, cache: "no-store" }),
+  complaintsSummary: (accessToken?: string | null) =>
+    apiFetch<{ total: number; pending: number; overdue: number; responded: number }>("/admin/complaints/summary", { accessToken, cache: "no-store" }),
   respondComplaint: (id: string, response: string, accessToken?: string | null) =>
     apiFetch<any>(`/admin/complaints/${id}/respond`, { method: "PATCH", body: JSON.stringify({ response }), accessToken }),
   quoteLeads: (accessToken?: string | null) => apiFetch<any[]>("/admin/quote-leads", { accessToken, cache: "no-store" }),
