@@ -6,3 +6,4 @@ export * from "./scorm-authoring";
 export * from "./rating";
 export * from "./admin-modules";
 export * from "./sharepoint";
+export * from "./audit-labels";

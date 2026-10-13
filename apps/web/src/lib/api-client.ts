@@ -460,6 +460,7 @@ export interface AuditLogFilter {
   to?: string;
   page?: number;
   pageSize?: number;
+  actorQ?: string;
 }
 
 export const complaintsApi = {

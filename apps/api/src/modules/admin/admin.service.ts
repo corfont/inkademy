@@ -1,4 +1,4 @@
-import { RATING_IMPROVEMENT_OPTIONS } from "@inkademy/shared";
+import { AUDIT_ENTITY_LABEL, auditActionLabel, RATING_IMPROVEMENT_OPTIONS } from "@inkademy/shared";
 import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bullmq";
@@ -10,7 +10,7 @@ import { PRISMA } from "../../common/prisma/prisma.module";
 import { decimalToString } from "../../common/utils/money";
 import { normalizePage } from "../../common/utils/pagination";
 import { QUEUE_NAMES, SUBTITLES_JOBS, BACKUP_JOBS } from "../../common/queues/queue.constants";
-import { limaDayRange, parseListQuery } from "../../common/utils/list-query";
+import { limaDayRange, PAGE_SIZES, parseListQuery } from "../../common/utils/list-query";
 import { buildCsv, buildSimpleXlsx, type ExportSheet } from "../../common/utils/export";
 import { logAudit } from "./audit-log.util";
 import { StorageService } from "../../storage/storage.service";
@@ -3761,33 +3761,93 @@ export class AdminService {
   // sucedió en un momento dado") — lee AuditLog, hoy solo alimentado por
   // logAudit() en los 20+ call sites de apps/api. ---
 
-  async listAuditLog(filters: { entity?: string; action?: string; actorId?: string; from?: Date; to?: Date }, page = 1, pageSize = 30) {
-    const where = {
-      ...(filters.entity ? { entity: filters.entity } : {}),
-      // «Acción (contiene)»: antes era igualdad exacta y «DELETE» nunca encontraba «USER_DELETE».
-      ...(filters.action ? { action: { contains: filters.action.trim(), mode: "insensitive" as const } } : {}),
-      ...(filters.actorId ? { actorId: filters.actorId } : {}),
-      ...(filters.from || filters.to
-        ? {
-            createdAt: {
-              ...(filters.from ? { gte: filters.from } : {}),
-              // «Hasta» es una fecha (sin hora): incluye todo ese día, no solo hasta las 00:00.
-              ...(filters.to ? { lte: new Date(filters.to.getTime() + 24 * 3_600_000 - 1) } : {}),
-            },
-          }
-        : {}),
-    };
+  private auditWhere(filters: { entity?: string; action?: string; actorId?: string; actorQ?: string; from?: string; to?: string }): Prisma.AuditLogWhereInput {
+    const and: Prisma.AuditLogWhereInput[] = [];
+    if (filters.entity) and.push({ entity: filters.entity });
+    // «Acción (contiene)»: antes era igualdad exacta y «DELETE» nunca encontraba «USER_DELETE».
+    if (filters.action?.trim()) and.push({ action: { contains: filters.action.trim(), mode: "insensitive" } });
+    if (filters.actorId) and.push({ actorId: filters.actorId });
+    // «Quién lo hizo»: cada palabra debe estar en el nombre, apellido o correo de la persona.
+    for (const token of (filters.actorQ ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
+      and.push({
+        actor: {
+          OR: [
+            { email: { contains: token, mode: "insensitive" } },
+            { firstName: { contains: token, mode: "insensitive" } },
+            { lastName: { contains: token, mode: "insensitive" } },
+          ],
+        },
+      });
+    }
+    // Fechas de calendario en hora de Lima, con el día final incluido entero (antes se leían como UTC y el día no coincidía con el de Lima).
+    const range = limaDayRange(filters.from, filters.to);
+    if (range.gte || range.lte) and.push({ createdAt: range });
+    return and.length ? { AND: and } : {};
+  }
+
+  async listAuditLog(filters: { entity?: string; action?: string; actorId?: string; actorQ?: string; from?: string; to?: string }, page = 1, pageSize = 30) {
+    const where = this.auditWhere(filters);
+    const size = (PAGE_SIZES as readonly number[]).includes(pageSize) || pageSize === 30 ? pageSize : 30;
     const [rows, total] = await Promise.all([
       this.prisma.auditLog.findMany({
         where,
         include: { actor: { select: { id: true, firstName: true, lastName: true } } },
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: (Math.max(1, page) - 1) * size,
+        take: size,
       }),
       this.prisma.auditLog.count({ where }),
     ]);
-    return { rows: await this.withEntityLabels(rows), total, page, pageSize };
+    return { rows: await this.withEntityLabels(rows), total, page: Math.max(1, page), pageSize: size };
+  }
+
+  /** Exporta el historial filtrado con nombres legibles; el «antes» y el «después» van como texto para poder revisarlos en Excel. */
+  async exportAuditLog(
+    filters: { entity?: string; action?: string; actorQ?: string; from?: string; to?: string },
+    format: "xlsx" | "csv",
+    actor: { id: string; email?: string },
+  ) {
+    const where = this.auditWhere(filters);
+    const count = await this.prisma.auditLog.count({ where });
+    if (count > AdminService.EXPORT_MAX_ROWS) {
+      throw new BadRequestException(`El filtro devuelve ${count.toLocaleString("es-PE")} eventos y el máximo por descarga es ${AdminService.EXPORT_MAX_ROWS.toLocaleString("es-PE")}. Acota el rango de fechas.`);
+    }
+    const found = await this.prisma.auditLog.findMany({
+      where,
+      include: { actor: { select: { firstName: true, lastName: true, email: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+    });
+    const rows = await this.withEntityLabels(found);
+    const json = (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v));
+    const sheet: ExportSheet<(typeof rows)[number]> = {
+      sheetName: "Auditoría",
+      rows,
+      columns: [
+        { header: "Fecha y hora", type: "datetime", width: 18, value: (r) => r.createdAt },
+        { header: "Usuario", width: 26, value: (r) => (r.actor ? `${r.actor.firstName} ${r.actor.lastName}` : "Sistema") },
+        { header: "Correo del usuario", width: 30, value: (r) => r.actor?.email ?? null },
+        { header: "Acción", width: 44, value: (r) => auditActionLabel(r.action) },
+        { header: "Tipo de objeto", width: 26, value: (r) => AUDIT_ENTITY_LABEL[r.entity] ?? r.entity },
+        { header: "Objeto", width: 32, value: (r) => r.entityLabel ?? r.entityId },
+        { header: "Antes", width: 40, value: (r) => json(r.before) },
+        { header: "Después", width: 40, value: (r) => json(r.after) },
+        { header: "Código de acción", width: 30, value: (r) => r.action },
+      ],
+      criteria: [
+        ["Listado", "Auditoría"],
+        ["Generado el", new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }) + " (hora de Lima)"],
+        ["Generado por", actor.email ?? actor.id],
+        ["Tipo de objeto", filters.entity ? AUDIT_ENTITY_LABEL[filters.entity] ?? filters.entity : "todos"],
+        ["Acción (contiene)", filters.action?.trim() || "—"],
+        ["Usuario (nombre o correo)", filters.actorQ?.trim() || "—"],
+        ["Desde", filters.from || "—"],
+        ["Hasta", filters.to || "—"],
+        ["Filas", String(rows.length)],
+      ],
+    };
+    // Exportar la propia auditoría también deja rastro.
+    await logAudit(this.prisma, { actorId: actor.id, action: "LIST_EXPORT", entity: "Report", entityId: "audit-log", after: { format, rows: rows.length, filters } });
+    return { buffer: format === "csv" ? buildCsv(sheet) : buildSimpleXlsx(sheet), rows: rows.length };
   }
 
   /**

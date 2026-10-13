@@ -1,87 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AUDIT_ENTITY_LABEL, AUDIT_KNOWN_ENTITIES, auditActionLabel } from "@inkademy/shared";
 import { adminApi, ApiError, type AuditLogEntryDTO } from "@/lib/api-client";
+import { ExportButtons } from "@/components/data/ExportButtons";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 
-// Entidades que de verdad se auditan hoy (logAudit() en apps/api) — un
-// select libre mostraría decenas de valores sin sentido para el resto de
-// los 64 modelos que nunca escriben a AuditLog.
-const KNOWN_ENTITIES = [
-  "PartnerInstitution",
-  "CoursePartnership",
-  "TeacherLiquidation",
-  "User",
-  "Course",
-  "Area",
-  "Company",
-  "Order",
-  "RoyaltyRecipient",
-  "CourseRoyalty",
-  "PlatformSettings",
-  "SunatSettings",
-  "EmailServerSettings",
-  "LiveSession",
-  "ChatbotSettings",
-  "NotificationSettings",
-  "BackupRecord",
-];
-
-/** Nombre en español de cada tipo de objeto y de cada acción; el código técnico se conserva en el detalle de cada registro. */
-const ENTITY_LABEL: Record<string, string> = {
-  PartnerInstitution: "Institución con convenio",
-  CoursePartnership: "Convenio de curso",
-  TeacherLiquidation: "Liquidación de docente",
-  User: "Usuario",
-  Course: "Curso",
-  Program: "Programa",
-  Area: "Área",
-  Company: "Empresa",
-  Order: "Orden",
-  RoyaltyRecipient: "Beneficiario de regalías",
-  CourseRoyalty: "Regalía de curso",
-  PlatformSettings: "Apariencia de la plataforma",
-  SunatSettings: "Configuración SUNAT",
-  EmailServerSettings: "Servidor de correo",
-  LiveSession: "Clase en vivo",
-  ChatbotSettings: "Asistente de IA",
-  NotificationSettings: "Notificaciones",
-  BackupRecord: "Respaldo",
-};
-
-const ACTION_LABEL: Record<string, string> = {
-  AREA_DELETE: "Área eliminada",
-  COMPANY_DELETE: "Empresa eliminada",
-  COURSE_DELETE: "Curso eliminado",
-  COURSE_PARTNERSHIP_ADD: "Convenio agregado a un curso",
-  COURSE_PARTNERSHIP_REMOVE: "Convenio quitado de un curso",
-  COURSE_PARTNERSHIP_UPDATE: "Convenio de un curso modificado",
-  COURSE_ROYALTY_REMOVE: "Regalía quitada de un curso",
-  EMAIL_SERVER_SETTINGS_UPDATE: "Servidor de correo modificado",
-  FEE_SETTINGS_UPDATE: "Comisiones modificadas",
-  GRANT_FREE_ACCESS: "Acceso gratuito otorgado",
-  LIVE_SESSION_CANCEL: "Clase en vivo cancelada",
-  LIVE_SESSION_RESCHEDULE: "Clase en vivo reprogramada",
-  ORDER_CANCEL_REFUND: "Orden cancelada con reembolso",
-  ORDER_CANCEL_TEST: "Orden de prueba cancelada",
-  PARTNER_INSTITUTION_DELETE: "Institución con convenio eliminada",
-  PARTNER_INSTITUTION_UPDATE: "Institución con convenio modificada",
-  ROYALTY_RECIPIENT_DELETE: "Beneficiario de regalías eliminado",
-  SUNAT_SETTINGS_UPDATE: "Configuración SUNAT modificada",
-  TEACHER_LIQUIDATION_GENERATE: "Liquidación de docente generada",
-  TEACHER_LIQUIDATION_WAIVE_DEDUCTION: "Descuento de liquidación perdonado",
-  USER_DELETE: "Usuario eliminado",
-  USER_PASSWORD_RESET: "Contraseña de usuario restablecida",
-  USER_UPDATE: "Usuario actualizado",
-  CHATBOT_SETTINGS_UPDATE: "Asistente de IA modificado",
-  NOTIFICATION_SETTINGS_UPDATE: "Notificaciones modificadas",
-  PLATFORM_SETTINGS_UPDATE: "Apariencia de la plataforma modificada",
-  BACKUP_RESTORE_TESTED: "Prueba de restauración de un respaldo registrada",
-};
-const accionLegible = (code: string) => ACTION_LABEL[code] ?? code.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+// Etiquetas y entidades auditables: viven en @inkademy/shared (las usa también la exportación del servidor).
+const KNOWN_ENTITIES = AUDIT_KNOWN_ENTITIES;
+const ENTITY_LABEL = AUDIT_ENTITY_LABEL;
+const accionLegible = auditActionLabel;
 
 const FIELD_LABEL: Record<string, string> = {
   role: "Rol",
@@ -135,6 +66,7 @@ function cambios(before: unknown, after: unknown): { campo: string; antes: strin
 export function AuditLogViewer() {
   const [entity, setEntity] = useState("");
   const [action, setAction] = useState("");
+  const [actorQ, setActorQ] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [rows, setRows] = useState<AuditLogEntryDTO[]>([]);
@@ -143,6 +75,7 @@ export function AuditLogViewer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [applied, setApplied] = useState<Record<string, string>>({});
 
   const pageSize = 30;
 
@@ -150,10 +83,11 @@ export function AuditLogViewer() {
     setLoading(true);
     setError(null);
     try {
-      const result = await adminApi.auditLog({ entity: entity || undefined, action: action || undefined, from: from || undefined, to: to || undefined, page: nextPage, pageSize });
+      const result = await adminApi.auditLog({ entity: entity || undefined, action: action || undefined, actorQ: actorQ.trim() || undefined, from: from || undefined, to: to || undefined, page: nextPage, pageSize });
       setRows(result.rows);
       setTotal(result.total);
       setPage(nextPage);
+      setApplied({ entity, action: action.trim(), actorQ: actorQ.trim(), from, to });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo cargar el historial.");
     } finally {
@@ -174,7 +108,7 @@ export function AuditLogViewer() {
       </div>
 
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-4">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-5">
           <div>
             <Label htmlFor="al-entity">Entidad</Label>
             <Select id="al-entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
@@ -191,6 +125,10 @@ export function AuditLogViewer() {
             <Input id="al-action" value={action} onChange={(e) => setAction(e.target.value)} placeholder="Código técnico, ej. DELETE o GRANT" />
           </div>
           <div>
+            <Label htmlFor="al-actor">Usuario (nombre o correo)</Label>
+            <Input id="al-actor" value={actorQ} onChange={(e) => setActorQ(e.target.value)} placeholder="Quién hizo la acción" />
+          </div>
+          <div>
             <Label htmlFor="al-from">Desde</Label>
             <Input id="al-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
@@ -198,10 +136,15 @@ export function AuditLogViewer() {
             <Label htmlFor="al-to">Hasta</Label>
             <Input id="al-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <div className="sm:col-span-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-5">
             <Button size="sm" disabled={loading} onClick={() => load(1)}>
               {loading ? "Buscando…" : "Filtrar"}
             </Button>
+            {/* Descarga el MISMO conjunto filtrado (con los filtros que se aplicaron al buscar, no los que se están escribiendo). */}
+            <ExportButtons
+              path="audit-log/export"
+              params={Object.fromEntries(Object.entries(applied).filter(([, v]) => v)) as Record<string, string>}
+            />
           </div>
         </CardContent>
       </Card>
@@ -280,8 +223,8 @@ export function AuditLogViewer() {
           <Button size="sm" variant="outline" disabled={loading || page <= 1} onClick={() => load(page - 1)}>
             Anterior
           </Button>
-          <span className="text-xs text-ash-500">
-            Página {page} de {Math.ceil(total / pageSize)}
+          <span className="text-xs text-ash-500" aria-live="polite">
+            {((page - 1) * pageSize + 1).toLocaleString("es-PE")}–{Math.min(total, page * pageSize).toLocaleString("es-PE")} de {total.toLocaleString("es-PE")} · página {page} de {Math.ceil(total / pageSize)}
           </span>
           <Button size="sm" variant="outline" disabled={loading || page * pageSize >= total} onClick={() => load(page + 1)}>
             Siguiente

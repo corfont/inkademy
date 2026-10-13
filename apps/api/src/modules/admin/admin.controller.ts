@@ -1481,20 +1481,25 @@ export class AdminController {
   @Get("audit-log")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Bucea en el histórico de acciones administrativas (AuditLog), con filtros" })
-  listAuditLog(
-    @Query("entity") entity?: string,
-    @Query("action") action?: string,
-    @Query("actorId") actorId?: string,
-    @Query("from") from?: string,
-    @Query("to") to?: string,
-    @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string,
-  ) {
+  listAuditLog(@Query() query: Record<string, string>) {
     return this.adminService.listAuditLog(
-      { entity, action, actorId, from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined },
-      Number(page) || undefined,
-      Number(pageSize) || undefined,
+      { entity: query.entity, action: query.action, actorId: query.actorId, actorQ: query.actorQ, from: query.from, to: query.to },
+      Number(query.page) || undefined,
+      Number(query.pageSize) || undefined,
     );
+  }
+
+  @Get("audit-log/export.:format")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Descarga el historial filtrado en Excel (.xlsx) o CSV, con nombres legibles" })
+  async exportAuditLog(@CurrentUser() user: RequestUser, @Param("format") format: string, @Query() query: Record<string, string>, @Res() res: Response) {
+    if (format !== "xlsx" && format !== "csv") throw new NotFoundException();
+    const { buffer } = await this.adminService.exportAuditLog(
+      { entity: query.entity, action: query.action, actorQ: query.actorQ, from: query.from, to: query.to },
+      format,
+      { id: user.id, email: user.email },
+    );
+    this.sendExport(res, format, buffer, "auditoria");
   }
 
   // --- Traducción asistida ---
