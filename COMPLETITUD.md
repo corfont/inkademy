@@ -45,7 +45,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | TBL-30 | Cargando | Falta | 0 `loading.tsx`, 0 skeleton compartido ✔ | Solo texto "Cargando…" en gestores |
 | TBL-31 | Vacío con acción | Parcial | `UsersManager.tsx:334` | Solo texto; empresas/soporte ni fila vacía |
 | TBL-32 | Sin resultados + limpiar | Parcial | `EnrollmentListFilterBar.tsx:54-56` | Sin botón limpiar |
-| TBL-33 | Error + Reintentar | Falta | `web/lib/safe-fetch.ts:25-37` | Un 5xx se muestra como lista vacía/datos de ejemplo; sin botón Reintentar |
+| TBL-33 | Error + Reintentar | Parcial | `web/lib/safe-fetch.ts` (withFallback relanza en producción) | Resuelto el dato inventado (13-oct, verificado en código y build); sigue sin botón Reintentar en gestores cliente |
 | TBL-34 | Actualizar datos | Parcial | `router.refresh()` en gestores | Sin botón manual |
 | TBL-40 | Reportes (centro, finanzas, horas, liquidaciones) | Hecho | `web/components/admin/ReportDownloadButtons.tsx`, `api/reports/reports.controller.ts:38` | PDF + Excel del mismo generador |
 | TBL-40 | Certificados | Parcial | `CertificatesTable.tsx:114-141` | ZIP de PDF, no lista xlsx/csv |
@@ -56,9 +56,9 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | TBL-52 | Blancos táctiles / foco | Parcial | `Button.tsx` ≥36 px; `CourtesyGrantsHistory.tsx:122` checkbox ~13 px | Foco global `globals.css:195` |
 | TBL-53 | Vista móvil | Parcial | 34 `overflow-x-auto` | Scroll, sin variante de tarjetas |
 | TBL-60 | Permiso en servidor + IDOR | Hecho | `admin.controller.ts` 150/150 con `@Roles`; `app.module.ts:88-91`; `support.service.ts:103`; `CompanyGuard` | 4 de 124 `@Body` sin pipe Zod |
-| TBL-61 | Auditoría de cambios críticos | Parcial | `api/modules/admin/audit-log.util.ts` | ~25 de ~98 mutaciones admin auditadas |
-| TBL-61 | Sin auditar: forzar avance 0/100 %, ampliar acceso (incl. SUPPORT), createUser, updateCourse, gastos, tarifas, regalías, regenerar certificados | Falta | `enrollment.service.ts:1175`, `admin.controller.ts:1071,1084`, `admin.service.ts:3028` ✔ | Sin rastro |
-| TBL-62 | Exportaciones auditadas y con permiso propio | Falta | 0 `logAudit` en `reports/` ni en `admin.controller.ts` ✔ | Solo `@Roles("ADMIN","SUPPORT")` |
+| TBL-61 | Auditoría de cambios críticos | Parcial | `api/modules/admin/audit-log.util.ts` | 13-oct: ahora también crear usuario, ampliar acceso, forzar avance y exportaciones |
+| TBL-61 | Sin auditar: forzar avance 0/100 %, ampliar acceso (incl. SUPPORT), createUser, updateCourse, gastos, tarifas, regalías, regenerar certificados | Parcial | `admin.service.ts` (createUser, extendEnrollmentAccess), `enrollment.service.ts` (adminSetProgress) | 13-oct: cubiertos esos 3; siguen sin auditar updateCourse, gastos, tarifas, regalías y regenerar certificados |
+| TBL-62 | Exportaciones auditadas y con permiso propio | Hecho | `reports.service.ts` auditExport, `reports.controller.ts`, `admin.controller.ts` (finanzas) | 13-oct: REPORT_EXPORT con filtros; permiso propio de exportación sigue pendiente (solo @Roles) |
 
 ## 2. Reportes, descargas y dashboards (REP, DSH)
 
@@ -72,7 +72,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | REP-05 | Nombre con fecha/hora | Parcial | `reports.service.ts:131` (nombre fijo) | ZIP de certificados sí (`CertificatesTable.tsx:130`) |
 | REP-06 | Inyección de fórmulas | Falta | `CourseEditor.tsx:2063-2065` (`csvEscape` no neutraliza `= + - @`) | Excel: No verificado |
 | REP-07 | Permiso "exportar" y enmascarado | Parcial | `reports.controller.ts:11-14` | SUPPORT descarga todos los correos de alumnos |
-| REP-08 | Exportación auditada | Falta | ✔ | |
+| REP-08 | Exportación auditada | Hecho | `api/modules/admin/reports/reports.service.ts` auditExport | 13-oct: PDF y Excel de reportes y finanzas; falta auditar exportaciones de listados (aún no existen) |
 | REP-10 | Vista de impresión | Falta | solo 2 `print:hidden` ✔ | Sin `@media print` |
 | REP-11 | PDF A4, saltos, totales | Parcial | `reports/report-kit.ts:25-27,146,320` | Fuente embebida sin validar |
 | REP-12 | Fecha de generación y zona horaria | Parcial | `report-kit.ts:146`, `report-xlsx.ts:44` | Sin zona horaria declarada |
@@ -88,7 +88,8 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | REP-40 | Decimales exactos | Parcial | `admin.service.ts:2416-2430` | `Number()`/`toFixed(2)` sobre Decimal; redondeo sin documentar |
 | REP-41 | UTC en BD, zona del usuario | Parcial | `reports.service.ts:285` (solo horas-dictadas usa Lima) | Resto usa zona del servidor |
 | REP-42 | Reproducible | Parcial | | Parámetros no figuran en el nombre del archivo |
-| REP-43 | Sin recorte silencioso | Falta | `admin.service.ts:1335` (`take: 500`), `:2261,:2304`, `:2737`, `:2898` ✔ | **Horas docentes subestima totales de liquidación** |
+| REP-43 | Horas docentes (totales de liquidación) | Hecho | `admin.service.ts` listTeacherSessionHours (sin `take`) | 13-oct: se quitó el tope de 500 sesiones que subestimaba los totales por docente |
+| REP-43 | Órdenes (50/200), matrículas (100), gastos (200), usuarios (100), reclamos (300), cotizaciones (200) | Falta | `admin.service.ts:2261,2304,2737,2898,2979` ✔ | Recorte silencioso sin paginador ni aviso; sigue pendiente (etapa 2: paginación compartida) |
 | DSH-01 | Definición, periodo y fuente por indicador | Falta | `ADM/page.tsx:134-158` | |
 | DSH-02 | Filtros globales en URL | Falta | solo finanzas (`FinanceExportControls.tsx:23-31`) | |
 | DSH-03 | Comparación y metas | Parcial | `ADM/page.tsx:117-126` | ▲/▼ en 2 KPI; sin metas |
@@ -96,7 +97,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | DSH-05 | Alternativa tabla / descarga / drill-down | Falta | `DashboardCharts.tsx` | |
 | DSH-06 | Estado por widget | Parcial | `ADM/page.tsx:60-65` (`withFallback` con MOCK) | Un fallo sustituye todo con datos de ejemplo |
 | DSH-07 | Personalizable | Falta | | |
-| DSH-08 | Cifras = reportes | Parcial | `admin.service.ts:34-36,95-99` | **Ventas 30 días suma PEN y USD como soles** |
+| DSH-08 | Cifras = reportes | Hecho | `admin.service.ts` getKpis (currency: "PEN" + salesUsdLast30d) | 13-oct: ventas solo en soles y dólares aparte en la tarjeta; el KPI de estudiantes activos sigue usando findMany |
 | DSH-09 | Rendimiento | Parcial | `admin.service.ts:52` | `findMany`+`.length` en vez de `count` |
 | KPI | Tarjetas clicables (estándar 12-oct) | Parcial | Hecho solo en `EMP/page.tsx:45-58` | Falta en admin inicio/finanzas/órdenes, docente y campus |
 
@@ -140,20 +141,20 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | MOD-12 | 2FA con códigos de respaldo | Falta | grep cero en api/web/schema ✔ | Ni para ADMIN |
 | MOD-13 | Sesiones activas y dispositivos | Falta | `auth.service.ts:67-69,206` | Sesión única: un login nuevo expulsa al anterior sin aviso |
 | MOD-14 | Preferencias de notificación y apariencia por usuario | Falta | `ThemeToggle.tsx:23,29` | Tema solo en localStorage |
-| MOD-15 | Descarga de mis datos / eliminación (Ley 29733) | Falta | grep cero | Solo borrado por admin, bloqueado con órdenes/matrículas |
+| MOD-15 | Descarga de mis datos / eliminación (Ley 29733) | Hecho | `api/modules/privacy/*`, `web/app/privacidad/page.tsx` | 13-oct: descarga inmediata + solicitudes de rectificación/oposición/eliminación; verificado en producción con cuentas de prueba (luego borradas) |
 | MOD-20 | Configuración sin tocar código | Parcial | `ADM/apariencia`, `ADM/configuracion` | Sin nombre de plataforma ni favicon; pasarelas, Zoom y Teams por entorno |
 | MOD-21 | Catálogos administrables | Parcial | `AreaManager.tsx:36,108` | Áreas sin desactivar; países/tipos de documento fijos en código; `CountryConfig` sin uso |
 | MOD-22 | Integraciones: secretos y probar conexión | Parcial | `settings/email-server-settings.service.ts:38` | Solo correo de prueba SMTP; sin prueba para SUNAT ni IA |
 | MOD-23 | Plantillas editables con vista previa | Parcial | `CertificateTemplateManager.tsx`, `worker/src/templates/email-templates.ts` | Resto de correos fijos en código |
 | MOD-24 | Config auditada y reversible | Parcial | `settings.service.ts:126-127` | Auditada con before/after; sin revertir |
 | MOD-30 | Gestión de usuarios | Parcial | `admin.service.ts:3028-3214`, `UsersManager.tsx:707` | Sin invitación por correo, sin cambio obligatorio de clave, sin desbloqueo manual |
-| MOD-30/33 | Flujo de bloqueo de cuenta | Falta | `auth.service.ts` `resetPassword` solo actualiza hash ✔ | El mensaje 423 manda a "Olvidé mi contraseña" pero no desbloquea |
+| MOD-30/33 | Flujo de bloqueo de cuenta | Hecho | `auth.service.ts` resetPassword, `admin.service.ts` resetUserPassword | 13-oct: restablecer la clave limpia failedLoginAttempts y lockedUntil (código desplegado; no probado con cuenta bloqueada real) |
 | MOD-31 | RBAC por módulo y acción | Parcial | `common/guards/admin-module.guard.ts:33-62`, `packages/shared/src/admin-modules.ts` | 8 módulos × {VER, EDITAR}; sin crear/eliminar/exportar/aprobar |
 | MOD-32 | Auditoría consultable y exportable | Parcial | `AuditLogViewer.tsx:135-155` | Sin exportar; no registra logins ni intentos fallidos; UI sin filtro por usuario |
 | MOD-33 | Políticas configurables | Parcial | `validation.ts:10-15`, `auth.service.ts:104-105` | Política y bloqueo fijos en código; sin expiración ni inactividad |
 | MOD-34 | Suplantación | Falta | grep cero | |
 | MOD-35 | Multi-organización | Parcial | `common/guards/company.guard.ts`, `20260826190000_company_rls` | Guard + RLS en 7 tablas; solo 1 e2e de aislamiento; instancias arrendadas se aíslan por despliegue |
-| MOD-36 | Copias y restauración | Parcial | `scripts/backup-db.sh`, `BackupManager.tsx` | Ver BD-50: misma máquina, restauración sin probar |
+| MOD-36 | Copias y restauración | Parcial | `scripts/backup-db.sh`, `BackupManager.tsx` | Ver BD-50 (copia externa construida, pendiente de credenciales de Microsoft) |
 | MOD-40 | Tema claro/oscuro/auto | Parcial | `layout.tsx:72`, `ThemeToggle.tsx:23-30` | Sin parpadeo; persistencia solo en localStorage, no en BD |
 | MOD-41 | Tokens y contraste AA | Parcial | `globals.css:18-175` | `ash-400` 2,91:1; chips del sidebar con colores fijos |
 | MOD-42 | reduced-motion / contrast | Falta | 0 usos en `web/` ✔ | `scroll-behavior: smooth` sin guarda |
@@ -170,7 +171,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | MOD-56 | Ayuda consistente | Hecho | `layout.tsx` (`HelpButton`+`ChatWidget`) | |
 | MOD-60 | Toda pantalla con salida | Parcial | `SidebarShell.tsx`, `Dialog.tsx` | Páginas sueltas (checkout, encuesta, auth) no verificadas |
 | MOD-61 | Reversibilidad | Parcial | `ConfirmDialog.tsx` | Sin deshacer genérico |
-| MOD-62 | Logout invalida en servidor | Falta | `auth.controller.ts:121-127` solo `clearCookie` ✔ | Refresh de 30 días sigue válido |
+| MOD-62 | Logout invalida en servidor | Hecho | `auth.service.ts` logout(), `auth.controller.ts` | 13-oct: verificado en producción: access y refresh dan 401 tras el logout |
 
 ## 5. Base de datos (BD)
 
@@ -179,7 +180,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | BD-01 | Claves primarias | Hecho | 72/72 modelos con `@id uuid()` | |
 | BD-02 | Claves foráneas | Parcial | 115 `@relation` | 46 sin `onDelete` explícito (ej. `Enrollment`) |
 | BD-03 | UNIQUE/CHECK | Parcial | 57 unique; 0 `CHECK` en 94 migraciones ✔ | `User.status` es String libre |
-| BD-03 | `Enrollment(userId,courseId)` único | Falta | `prisma/schema.prisma` modelo Enrollment ✔ | Matrícula duplicada posible (REVIEW §3) |
+| BD-03 | `Enrollment(userId,courseId)` único | Hecho | `prisma/migrations/20261013000000_enrollment_unique_active` | 13-oct: índice único PARCIAL solo sobre ACTIVE (retakeCourse crea otra matrícula con la anterior COMPLETED); 0 duplicados antes de crearlo; aplicado en producción |
 | BD-04 | 3FN | No verificado | | |
 | BD-05 | Dinero Decimal, fechas DateTime | Hecho | 22 campos `Decimal(10,2)` | |
 | BD-06 | Diccionario de datos | Parcial | `docs/DATA-MODEL.md` | 37 de 72 entidades; sin tocar desde 21-ago |
@@ -202,14 +203,14 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | BD-42 | Seeds idempotentes | Parcial | `prisma/seed.ts:55-57` | "Todo o nada"; mezcla catálogos con demo (`Demo1234!`) |
 | BD-43 | Paridad y conexión por env | Parcial | `.env.example` | `docker-compose.yml` con contraseñas fijas |
 | BD-44 | Pruebas de migración en CI | Falta | sin `.github/` ✔ | |
-| BD-50 | Copias automáticas, off-site, restauración probada | Parcial | `scripts/backup-db.sh`, `worker/processors/backup.processor.ts` | **Mismo VPS, sin cifrar, sin copia externa**; restauración sin evidencia escrita |
+| BD-50 | Copias automáticas, off-site, restauración probada | Parcial | `packages/shared/src/sharepoint.ts`, `worker/src/lib/offsite-backup.ts`, `web/components/admin/BackupOffsiteSettings.tsx` | 13-oct: copia externa a SharePoint con ruta configurable desde el admin y cifrado opcional. NO verificado contra un SharePoint real: faltan las credenciales MS_* y el permiso Sites.ReadWrite.All. Restauración probada sigue sin evidencia; RPO/RTO sin definir |
 | BD-51 | RPO/RTO | Falta | | |
 | BD-52 | Alta disponibilidad | No aplica | instancia única | Decisión de negocio pendiente |
 | BD-53 | Monitoreo | Falta | | Sin Sentry ni métricas; Redis sin AOF |
 | BD-54 | Privilegios mínimos | Parcial | `prisma.module.ts:9-13` | App, worker y migraciones usan superusuario |
-| BD-60 | Inventario de datos personales | Parcial | `User.termsAcceptedAt` | |
+| BD-60 | Inventario de datos personales | Parcial | `User.termsAcceptedAt` | 13-oct: registro de solicitudes ARCO con plazo; falta inventario de datos personales documentado |
 | BD-61 | Anonimización en pruebas | Falta | | |
-| BD-62 | Exportar/eliminar datos del titular | Falta | `legales/[doc]/page.tsx:22` | Solo un correo a `@inkademy.com` (dominio actual es `.lat`) |
+| BD-62 | Exportar/eliminar datos del titular | Hecho | `privacy.service.ts` executeCancellation, `web/app/(admin)/admin/privacidad` | 13-oct: anonimiza y conserva comprobantes y certificados; plazo de 10 días hábiles a CONFIRMAR con el asesor legal; textos libres (soporte) quedan asociados a la cuenta anonimizada |
 
 ## 6. Calidad, integraciones, archivos y jobs (CAL, ARC, INT, JOB, NOT)
 
@@ -224,7 +225,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | CAL-33 | Protección frente a errores | Parcial | | Sin papelera ni deshacer |
 | CAL-35 | Accesibilidad | Parcial | ver FE | |
 | CAL-40/63 | Pruebas automatizadas | Parcial | 3 e2e API (10 casos), 4 specs Playwright (9 casos) | Worker sin pruebas; sin unitarias; flujos de pago real, SUNAT, certificados, RLS sin prueba |
-| CAL-41 | Health checks | Falta | sin endpoint `/health` ✔ | `api`/`worker`/`web` sin `healthcheck` en el compose; `DEPLOYMENT.md` lo da por hecho |
+| CAL-41 | Health checks | Parcial | `api/modules/health/health.controller.ts` | 13-oct: GET /health (200/503 según la BD) desplegado; faltan los `healthcheck` de api/worker/web en docker-compose.prod.yml (archivo no versionado) |
 | CAL-42 | Tolerancia a fallos | Parcial | BullMQ `attempts: 3` + backoff | Culqi, PayPal, Zoom/Graph y SUNAT sin timeout |
 | CAL-43 | Recuperabilidad | Parcial | `restore-db.sh` | Sin reproceso manual de jobs fallidos |
 | CAL-50 | Seguridad | Parcial | `REVIEW.md` §3 | Alto: carreras de matrícula/cupos/reembolso, rutas de staff fuera de `/admin`, login social sin correo verificado, `api`/`worker` como root. Medio: sin CSP, Redis sin AOF |
@@ -280,7 +281,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | FE-32 | JS/CSS y fuentes | Parcial | `layout.tsx:23-35` | Solo 2 `dynamic()` |
 | FE-33 | Caché y compresión | No verificado | | Proxy fuera del repo |
 | FE-40 | Cinco estados de UI | Parcial | 7 `error.tsx` | 0 `loading.tsx`, sin EmptyState/Skeleton, sin vista 403 ✔ |
-| FE-41 | Sin datos de prueba | Falta | `web/lib/safe-fetch.ts:20-23` ✔, `campus/page.tsx:27`, `ADM/empresas/page.tsx:15-25` | Campus, empresa, docente y admin muestran datos de ejemplo si la API falla; solo las páginas públicas están protegidas |
+| FE-41 | Sin datos de prueba | Hecho | `web/lib/safe-fetch.ts`, `web/app/checkout/page.tsx` | 13-oct: en producción un fallo de la API se relanza al error.tsx; checkout pide el registro real por id y bloquea el pago si falla. Páginas públicas siguen con `soft` |
 | FE-42 | i18n | Parcial | `messages/es.json`/`en.json` (376 claves c/u) | Admin (103 archivos) y docente sin i18n |
 | FE-50 | Tokens | Hecho | `globals.css:18-85`, `tailwind.config.ts` | |
 | FE-51 | Componentes: botón, campo, casilla, pestañas, diálogo, progreso, avatar, badge, tarjeta | Hecho | `web/components/ui/*` | |
@@ -299,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## Resumen
 
-Hechos 24 · Parciales 144 · Faltan 72 · No aplica 4 · No verificado 11 *(255 filas; conteo automático de la columna Estado, sin contar los 7 encabezados de tabla. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema.)*
+Hechos 34 · Parciales 146 · Faltan 61 · No aplica 4 · No verificado 11 *(256 filas; conteo automático de la columna Estado. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct tras la etapa 1.)*
 
 ## Pendientes ordenados por impacto
 

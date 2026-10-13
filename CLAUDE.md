@@ -214,3 +214,13 @@ Informe completo y priorizado en `REVIEW.md` (qué se corrigió hoy y qué sigue
 (`ALLOW_PAYMENT_SIMULATION=true` para simular a propósito); el bucket solo es público en `materials/ scorm/ certificates/ subtitles/ avatars/ admin-uploads/` (prefijos privados:
 `StorageService.PRIVATE_PREFIXES`, se sirven con `getAccessUrl()`, enlace firmado con la dirección pública); un rol de administrador acotado no puede crear/modificar usuarios ni ver respaldos;
 `AdminModuleGuard` normaliza la ruta a minúsculas y cubre `/grants` y `/orders/:id/cancel`; certificados HTML con variables escapadas y sin JavaScript. Respaldo diario `scripts/backup-db.sh`.
+
+## Revisión de completitud y etapa 1 (13-oct-2026)
+La matriz `COMPLETITUD.md` (raíz del repo) es el diagnóstico contra los catálogos de la skill `system-completeness`; se actualiza al cerrar cada etapa. Lo hecho en la etapa 1, desplegado:
+- `withFallback` (`web/lib/safe-fetch.ts`) ya NO devuelve datos de ejemplo en producción: relanza al `error.tsx` del segmento. `{ soft: true }` solo para páginas públicas y llamadas secundarias; `{ notFoundOk: true }` para detalle por slug. El detalle público de curso/programa acepta slug **o id**; el checkout pide el registro real por id.
+- Logout real (rota `currentSessionId`); restablecer la clave desbloquea la cuenta; auditoría de crear usuario, ampliar acceso, forzar avance y exportaciones (`REPORT_EXPORT`); `GET /health`; KPI de ventas del dashboard solo en PEN (USD aparte); sin tope en horas docentes.
+- Índice único PARCIAL de matrícula (solo `ACTIVE`; `retakeCourse` crea otra con la anterior `COMPLETED`). Las migraciones se aplican a mano con `psql` + `prisma migrate resolve --applied` (ver `docker exec inkademy-api-1 …`).
+- **Respaldo externo en SharePoint**: Admin → Backups (`BackupSettings`; el cliente Graph está en `packages/shared/src/sharepoint.ts`). Las credenciales son las `MS_*` del `.env` y la app de Azure necesita `Sites.ReadWrite.All`; **sin verificar contra un SharePoint real**. Cifrado opcional con `BACKUP_ENCRYPTION_KEY` (guardar la clave también fuera del servidor); `scripts/decrypt-backup.mjs` descifra.
+- **Derechos ARCO (Ley 29733)**: `/privacidad` (cualquier rol) y Admin → Privacidad (solo administrador completo). Plazo de 10 días hábiles = `PRIVACY_RESPONSE_BUSINESS_DAYS` en `privacy.service.ts`, **a confirmar con el asesor legal**. La eliminación anonimiza y conserva comprobantes y certificados.
+- El `matcher` de `web/src/middleware.ts` debe incluir TODO prefijo de `PROTECTED_PREFIXES` (`/notificaciones` estuvo protegida solo en el papel).
+- Recordatorio: cualquier `docker compose` contra este proyecto lleva `-f docker-compose.prod.yml` explícito.
