@@ -300,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## 8. Etapa 2 — avance por pantalla (componentes compartidos de listado)
 
-Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: matrículas, usuarios, empresas, soporte, auditoría y resto.
+Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: usuarios, empresas, soporte, auditoría y resto.
 
 | ID | Módulo | Estado | Evidencia | Notas |
 |---|---|---|---|---|
@@ -320,10 +320,18 @@ Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se 
 | TBL-60 | Órdenes | Hecho | `@Roles("ADMIN","SUPPORT")` | Usuario normal: 403 en lista y en ambas exportaciones; sin sesión: 401 |
 | KPI | Órdenes (4 tarjetas) | Hecho | `ADM/ordenes/page.tsx` | Tarjetas clicables que aplican el filtro de estado |
 | TBL-53 | Órdenes | Parcial | `DataTable` | Desplazamiento horizontal en móvil; sin variante de tarjetas; no se probó en un teléfono |
+| TBL-10/11 | Matrículas | Hecho | `ADM/matriculas/page.tsx`, `admin.service.ts` enrollmentsWhere | Búsqueda de alumno por palabras (verificado: «zeta03 quispe» → 5, de personas distintas → 0), filtros estado/tipo/extemporáneos/fechas; cada filtro coincide con el conteo de la base (probado en producción con 62 matrículas de prueba) |
+| TBL-12/15/20 | Matrículas | Hecho | `parseListQuery`, `DataTable`, `Pagination` | 4 páginas de 25 cubren las 76 matrículas sin repetir; orden por alumno, avance, estado, matrícula y vencimiento (las abiertas, sin fecha, siempre al final en ambos sentidos); elimina el tope de 100 |
+| TBL-13/27 | Matrículas | Hecho | `lib/list-state.ts`, `lib/labels.ts` | Estado en la URL; estados y origen en español |
+| TBL-40/62, REP-08 | Matrículas | Hecho | `GET /admin/enrollments/export.xlsx\|csv` | Excel leído de vuelta: 20 filas = 20 en la base, avance numérico, fechas reales, solo «Vencida»/«Curso» en español; CSV de extemporáneas 12 = 12; auditado (`LIST_EXPORT`) |
+| TBL-60 | Matrículas | Hecho | `@Roles("ADMIN","SUPPORT")` | Alumno: 403 en lista, resumen y ambas exportaciones; sin token: 401 |
+| KPI | Matrículas (4 tarjetas) | Hecho | `ADM/matriculas/page.tsx` | Clicables; el resumen coincide con la base (total, activas, completadas, vencidas, extemporáneas) |
+| TBL-30/31/32 | Matrículas | Parcial | `matriculas/loading.tsx`, `EmptyState` | Cuatro vacíos distintos verificados en HTML; el esqueleto no se vio visualmente |
+| FRM-25 | Ampliar plazo de matrícula | Hecho | `ExtendAccessControl.tsx` | Verificado de punta a punta: se guarda 31-dic-2027 23:59:59 hora de Lima (04:59:59Z), la pantalla muestra «31 dic 2027» (antes mostraba el día siguiente) y la EXPIRED vuelve a ACTIVE; queda en auditoría |
 
 ## Resumen
 
-Hechos 50 · Parciales 147 · Faltan 60 · No aplica 4 · No verificado 11 *(272 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
+Hechos 57 · Parciales 148 · Faltan 60 · No aplica 4 · No verificado 11 *(280 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
 
 ## Pendientes ordenados por impacto
 
