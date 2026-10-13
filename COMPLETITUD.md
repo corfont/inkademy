@@ -18,7 +18,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | TBL-03 | Usuarios, catálogo, regalías, convenios, matrículas (extender acceso) | Hecho | `UsersManager.tsx` (EditUserModal), `ExtendAccessControl` | |
 | TBL-04 | Gestores con ConfirmDialog (~15) | Parcial | `ExpenseManager.tsx:158` (mensaje genérico) | Sin "deshacer" en ninguna parte |
 | TBL-04 | Tarifas, bitácora y adelantos docentes | Falta | `TeacherPayrollManager.tsx:419,517,570` ✔ | Borrado financiero de un clic |
-| TBL-04 | Quitar regalía/convenio/docente de un curso | Falta | `RoyaltyRecipientManager.tsx:305`, `PartnerInstitutionManager.tsx:409`, `CourseEditor.tsx:2991` | Sin confirmación |
+| TBL-04 | Quitar regalía/convenio/docente de un curso | Hecho | `RoyaltyRecipientManager.tsx`, `PartnerInstitutionManager.tsx` | 13-oct: regalía y convenio con ConfirmButton; quitar docente de curso ya tenía ConfirmDialog (hallazgo impreciso) |
 | TBL-04 | Borrado lógico | Parcial | `api/modules/admin/admin.service.ts:3185-3321` | Solo usuarios con `status`; resto borra físico con snapshot |
 | TBL-05 | Duplicar/clonar (cursos, exámenes, plantillas, campañas) | Falta | grep sin botones | Baja prioridad |
 | TBL-06 | Acciones masivas | Falta | solo `CourtesyGrantsHistory.tsx:84-122`, `BulkDeleteSection.tsx` | Resto sin selección múltiple |
@@ -187,7 +187,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | BD-07 | Catálogos en tablas | Parcial | `Area`, `CountryConfig`, `RatingDimension`, `AdminRole` | Pagos, canales, niveles y modalidades son enums en código |
 | BD-10 | Columnas estándar | Parcial | script sobre `schema.prisma` | `createdAt` falta en 32/72, `updatedAt` en 47/72, `createdBy` en 6, `deletedAt` en 0 |
 | BD-11 | Auditoría | Parcial | `AuditLog` (L1879) | Sin IP/user-agent; mutable (`hiddenAt`); sin hash en cascada |
-| BD-12 | Optimistic locking | Falta | | |
+| BD-12 | Optimistic locking | Falta | | 13-oct: cerradas las carreras críticas con reclamos atómicos (reembolso, conversión de cotización) e incrementos atómicos de cupos, verificado con concurrencia real en producción; el control de versión general en ediciones sigue pendiente |
 | BD-13 | Multi-tenant | Parcial | `prisma.module.ts:21-55` | RLS solo en `/companies/:id/*`; apagada sin `TENANT_DATABASE_URL` |
 | BD-20 | Índices | Parcial | 49 `@@index` | ~50 columnas `*Id` sin índice; `OrderItem(orderId)` sin índice |
 | BD-21 | EXPLAIN / N+1 | No verificado | | 194 `findMany` sin revisar |
@@ -225,7 +225,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | CAL-33 | Protección frente a errores | Parcial | | Sin papelera ni deshacer |
 | CAL-35 | Accesibilidad | Parcial | ver FE | |
 | CAL-40/63 | Pruebas automatizadas | Parcial | 3 e2e API (10 casos), 4 specs Playwright (9 casos) | Worker sin pruebas; sin unitarias; flujos de pago real, SUNAT, certificados, RLS sin prueba |
-| CAL-41 | Health checks | Parcial | `api/modules/health/health.controller.ts` | 13-oct: GET /health (200/503 según la BD) desplegado; faltan los `healthcheck` de api/worker/web en docker-compose.prod.yml (archivo no versionado) |
+| CAL-41 | Health checks | Hecho | `api/modules/health/health.controller.ts`; `healthcheck` en api y web de `docker-compose.prod.yml` (servidor) | 13-oct: api y web `healthy` en producción. El worker no tiene HTTP y queda sin healthcheck. `docker-compose.prod.yml` sigue sin versionarse (respaldo `.bak-preHealthcheck` en el servidor) |
 | CAL-42 | Tolerancia a fallos | Parcial | BullMQ `attempts: 3` + backoff | Culqi, PayPal, Zoom/Graph y SUNAT sin timeout |
 | CAL-43 | Recuperabilidad | Parcial | `restore-db.sh` | Sin reproceso manual de jobs fallidos |
 | CAL-50 | Seguridad | Parcial | `REVIEW.md` §3 | Alto: carreras de matrícula/cupos/reembolso, rutas de staff fuera de `/admin`, login social sin correo verificado, `api`/`worker` como root. Medio: sin CSP, Redis sin AOF |
@@ -300,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## Resumen
 
-Hechos 34 · Parciales 146 · Faltan 61 · No aplica 4 · No verificado 11 *(256 filas; conteo automático de la columna Estado. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct tras la etapa 1.)*
+Hechos 36 · Parciales 145 · Faltan 60 · No aplica 4 · No verificado 11 *(256 filas; conteo automático de la columna Estado. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct tras la etapa 1.)*
 
 ## Pendientes ordenados por impacto
 
@@ -329,3 +329,4 @@ Hechos 34 · Parciales 146 · Faltan 61 · No aplica 4 · No verificado 11 *(256
 18. Impresión, vistas guardadas, columnas configurables, densidad, atajos y buscador global, página "Acerca de", 403/mantenimiento/sin conexión, i18n del admin, manuales de usuario/administrador y diccionario de datos al día.
 
 *Nota de alcance: las filas Hecho son pocas a propósito — se exige evidencia archivo:línea. Casi todo "Parcial" significa que existe en alguna pantalla pero no en todas las del mismo tipo, que es justo la incoherencia que esta revisión debía detectar.*
+
