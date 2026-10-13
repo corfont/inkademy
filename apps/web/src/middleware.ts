@@ -88,6 +88,8 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
+// Cada prefijo de PROTECTED_PREFIXES debe estar también aquí: si no, el middleware ni se ejecuta para esa ruta
+// (/notificaciones estuvo así — protegida solo en el papel — hasta que se agregó /privacidad y se notó).
 export const config = {
-  matcher: ["/campus/:path*", "/campus", "/empresa/:path*", "/empresa", "/admin/:path*", "/admin", "/docente/:path*", "/docente", "/checkout"],
+  matcher: ["/campus/:path*", "/campus", "/empresa/:path*", "/empresa", "/admin/:path*", "/admin", "/docente/:path*", "/docente", "/checkout", "/notificaciones", "/privacidad"],
 };
