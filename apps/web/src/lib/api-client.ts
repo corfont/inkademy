@@ -360,6 +360,15 @@ export interface AdminOrderRowDTO {
   createdAt: string;
 }
 
+export interface AdminUsersPage {
+  rows: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  dir: "asc" | "desc";
+}
+
 export interface AdminEnrollmentRowDTO {
   id: string;
   userName: string;
@@ -1272,6 +1281,8 @@ export const adminApi = {
     apiFetch<any>("/admin/admin-roles/assign", { method: "PUT", body: JSON.stringify({ userId, adminRoleId }), accessToken }),
 
   // --- Usuarios y roles ---
+  usersSearch: (params: Record<string, string>, accessToken?: string | null) =>
+    apiFetch<AdminUsersPage>("/admin/users/search", { accessToken, query: params, cache: "no-store" }),
   users: (params: { q?: string; role?: string; pageSize?: number } = {}, accessToken?: string | null) =>
     apiFetch<any[]>("/admin/users", { query: params, accessToken, cache: "no-store" }),
   createUser: (

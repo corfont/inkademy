@@ -3176,6 +3176,51 @@ export class AdminService {
   // prisma/seed.ts a mano.
   // ==========================================================================
 
+  private static readonly USER_LIST_INCLUDE = {
+    companyMemberships: { where: { status: { not: "REMOVED" as const } }, include: { company: true } },
+    enrollments: { select: { status: true } },
+  } satisfies Prisma.UserInclude;
+
+  private mapUserRows(users: Prisma.UserGetPayload<{ include: typeof AdminService.USER_LIST_INCLUDE }>[]) {
+    return users.map((u) => {
+      const total = u.enrollments.length;
+      const active = u.enrollments.filter((e) => e.status === "ACTIVE").length;
+      const completed = u.enrollments.filter((e) => e.status === "COMPLETED").length;
+      const enrollmentGroup: "EN_CURSO" | "COMPLETADO" | "SIN_CURSOS" = active > 0 ? "EN_CURSO" : completed > 0 ? "COMPLETADO" : "SIN_CURSOS";
+      return {
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        displayName: u.displayName,
+        globalRole: u.globalRole,
+        secondaryRoles: u.secondaryRoles,
+        status: u.status,
+        createdAt: u.createdAt.toISOString(),
+        // Firma para certificados (solo tiene sentido para TEACHER, pero se
+        // devuelve para cualquier fila — la UI solo la ofrece para docentes).
+        signatureAssetId: u.signatureAssetId,
+        signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
+        // membershipId: necesario para poder "quitar de la empresa" desde acá
+        // (companyApi.removeMember pide companyId + membershipId, no userId).
+        companies: u.companyMemberships.map((m) => ({ membershipId: m.id, companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
+        // "El admin debería poder editar a cualquier usuario" — se exponen acá
+        // los campos de perfil editables (ver updateUserSchema) para poder
+        // precargar el formulario de edición.
+        phone: u.phone,
+        documentType: u.documentType,
+        documentNumber: u.documentNumber,
+        country: u.country,
+        city: u.city,
+        address: u.address,
+        jobTitle: u.jobTitle,
+        companyFreeText: u.companyFreeText,
+        avatarUrl: u.avatarUrl,
+        enrollmentStats: { total, active, completed, group: enrollmentGroup },
+      };
+    });
+  }
+
   async listUsers(params: { q?: string; role?: string; pageSize?: number }) {
     const users = await this.prisma.user.findMany({
       where: {
@@ -3218,43 +3263,109 @@ export class AdminService {
       // límite por defecto que basta para /admin/usuarios de uso normal).
       take: Math.min(2000, params.pageSize ?? 100),
     });
-    return users.map((u) => {
-      const total = u.enrollments.length;
-      const active = u.enrollments.filter((e) => e.status === "ACTIVE").length;
-      const completed = u.enrollments.filter((e) => e.status === "COMPLETED").length;
-      const enrollmentGroup: "EN_CURSO" | "COMPLETADO" | "SIN_CURSOS" = active > 0 ? "EN_CURSO" : completed > 0 ? "COMPLETADO" : "SIN_CURSOS";
-      return {
-        id: u.id,
-        email: u.email,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        displayName: u.displayName,
-        globalRole: u.globalRole,
-        secondaryRoles: u.secondaryRoles,
-        status: u.status,
-        createdAt: u.createdAt.toISOString(),
-        // Firma para certificados (solo tiene sentido para TEACHER, pero se
-        // devuelve para cualquier fila — la UI solo la ofrece para docentes).
-        signatureAssetId: u.signatureAssetId,
-        signatureUrl: u.signatureAssetId ? this.storageService.getPublicUrl(u.signatureAssetId) : null,
-        // membershipId: necesario para poder "quitar de la empresa" desde acá
-        // (companyApi.removeMember pide companyId + membershipId, no userId).
-        companies: u.companyMemberships.map((m) => ({ membershipId: m.id, companyId: m.companyId, companyName: m.company.legalName, role: m.role })),
-        // "El admin debería poder editar a cualquier usuario" — se exponen acá
-        // los campos de perfil editables (ver updateUserSchema) para poder
-        // precargar el formulario de edición.
-        phone: u.phone,
-        documentType: u.documentType,
-        documentNumber: u.documentNumber,
-        country: u.country,
-        city: u.city,
-        address: u.address,
-        jobTitle: u.jobTitle,
-        companyFreeText: u.companyFreeText,
-        avatarUrl: u.avatarUrl,
-        enrollmentStats: { total, active, completed, group: enrollmentGroup },
-      };
-    });
+    return this.mapUserRows(users);
+  }
+
+  // ---- Usuarios: búsqueda con filtros, orden y paginación en el servidor, y exportación del MISMO conjunto ----
+
+  static readonly USER_SORTS = ["name", "email", "created", "status"] as const;
+  private static readonly ROLE_ES: Record<string, string> = { STUDENT: "Alumno", TEACHER: "Docente", SUPPORT: "Soporte", ADMIN: "Administrador", COMPANY: "Empresa" };
+
+  private usersWhere(f: { q?: string; role?: string; status?: string; from?: string; to?: string }): Prisma.UserWhereInput {
+    const and: Prisma.UserWhereInput[] = [];
+    // Cada palabra debe aparecer en nombre, apellido o correo («ana quispe» encuentra a Ana Quispe).
+    for (const token of (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
+      and.push({
+        OR: [
+          { email: { contains: token, mode: "insensitive" } },
+          { firstName: { contains: token, mode: "insensitive" } },
+          { lastName: { contains: token, mode: "insensitive" } },
+        ],
+      });
+    }
+    // Mismo criterio que listUsers: un docente puede serlo solo en secondaryRoles.
+    if (f.role && ["STUDENT", "TEACHER", "SUPPORT", "ADMIN", "COMPANY"].includes(f.role)) {
+      and.push({ OR: [{ globalRole: f.role as never }, { secondaryRoles: { has: f.role as never } }] });
+    }
+    if (f.status === "active" || f.status === "disabled") and.push({ status: f.status });
+    const range = limaDayRange(f.from, f.to);
+    if (range.gte || range.lte) and.push({ createdAt: range });
+    return and.length ? { AND: and } : {};
+  }
+
+  private usersOrderBy(sort: (typeof AdminService.USER_SORTS)[number], dir: "asc" | "desc"): Prisma.UserOrderByWithRelationInput[] {
+    const primary: Prisma.UserOrderByWithRelationInput[] =
+      sort === "name" ? [{ lastName: dir }, { firstName: dir }]
+      : sort === "email" ? [{ email: dir }]
+      : sort === "status" ? [{ status: dir }]
+      : [{ createdAt: dir }];
+    return [...primary, { id: "asc" }];
+  }
+
+  async searchUsers(
+    filter: { q?: string; role?: string; status?: string; from?: string; to?: string },
+    rawQuery: { page?: unknown; pageSize?: unknown; sort?: unknown; dir?: unknown },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.USER_SORTS, defaultSort: "created", defaultDir: "desc", defaultPageSize: 50 });
+    const where = this.usersWhere(filter);
+    const [total, users] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({ where, include: AdminService.USER_LIST_INCLUDE, orderBy: this.usersOrderBy(query.sort, query.dir), skip: query.skip, take: query.take }),
+    ]);
+    return { rows: this.mapUserRows(users), total, page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir };
+  }
+
+  /**
+   * Exporta cuentas. Solo lo que hace falta para gestionarlas — SIN documento de identidad, teléfono, dirección ni datos bancarios (minimización de datos,
+   * Ley 29733). El controlador lo restringe a ADMIN: es la lista completa de correos.
+   */
+  async exportUsers(
+    filter: { q?: string; role?: string; status?: string; from?: string; to?: string },
+    rawQuery: { sort?: unknown; dir?: unknown },
+    format: "xlsx" | "csv",
+    actor: { id: string; email?: string },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.USER_SORTS, defaultSort: "created", defaultDir: "desc" });
+    const where = this.usersWhere(filter);
+    const count = await this.prisma.user.count({ where });
+    if (count > AdminService.EXPORT_MAX_ROWS) {
+      throw new BadRequestException(`El filtro devuelve ${count.toLocaleString("es-PE")} usuarios y el máximo por descarga es ${AdminService.EXPORT_MAX_ROWS.toLocaleString("es-PE")}. Acota el rango de fechas o el rol.`);
+    }
+    const found = await this.prisma.user.findMany({ where, include: AdminService.USER_LIST_INCLUDE, orderBy: this.usersOrderBy(query.sort, query.dir) });
+    const rows = this.mapUserRows(found);
+    const roleEs = (r: string) => AdminService.ROLE_ES[r] ?? r;
+    const sheet: ExportSheet<(typeof rows)[number]> = {
+      sheetName: "Usuarios",
+      rows,
+      columns: [
+        { header: "Nombres", width: 22, value: (r) => r.firstName },
+        { header: "Apellidos", width: 22, value: (r) => r.lastName },
+        { header: "Correo", width: 32, value: (r) => r.email },
+        { header: "Rol principal", width: 15, value: (r) => roleEs(r.globalRole) },
+        { header: "Otros roles", width: 22, value: (r) => r.secondaryRoles.map(roleEs).join(", ") || null },
+        { header: "Estado", width: 11, value: (r) => (r.status === "active" ? "Activa" : "Desactivada") },
+        { header: "Empresa(s)", width: 30, value: (r) => r.companies.map((c) => c.companyName).join(", ") || null },
+        { header: "Matrículas", type: "number", width: 11, value: (r) => r.enrollmentStats.total },
+        { header: "Activas", type: "number", width: 9, value: (r) => r.enrollmentStats.active },
+        { header: "Completadas", type: "number", width: 12, value: (r) => r.enrollmentStats.completed },
+        { header: "Creada el", type: "datetime", width: 18, value: (r) => new Date(r.createdAt) },
+      ],
+      criteria: [
+        ["Listado", "Usuarios"],
+        ["Generado el", new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }) + " (hora de Lima)"],
+        ["Generado por", actor.email ?? actor.id],
+        ["Búsqueda", filter.q?.trim() || "—"],
+        ["Rol", filter.role ? roleEs(filter.role) : "todos"],
+        ["Estado", filter.status === "active" ? "Activa" : filter.status === "disabled" ? "Desactivada" : "todos"],
+        ["Creada desde", filter.from || "—"],
+        ["Creada hasta", filter.to || "—"],
+        ["Orden", `${query.sort} (${query.dir === "asc" ? "ascendente" : "descendente"})`],
+        ["Filas", String(rows.length)],
+        ["Datos excluidos", "documento de identidad, teléfono, dirección y datos bancarios"],
+      ],
+    };
+    await logAudit(this.prisma, { actorId: actor.id, action: "LIST_EXPORT", entity: "User", after: { format, rows: rows.length, filters: filter } });
+    return { buffer: format === "csv" ? buildCsv(sheet) : buildSimpleXlsx(sheet), rows: rows.length };
   }
 
   /**

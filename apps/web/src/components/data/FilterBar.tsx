@@ -10,19 +10,22 @@ export function FilterBar({
   basePath,
   params,
   filterKeys,
+  keepSort = true,
   children,
 }: {
   basePath: string;
   params: Record<string, string>;
   /** Parámetros que son filtros (para contarlos y para saber qué limpiar). */
   filterKeys: string[];
+  /** false si la pantalla trae su propio selector de orden (vistas sin encabezados clicables). */
+  keepSort?: boolean;
   children: ReactNode;
 }) {
   const active = filterKeys.filter((k) => params[k]).length;
   return (
     <form method="get" action={basePath} role="search" className="flex flex-wrap items-end gap-3">
-      {params.sort && <input type="hidden" name="sort" value={params.sort} />}
-      {params.dir && <input type="hidden" name="dir" value={params.dir} />}
+      {keepSort && params.sort && <input type="hidden" name="sort" value={params.sort} />}
+      {keepSort && params.dir && <input type="hidden" name="dir" value={params.dir} />}
       {params.pageSize && <input type="hidden" name="pageSize" value={params.pageSize} />}
       {children}
       <Button type="submit" variant="outline">Aplicar</Button>

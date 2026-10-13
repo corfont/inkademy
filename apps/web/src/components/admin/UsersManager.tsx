@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/format";
 import { Ban, CheckCircle2, KeyRound, Trash2, Building2, UploadCloud, LayoutGrid, List as ListIcon, Pencil, Copy, Check } from "lucide-react";
 import { adminApi, companyApi, ApiError } from "@/lib/api-client";
@@ -201,43 +202,16 @@ function toggleRole(user: UserRow, role: string): { globalRole: string; secondar
   return { globalRole: user.globalRole, secondaryRoles: [...user.secondaryRoles, role] };
 }
 
-export function UsersManager() {
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [q, setQ] = useState("");
+/**
+ * Gestor de cuentas. La búsqueda, los filtros, el orden y la paginación viven en el SERVIDOR (la página `/admin/usuarios` los lee de la URL y
+ * trae solo la página pedida) — antes este componente cargaba una lista recortada en silencio y la filtraba aquí. Lo que sigue siendo suyo:
+ * crear cuentas, la galería/lista, las tarjetas con sus acciones y las agrupaciones, que se aplican a los usuarios de la página visible.
+ */
+export function UsersManager({ users, companies, empty }: { users: UserRow[]; companies: any[]; empty?: ReactNode }) {
+  const router = useRouter();
+  const refresh = () => router.refresh();
   const [groupMode, setGroupMode] = useState<"type" | "domain" | "progress">("type");
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // React StrictMode (dev) monta los efectos dos veces, y una búsqueda
-  // rápida dispara un tercer fetch — sin esto, la respuesta del fetch
-  // VIEJO (sin filtro) podía llegar después y pisar el resultado filtrado
-  // correcto. Solo se aplica la respuesta del fetch más reciente.
-  const requestSeq = useRef(0);
-
-  async function refresh(query?: string) {
-    const seq = ++requestSeq.current;
-    setLoading(true);
-    try {
-      const data = await adminApi.users({ q: query ?? q });
-      if (seq !== requestSeq.current) return; // llegó una búsqueda más nueva mientras esperábamos esta
-      setUsers(data);
-    } catch (err) {
-      if (seq !== requestSeq.current) return;
-      setError(err instanceof ApiError ? err.message : "No pudimos cargar los usuarios.");
-    } finally {
-      if (seq === requestSeq.current) setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    refresh();
-    adminApi
-      .companies()
-      .then(setCompanies)
-      .catch(() => setCompanies([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Vista por defecto: seccionada por tipo de cuenta — "01. Admins en una
   // sección, 02. Docentes en otra, 03. Soporte en otra, 04. Empresa (con
@@ -295,25 +269,12 @@ export function UsersManager() {
 
   return (
     <div className="flex flex-col gap-6">
-      {error && <Callout variant="danger">{error}</Callout>}
-
-      <CreateUserForm onCreated={() => refresh()} />
+      <CreateUserForm onCreated={refresh} />
 
       <Card>
         <CardContent className="flex flex-col gap-4 p-6">
           <div className="flex flex-wrap items-center gap-4">
-            <form
-              className="flex flex-1 gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                refresh();
-              }}
-            >
-              <Input placeholder="Buscar por nombre o correo…" value={q} onChange={(e) => setQ(e.target.value)} />
-              <Button type="submit" variant="outline">
-                Buscar
-              </Button>
-            </form>
+            <p className="flex-1 text-xs text-ash-500">Las agrupaciones se aplican a los usuarios de esta página.</p>
             <label className="flex items-center gap-2 text-sm text-ash-600">
               Agrupar por
               <Select className="h-8 w-56 text-xs" value={groupMode} onChange={(e) => setGroupMode(e.target.value as typeof groupMode)}>
@@ -342,10 +303,8 @@ export function UsersManager() {
             </div>
           </div>
 
-          {loading ? (
-            <p className="text-sm text-ash-500">Cargando…</p>
-          ) : users.length === 0 ? (
-            <p className="text-sm text-ash-500">No se encontraron usuarios.</p>
+          {users.length === 0 ? (
+            empty ?? <p className="text-sm text-ash-500">No se encontraron usuarios.</p>
           ) : (
             <div className="flex flex-col gap-6">
               {groups.map((group) => (
@@ -358,7 +317,7 @@ export function UsersManager() {
                   {view === "grid" ? (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {group.rows.map((u) => (
-                        <UserCard key={u.id} user={u} companies={companies} onChange={() => refresh()} />
+                        <UserCard key={u.id} user={u} companies={companies} onChange={refresh} />
                       ))}
                     </div>
                   ) : (
@@ -376,7 +335,7 @@ export function UsersManager() {
                         </thead>
                         <tbody className="divide-y divide-paper-border">
                           {group.rows.map((u) => (
-                            <UserListRow key={u.id} user={u} companies={companies} onChange={() => refresh()} />
+                            <UserListRow key={u.id} user={u} companies={companies} onChange={refresh} />
                           ))}
                         </tbody>
                       </table>

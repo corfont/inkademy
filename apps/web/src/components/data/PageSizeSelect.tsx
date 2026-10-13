@@ -11,7 +11,7 @@ export function PageSizeSelect({ basePath, params, pageSize }: { basePath: strin
       <span className="text-ash-500">Filas</span>
       <select
         value={pageSize}
-        onChange={(e) => router.push(listHref(basePath, params, { pageSize: e.target.value === "25" ? undefined : e.target.value, page: undefined }))}
+        onChange={(e) => router.push(listHref(basePath, params, { pageSize: e.target.value, page: undefined }))}
         className="h-9 rounded-md border border-paper-border bg-paper px-2 text-sm text-ash-800"
       >
         {PAGE_SIZE_OPTIONS.map((n) => (

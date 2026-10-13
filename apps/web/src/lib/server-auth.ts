@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ACCESS_TOKEN_COOKIE } from "./auth";
+import { ACCESS_TOKEN_COOKIE, SESSION_COOKIE } from "./auth";
 
 /**
  * SOLO para Server Components / route handlers (importa `next/headers`, que
@@ -16,4 +16,19 @@ import { ACCESS_TOKEN_COOKIE } from "./auth";
  */
 export function getServerAccessToken(): string | null {
   return cookies().get(ACCESS_TOKEN_COOKIE)?.value ?? null;
+}
+
+/**
+ * Roles de quien mira la pantalla, leídos de la cookie de sesión. SOLO para decidir qué botones mostrar (por ejemplo ocultar «Exportar» a
+ * quien la API rechazaría con 403): la autorización real siempre la decide el servidor de la API.
+ */
+export function getServerUserRoles(): string[] {
+  try {
+    const raw = cookies().get(SESSION_COOKIE)?.value;
+    if (!raw) return [];
+    const user = JSON.parse(decodeURIComponent(raw)) as { globalRole?: string; secondaryRoles?: string[] };
+    return [user.globalRole, ...(user.secondaryRoles ?? [])].filter((r): r is string => Boolean(r));
+  } catch {
+    return [];
+  }
 }

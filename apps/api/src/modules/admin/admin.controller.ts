@@ -1278,6 +1278,31 @@ export class AdminController {
 
   // --- Usuarios y roles ---
 
+  @Get("users/search")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Usuarios con búsqueda por palabras, filtros (rol, estado, fecha de alta), orden y paginación en el servidor" })
+  searchUsers(@Query() query: Record<string, string>) {
+    return this.adminService.searchUsers(
+      { q: query.q, role: query.role, status: query.status, from: query.from, to: query.to },
+      { page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir },
+    );
+  }
+
+  // Solo ADMIN: es la lista completa de correos. Sin documento, teléfono ni datos bancarios.
+  @Get("users/export.:format")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Descarga los usuarios filtrados en Excel (.xlsx) o CSV (sin datos de identidad ni bancarios)" })
+  async exportUsers(@CurrentUser() user: RequestUser, @Param("format") format: string, @Query() query: Record<string, string>, @Res() res: Response) {
+    if (format !== "xlsx" && format !== "csv") throw new NotFoundException();
+    const { buffer } = await this.adminService.exportUsers(
+      { q: query.q, role: query.role, status: query.status, from: query.from, to: query.to },
+      { sort: query.sort, dir: query.dir },
+      format,
+      { id: user.id, email: user.email },
+    );
+    this.sendExport(res, format, buffer, "usuarios");
+  }
+
   @Get("users")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Lista/busca cuentas de usuario (todas, sin importar el rol)" })

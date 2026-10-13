@@ -17,12 +17,13 @@ export interface ListQuery<S extends string> {
 
 export function parseListQuery<S extends string>(
   raw: { page?: unknown; pageSize?: unknown; sort?: unknown; dir?: unknown },
-  opts: { sortable: readonly S[]; defaultSort: S; defaultDir?: "asc" | "desc" },
+  opts: { sortable: readonly S[]; defaultSort: S; defaultDir?: "asc" | "desc"; defaultPageSize?: (typeof PAGE_SIZES)[number] },
 ): ListQuery<S> {
   const page = Math.max(1, Math.floor(Number(raw.page)) || 1);
-  const requested = Math.floor(Number(raw.pageSize)) || DEFAULT_LIST_PAGE_SIZE;
+  const fallbackSize = opts.defaultPageSize ?? DEFAULT_LIST_PAGE_SIZE;
+  const requested = Math.floor(Number(raw.pageSize)) || fallbackSize;
   // Solo los tamaños que ofrece la pantalla: un pageSize arbitrario (10000) no debe llegar a la base.
-  const pageSize = (PAGE_SIZES as readonly number[]).includes(requested) ? requested : DEFAULT_LIST_PAGE_SIZE;
+  const pageSize = (PAGE_SIZES as readonly number[]).includes(requested) ? requested : fallbackSize;
   const sort = (opts.sortable as readonly string[]).includes(String(raw.sort)) ? (String(raw.sort) as S) : opts.defaultSort;
   const dir = raw.dir === "asc" || raw.dir === "desc" ? raw.dir : opts.defaultDir ?? "desc";
   return { page, pageSize, skip: (page - 1) * pageSize, take: pageSize, sort, dir };
