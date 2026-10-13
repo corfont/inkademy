@@ -34,6 +34,7 @@ import { ChatbotModule } from "./modules/chatbot/chatbot.module";
 import { NpsModule } from "./modules/nps/nps.module";
 import { ScormModule } from "./modules/scorm/scorm.module";
 import { PlatformCoreModule } from "./modules/platform-core/platform-core.module";
+import { HealthController } from "./modules/health/health.controller";
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { PlatformCoreModule } from "./modules/platform-core/platform-core.module
     ScormModule,
     PlatformCoreModule,
   ],
+  controllers: [HealthController],
   providers: [
     // Orden importa: ThrottlerGuard corre primero (limita por IP sin
     // necesitar sesión), JwtAuthGuard después (autenticación/@Public()).

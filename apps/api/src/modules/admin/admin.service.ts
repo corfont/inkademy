@@ -45,9 +45,14 @@ export class AdminService {
       salesPrev30d,
       enrollmentsLast30d,
       enrollmentsPrev30d,
+      salesUsdLast30d,
     ] = await Promise.all([
+      // Las ventas se suman SOLO en soles: antes se sumaban PEN y USD juntos y
+      // el total se mostraba como S/ (un pedido de US$ 100 inflaba la cifra 100
+      // soles). Los dólares van aparte (salesUsdLast30d) — misma separación por
+      // moneda que ya hacen finanzas y los reportes (COMPLETITUD.md: DSH-08).
       this.prisma.order.aggregate({
-        where: { status: "PAID", createdAt: { gte: thirtyDaysAgo } },
+        where: { status: "PAID", currency: "PEN", createdAt: { gte: thirtyDaysAgo } },
         _sum: { total: true },
         _count: true,
       }),
@@ -72,15 +77,20 @@ export class AdminService {
       // Empresas que más compran — idem, no existía ningún ranking por cliente.
       this.prisma.order.groupBy({
         by: ["companyId"],
-        where: { status: "PAID", companyId: { not: null } },
+        where: { status: "PAID", currency: "PEN", companyId: { not: null } },
         _sum: { total: true },
         orderBy: { _sum: { total: "desc" } },
         take: 5,
       }),
       // Flujo: el mismo periodo inmediato anterior (30-60 días atrás), para mostrar si sube o baja.
-      this.prisma.order.aggregate({ where: { status: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } }, _sum: { total: true }, _count: true }),
+      this.prisma.order.aggregate({ where: { status: "PAID", currency: "PEN", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } }, _sum: { total: true }, _count: true }),
       this.prisma.enrollment.count({ where: { enrolledAt: { gte: thirtyDaysAgo } } }),
       this.prisma.enrollment.count({ where: { enrolledAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } } }),
+      this.prisma.order.aggregate({
+        where: { status: "PAID", currency: "USD", createdAt: { gte: thirtyDaysAgo } },
+        _sum: { total: true },
+        _count: true,
+      }),
     ]);
 
     const [courses, companies] = await Promise.all([
@@ -100,6 +110,8 @@ export class AdminService {
       sales: {
         last30dTotal: decimalToString(salesLast30d._sum.total ?? 0),
         last30dOrders: salesLast30d._count,
+        last30dTotalUsd: decimalToString(salesUsdLast30d._sum.total ?? 0),
+        last30dOrdersUsd: salesUsdLast30d._count,
         prev30dTotal: decimalToString(salesPrev30d._sum.total ?? 0),
         prev30dOrders: salesPrev30d._count,
         totalPaidOrders,
@@ -1332,7 +1344,10 @@ export class AdminService {
       },
       include: { course: { select: { id: true, slug: true, title: true } }, teacher: { select: { id: true, firstName: true, lastName: true } } },
       orderBy: { startsAt: "desc" },
-      take: 500,
+      // Sin tope: estos totales alimentan liquidaciones y reportes de pago. Con
+      // `take: 500` un periodo largo recortaba sesiones EN SILENCIO y los
+      // totales por docente quedaban subestimados (COMPLETITUD.md: REP-43). El
+      // rango de fechas y los filtros ya acotan la consulta.
     });
 
     const sessionsWithTeacher = sessions.filter(

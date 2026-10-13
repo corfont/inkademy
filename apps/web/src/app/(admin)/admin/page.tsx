@@ -88,7 +88,7 @@ export default async function AdminDashboardPage() {
     return `${pct >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(pct))} % vs. los 30 días anteriores`;
   };
   const kpiCards: Array<{ label: string; value: string | number; icon: typeof TrendingUp; health?: Health; accent: string; note?: string }> = [
-    { label: t("sales"), value: formatPrice(kpis.sales.last30dTotal, "PEN", locale), icon: TrendingUp, accent: "indigo", note: variation(Number(kpis.sales.last30dTotal), kpis.sales.prev30dTotal === undefined ? undefined : Number(kpis.sales.prev30dTotal)) },
+    { label: t("sales"), value: formatPrice(kpis.sales.last30dTotal, "PEN", locale), icon: TrendingUp, accent: "indigo", note: [variation(Number(kpis.sales.last30dTotal), kpis.sales.prev30dTotal === undefined ? undefined : Number(kpis.sales.prev30dTotal)), Number(kpis.sales.last30dTotalUsd ?? 0) > 0 ? `+ ${formatPrice(kpis.sales.last30dTotalUsd, "USD", locale)} en dólares (aparte)` : undefined].filter(Boolean).join(" · ") || undefined },
     { label: t("enrollments"), value: kpis.enrollments.total, icon: Users, accent: "gold", note: kpis.enrollments.last30d === undefined ? undefined : `${kpis.enrollments.last30d} nuevas en 30 días${kpis.enrollments.prev30d ? ` (${kpis.enrollments.last30d >= kpis.enrollments.prev30d ? "▲" : "▼"} ${Math.abs(Math.round(((kpis.enrollments.last30d - kpis.enrollments.prev30d) / kpis.enrollments.prev30d) * 100))} %)` : ""}` },
     { label: t("activeStudents"), value: kpis.students.active, icon: Users, accent: "indigo" },
     { label: t("atRiskStudents"), value: kpis.students.atRisk, icon: UserX, health: atRiskHealth, accent: "danger" },
