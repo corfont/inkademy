@@ -1,258 +1,106 @@
-# Despliegue — de docker-compose local a producción
+# Despliegue — cómo corre Inkademy en producción
 
-Este documento describe cómo pasar del stack local (`docker-compose.yml`,
-raíz) a un entorno de producción, servicio por servicio, sin cambiar de
-motor ni de esquema en ningún componente. **El desarrollo local sigue
-siendo docker-compose** (Postgres/MinIO/Mailhog locales, sección "Cómo
-levantar todo en local" del `README.md` raíz) — lo que cambia abajo es
-solo el destino de producción/demo pública.
+**Inkademy corre en un VPS propio (Hostinger, `2.25.200.202`, `/home/deploy/apps/inkademy`) con Docker Compose, detrás del Caddy compartido del portafolio.**
+No usa Vercel, Supabase, Render, Railway ni Fly: todo — web, API, worker, Postgres, Redis y almacenamiento — son contenedores del mismo servidor.
+(Hasta el 13-oct-2026 este documento describía una ruta Supabase + Render/Fly + Vercel que nunca se usó; se reescribió con lo desplegado de verdad.)
+Para el acceso al servidor, usuario, llave SSH y el patrón `git push`, ver `../CLAUDE.md` de este repo y el `CLAUDE.md` de la raíz del portafolio.
 
-## 1. Mapa local → producción
+## 1. Qué corre y dónde
 
-| Local (docker-compose) | Producción | Cambia código? |
-|---|---|---|
-| `postgres` (contenedor `postgres:16-alpine`) | **Supabase** (Postgres administrado) — ver sección 2 | No — mismo motor (PostgreSQL), mismo `prisma/schema.prisma`. Solo cambia `DATABASE_URL`. |
-| `redis` (contenedor `redis:7-alpine`) | Redis administrado: **Upstash**, **ElastiCache**, **Azure Cache for Redis** (cualquiera con soporte BullMQ/ioredis) | No — solo cambia `REDIS_URL` (usar TLS: `rediss://`). |
-| `minio` | **Supabase Storage** (vía su endpoint S3-compatible) — ver sección 2 | No — el código usa el SDK S3 (`@aws-sdk/client-s3`) contra `S3_ENDPOINT`; solo cambian las variables `S3_*`. |
-| `mailhog` | Proveedor SMTP transaccional real (SES, SendGrid, Postmark, Resend...) | No — se sigue hablando SMTP; cambian `SMTP_HOST/PORT/USER/PASS` y `EMAIL_FROM`. |
-| `api`, `worker`, `web` (build local) | Mismas imágenes Docker (`apps/*/Dockerfile`); `web` además se puede desplegar nativo en Vercel — ver sección 4 | No — mismos Dockerfiles multistage; solo cambia dónde corren y sus variables de entorno. |
+| Servicio | Contenedor | Puerto en el servidor | Notas |
+|---|---|---|---|
+| Web (Next.js, `output: standalone`) | `inkademy-web-1` | `8082` | `https://inkademy.lat` |
+| API (NestJS) | `inkademy-api-1` | `8083` | `https://api.inkademy.lat` |
+| Worker (BullMQ: correo, certificados, recordatorios, backups…) | `inkademy-worker-1` | — | sin puerto público |
+| PostgreSQL 16 | `inkademy-postgres-1` | solo red interna | volumen `pgdata` |
+| Redis 7 | `inkademy-redis-1` | solo red interna | solo colas BullMQ |
+| MinIO (almacenamiento S3-compatible) | `inkademy-minio-1` | `8084` | `https://cdn.inkademy.lat`; bucket `inkademy-assets` |
+| Mailpit (solo desarrollo) | `inkademy-mailhog-1` | `127.0.0.1:8085` | NO envía correo real; ver sección 6 |
 
-> Nota: si en el futuro el proyecto migra a un Postgres administrado
-> genérico (RDS, Cloud SQL, Azure Database for PostgreSQL) en vez de
-> Supabase, el cambio sigue siendo solo de `DATABASE_URL` — el motor y el
-> esquema no cambian en ningún caso, por eso esta tabla es intercambiable.
+- **HTTPS y dominios:** los termina el Caddy compartido (`/home/deploy/apps/crm/Caddyfile`, contenedor `inkapitales_caddy_prod`): `inkademy.lat` y `www` → 8082, `api.inkademy.lat` → 8083, `cdn.inkademy.lat` → 8084. El certificado lo emite y renueva Caddy solo.
+- Los puertos 8082/8083/8084 también quedan abiertos al mundo por HTTP plano (Docker ignora `ufw`); está pendiente enlazarlos a `127.0.0.1` (ver `REVIEW.md`).
+- El archivo real es **`docker-compose.prod.yml`** (no versionado: trae credenciales en el YAML). `docker-compose.yml` (versionado) es el de desarrollo: **no usarlo en el servidor** — comparte nombre de proyecto y volúmenes y recrearía los contenedores reales con otra configuración (incidente del 29-sep-2026, detalle en `CLAUDE.md`).
 
-## 2. Postgres y Storage en producción: Supabase
+## 2. Cómo se despliega
 
-La decisión de producto es usar **Supabase únicamamente como Postgres
-administrado + Storage** (NO se usa Supabase Auth ni su SDK de cliente —
-la autenticación sigue siendo JWT propio + OAuth de Google/Microsoft,
-implementada en `apps/api`, sin ningún cambio por esta decisión).
+```bash
+# desde tu máquina
+GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_inkapitales_vps" git push vps main     # actualiza los archivos en el VPS; NO reinicia nada
 
-### 2.1. Base de datos (`DATABASE_URL`)
-
-Un proyecto de Supabase es Postgres puro — Prisma se conecta exactamente
-igual que a cualquier otro Postgres, sin cambios de código ni de
-`prisma/schema.prisma`. Supabase expone dos formas de conexión, y conviene
-usar cada una donde corresponde:
-
-- **Pooler de conexiones (puerto `6543`, modo `pgbouncer`)** — usar como
-  `DATABASE_URL` en `apps/api` y `apps/worker` en runtime. Como ambos
-  corren como contenedores stateless con varias réplicas, cada una abre su
-  propio pool de conexiones Prisma; el pooler de Supabase evita agotar el
-  límite de conexiones directas de Postgres. Ejemplo de forma (valores de
-  ejemplo, no reales):
-  ```
-  DATABASE_URL="postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true"
-  ```
-  El parámetro `pgbouncer=true` le dice a Prisma que no intente usar
-  prepared statements incompatibles con el modo transacción del pooler.
-- **Conexión directa (puerto `5432`)** — usar solo para
-  `prisma migrate deploy` (las migraciones necesitan la conexión directa,
-  no el pooler en modo transacción). Se puede exponer como una variable
-  separada (p.ej. `DIRECT_DATABASE_URL`) usada únicamente en el paso de
-  release/CI que corre las migraciones, dejando `DATABASE_URL` (con
-  pooler) para lo que corre en los contenedores de `api`/`worker`.
-
-### 2.2. Object storage (`S3_*`)
-
-Supabase Storage expone un endpoint **S3-compatible** — el mismo adapter
-que ya habla con MinIO en dev (`@aws-sdk/client-s3`, ver
-`apps/api/src/storage/storage.service.ts` y
-`apps/worker/src/lib/storage.ts`) funciona contra Supabase Storage sin
-tocar una línea de código, solo cambiando las variables `S3_*` que ya
-existían en `.env.example`:
-
-```
-S3_ENDPOINT=https://<project-ref>.supabase.co/storage/v1/s3
-S3_REGION=<región del proyecto, p.ej. us-east-1>
-S3_ACCESS_KEY=<access key generado en Storage > S3 Access Keys>
-S3_SECRET_KEY=<secret key generado junto al access key>
-S3_BUCKET=inkademy-assets
-S3_FORCE_PATH_STYLE=true
-S3_PUBLIC_BASE_URL=https://<project-ref>.supabase.co/storage/v1/object/public/inkademy-assets
+# en el servidor (ssh deploy@2.25.200.202), dentro de /home/deploy/apps/inkademy
+docker compose -f docker-compose.prod.yml build api web worker
+docker compose -f docker-compose.prod.yml up -d api web worker
 ```
 
-Crear el bucket (`inkademy-assets`, o el nombre que se prefiera) desde el
-panel de Supabase Storage antes del primer deploy — equivalente al
-`minio-init` que en dev crea el bucket automáticamente vía `docker-compose.yml`.
+- **Migraciones:** cada `prisma/migrations/<fecha>_<nombre>/migration.sql` es idempotente (`IF NOT EXISTS`) y se aplica a mano contra la base real:
+  `docker exec -i inkademy-postgres-1 psql -U inkademy -d inkademy -v ON_ERROR_STOP=1 < prisma/migrations/<carpeta>/migration.sql`
+  La tabla `_prisma_migrations` está desfasada (las migraciones posteriores al 15-sep-2026 no se registraron en ella); no usar `prisma migrate deploy` sin revisarlo antes.
+- **Después de cambiar `prisma/schema.prisma`:** `pnpm --filter @inkademy/db run generate` y reconstruir `packages/shared` (`pnpm --filter @inkademy/shared run build`) antes de compilar las apps.
+- **`NEXT_PUBLIC_*` se hornean al compilar `web`:** cambiar una de ellas exige reconstruir la imagen, no basta con reiniciar.
+- Verificar siempre contra producción (`curl https://api.inkademy.lat/courses`, abrir el sitio), no contra el entorno local.
+- No existe `deploy.sh` para este sistema: el despliegue es manual.
 
-## 3. Variables de entorno obligatorias en producción
+## 3. Variables de entorno de producción
 
-Adicionales o distintas a `.env.example` (que está pensado para dev):
+Viven en `docker-compose.prod.yml` / `.env` del servidor — **nunca en el repositorio**. Grupos (los valores reales no se documentan aquí):
 
-- `NODE_ENV=production`
-- `DATABASE_URL` — connection string del **pooler** de Supabase (puerto
-  `6543`, `pgbouncer=true`) para `apps/api`/`apps/worker`; usar la conexión
-  directa (puerto `5432`) solo para `prisma migrate deploy` (ver sección 2.1).
-- `REDIS_URL` — con TLS (`rediss://...`) si el proveedor lo soporta/exige.
-- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secretos generados
-  aleatoriamente (32+ bytes), **nunca** los valores de ejemplo del repo,
-  gestionados vía secret manager (no como variable de entorno en texto
-  plano si el orquestador lo permite).
-- `APP_URL` / `API_URL` — dominios reales (https).
-- `GOOGLE_CLIENT_ID/SECRET` y `GOOGLE_CALLBACK_URL` apuntando al dominio real.
-- `MS_TENANT_ID/MS_CLIENT_ID/MS_CLIENT_SECRET` y `MS_CALLBACK_URL` — ver
-  checklist de Azure AD abajo.
-- `CULQI_SECRET_KEY` / `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` — claves
-  **live**, no `pk_test_`/`sk_test_`.
-- `S3_ENDPOINT/REGION/ACCESS_KEY/SECRET_KEY/BUCKET/FORCE_PATH_STYLE/PUBLIC_BASE_URL`
-  apuntando al endpoint de Supabase Storage (ver sección 2.2).
-- `SMTP_HOST/PORT/SECURE/USER/PASS` y `EMAIL_FROM` del proveedor real.
-- `PUPPETEER_EXECUTABLE_PATH` — ya fijado en `apps/worker/Dockerfile` al
-  Chromium instalado vía `apk` (no depende de descarga en runtime).
+- **Base y colas:** `DATABASE_URL`, `REDIS_URL`.
+- **Sesión:** `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (64 caracteres, distintos entre sí), `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`.
+- **Direcciones públicas:** `APP_URL`, `API_URL`, `NEXT_PUBLIC_API_URL`, `API_URL_INTERNAL` (la web llega a la API por la red de Docker para evitar el hairpin NAT).
+- **Almacenamiento:** `S3_ENDPOINT` (interno, `http://minio:9000`), `S3_PUBLIC_BASE_URL` (`https://cdn.inkademy.lat/inkademy-assets`, también se usa para firmar enlaces), `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_FORCE_PATH_STYLE`.
+- **Pagos:** `CULQI_PUBLIC_KEY/SECRET_KEY`, `STRIPE_PUBLIC_KEY/SECRET_KEY/WEBHOOK_SECRET`, `PAYPAL_CLIENT_ID/SECRET/ENV`, y los `NEXT_PUBLIC_*` equivalentes. **En producción, sin clave real las pasarelas rechazan el cobro**; `ALLOW_PAYMENT_SIMULATION=true` las deja simular a propósito (nunca dejarlo encendido al abrir al público).
+- **SUNAT (facturación electrónica):** `SUNAT_RUC`, `SUNAT_SOL_USER`, `SUNAT_SOL_PASSWORD`, `SUNAT_CERT_PEM`, `SUNAT_CERT_KEY_PEM`, `SUNAT_ENV` (`beta` o `produccion`), series, `SUNAT_RAZON_SOCIAL`, `SUNAT_ADDRESS`, `SUNAT_UBIGEO`, `SUNAT_TAX_AFFECTATION`. También editables desde Admin → Facturación.
+- **Login social y Teams:** `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`, `MS_TENANT_ID/CLIENT_ID/CLIENT_SECRET/CALLBACK_URL`, `MS_TEAMS_ORGANIZER_UPN`. Vacíos hoy: el login social y las aulas de Teams no están activos.
+- **Puente con el CRM:** `CRM_API_URL`, `CRM_API_SECRET`, `CRM_BRIDGE_SECRET`.
+- **Correo:** el servidor SMTP se configura desde Admin → Configuración (tabla `EmailServerSettings`); `SMTP_*` y `EMAIL_FROM` solo son el respaldo. Ver sección 6.
+- **Otros:** `GEMINI_API_KEY` (asistente), `DEFAULT_CURRENCY`, `SUPPORTED_CURRENCIES`, `SUPPORTED_LOCALES`, `TZ`, `WHATSAPP_*`, `PUPPETEER_EXECUTABLE_PATH` (en la imagen del worker).
 
-Todos los secretos (JWT, client secrets, API keys de pago, credenciales de
-Supabase) deben vivir en el secret manager/vault de la plataforma elegida y
-montarse como variables de entorno en el momento del deploy — nunca
-committeados ni embebidos en la imagen.
+## 4. Almacenamiento (MinIO)
 
-## 4. Despliegue para demo pública (la ruta más simple)
+- El bucket **no** es de lectura pública: solo lo son los prefijos `materials/`, `scorm/`, `certificates/`, `subtitles/`, `avatars/` y `admin-uploads/`. Respaldos, respuestas de exámenes, informes y documentos del asistente son privados y se sirven con **enlace firmado** (`StorageService.getAccessUrl`, firmado con la dirección pública `cdn.inkademy.lat`).
+- La política la fija el servicio `minio-init` de `docker-compose.prod.yml` en cada arranque. Si se agrega un prefijo nuevo que deba ser público, hay que sumarlo ahí y a `StorageService.PRIVATE_PREFIXES` si es privado.
 
-Para tener un link público funcionando sin operar infraestructura propia,
-la combinación más simple es: **Supabase** (DB + Storage) + **Render,
-Railway o Fly.io** (API y worker, ya tienen Dockerfile → deploy directo de
-imagen) + **Vercel** (frontend Next.js, deploy nativo sin Docker). Redis
-administrado (Upstash tiene capa gratuita y es la opción más simple de
-conectar desde Render/Railway/Fly) completa el stack.
+## 5. Dominios y DNS
 
-Orden recomendado:
+- `inkademy.lat`, `www`, `api` y `cdn` → `2.25.200.202`. El DNS de `inkademy.lat` está en Namecheap (hosting); lo administra otra persona.
+- Cualquier dominio nuevo necesita su registro A hacia la IP y un bloque en el Caddyfile compartido (el cambio exige recrear el contenedor de Caddy con `--env-file .env.production`; ver `../CLAUDE.md`).
 
-1. **Crear el proyecto en Supabase** → copiar la connection string del
-   pooler (`DATABASE_URL`) y la directa (para migraciones), crear el bucket
-   de Storage y copiar sus credenciales `S3_*` (sección 2). Contra esa
-   `DATABASE_URL` directa, correr una sola vez desde una máquina con el
-   repo y `.env` apuntando a Supabase:
-   ```bash
-   pnpm prisma:generate
-   pnpm prisma:migrate deploy   # o el comando de migración elegido en CI
-   pnpm prisma:seed             # opcional: solo si se quiere la demo con datos
-   ```
-2. **Desplegar `apps/api` y `apps/worker`** en Render/Railway/Fly.io como
-   dos servicios separados, cada uno construido desde su `Dockerfile`
-   (`apps/api/Dockerfile`, `apps/worker/Dockerfile`) con contexto de build
-   la raíz del repo (igual que hace `docker-compose.yml` localmente). Cada
-   servicio necesita las variables de la sección 3
-   (`DATABASE_URL`/`REDIS_URL`/`S3_*`/`SMTP_*`/secretos de JWT y OAuth/
-   pagos) — `apps/worker` además necesita `PUPPETEER_EXECUTABLE_PATH` (ya
-   viene fijado en su Dockerfile) y no necesita puerto público (no expone
-   HTTP). Anotar la URL pública que la plataforma asigna a `apps/api`
-   (o el dominio propio si se configura uno).
-3. **Desplegar `apps/web` en Vercel**, con `NEXT_PUBLIC_API_URL` apuntando
-   a la URL de `apps/api` del paso 2 (y el resto de variables
-   `NEXT_PUBLIC_*` de `.env.example`: claves públicas de Culqi/Stripe).
-   Vercel construye el proyecto Next.js directamente desde `apps/web`
-   (no usa `apps/web/Dockerfile`, que es solo para el despliegue en
-   contenedores tipo ECS/Cloud Run si se prefiere esa ruta más adelante).
+## 6. Correo saliente
 
-Con eso: `apps/web` en Vercel habla con `apps/api` en Render/Railway/Fly,
-`apps/api`/`apps/worker` hablan con Supabase (DB+Storage) y con Redis
-(Upstash) — sin infraestructura propia que mantener. Pagos en modo test y
-Microsoft Graph sin configurar funcionan igual que en local (adapter de
-Teams en modo simulado, ver `.env.example`); para una demo "seria" conviene
-al menos completar el checklist de Azure AD (sección 5) si se quiere
-mostrar clases en vivo reales.
+- Hoy: `SMTP_HOST=mailhog` (Mailpit) en las variables, y el servidor SMTP real se carga desde el panel. Sin uno configurado **no sale ningún correo real** (verificación de cuenta, recuperar contraseña, recibos, constancias).
+- La cuenta de Microsoft 365 de `inkapitales.com` rechaza el SMTP (autenticación SMTP desactivada en el tenant); se evaluaron Resend y un servidor propio.
+- Servidor propio preparado (no arrancado): `mail/` (docker-mailserver + webmail Roundcube). Requiere registros DNS (A `mail`, MX, SPF, DKIM, DMARC) y el PTR de la IP en Hostinger; ver `mail/README.md`.
 
-## 5. Checklist: Azure AD App Registration (Microsoft Graph / Teams)
+## 7. Respaldos
 
-Necesario para que el "Login con Microsoft" y la creación/sincronización de
-reuniones de Teams funcionen en producción (en dev, sin esto, el adapter de
-Teams funciona en modo simulado):
+- **Base de datos:** `scripts/backup-db.sh` (cron `15 3 * * *` del usuario `deploy`) genera un `pg_dump` restaurable en `/home/deploy/backups/inkademy/` con retención de 14 días. Restaurar: `sh scripts/restore-db.sh <archivo.dump>` (valida el archivo, pide escribir `RESTAURAR`, guarda un respaldo previo, detiene la plataforma, restaura y la vuelve a levantar). Con `DB_NAME=otra_base` solo prueba la restauración en una base temporal.
+- **Respaldo interno de la app** (Admin → Backups, semanal): un `.zip` con los datos como JSON, para descargar. No tiene botón de carga.
+- **Archivos** (videos, SCORM, avatares, PDF de certificados): viven en el volumen de MinIO (`inkademy_miniodata`). Hoy no tienen respaldo propio.
+- **Pendiente:** copia de todo lo anterior **fuera del VPS** y una restauración de prueba periódica.
 
-1. Crear (o reutilizar) una **App Registration** en Azure AD del tenant del
-   cliente/organización.
-2. Agregar **permiso de aplicación** (no delegado)
-   `OnlineMeetings.ReadWrite.All` sobre Microsoft Graph.
-3. Otorgar **consentimiento de administrador** (admin consent) para ese
-   permiso — sin esto, `apps/worker` no podrá leer `attendanceReports`.
-4. Generar un **client secret** (o certificado) para la app y guardarlo en
-   el secret manager → `MS_CLIENT_SECRET`.
-5. Registrar el **redirect URI** de login OAuth (`MS_CALLBACK_URL`,
-   `https://<dominio-api>/auth/microsoft/callback`) en la sección
-   "Authentication" de la App Registration.
-6. Definir `MS_TEAMS_ORGANIZER_UPN` — la cuenta (licenciada para Teams) que
-   organiza las reuniones creadas por la plataforma.
-7. Confirmar `MS_TENANT_ID`/`MS_CLIENT_ID` correctos en `.env` de `apps/api`
-   y `apps/worker` (ambos deben coincidir con el mismo tenant).
-8. Probar en un ambiente de staging: crear una `LiveSession`, verificar que
-   se genera `providerMeetingId`/`joinUrl`, y que
-   `POST /live-sessions/:id/sync-attendance` puebla `Attendance` después de
-   finalizada la sesión.
+## 8. Checklist: App Registration de Azure AD (Microsoft Graph / Teams)
 
-## 6. Checklist: pasarelas de pago en modo live
+Necesario para "Login con Microsoft" y las reuniones de Teams (sin esto el adaptador de Teams trabaja en modo simulado):
 
-**Culqi** (Perú):
-- Completar el proceso de verificación de negocio (KYC) con Culqi.
-- Reemplazar `CULQI_PUBLIC_KEY`/`CULQI_SECRET_KEY` de test por las de
-  producción (`pk_live_`/`sk_live_`).
-- Configurar el webhook de Culqi apuntando a
-  `https://<dominio-api>/webhooks/culqi` y verificar la firma en el handler.
-- Probar Yape/PagoEfectivo/tarjeta en el ambiente live con montos pequeños
-  antes del lanzamiento.
+1. Crear una **App Registration** en Microsoft Entra ID del tenant de la organización (requiere un rol que permita registrar aplicaciones; el consentimiento de administrador a permisos de Graph requiere **Administrador global**).
+2. Agregar el permiso de aplicación `OnlineMeetings.ReadWrite.All` sobre Microsoft Graph y otorgar el consentimiento de administrador.
+3. Generar un **client secret** → `MS_CLIENT_SECRET`.
+4. Registrar el redirect URI de login: `https://api.inkademy.lat/auth/microsoft/callback` (`MS_CALLBACK_URL`).
+5. Definir `MS_TEAMS_ORGANIZER_UPN` (cuenta licenciada para Teams que organiza las reuniones) y confirmar `MS_TENANT_ID`/`MS_CLIENT_ID`.
+6. Probar: crear una `LiveSession`, verificar `providerMeetingId`/`joinUrl` y que `POST /live-sessions/:id/sync-attendance` llene `Attendance`.
 
-**Stripe** (compradores internacionales):
-- Activar la cuenta de Stripe (datos legales, cuenta bancaria de destino).
-- Reemplazar `STRIPE_PUBLIC_KEY`/`STRIPE_SECRET_KEY` por las claves live.
-- Configurar el endpoint de webhook `https://<dominio-api>/webhooks/stripe`
-  en el dashboard de Stripe y copiar el `STRIPE_WEBHOOK_SECRET` real.
-- Revisar impuestos/monedas soportadas (`SUPPORTED_CURRENCIES`) contra lo
-  habilitado en la cuenta Stripe.
+## 9. Checklist: pasarelas de pago en modo live
 
-## 7. Backups de PostgreSQL
+**Culqi** (Perú): verificación de negocio, claves `pk_live_`/`sk_live_`, webhook a `https://api.inkademy.lat/webhooks/culqi`, prueba real con monto pequeño.
+**Stripe** (internacional): cuenta activada, claves live, webhook a `https://api.inkademy.lat/webhooks/stripe` con su `STRIPE_WEBHOOK_SECRET` (no dejarlo vacío), revisar monedas soportadas.
+**PayPal:** `PAYPAL_ENV=live` solo con credenciales reales; el servidor verifica que el monto aprobado coincida con el carrito antes de capturar.
+Con claves reales cargadas, confirmar que `ALLOW_PAYMENT_SIMULATION` no esté definido.
 
-- En Supabase: activar los backups diarios automáticos del proyecto (y
-  point-in-time recovery, disponible en los planes que lo soportan) desde
-  el panel de Database > Backups — no requiere infraestructura propia. Si
-  en el futuro se usa un Postgres administrado genérico (RDS/Cloud
-  SQL/Azure Database for PostgreSQL) en vez de Supabase, el equivalente son
-  sus snapshots automáticos + PITR nativo.
-- Retención mínima recomendada: 7–14 días de PITR + snapshots semanales con
-  retención de varias semanas para el arranque (certificados, órdenes,
-  matrículas son datos que no se pueden regenerar).
-- Probar la restauración periódicamente (no basta con que el backup
-  "exista" — validar que se puede restaurar y que la app arranca contra la
-  copia restaurada).
-- Migraciones (`prisma migrate deploy`) siempre contra un backup reciente
-  disponible; evitar migraciones destructivas sin ventana de rollback.
+## 10. Monitoreo
 
-## 8. Monitoreo y logs (básico para el lanzamiento)
+- Logs: `docker compose -f docker-compose.prod.yml logs --tail=200 api worker` (la API y el worker escriben a stdout; el worker en JSON por línea). Docker rota los logs (10 MB × 3).
+- No existe endpoint `/health` de la API ni alertas externas; es parte de lo pendiente en `REVIEW.md`. Vigilar a mano: errores 5xx de la API, jobs fallidos en Admin → Notificaciones, espacio en disco y memoria del servidor (que comparte con los demás sistemas).
 
-- **Logs**: `apps/api` y `apps/worker` escriben a stdout/stderr en formato
-  estructurado (ver `apps/worker/src/lib/logger.ts` — JSON por línea);
-  la plataforma elegida los recolecta (los logs de Render/Railway/Fly.io
-  ya alcanzan para el lanzamiento; en la nube de un hyperscaler serían
-  CloudWatch Logs/Azure Monitor/GCP Logging) sin cambios adicionales.
-- **Métricas mínimas a vigilar**: latencia/errores 5xx de `apps/api`,
-  profundidad y edad de los jobs en cada cola BullMQ (si `attendance-sync`
-  o `certificate` empiezan a acumularse, algo está fallando río abajo:
-  Graph, Storage o SMTP), conexiones activas a Postgres (vigilar el límite
-  del pooler de Supabase), uso de memoria de los workers que corren
-  puppeteer (picos durante generación masiva de certificados).
-- **Alertas mínimas**: caída de `/health` de la API, cola con jobs
-  fallidos por encima de un umbral, uso de conexiones/almacenamiento cerca
-  del límite del plan de Supabase, tasa de fallo de webhooks de pago.
-- **Errores de aplicación**: integrar un colector de excepciones (Sentry u
-  equivalente) en `apps/api` y `apps/worker` antes del lanzamiento — no
-  incluido en el stack base de este entregable, queda como tarea de
-  Fase 1 tardía / Fase 2.
+## 11. Checklist de salida a producción
 
-## 9. Checklist general de salida a producción
-
-1. `pnpm install` + `pnpm prisma:generate` en CI, luego `pnpm build` de
-   cada app y build de las imágenes Docker de `apps/api` y `apps/worker`
-   (y de `apps/web` si se despliega en contenedor en vez de Vercel).
-2. `prisma migrate deploy` (no `migrate dev`) contra la conexión **directa**
-   de Supabase (puerto `5432`, sección 2.1), como paso de release previo a
-   levantar las nuevas instancias.
-3. Variables de entorno de producción cargadas desde el secret
-   manager/vault de la plataforma, nunca desde `.env` committeado.
-4. DNS y TLS (certificados) para `apps/web` y `apps/api` (automático en
-   Vercel/Render/Railway/Fly; manual si se usa infraestructura propia).
-5. Webhooks de Culqi/Stripe apuntando al dominio real y probados en modo
-   live con un cargo mínimo real.
-6. Azure AD App Registration con consentimiento de administrador otorgado
-   (paso 3 del checklist de Graph, sección 5).
-7. Backups automáticos de Supabase confirmados y una restauración de
-   prueba ejecutada al menos una vez.
-8. Logs y al menos una alerta básica (caída de `/health`, colas atascadas)
-   configuradas antes de anunciar el lanzamiento.
+Ver `REVIEW.md` (estado real y pendientes priorizados). Lo mínimo antes de abrir al público: correo real, claves de pago y datos SUNAT, desactivar cuentas demo, contenido demo despublicado, datos de contacto reales, textos legales con razón social, copia de respaldo fuera del VPS.

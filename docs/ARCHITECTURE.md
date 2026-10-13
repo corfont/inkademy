@@ -13,7 +13,7 @@ flowchart LR
     Browser["Navegador (alumno / empresa / admin)"]
   end
 
-  subgraph Vercel_o_similar["apps/web (Next.js)"]
+  subgraph Web_VPS["apps/web (Next.js, contenedor en el VPS)"]
     Web["SSR/SSG + client — catálogo, campus, checkout, panel B2B/admin"]
   end
 
@@ -23,9 +23,9 @@ flowchart LR
   end
 
   subgraph Datos["Datos"]
-    Postgres[("PostgreSQL\n(Supabase en prod)")]
+    Postgres[("PostgreSQL 16\n(contenedor en el VPS)")]
     Redis[("Redis\n(colas BullMQ)")]
-    S3[("Object storage S3-compatible\n(MinIO en dev, Supabase Storage en prod)")]
+    S3[("Object storage S3-compatible\n(MinIO en el VPS, detrás de cdn.inkademy.lat)")]
   end
 
   subgraph Externos["Integraciones externas"]
@@ -33,7 +33,7 @@ flowchart LR
     Stripe["Stripe\n(compradores internacionales)"]
     Graph["Microsoft Graph / Teams\n(aulas virtuales + asistencia)"]
     OAuth["Google OAuth / Microsoft Entra ID\n(login social)"]
-    Mail["SMTP\n(Mailhog en dev, proveedor real en prod)"]
+    Mail["SMTP\n(Mailpit en dev; servidor configurado desde el panel en prod)"]
   end
 
   Browser --> Web
@@ -70,9 +70,10 @@ flowchart LR
 - **Redis**: exclusivamente como backend de colas BullMQ (no se usa como
   caché de sesión — los JWT son stateless).
 - **Object storage S3-compatible**: videos/PDFs/certificados/adjuntos de
-  soporte. MinIO en dev, **Supabase Storage** (vía su endpoint S3-compatible)
-  en producción/demo pública — o S3/Azure Blob/GCS si se opta por un
-  hyperscaler más adelante, vía la misma API S3.
+  soporte. **MinIO** en el propio VPS (desarrollo y producción), expuesto
+  por `cdn.inkademy.lat`; solo ciertos prefijos son públicos, el resto se
+  sirve con enlace firmado. Pasar a S3/Azure Blob/GCS más adelante solo
+  cambia las variables `S3_*`, porque el código habla la API S3.
 
 ## 2. Justificación de decisiones técnicas
 
@@ -88,7 +89,7 @@ flowchart LR
 | **Zod (`packages/shared/validation.ts`) + class-validator** | Un único esquema de validación fuente de verdad reusado en formularios del frontend (react-hook-form) y como base de los DTOs de NestJS, evitando reglas de validación duplicadas y divergentes. |
 | **Culqi + Stripe (adapter de pagos)** | Culqi cubre medios de pago locales peruanos (Yape, PagoEfectivo, tarjetas locales); Stripe cubre compradores internacionales/tarjetas globales. Ambos detrás de una interfaz `PaymentProvider` común en la API — agregar PayPal en Fase 2 es otro adapter, no un rediseño. |
 | **Microsoft Graph/Teams para aulas virtuales** | La mayoría de clientes corporativos LatAm ya usan Microsoft 365/Teams; reutilizar Teams evita pedirle a cada alumno una cuenta nueva en una plataforma de videollamadas distinta. El mismo tenant de Azure AD sirve para "Login con Microsoft" y para crear/gestionar las reuniones. |
-| **Object storage S3-compatible en vez de disco local** | Los assets (videos, PDFs, certificados) deben sobrevivir redeploys de contenedores stateless y ser servibles vía URL firmada/CDN; MinIO en dev es API-compatible con Supabase Storage (elegido para prod/demo pública) o S3/Azure Blob/GCS en prod sin cambiar código. |
+| **Object storage S3-compatible en vez de disco local** | Los assets (videos, PDFs, certificados) deben sobrevivir redeploys de contenedores stateless y ser servibles vía URL firmada/CDN; MinIO (en el VPS) es API-compatible con S3, así que pasar a S3/Azure Blob/GCS no cambia código. |
 
 ## 3. Multi-tenancy B2B
 
@@ -132,21 +133,18 @@ Inkademy es **single-tenant en base de datos, multi-tenant a nivel de fila**
   Esto absorbe picos (p.ej. fin de un curso masivo que dispara cientos de
   certificados) sin degradar la latencia de la API; `apps/worker` escala
   horizontalmente ajustando `concurrency` por cola y el número de réplicas.
-- **Base de datos**: PostgreSQL administrado en producción — **Supabase**
-  (Postgres + Storage administrados; no se usa Supabase Auth/SDK, la
-  autenticación sigue siendo JWT propio en `apps/api`) es la opción elegida
-  para producción/demo pública por simplicidad operativa; el motor sigue
-  siendo PostgreSQL puro, así que migrar a RDS/Cloud SQL/Azure Database for
-  PostgreSQL más adelante es solo cambiar `DATABASE_URL` (ver
-  `docs/DEPLOYMENT.md`). Connection pooling vía el pooler de Supabase (modo
-  `pgbouncer`, puerto 6543) para no agotar conexiones con N réplicas de
-  API + worker; réplica de lectura si el reporting B2B empieza a competir
-  con el tráfico transaccional.
-- **Redis administrado** (ElastiCache/Azure Cache/Upstash) — solo backend
+- **Base de datos**: PostgreSQL 16 en un contenedor del propio VPS (volumen
+  `pgdata`), con `pg_dump` diario y script de restauración (ver
+  `docs/DEPLOYMENT.md`). Si el tráfico lo exige, el motor sigue siendo
+  PostgreSQL puro: migrar a un Postgres administrado (RDS, Cloud SQL, Azure
+  Database for PostgreSQL) es cambiar `DATABASE_URL` y agregar un pooler si
+  hay muchas réplicas de API + worker; réplica de lectura si el reporting
+  B2B empieza a competir con el tráfico transaccional.
+- **Redis** (contenedor en el VPS; podría ser administrado) — solo backend
   de colas, sin estado de negocio, así que es reemplazable/reiniciable sin
   pérdida de datos críticos (los jobs no procesados se reintentan; el
   estado de negocio vive en Postgres).
-- **Object storage con CDN delante** en producción para servir video/PDF
+- **Object storage con CDN delante** (hoy MinIO tras Caddy; un CDN real sería el siguiente paso) para servir video/PDF
   sin pasar por la API — la API solo genera URLs firmadas.
 - **Cachear catálogo público** (secciones curadas, listados) en el borde
   (CDN/Next.js ISR) porque cambia con poca frecuencia y es la ruta de
@@ -156,5 +154,5 @@ Inkademy es **single-tenant en base de datos, multi-tenant a nivel de fila**
 
 - Contrato REST: `docs/API-CONTRACT.md`.
 - Modelo de datos completo: `docs/DATA-MODEL.md`.
-- Cómo pasar de docker-compose a producción: `docs/DEPLOYMENT.md`.
+- Cómo corre y se despliega en producción (VPS + Docker + Caddy): `docs/DEPLOYMENT.md`.
 - Plan de fases: `docs/PHASES.md`.
