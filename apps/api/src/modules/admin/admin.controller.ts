@@ -1067,10 +1067,15 @@ export class AdminController {
       format,
       { id: user.id, email: user.email },
     );
+    this.sendExport(res, format, buffer, "ordenes");
+  }
+
+  /** Respuesta de una descarga de listado: tipo, nombre con fecha y hora de Lima (REP-05) y el archivo. */
+  private sendExport(res: Response, format: "xlsx" | "csv", buffer: Buffer, baseName: string) {
     const stamp = new Date().toLocaleString("sv-SE", { timeZone: "America/Lima" }).slice(0, 16).replace(" ", "_").replace(":", "");
     res.set({
       "Content-Type": format === "csv" ? "text/csv; charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="ordenes_${stamp}.${format}"`,
+      "Content-Disposition": `attachment; filename="${baseName}_${stamp}.${format}"`,
     });
     res.send(buffer);
   }
@@ -1090,9 +1095,33 @@ export class AdminController {
 
   @Get("enrollments")
   @Roles("ADMIN", "SUPPORT")
-  @ApiOperation({ summary: "Busca matrículas por nombre/correo del alumno" })
-  listEnrollments(@Query("q") q?: string) {
-    return this.adminService.listEnrollments(q);
+  @ApiOperation({ summary: "Matrículas con búsqueda de alumno, filtros (estado, tipo, casos extemporáneos, fechas), orden y paginación en el servidor" })
+  listEnrollments(@Query() query: Record<string, string>) {
+    return this.adminService.listEnrollments(
+      { q: query.q, status: query.status, kind: query.kind, expired: query.expired, from: query.from, to: query.to },
+      { page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir },
+    );
+  }
+
+  @Get("enrollments/summary")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Totales de matrículas por estado y casos extemporáneos (tarjetas de /admin/matriculas)" })
+  getEnrollmentsSummary() {
+    return this.adminService.getEnrollmentsSummary();
+  }
+
+  @Get("enrollments/export.:format")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga las matrículas filtradas en Excel (.xlsx) o CSV" })
+  async exportEnrollments(@CurrentUser() user: RequestUser, @Param("format") format: string, @Query() query: Record<string, string>, @Res() res: Response) {
+    if (format !== "xlsx" && format !== "csv") throw new NotFoundException();
+    const { buffer } = await this.adminService.exportEnrollments(
+      { q: query.q, status: query.status, kind: query.kind, expired: query.expired, from: query.from, to: query.to },
+      { sort: query.sort, dir: query.dir },
+      format,
+      { id: user.id, email: user.email },
+    );
+    this.sendExport(res, format, buffer, "matriculas");
   }
 
   @Patch("enrollments/:id/extend-access")

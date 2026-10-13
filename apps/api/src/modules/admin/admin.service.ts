@@ -2992,33 +2992,151 @@ export class AdminService {
   // matrículas, no solo las de acceso vencido — el admin necesita poder
   // encontrar la matrícula de un alumno para resetear su avance sin que
   // esté necesariamente vencida.
-  async listEnrollments(q?: string) {
-    const now = new Date();
-    const enrollments = await this.prisma.enrollment.findMany({
-      where: q
-        ? {
-            OR: [
-              { user: { email: { contains: q, mode: "insensitive" } } },
-              { user: { firstName: { contains: q, mode: "insensitive" } } },
-              { user: { lastName: { contains: q, mode: "insensitive" } } },
-            ],
-          }
-        : { accessExpiresAt: { lt: now }, status: { not: "COMPLETED" } },
-      include: { user: true, course: true, program: true },
-      orderBy: q ? { enrolledAt: "desc" } : { accessExpiresAt: "desc" },
-      take: 100,
-    });
-    return enrollments.map((e) => ({
+  static readonly ENROLLMENT_SORTS = ["student", "progress", "status", "enrolled", "expires"] as const;
+  static readonly ENROLLMENT_STATUSES = ["ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED"] as const;
+  private static readonly ENROLLMENT_STATUS_ES: Record<string, string> = { ACTIVE: "Activa", COMPLETED: "Completada", EXPIRED: "Vencida", CANCELLED: "Cancelada" };
+  private static readonly ENROLLMENT_SOURCE_ES: Record<string, string> = { B2C_PURCHASE: "Compra", B2B_SEAT: "Cupo de empresa", FREE: "Gratis", ADMIN_GRANTED: "Cortesía del admin" };
+
+  /**
+   * Casos extemporáneos = plazo de acceso vencido y sin terminar. Una matrícula CANCELADA (p. ej. reembolsada) no es un caso: no hay nada que ampliar.
+   * Es un filtro más (`expired=1`), ya no la vista por defecto: el listado completo se busca, filtra, ordena y pagina como cualquier otro.
+   */
+  private enrollmentsWhere(f: { q?: string; status?: string; kind?: string; expired?: string; from?: string; to?: string }): Prisma.EnrollmentWhereInput {
+    const and: Prisma.EnrollmentWhereInput[] = [];
+    // Cada palabra debe aparecer en nombre, apellido o correo: «juan perez» encuentra a Juan Pérez (antes se buscaba la frase completa en cada campo y fallaba).
+    for (const token of (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
+      and.push({
+        user: {
+          OR: [
+            { email: { contains: token, mode: "insensitive" } },
+            { firstName: { contains: token, mode: "insensitive" } },
+            { lastName: { contains: token, mode: "insensitive" } },
+          ],
+        },
+      });
+    }
+    if ((AdminService.ENROLLMENT_STATUSES as readonly string[]).includes(String(f.status))) and.push({ status: f.status as never });
+    if (f.kind === "COURSE" || f.kind === "PROGRAM") and.push({ offeringKind: f.kind });
+    if (f.expired === "1") and.push({ accessExpiresAt: { lt: new Date() }, status: { notIn: ["COMPLETED", "CANCELLED"] } });
+    const range = limaDayRange(f.from, f.to);
+    if (range.gte || range.lte) and.push({ enrolledAt: range });
+    return and.length ? { AND: and } : {};
+  }
+
+  private static readonly ENROLLMENT_SELECT = {
+    id: true,
+    offeringKind: true,
+    status: true,
+    source: true,
+    progressPct: true,
+    accessExpiresAt: true,
+    enrolledAt: true,
+    user: { select: { firstName: true, lastName: true, email: true } },
+    course: { select: { title: true } },
+    program: { select: { title: true } },
+  } satisfies Prisma.EnrollmentSelect;
+
+  private mapEnrollmentRows(rows: Prisma.EnrollmentGetPayload<{ select: typeof AdminService.ENROLLMENT_SELECT }>[]) {
+    return rows.map((e) => ({
       id: e.id,
       userName: `${e.user.firstName} ${e.user.lastName}`,
       userEmail: e.user.email,
       offeringTitle: (e.course?.title ?? e.program?.title ?? {}) as Record<string, string>,
       offeringKind: e.offeringKind,
       status: e.status,
+      source: e.source,
       progressPct: e.progressPct,
       accessExpiresAt: e.accessExpiresAt?.toISOString() ?? null,
       enrolledAt: e.enrolledAt.toISOString(),
     }));
+  }
+
+  private enrollmentsOrderBy(sort: (typeof AdminService.ENROLLMENT_SORTS)[number], dir: "asc" | "desc"): Prisma.EnrollmentOrderByWithRelationInput[] {
+    const primary: Prisma.EnrollmentOrderByWithRelationInput[] =
+      sort === "student" ? [{ user: { lastName: dir } }, { user: { firstName: dir } }]
+      : sort === "progress" ? [{ progressPct: dir }]
+      : sort === "status" ? [{ status: dir }]
+      // Las matrículas sin vencimiento (abiertas) van siempre al final: no son «las más lejanas», son «sin fecha».
+      : sort === "expires" ? [{ accessExpiresAt: { sort: dir, nulls: "last" } }]
+      : [{ enrolledAt: dir }];
+    return [...primary, { id: "asc" }];
+  }
+
+  async listEnrollments(
+    filter: { q?: string; status?: string; kind?: string; expired?: string; from?: string; to?: string },
+    rawQuery: { page?: unknown; pageSize?: unknown; sort?: unknown; dir?: unknown },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.ENROLLMENT_SORTS, defaultSort: "enrolled", defaultDir: "desc" });
+    const where = this.enrollmentsWhere(filter);
+    const [total, rows] = await Promise.all([
+      this.prisma.enrollment.count({ where }),
+      this.prisma.enrollment.findMany({ where, orderBy: this.enrollmentsOrderBy(query.sort, query.dir), skip: query.skip, take: query.take, select: AdminService.ENROLLMENT_SELECT }),
+    ]);
+    return { rows: this.mapEnrollmentRows(rows), total, page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir };
+  }
+
+  /** Conteos de las tarjetas de /admin/matriculas sobre la tabla completa (no sobre una página). */
+  async getEnrollmentsSummary() {
+    const [byStatus, extemporaneous] = await Promise.all([
+      this.prisma.enrollment.groupBy({ by: ["status"], _count: { status: true } }),
+      this.prisma.enrollment.count({ where: this.enrollmentsWhere({ expired: "1" }) }),
+    ]);
+    const n = Object.fromEntries(byStatus.map((r) => [r.status, r._count.status]));
+    return {
+      total: byStatus.reduce((sum, r) => sum + r._count.status, 0),
+      active: n.ACTIVE ?? 0,
+      completed: n.COMPLETED ?? 0,
+      expired: n.EXPIRED ?? 0,
+      extemporaneous,
+    };
+  }
+
+  async exportEnrollments(
+    filter: { q?: string; status?: string; kind?: string; expired?: string; from?: string; to?: string },
+    rawQuery: { sort?: unknown; dir?: unknown },
+    format: "xlsx" | "csv",
+    actor: { id: string; email?: string },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.ENROLLMENT_SORTS, defaultSort: "enrolled", defaultDir: "desc" });
+    const where = this.enrollmentsWhere(filter);
+    const count = await this.prisma.enrollment.count({ where });
+    if (count > AdminService.EXPORT_MAX_ROWS) {
+      throw new BadRequestException(`El filtro devuelve ${count.toLocaleString("es-PE")} matrículas y el máximo por descarga es ${AdminService.EXPORT_MAX_ROWS.toLocaleString("es-PE")}. Acota el rango de fechas o el estado.`);
+    }
+    const found = await this.prisma.enrollment.findMany({ where, orderBy: this.enrollmentsOrderBy(query.sort, query.dir), select: AdminService.ENROLLMENT_SELECT });
+    const rows = this.mapEnrollmentRows(found);
+    const es = (t: Record<string, string>) => t.es ?? Object.values(t)[0] ?? null;
+    const sheet: ExportSheet<(typeof rows)[number]> = {
+      sheetName: "Matrículas",
+      rows,
+      columns: [
+        { header: "Alumno", width: 28, value: (r) => r.userName },
+        { header: "Correo", width: 30, value: (r) => r.userEmail },
+        { header: "Curso o programa", width: 40, value: (r) => es(r.offeringTitle) },
+        { header: "Tipo", width: 11, value: (r) => (r.offeringKind === "COURSE" ? "Curso" : "Programa") },
+        { header: "Estado", width: 12, value: (r) => AdminService.ENROLLMENT_STATUS_ES[r.status] ?? r.status },
+        { header: "Origen", width: 18, value: (r) => AdminService.ENROLLMENT_SOURCE_ES[r.source] ?? r.source },
+        { header: "Avance (%)", type: "number", width: 11, value: (r) => Math.round(r.progressPct) },
+        { header: "Matriculado el", type: "datetime", width: 18, value: (r) => new Date(r.enrolledAt) },
+        { header: "Acceso vence", type: "datetime", width: 18, value: (r) => (r.accessExpiresAt ? new Date(r.accessExpiresAt) : null) },
+        { header: "Sin vencimiento", width: 15, value: (r) => (r.accessExpiresAt ? "No" : "Sí") },
+      ],
+      criteria: [
+        ["Listado", "Matrículas"],
+        ["Generado el", new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }) + " (hora de Lima)"],
+        ["Generado por", actor.email ?? actor.id],
+        ["Búsqueda (alumno)", filter.q?.trim() || "—"],
+        ["Estado", AdminService.ENROLLMENT_STATUS_ES[filter.status ?? ""] ?? "todos"],
+        ["Tipo", filter.kind === "COURSE" ? "Curso" : filter.kind === "PROGRAM" ? "Programa" : "todos"],
+        ["Solo casos extemporáneos", filter.expired === "1" ? "Sí (plazo vencido y sin terminar)" : "No"],
+        ["Matriculado desde", filter.from || "—"],
+        ["Matriculado hasta", filter.to || "—"],
+        ["Orden", `${query.sort} (${query.dir === "asc" ? "ascendente" : "descendente"})`],
+        ["Filas", String(rows.length)],
+      ],
+    };
+    await logAudit(this.prisma, { actorId: actor.id, action: "LIST_EXPORT", entity: "Enrollment", after: { format, rows: rows.length, filters: filter } });
+    return { buffer: format === "csv" ? buildCsv(sheet) : buildSimpleXlsx(sheet), rows: rows.length };
   }
 
   /**

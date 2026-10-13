@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/Button";
 export function ExtendAccessControl({ enrollmentId, accessExpiresAt }: { enrollmentId: string; accessExpiresAt: string | null }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState(accessExpiresAt ? accessExpiresAt.slice(0, 10) : "");
+  const [date, setDate] = useState(accessExpiresAt ? new Date(accessExpiresAt).toLocaleDateString("sv-SE", { timeZone: "America/Lima" }) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +24,7 @@ export function ExtendAccessControl({ enrollmentId, accessExpiresAt }: { enrollm
     setBusy(true);
     setError(null);
     try {
-      await adminApi.extendEnrollmentAccess(enrollmentId, date ? new Date(`${date}T23:59:59`).toISOString() : null);
+      await adminApi.extendEnrollmentAccess(enrollmentId, date ? new Date(`${date}T23:59:59-05:00`).toISOString() : null);
       setOpen(false);
       router.refresh();
     } catch (err) {

@@ -25,3 +25,24 @@ export const INVOICE_STATUS_LABEL: Record<string, string> = {
   REJECTED: "Rechazado",
   ERROR: "Con error",
 };
+
+export const ENROLLMENT_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "Activa",
+  COMPLETED: "Completada",
+  EXPIRED: "Vencida",
+  CANCELLED: "Cancelada",
+};
+
+export const ENROLLMENT_STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+  ACTIVE: "success",
+  COMPLETED: "neutral",
+  EXPIRED: "danger",
+  CANCELLED: "neutral",
+};
+
+export const ENROLLMENT_SOURCE_LABEL: Record<string, string> = {
+  B2C_PURCHASE: "Compra",
+  B2B_SEAT: "Cupo de empresa",
+  FREE: "Gratis",
+  ADMIN_GRANTED: "Cortesía del admin",
+};

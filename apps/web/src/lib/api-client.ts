@@ -360,6 +360,28 @@ export interface AdminOrderRowDTO {
   createdAt: string;
 }
 
+export interface AdminEnrollmentRowDTO {
+  id: string;
+  userName: string;
+  userEmail: string;
+  offeringTitle: Record<string, string>;
+  offeringKind: "COURSE" | "PROGRAM";
+  status: string;
+  source: string;
+  progressPct: number;
+  accessExpiresAt: string | null;
+  enrolledAt: string;
+}
+
+export interface AdminEnrollmentsPage {
+  rows: AdminEnrollmentRowDTO[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  dir: "asc" | "desc";
+}
+
 export interface AdminOrdersPage {
   rows: AdminOrderRowDTO[];
   total: number;
@@ -820,8 +842,10 @@ export const adminApi = {
   },
   ordersSummary: (accessToken?: string | null) => apiFetch<any>("/admin/orders/summary", { accessToken, cache: "no-store" }),
   // --- Matrículas: ampliar plazo de acceso como caso especial ---
-  enrollments: (q: string | undefined, accessToken?: string | null) =>
-    apiFetch<any[]>("/admin/enrollments", { accessToken, query: q ? { q } : undefined, cache: "no-store" }),
+  enrollments: (params: Record<string, string>, accessToken?: string | null) =>
+    apiFetch<AdminEnrollmentsPage>("/admin/enrollments", { accessToken, query: params, cache: "no-store" }),
+  enrollmentsSummary: (accessToken?: string | null) =>
+    apiFetch<{ total: number; active: number; completed: number; expired: number; extemporaneous: number }>("/admin/enrollments/summary", { accessToken, cache: "no-store" }),
   extendEnrollmentAccess: (id: string, accessExpiresAt: string | null, accessToken?: string | null) =>
     apiFetch<any>(`/admin/enrollments/${id}/extend-access`, {
       method: "PATCH",
