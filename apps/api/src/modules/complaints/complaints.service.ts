@@ -70,19 +70,26 @@ export class ComplaintsService {
     const and: Prisma.ComplaintWhereInput[] = [];
     const q = (f.q ?? "").trim();
     if (q) {
-      // El folio es «LR-2026-000012»: se busca por su número correlativo (también si solo se escribe el número).
+      // El folio es «LR-2026-000012»: se busca por su número correlativo.
       const folio = /^LR-\d{4}-(\d{1,9})$/i.exec(q);
-      const asNumber = folio ? Number(folio[1]) : /^\d{1,9}$/.test(q) ? Number(q) : null;
-      for (const token of q.split(/\s+/).filter(Boolean).slice(0, 5)) {
-        and.push({
-          OR: [
-            { fullName: { contains: token, mode: "insensitive" } },
-            { email: { contains: token, mode: "insensitive" } },
-            { docNumber: { contains: token, mode: "insensitive" } },
-            { service: { contains: token, mode: "insensitive" } },
-            ...(asNumber !== null && !q.includes(" ") ? [{ number: asNumber }] : []),
-          ],
-        });
+      if (folio) {
+        and.push({ number: Number(folio[1]) });
+      } else if (/^\d+$/.test(q)) {
+        // Solo dígitos: un número corto es el correlativo (o un documento idéntico) — NO se busca «dentro» de documentos y teléfonos, que
+        // devolvería casi todo el libro; uno largo es un documento (DNI, RUC…).
+        and.push(q.length <= 6 ? { OR: [{ number: Number(q) }, { docNumber: q }] } : { docNumber: { contains: q } });
+      } else {
+        // Cada palabra debe aparecer en el nombre, correo, documento o servicio.
+        for (const token of q.split(/\s+/).filter(Boolean).slice(0, 5)) {
+          and.push({
+            OR: [
+              { fullName: { contains: token, mode: "insensitive" } },
+              { email: { contains: token, mode: "insensitive" } },
+              { docNumber: { contains: token, mode: "insensitive" } },
+              { service: { contains: token, mode: "insensitive" } },
+            ],
+          });
+        }
       }
     }
     if (f.status === "PENDING" || f.status === "RESPONDED") and.push({ status: f.status });
