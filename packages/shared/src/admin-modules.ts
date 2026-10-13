@@ -36,7 +36,7 @@ const API_SEGMENT_MODULE: Record<string, AdminModuleKey | null> = {
 };
 
 /** Segmentos que solo puede usar un administrador completo (no uno con rol acotado): hoy, la gestión de los propios roles. */
-const OWNER_ONLY_SEGMENTS = new Set(["admin-roles", "backups"]); // los respaldos contienen todos los secretos del sistema
+const OWNER_ONLY_SEGMENTS = new Set(["admin-roles", "backups", "privacy-requests"]); // los respaldos contienen todos los secretos; ejecutar una eliminación de datos es irreversible
 
 /** Rutas de staff que NO cuelgan de /admin pero mueven dinero o accesos: también respetan el rol acotado. */
 const EXTRA_ROUTES: { pattern: RegExp; module: AdminModuleKey }[] = [
@@ -73,7 +73,7 @@ const WEB_PAGE_MODULE: Record<string, AdminModuleKey | "__owner__"> = {
   soporte: "soporte", reclamos: "soporte", sugerencias: "soporte", "encuestas-nps": "soporte", notificaciones: "soporte",
   reportes: "reportes", calificaciones: "reportes",
   apariencia: "sistema", "asistente-ia": "sistema", configuracion: "sistema", backups: "__owner__", auditoria: "sistema", "zona-de-pruebas": "sistema",
-  roles: "__owner__",
+  roles: "__owner__", privacidad: "__owner__",
 };
 
 export function adminModuleForWebHref(href: string): AdminModuleKey | "__owner__" | null {

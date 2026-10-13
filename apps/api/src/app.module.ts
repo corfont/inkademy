@@ -35,6 +35,7 @@ import { NpsModule } from "./modules/nps/nps.module";
 import { ScormModule } from "./modules/scorm/scorm.module";
 import { PlatformCoreModule } from "./modules/platform-core/platform-core.module";
 import { HealthController } from "./modules/health/health.controller";
+import { PrivacyModule } from "./modules/privacy/privacy.module";
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { HealthController } from "./modules/health/health.controller";
     NpsModule,
     ScormModule,
     PlatformCoreModule,
+    PrivacyModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -1507,3 +1507,49 @@ export const platformLicenseApi = {
     apiFetch<PlatformLicenseDTO>(`/admin/licenses/${id}`, { method: "PATCH", body: JSON.stringify(input), accessToken }),
   remove: (id: string, accessToken?: string | null) => apiFetch<{ ok: boolean }>(`/admin/licenses/${id}`, { method: "DELETE", accessToken }),
 };
+
+// --- Privacidad y derechos ARCO (Ley 29733) ---
+export type PrivacyRequestType = "ACCESS" | "RECTIFICATION" | "CANCELLATION" | "OPPOSITION";
+export type PrivacyRequestStatus = "PENDING" | "COMPLETED" | "REJECTED";
+
+export interface PrivacyRequestDTO {
+  id: string;
+  type: PrivacyRequestType;
+  status: PrivacyRequestStatus;
+  message: string | null;
+  dueAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+  createdAt: string;
+}
+
+export interface AdminPrivacyRequestDTO extends PrivacyRequestDTO {
+  requesterEmail: string | null;
+  requesterName: string | null;
+  user: { id: string; email: string; firstName: string; lastName: string; globalRole: string; status: string } | null;
+}
+
+export const privacyApi = {
+  mine: (accessToken?: string | null) => apiFetch<PrivacyRequestDTO[]>("/privacy/requests", { accessToken, cache: "no-store" }),
+  create: (input: { type: "RECTIFICATION" | "CANCELLATION" | "OPPOSITION"; message?: string; password?: string }, accessToken?: string | null) =>
+    apiFetch<{ id: string; dueAt: string }>("/privacy/requests", { method: "POST", body: JSON.stringify(input), accessToken }),
+  // Descarga binaria (JSON adjunto): no pasa por apiFetch, que espera JSON en pantalla.
+  downloadMyData: async (accessToken: string) => {
+    const res = await fetch(`${API_URL}/privacy/export`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new ApiError(res.status, res.status === 429 ? "Pediste tus datos varias veces seguidas. Inténtalo de nuevo en un rato." : "No pudimos generar tu archivo.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mis-datos-inkademy-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  adminList: (accessToken?: string | null) => apiFetch<AdminPrivacyRequestDTO[]>("/admin/privacy-requests", { accessToken, cache: "no-store" }),
+  adminResolve: (id: string, input: { outcome: "COMPLETED" | "REJECTED"; note: string }, accessToken?: string | null) =>
+    apiFetch<{ id: string; status: string }>(`/admin/privacy-requests/${id}/resolve`, { method: "POST", body: JSON.stringify(input), accessToken }),
+  adminExecuteCancellation: (id: string, accessToken?: string | null) =>
+    apiFetch<{ id: string; status: string }>(`/admin/privacy-requests/${id}/execute-cancellation`, { method: "POST", accessToken }),
+};

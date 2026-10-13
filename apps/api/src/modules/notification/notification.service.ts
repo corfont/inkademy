@@ -345,6 +345,43 @@ export class NotificationService {
     });
   }
 
+  /** Derechos ARCO (Ley 29733): acuse al titular, aviso al equipo y respuesta final. */
+  sendPrivacyRequestAck(to: string, firstName: string, typeLabel: string, dueAt: Date, userId: string) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const due = dueAt.toLocaleDateString("es-PE", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: "Recibimos tu solicitud de privacidad — Inkademy",
+        html: `<p>Hola ${esc(firstName)}, registramos tu solicitud de <b>${esc(typeLabel)}</b> sobre tus datos personales.</p><p>Te responderemos a más tardar el <b>${due}</b>. Puedes ver su estado en «Privacidad y mis datos».</p>`,
+      },
+      userId,
+    );
+  }
+
+  sendPrivacyRequestToTeam(to: string, r: { type: string; name: string; dueAt: Date }) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return this.enqueueEmail(EMAIL_JOBS.GENERIC, {
+      to,
+      subject: `Nueva solicitud de privacidad (${r.type})`,
+      html: `<p>${esc(r.name)} registró una solicitud de <b>${esc(r.type)}</b>. Plazo de respuesta: ${r.dueAt.toLocaleDateString("es-PE", { timeZone: "UTC" })}. Se atiende en Admin → Privacidad.</p>`,
+    });
+  }
+
+  sendPrivacyRequestResolved(to: string, name: string, typeLabel: string, outcome: "COMPLETED" | "REJECTED", note: string, userId?: string) {
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return this.enqueueEmail(
+      EMAIL_JOBS.GENERIC,
+      {
+        to,
+        subject: `Respuesta a tu solicitud de ${typeLabel.toLowerCase()} — Inkademy`,
+        html: `<p>Hola ${esc(name)}, tu solicitud de <b>${esc(typeLabel)}</b> fue ${outcome === "COMPLETED" ? "atendida" : "evaluada y no pudo atenderse tal como se pidió"}.</p><p>${esc(note).replace(/\n/g, "<br>")}</p>`,
+      },
+      userId,
+    );
+  }
+
   /** Acuse de recibo para quien pidió la cotización. */
   sendQuoteLeadAck(to: string, contactName: string | null | undefined) {
     return this.enqueueEmail(EMAIL_JOBS.QUOTE_LEAD_ACK, {

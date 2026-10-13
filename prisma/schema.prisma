@@ -183,6 +183,7 @@ model User {
   activityLogs          TeacherActivityLog[]    @relation("TeacherActivityOwner")
   advances              TeacherAdvance[]        @relation("TeacherAdvanceOwner")
   liquidations          TeacherLiquidation[]    @relation("TeacherLiquidationOwner")
+  dataRequests          DataSubjectRequest[]
 
   @@index([email])
 }
@@ -2563,4 +2564,27 @@ model Complaint {
   updatedAt     DateTime        @updatedAt
 
   @@index([status, createdAt])
+}
+
+
+/// Solicitudes de derechos ARCO (Ley 29733): Acceso, Rectificación, Cancelación y Oposición. Queda el registro de cada una con su plazo y su
+/// respuesta — es la evidencia de que se atendieron. `requesterEmail`/`requesterName` son una copia para poder responder; se borran cuando se
+/// ejecuta la cancelación (para no conservar el dato que se pidió eliminar).
+model DataSubjectRequest {
+  id             String    @id @default(uuid())
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type           String // ACCESS | RECTIFICATION | CANCELLATION | OPPOSITION
+  status         String    @default("PENDING") // PENDING | COMPLETED | REJECTED
+  message        String?
+  requesterEmail String?
+  requesterName  String?
+  dueAt          DateTime
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, dueAt])
+  @@index([userId])
 }

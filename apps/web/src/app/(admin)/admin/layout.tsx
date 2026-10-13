@@ -36,6 +36,7 @@ import {
   History,
   Bell,
   KeyRound,
+  ShieldCheck,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SidebarShell, type SidebarNavItem } from "@/components/layout/SidebarShell";
@@ -122,6 +123,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           { href: "/admin/liquidaciones/tarifas", label: "Tarifas y adelantos (docentes)", icon: Wallet, colorClassName: "bg-teal-400/20 text-teal-300" },
           { href: "/admin/configuracion", label: "Configuración avanzada", icon: Lock, colorClassName: "bg-slate-400/20 text-slate-300" },
           { href: "/admin/backups", label: "Backups", icon: DatabaseBackup, colorClassName: "bg-violet-400/20 text-violet-300" },
+          { href: "/admin/privacidad", label: "Privacidad (ARCO)", icon: ShieldCheck, colorClassName: "bg-cyan-400/20 text-cyan-300" },
           { href: "/admin/auditoria", label: "Auditoría", icon: History, colorClassName: "bg-orange-400/20 text-orange-300" },
           { href: "/admin/notificaciones", label: "Notificaciones", icon: Bell, colorClassName: "bg-violet-400/20 text-violet-300" },
           { href: "/admin/licencias", label: "Licencias de arriendo", icon: KeyRound, colorClassName: "bg-amber-400/20 text-amber-300" },

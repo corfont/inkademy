@@ -34,6 +34,7 @@ export function Footer() {
             <li><Link href="/legales/privacidad" className="hover:text-ink-800">{t("privacy")}</Link></li>
             <li><Link href="/legales/terminos" className="hover:text-ink-800">{t("terms")}</Link></li>
             <li><Link href="/legales/cookies" className="hover:text-ink-800">{t("cookies")}</Link></li>
+            <li><Link href="/privacidad" className="hover:text-ink-800">Privacidad y mis datos</Link></li>
             <li><Link href="/libro-de-reclamaciones" className="hover:text-ink-800">Libro de Reclamaciones</Link></li>
           </ul>
         </nav>

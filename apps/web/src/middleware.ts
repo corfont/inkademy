@@ -8,7 +8,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 // "/notificaciones" es una sola ruta compartida por los 4 roles (la API ya
 // filtra por el userId del token) — no vive dentro de ningún route group
 // con su propio layout/guard, así que necesita su propia entrada acá.
-const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/docente", "/checkout", "/notificaciones"];
+const PROTECTED_PREFIXES = ["/campus", "/empresa", "/admin", "/docente", "/checkout", "/notificaciones", "/privacidad"];
 
 // Pantallas cuyas rutas de API detrás son @Roles("ADMIN") puro (nunca
 // SUPPORT) — Configuración avanzada/Zona de pruebas ya se ocultaban del
@@ -32,6 +32,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/admin/notificaciones",
   "/admin/licencias",
   "/admin/roles",
+  "/admin/privacidad",
 ];
 
 export function middleware(request: NextRequest) {
