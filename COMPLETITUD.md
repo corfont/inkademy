@@ -17,7 +17,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | TBL-02 | Matrículas, colaboradores, auditoría, log | Parcial | `ADM/matriculas/page.tsx:81-97` | Sin ficha de detalle |
 | TBL-03 | Usuarios, catálogo, regalías, convenios, matrículas (extender acceso) | Hecho | `UsersManager.tsx` (EditUserModal), `ExtendAccessControl` | |
 | TBL-04 | Gestores con ConfirmDialog (~15) | Parcial | `ExpenseManager.tsx:158` (mensaje genérico) | Sin "deshacer" en ninguna parte |
-| TBL-04 | Tarifas, bitácora y adelantos docentes | Falta | `TeacherPayrollManager.tsx:419,517,570` ✔ | Borrado financiero de un clic |
+| TBL-04 | Tarifas, bitácora y adelantos docentes | Hecho | `web/components/ui/ConfirmButton.tsx`, `TeacherPayrollManager.tsx` | 13-oct: confirmación que nombra el registro (tarifa, adelanto, horas) |
 | TBL-04 | Quitar regalía/convenio/docente de un curso | Hecho | `RoyaltyRecipientManager.tsx`, `PartnerInstitutionManager.tsx` | 13-oct: regalía y convenio con ConfirmButton; quitar docente de curso ya tenía ConfirmDialog (hallazgo impreciso) |
 | TBL-04 | Borrado lógico | Parcial | `api/modules/admin/admin.service.ts:3185-3321` | Solo usuarios con `status`; resto borra físico con snapshot |
 | TBL-05 | Duplicar/clonar (cursos, exámenes, plantillas, campañas) | Falta | grep sin botones | Baja prioridad |
@@ -300,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## Resumen
 
-Hechos 36 · Parciales 145 · Faltan 60 · No aplica 4 · No verificado 11 *(256 filas; conteo automático de la columna Estado. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct tras la etapa 1.)*
+Hechos 37 · Parciales 145 · Faltan 59 · No aplica 4 · No verificado 11 *(256 filas; conteo automático de la columna Estado. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct tras la etapa 1.)*
 
 ## Pendientes ordenados por impacto
 
