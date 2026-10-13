@@ -4,6 +4,7 @@ import type { BackupGenerateJobData } from "../queues";
 import { createHash } from "node:crypto";
 import { buildFullBackup, verifyBackup } from "../lib/backup";
 import { uploadBuffer } from "../lib/storage";
+import { copyBackupOffsite } from "../lib/offsite-backup";
 import { createLogger } from "../lib/logger";
 
 const logger = createLogger("backup.processor");
@@ -28,6 +29,8 @@ export async function processBackupGenerateJob(job: Job<BackupGenerateJobData>):
 
     // Generado ≠ comprobado: se vuelve a leer lo guardado y se verifica antes de dar el respaldo por bueno.
     const verification = await verifyBackup(assetId, sha256, modelCounts);
+    // Copia externa (SharePoint) solo si el respaldo pasó la comprobación: no se replica un archivo malo.
+    const offsite = verification.ok ? await copyBackupOffsite(zipBuffer, record.createdAt) : { status: null as null, encrypted: false };
     await prisma.backupRecord.update({
       where: { id: record.id },
       data: {
@@ -42,6 +45,11 @@ export async function processBackupGenerateJob(job: Job<BackupGenerateJobData>):
         verificationStatus: verification.ok ? "OK" : "FAILED",
         verifiedAt: new Date(),
         verificationNote: verification.note,
+        offsiteStatus: offsite.status,
+        offsiteUrl: offsite.url,
+        offsiteNote: offsite.note,
+        offsiteAt: offsite.status ? new Date() : null,
+        offsiteEncrypted: offsite.encrypted,
       },
     });
     logger.info("backup generado", { backupRecordId: record.id, sizeBytes, trigger, verified: verification.ok });

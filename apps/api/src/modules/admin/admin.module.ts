@@ -9,6 +9,7 @@ import { AdminController } from "./admin.controller";
 import { AdminService } from "./admin.service";
 import { ReportsController } from "./reports/reports.controller";
 import { ReportsService } from "./reports/reports.service";
+import { BackupSettingsService } from "./backup-settings.service";
 
 @Module({
   // EnrollmentModule: "el administrador debe poder resetear un avance a 0%
@@ -17,6 +18,6 @@ import { ReportsService } from "./reports/reports.service";
   // en vez de duplicarla acá.
   imports: [AssessmentModule, EnrollmentModule, StorageModule, NotificationModule, CompaniesModule, ScormModule],
   controllers: [AdminController, ReportsController],
-  providers: [AdminService, ReportsService],
+  providers: [AdminService, ReportsService, BackupSettingsService],
 })
 export class AdminModule {}

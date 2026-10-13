@@ -114,6 +114,11 @@ export function BackupManager({ backups }: { backups: BackupRecordDTO[] }) {
                       </Badge>
                     )}
                     {b.status === "DONE" && (
+                      <Badge variant={b.offsiteStatus === "OK" ? "success" : b.offsiteStatus === "FAILED" ? "danger" : "outline"}>
+                        {b.offsiteStatus === "OK" ? "Copia externa subida" : b.offsiteStatus === "FAILED" ? "Copia externa falló" : b.offsiteStatus === "SKIPPED" ? "Copia externa omitida" : "Sin copia externa"}
+                      </Badge>
+                    )}
+                    {b.status === "DONE" && (
                       <Badge variant={b.restoreTestedAt ? "success" : "warning"}>{b.restoreTestedAt ? "Recuperación probada" : "Recuperación sin probar"}</Badge>
                     )}
                   </div>
@@ -130,6 +135,17 @@ export function BackupManager({ backups }: { backups: BackupRecordDTO[] }) {
                       {b.verifiedAt ? `Comprobado el ${new Date(b.verifiedAt).toLocaleString("es-PE")}: ${b.verificationNote ?? ""}` : "Este respaldo es anterior a la comprobación automática."}
                       {(b.fileErrorCount ?? 0) > 0 && <span className="font-medium text-warning"> · {b.fileErrorCount} archivo(s) incrustados no se pudieron incluir.</span>}
                       {b.restoreTestedAt && ` · Restauración probada el ${new Date(b.restoreTestedAt).toLocaleDateString("es-PE")}${b.restoreTestedNote ? `: ${b.restoreTestedNote}` : ""}.`}
+                    </p>
+                  )}
+                  {b.status === "DONE" && b.offsiteNote && (
+                    <p className={`mt-1 text-xs ${b.offsiteStatus === "FAILED" ? "font-medium text-danger" : "text-ash-500"}`}>
+                      Copia externa: {b.offsiteNote}
+                      {b.offsiteUrl && b.offsiteStatus === "OK" && (
+                        <>
+                          {" "}
+                          <a href={b.offsiteUrl} target="_blank" rel="noopener noreferrer" className="underline">Abrir en SharePoint</a>
+                        </>
+                      )}
                     </p>
                   )}
                   {openId === b.id && b.modelCounts && (

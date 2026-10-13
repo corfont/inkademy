@@ -5,3 +5,4 @@ export * from "./certificate-tags";
 export * from "./scorm-authoring";
 export * from "./rating";
 export * from "./admin-modules";
+export * from "./sharepoint";

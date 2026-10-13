@@ -365,6 +365,21 @@ export interface BackupRecordDTO {
   rowCount?: number | null;
   restoreTestedAt?: string | null;
   restoreTestedNote?: string | null;
+  offsiteStatus?: "OK" | "FAILED" | "SKIPPED" | null;
+  offsiteUrl?: string | null;
+  offsiteNote?: string | null;
+  offsiteAt?: string | null;
+  offsiteEncrypted?: boolean;
+}
+
+export interface BackupSettingsDTO {
+  sharepointEnabled: boolean;
+  sharepointFolderUrl: string;
+  microsoftConfigured: boolean;
+  encryptionEnabled: boolean;
+  lastTestAt: string | null;
+  lastTestOk: boolean | null;
+  lastTestNote: string | null;
 }
 
 export interface AuditLogEntryDTO {
@@ -1305,6 +1320,11 @@ export const adminApi = {
 
   // --- Backups descargables ("toda la base de datos... que si se pierde lo pueda recuperar") ---
   backups: (accessToken?: string | null) => apiFetch<BackupRecordDTO[]>("/admin/backups", { accessToken, cache: "no-store" }),
+  backupSettings: (accessToken?: string | null) => apiFetch<BackupSettingsDTO>("/admin/backups/settings", { accessToken, cache: "no-store" }),
+  saveBackupSettings: (input: { sharepointEnabled: boolean; sharepointFolderUrl: string | null }, accessToken?: string | null) =>
+    apiFetch<BackupSettingsDTO>("/admin/backups/settings", { method: "PUT", body: JSON.stringify(input), accessToken }),
+  testBackupSettings: (accessToken?: string | null) =>
+    apiFetch<{ ok: boolean; note: string; folderName?: string }>("/admin/backups/settings/test", { method: "POST", accessToken }),
   generateBackupNow: (accessToken?: string | null) =>
     apiFetch<{ queued: boolean }>("/admin/backups/generate", { method: "POST", accessToken }),
   markBackupRestoreTested: (id: string, note: string, accessToken?: string | null) =>

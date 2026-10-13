@@ -2455,6 +2455,25 @@ model BackupRecord {
   rowCount            Int?
   restoreTestedAt     DateTime?
   restoreTestedNote   String?
+  // Copia EXTERNA (SharePoint): un respaldo que vive solo en el mismo servidor no sirve si el servidor se pierde.
+  // offsiteStatus: OK | FAILED | SKIPPED (null = anterior a esta función o desactivada). Un fallo acá NO marca el respaldo como fallido.
+  offsiteStatus       String?
+  offsiteUrl          String?
+  offsiteNote         String?
+  offsiteAt           DateTime?
+  offsiteEncrypted    Boolean   @default(false)
+}
+
+/// Configuración de respaldos (una sola fila). La ruta de SharePoint la pone el administrador desde el panel; las credenciales de Microsoft
+/// (app registrada en Azure) vienen de las variables MS_* del servidor, nunca se guardan ni se muestran acá.
+model BackupSettings {
+  id                  String    @id @default("default")
+  sharepointEnabled   Boolean   @default(false)
+  sharepointFolderUrl String?
+  lastTestAt          DateTime?
+  lastTestOk          Boolean?
+  lastTestNote        String?
+  updatedAt           DateTime  @updatedAt
 }
 
 // ---------------------------------------------------------------------------

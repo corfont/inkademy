@@ -1,11 +1,12 @@
 import { reportCollector, type ReportContext } from "./reports/report-kit";
 import { buildXlsx } from "./reports/report-xlsx";
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { ReportsService } from "./reports/reports.service";
+import { BackupSettingsService, backupSettingsSchema, type BackupSettingsInput } from "./backup-settings.service";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
@@ -90,6 +91,7 @@ export class AdminController {
     private readonly companiesService: CompaniesService,
     private readonly scormService: ScormService,
     private readonly reports: ReportsService,
+    private readonly backupSettings: BackupSettingsService,
   ) {}
 
   @Get("dashboard/kpis")
@@ -1330,6 +1332,27 @@ export class AdminController {
   @ApiOperation({ summary: "Lista el historial de backups completos generados" })
   listBackups() {
     return this.adminService.listBackups();
+  }
+
+  @Get("backups/settings")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Configuración de la copia externa de los respaldos (SharePoint)" })
+  getBackupSettings() {
+    return this.backupSettings.get();
+  }
+
+  @Put("backups/settings")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Guarda la ruta (enlace de carpeta de SharePoint) de la copia externa" })
+  updateBackupSettings(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(backupSettingsSchema)) dto: BackupSettingsInput) {
+    return this.backupSettings.update(dto, user.id);
+  }
+
+  @Post("backups/settings/test")
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "Prueba la conexión: abre la carpeta y escribe un archivo de prueba" })
+  testBackupSettings(@CurrentUser() user: RequestUser) {
+    return this.backupSettings.test(user.id);
   }
 
   @Post("backups/generate")
