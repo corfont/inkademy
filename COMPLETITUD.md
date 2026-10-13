@@ -298,9 +298,32 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 | FE-70 | Presentaciones/brochure | No aplica | plataforma web | |
 | FE-71 | PDF accesibles | No verificado | | |
 
+## 8. Etapa 2 — avance por pantalla (componentes compartidos de listado)
+
+Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: matrículas, usuarios, empresas, soporte, auditoría y resto.
+
+| ID | Módulo | Estado | Evidencia | Notas |
+|---|---|---|---|---|
+| TBL-10 | Órdenes | Hecho | `ADM/ordenes/page.tsx`, `admin.service.ts` ordersWhere | Búsqueda por id (uuid), correo, comprador y empresa; probada con comillas/SQL, mayúsculas e id |
+| TBL-11 | Órdenes | Hecho | `FilterBar` + filtros estado/moneda/fechas | Combinables, con «Limpiar filtros» y conteo de filtros activos |
+| TBL-12 | Órdenes | Hecho | `DataTable` (`aria-sort`) | Orden por comprador, empresa, fecha, total y estado en el servidor; el estado ordena en el orden del ciclo de la orden, no alfabético |
+| TBL-13 | Órdenes | Hecho | `lib/list-state.ts` | Búsqueda, filtros, orden y página en la URL |
+| TBL-15/20 | Órdenes | Hecho | `parseListQuery`, `Pagination` | Paginación en servidor 10/25/50/100 con rango y total; probado: 3 páginas cubren las 65 órdenes sin repetir ni omitir; pageSize/page inválidos se normalizan. Elimina el recorte silencioso (antes 50/200) |
+| TBL-22/24 | Órdenes | Hecho | `DataTable` footer | Montos a la derecha; pie con total pagado del filtro por moneda (verificado contra SUM en la base) |
+| TBL-27 | Órdenes | Hecho | `lib/labels.ts` | Estados en español (Pagada, Pendiente…) y comprobante en español |
+| TBL-30/31/32 | Órdenes | Parcial | `ordenes/loading.tsx`, `EmptyState` | Esqueleto de carga y tres vacíos distintos (sin datos / sin resultados del filtro / página fuera de rango) verificados en HTML renderizado; el esqueleto no se vio visualmente |
+| TBL-28 | Órdenes | Falta | `DataTable` | El encabezado es `sticky`, pero dentro de un contenedor con `overflow-x:auto` no se fija al desplazar la página: no se da por hecho |
+| TBL-40 | Órdenes | Hecho | `GET /admin/orders/export.xlsx\|csv` | Exporta el mismo conjunto filtrado y ordenado; Excel leído de vuelta: montos y fechas son celdas reales, 6 filas = 6 en la base, autofiltro, hoja «Filtros» |
+| REP-05/06 | Órdenes | Hecho | `common/utils/export.ts` | Nombre `ordenes_AAAA-MM-DD_HHMM.xlsx`; fórmulas neutralizadas en texto sin tocar números negativos; CSV con BOM |
+| REP-08/TBL-62 | Órdenes | Hecho | `AuditLog` `LIST_EXPORT` | Cada descarga con sus filtros y número de filas; verificado en producción |
+| REP-43 | Órdenes | Hecho | `listOrders` | Sin tope de 200/50; el tope de exportación (20 000 filas) responde con un mensaje, **no se probó** (haría falta crear 20 000 órdenes) |
+| TBL-60 | Órdenes | Hecho | `@Roles("ADMIN","SUPPORT")` | Usuario normal: 403 en lista y en ambas exportaciones; sin sesión: 401 |
+| KPI | Órdenes (4 tarjetas) | Hecho | `ADM/ordenes/page.tsx` | Tarjetas clicables que aplican el filtro de estado |
+| TBL-53 | Órdenes | Parcial | `DataTable` | Desplazamiento horizontal en móvil; sin variante de tarjetas; no se probó en un teléfono |
+
 ## Resumen
 
-Hechos 37 · Parciales 145 · Faltan 59 · No aplica 4 · No verificado 11 *(256 filas; conteo automático de la columna Estado. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct tras la etapa 1.)*
+Hechos 50 · Parciales 147 · Faltan 60 · No aplica 4 · No verificado 11 *(272 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
 
 ## Pendientes ordenados por impacto
 
