@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import type { PrismaClient } from "@inkademy/db";
+import { randomUUID } from "node:crypto";
+import type { Company, PrismaClient, Quote } from "@inkademy/db";
 import type {
   CompanyDashboardSummaryDTO,
   CreateCompanyInput,
@@ -328,7 +329,7 @@ export class CompaniesService {
 
   async createSeatPool(
     companyId: string,
-    input: { offeringKind: "COURSE" | "PROGRAM"; courseId?: string; programId?: string; seatsPurchased: number; expiresAt?: Date },
+    input: { id?: string; offeringKind: "COURSE" | "PROGRAM"; courseId?: string; programId?: string; seatsPurchased: number; expiresAt?: Date },
   ) {
     return this.prisma.companySeatPool.create({ data: { companyId, ...input } });
   }
@@ -551,17 +552,40 @@ export class CompaniesService {
     const company = await this.prisma.company.findUnique({ where: { id: quote.companyId } });
     if (!company) throw new NotFoundException("Empresa no encontrada");
 
+    // Reclamo atómico de la cotización con el id del pool que se va a crear: dos conversiones simultáneas
+    // pasaban ambas la validación de arriba y generaban dos pools, dos órdenes y DOS FACTURAS. Solo una gana
+    // el updateMany (convertedSeatPoolId pasa de null a este id, y además es único); la otra se rechaza.
+    const poolId = randomUUID();
+    const claimed = await this.prisma.quote.updateMany({
+      where: { id: quoteId, status: "ACCEPTED", convertedSeatPoolId: null },
+      data: { convertedSeatPoolId: poolId },
+    });
+    if (claimed.count !== 1) throw new BadRequestException("Esta cotización ya se convirtió o se está convirtiendo en cupos");
+
+    try {
+      return await this.finishQuoteConversion(quote, company, poolId);
+    } catch (err) {
+      // Si algo falló antes de terminar, se libera el reclamo (y el pool a medio crear, aún sin cupos usados) para poder reintentar.
+      await this.prisma.companySeatPool.deleteMany({ where: { id: poolId, seatsUsed: 0 } }).catch(() => undefined);
+      await this.prisma.quote.updateMany({ where: { id: quoteId, convertedSeatPoolId: poolId }, data: { convertedSeatPoolId: null } }).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  private async finishQuoteConversion(quote: Quote, company: Company, poolId: string) {
+    const seats = quote.seatsQuoted!; // ya validado por convertQuoteToSeatPool
     const pool = await this.createSeatPool(quote.companyId, {
+      id: poolId,
       offeringKind: quote.courseId ? "COURSE" : "PROGRAM",
       courseId: quote.courseId ?? undefined,
       programId: quote.programId ?? undefined,
-      seatsPurchased: quote.seatsQuoted,
+      seatsPurchased: seats,
       expiresAt: quote.validUntil ?? undefined,
     });
 
     const currency = quote.currency ?? "PEN";
-    const total = quote.amount;
-    const unitPrice = Number(total) / quote.seatsQuoted;
+    const total = quote.amount!; // ya validado (no nulo) por convertQuoteToSeatPool
+    const unitPrice = Number(total) / seats;
     const order = await this.prisma.order.create({
       data: {
         userId: quote.requestedByUserId,
@@ -581,9 +605,9 @@ export class CompaniesService {
             offeringKind: quote.courseId ? "COURSE" : "PROGRAM",
             courseId: quote.courseId,
             programId: quote.programId,
-            seatPoolQty: quote.seatsQuoted,
+            seatPoolQty: seats,
             unitPrice,
-            quantity: quote.seatsQuoted,
+            quantity: seats,
           },
         },
         payments: {
@@ -598,7 +622,7 @@ export class CompaniesService {
       },
     });
 
-    await this.prisma.quote.update({ where: { id: quoteId }, data: { convertedSeatPoolId: pool.id } });
+    await this.prisma.quote.update({ where: { id: quote.id }, data: { convertedSeatPoolId: pool.id } });
 
     // No debe tumbar la conversión (los cupos YA son reales en este punto) —
     // mismo criterio de "nunca lanza" que createElectronicInvoiceIfNeeded ya

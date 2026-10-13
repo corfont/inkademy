@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 const BILLING_LABEL: Record<string, string> = {
   FIXED: "Monto fijo",
@@ -406,9 +407,17 @@ function CoursePartnershipRow({
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(true)}>
           Renovar / extender
         </Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => adminApi.removeCoursePartnership(partnership.id))}>
+        <ConfirmButton
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          title="¿Quitar este convenio del curso?"
+          message="Se deja de aplicar el convenio institucional a este curso. Lo ya registrado no cambia."
+          confirmLabel="Sí, quitar"
+          onConfirm={() => run(() => adminApi.removeCoursePartnership(partnership.id))}
+        >
           Quitar
-        </Button>
+        </ConfirmButton>
       </span>
     </li>
   );

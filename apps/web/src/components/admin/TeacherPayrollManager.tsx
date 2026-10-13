@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { adminApi, ApiError } from "@/lib/api-client";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -416,9 +417,17 @@ function RateEditor({ teacherId, rates, courses, busy, run }: { teacherId: strin
                   {currencySymbol(r.currency)}{Number(r.hourlyRateOtherActivities).toFixed(2)}/h otras · tolerancia {r.toleranceStartMinutes}min inicio /{" "}
                   {r.toleranceEndMinutes}min final · {FREQ_LABEL[r.paymentFrequency]}
                 </span>
-                <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => run(() => adminApi.deleteTeacherRate(r.id))}>
+                <ConfirmButton
+                  size="sm"
+                  variant="ghost"
+                  className="text-danger hover:bg-danger-bg"
+                  disabled={busy}
+                  title="¿Eliminar esta tarifa?"
+                  message={`Se elimina la tarifa «${r.course ? r.course.title?.es ?? r.course.slug : "Tarifa global"}» (${currencySymbol(r.currency)}${Number(r.hourlyRateTeaching).toFixed(2)}/h dictado). Las liquidaciones nuevas dejarán de usarla.`}
+                  onConfirm={() => run(() => adminApi.deleteTeacherRate(r.id))}
+                >
                   Eliminar
-                </Button>
+                </ConfirmButton>
               </li>
             ))}
           </ul>
@@ -514,9 +523,17 @@ function ActivityLogEditor({ teacherId, logs, courses, busy, run }: { teacherId:
                   {new Date(l.loggedAt).toLocaleDateString("es-PE")} · {l.hours}h · {l.course ? l.course.title?.es ?? l.course.slug : "General"}
                   {l.note ? ` — ${l.note}` : ""}
                 </span>
-                <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => run(() => adminApi.deleteTeacherActivityLog(l.id))}>
+                <ConfirmButton
+                  size="sm"
+                  variant="ghost"
+                  className="text-danger hover:bg-danger-bg"
+                  disabled={busy}
+                  title="¿Eliminar este registro de horas?"
+                  message={`Se elimina el registro de ${l.hours} h del ${new Date(l.loggedAt).toLocaleDateString("es-PE")}. Esas horas dejarán de contar en la liquidación.`}
+                  onConfirm={() => run(() => adminApi.deleteTeacherActivityLog(l.id))}
+                >
                   Eliminar
-                </Button>
+                </ConfirmButton>
               </li>
             ))}
           </ul>
@@ -567,9 +584,17 @@ function AdvanceEditor({ teacherId, advances, busy, run }: { teacherId: string; 
                   {a.liquidationId ? <Badge variant="outline" className="ml-2">Ya aplicado</Badge> : null}
                 </span>
                 {!a.liquidationId && (
-                  <Button size="sm" variant="ghost" className="text-danger hover:bg-danger-bg" disabled={busy} onClick={() => run(() => adminApi.deleteTeacherAdvance(a.id))}>
+                  <ConfirmButton
+                    size="sm"
+                    variant="ghost"
+                    className="text-danger hover:bg-danger-bg"
+                    disabled={busy}
+                    title="¿Eliminar este adelanto?"
+                    message={`Se elimina el adelanto de ${currencySymbol(a.currency)}${Number(a.amount).toFixed(2)} del ${new Date(a.grantedAt).toLocaleDateString("es-PE")}. Ya no se descontará de la próxima liquidación.`}
+                    onConfirm={() => run(() => adminApi.deleteTeacherAdvance(a.id))}
+                  >
                     Eliminar
-                  </Button>
+                  </ConfirmButton>
                 )}
               </li>
             ))}

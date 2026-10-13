@@ -336,7 +336,8 @@ export class CommerceService {
         if (existingPool) {
           await this.prisma.companySeatPool.update({
             where: { id: existingPool.id },
-            data: { seatsPurchased: existingPool.seatsPurchased + item.seatPoolQty },
+            // Incremento ATÓMICO: leer, sumar y escribir perdía una de dos compras simultáneas.
+            data: { seatsPurchased: { increment: item.seatPoolQty } },
           });
         } else {
           await this.prisma.companySeatPool.create({
@@ -610,12 +611,29 @@ export class CommerceService {
     }
 
     const provider = this.resolveProvider(successfulPayment.provider as CheckoutInput["paymentProvider"]);
-    const refundResult = await provider.refund({
-      providerRef: successfulPayment.providerRef ?? "",
-      amountInMinorUnits: Math.round(Number(order.total) * 100),
-      reason: input.reasonDescription,
-    });
+
+    // Reclamo atómico ANTES de tocar al proveedor: dos cancelaciones simultáneas (doble clic, dos
+    // administradores) leían ambas "PAID" y ambas mandaban el reembolso — el dinero se devolvía dos
+    // veces. Solo UNA gana el cambio PAID → REFUNDED; la otra se rechaza sin llamar a la pasarela.
+    // Si el reembolso falla, se devuelve la orden a PAID para poder reintentar.
+    const claimed = await this.prisma.order.updateMany({ where: { id: order.id, status: "PAID" }, data: { status: "REFUNDED" } });
+    if (claimed.count !== 1) {
+      throw new BadRequestException("Esta orden ya se está cancelando o ya fue cancelada.");
+    }
+    const releaseClaim = () => this.prisma.order.updateMany({ where: { id: order.id, status: "REFUNDED" }, data: { status: "PAID" } });
+    let refundResult: Awaited<ReturnType<typeof provider.refund>>;
+    try {
+      refundResult = await provider.refund({
+        providerRef: successfulPayment.providerRef ?? "",
+        amountInMinorUnits: Math.round(Number(order.total) * 100),
+        reason: input.reasonDescription,
+      });
+    } catch (err) {
+      await releaseClaim();
+      throw err;
+    }
     if (!refundResult.success) {
+      await releaseClaim();
       throw new BadRequestException(refundResult.failureMessage ?? "No se pudo procesar el reembolso");
     }
 
@@ -633,10 +651,13 @@ export class CommerceService {
       if (!item.seatPoolQty || item.seatPoolQty <= 0 || !order.companyId) continue;
       const pool = await this.prisma.companySeatPool.findFirst({
         where: { companyId: order.companyId, offeringKind: item.offeringKind, courseId: item.courseId, programId: item.programId },
+        select: { id: true },
       });
       if (!pool) continue;
-      const seatsPurchased = Math.max(pool.seatsUsed, pool.seatsPurchased - item.seatPoolQty);
-      seatPoolUpdates.push(this.prisma.companySeatPool.update({ where: { id: pool.id }, data: { seatsPurchased } }));
+      // Resta ATÓMICA en SQL, sin bajar de seatsUsed (un cupo ya canjeado no se reclama).
+      seatPoolUpdates.push(
+        this.prisma.$executeRaw`UPDATE "CompanySeatPool" SET "seatsPurchased" = GREATEST("seatsUsed", "seatsPurchased" - ${item.seatPoolQty}) WHERE "id" = ${pool.id}`,
+      );
     }
 
     await this.prisma.$transaction([
@@ -814,7 +835,7 @@ export class CommerceService {
       if (existingPool) {
         await this.prisma.companySeatPool.update({
           where: { id: existingPool.id },
-          data: { seatsPurchased: existingPool.seatsPurchased + input.seatPoolQty },
+          data: { seatsPurchased: { increment: input.seatPoolQty } },
         });
       } else {
         await this.prisma.companySeatPool.create({

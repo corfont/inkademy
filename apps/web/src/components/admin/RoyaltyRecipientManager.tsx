@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { Card, CardContent } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 const BILLING_LABEL: Record<string, string> = {
   PER_ENROLLMENT: "Por alumno matriculado",
@@ -302,9 +303,17 @@ function CourseRoyaltyEditor({
                   {a.endDate ? `hasta ${new Date(a.endDate).toLocaleDateString("es-PE", { timeZone: "UTC" })}` : "indefinida, sin fecha límite"})
                 </span>
               </span>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => adminApi.removeCourseRoyalty(a.id))}>
+              <ConfirmButton
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                title="¿Quitar esta regalía del curso?"
+                message={`Se deja de calcular la regalía de «${a.course?.title?.es ?? a.course?.slug}» para este beneficiario. Las ventas que ya se registraron no cambian.`}
+                confirmLabel="Sí, quitar"
+                onConfirm={() => run(() => adminApi.removeCourseRoyalty(a.id))}
+              >
                 Quitar
-              </Button>
+              </ConfirmButton>
             </li>
           ))}
         </ul>
