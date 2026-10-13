@@ -300,7 +300,7 @@ Causa raíz común: **no existe componente compartido** de tabla, paginador, fil
 
 ## 8. Etapa 2 — avance por pantalla (componentes compartidos de listado)
 
-Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: empresas, soporte, reclamos, cotizaciones, certificados y resto.
+Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se registra aquí con lo verificado en producción (13-oct-2026). Pendientes de la lista: empresas, soporte, cotizaciones, certificados y resto.
 
 | ID | Módulo | Estado | Evidencia | Notas |
 |---|---|---|---|---|
@@ -338,10 +338,16 @@ Cada pantalla migrada a `DataTable`/`Pagination`/`FilterBar`/`ExportButtons` se 
 | TBL-60 | Auditoría | Hecho | `@Roles("ADMIN")` | SUPPORT: 403 en lista y en ambas exportaciones |
 | MOD-32 | Etiquetas de auditoría | Hecho | `packages/shared/src/audit-labels.ts` | 26 entidades y 46 acciones en español compartidas entre pantalla y exportación; antes las acciones nuevas (matrículas, reportes, privacidad, roles, copia externa) salían como código crudo |
 | TBL-13/20 | Auditoría | Parcial | `AuditLogViewer.tsx` | La pantalla sigue siendo de estado local (los filtros no viven en la URL) y pagina de 30 en 30 con rango y total; no se probó la interacción en un navegador |
+| TBL-10/11 | Reclamos (Libro de Reclamaciones) | Hecho | `ADM/reclamos/page.tsx`, `complaints.service.ts` | Búsqueda por folio (`LR-2026-000007` y minúsculas), por número correlativo exacto, documento, correo y nombre por palabras; filtros estado, tipo, «solo plazo vencido» y fechas (borde 23:30/00:30 en hora de Lima); verificado en producción con 62 registros de prueba |
+| TBL-12/15/20, REP-43 | Reclamos | Hecho | `ComplaintsService.list`, `Pagination` | Elimina el tope de 300; orden por defecto «más urgentes primero» verificado (sin responder antes que respondidos y plazo más cercano arriba); 4 páginas cubren los 62 sin repetir |
+| TBL-40/62, REP-08 | Reclamos | Hecho | `GET /admin/complaints/export.xlsx\|csv` | Excel con estado «Plazo vencido», fechas reales y las 15 columnas del libro; 9 = 9 y 20 = 20 contra la base; auditado; ADMIN y SUPPORT (igual que la pantalla), alumno: 403 |
+| KPI | Reclamos (4 tarjetas) | Hecho | `ADM/reclamos/page.tsx` | Plazo vencido, sin responder, respondidos y total; clicables; el resumen coincide con la base y cambia al responder (probado de punta a punta) |
+| TBL-60 | Reclamos | Hecho | `@Roles("ADMIN","SUPPORT")` | Alumno 403, sin token 401 |
+| BD-32 | Búsqueda numérica del libro | Hecho | `ComplaintsService.where` | Bug encontrado probando: un número corto coincidía como texto dentro de documentos y devolvía casi todo el libro; ahora es el correlativo exacto |
 
 ## Resumen
 
-Hechos 64 · Parciales 151 · Faltan 60 · No aplica 4 · No verificado 11 *(290 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
+Hechos 70 · Parciales 151 · Faltan 60 · No aplica 4 · No verificado 11 *(296 filas; conteo automático de la columna Estado, incluida la sección 8 de la etapa 2. Cada fila agrupa varias pantallas o requisitos, así que no es una proporción exacta del sistema. Actualizado el 13-oct.)*
 
 ## Pendientes ordenados por impacto
 
