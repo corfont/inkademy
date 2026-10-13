@@ -12,6 +12,7 @@ import { CatalogService } from "../catalog/catalog.service";
 import { computeAccessExpiresAt } from "../../common/utils/access-policy";
 import { CalendarService } from "../calendar/calendar.service";
 import { computeCourseScore } from "../assessment/course-score";
+import { logAudit } from "../admin/audit-log.util";
 
 
 @Injectable()
@@ -1172,7 +1173,7 @@ export class EnrollmentService {
    * solo el avance de material; si a la evaluación le sigue faltando algo,
    * `computeApprovalMissing` lo sigue mostrando con normalidad.
    */
-  async adminSetProgress(enrollmentId: string, target: "ZERO" | "FULL") {
+  async adminSetProgress(enrollmentId: string, target: "ZERO" | "FULL", actorId?: string) {
     const enrollment = await this.prisma.enrollment.findUnique({ where: { id: enrollmentId } });
     if (!enrollment) throw new NotFoundException("Matrícula no encontrada");
     if (enrollment.offeringKind !== "COURSE" || !enrollment.courseId) {
@@ -1206,7 +1207,17 @@ export class EnrollmentService {
         ),
       ]);
     }
-    return this.recomputeProgress(enrollmentId, courseId, enrollment.userId);
+    const result = await this.recomputeProgress(enrollmentId, courseId, enrollment.userId);
+    // Forzar el avance al 0 % o al 100 % puede terminar emitiendo (o negando) un
+    // certificado: queda constancia de quién lo hizo, a qué matrícula y a dónde.
+    await logAudit(this.prisma, {
+      actorId,
+      action: target === "FULL" ? "ENROLLMENT_PROGRESS_FORCE_FULL" : "ENROLLMENT_PROGRESS_RESET",
+      entity: "Enrollment",
+      entityId: enrollmentId,
+      before: { progressPct: enrollment.progressPct },
+    });
+    return result;
   }
 
   /**

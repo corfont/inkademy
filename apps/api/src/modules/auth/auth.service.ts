@@ -212,6 +212,33 @@ export class AuthService {
     }
   }
 
+  /**
+   * Cierre de sesión REAL: rota currentSessionId, así que tanto el access
+   * token (15 min) como el refresh (30 días) emitidos para esa sesión dejan
+   * de valer en la próxima request — antes el logout solo borraba la cookie
+   * y un token robado seguía sirviendo hasta vencer. Si el refresh viene
+   * vencido o inválido no hay nada que revocar (no se propaga el error: el
+   * logout siempre "funciona" para quien lo pide).
+   */
+  async logout(refreshToken: string | undefined): Promise<void> {
+    if (!refreshToken) return;
+    try {
+      const payload = this.jwt.verify<{ sub: string; typ: string; sid?: string }>(refreshToken, {
+        secret: this.config.get<string>("JWT_REFRESH_SECRET"),
+        ignoreExpiration: true,
+      });
+      if (payload.typ !== "refresh") return;
+      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      // Solo si el token es de la sesión vigente: un refresh viejo no puede
+      // cerrar la sesión nueva de otro dispositivo.
+      if (user && (!payload.sid || payload.sid === user.currentSessionId)) {
+        await this.startNewSession(user);
+      }
+    } catch {
+      // token ilegible: nada que revocar
+    }
+  }
+
   /** Tokens con propósito específico (reset de password / verificación de email), stateless. */
   private signPurposeToken(userId: string, purpose: string, ttl: string): string {
     return this.jwt.sign(
@@ -255,7 +282,13 @@ export class AuthService {
   async resetPassword(token: string, password: string) {
     const { sub } = this.verifyPurposeToken(token, "reset_password");
     const passwordHash = await argon2.hash(password);
-    const user = await this.prisma.user.update({ where: { id: sub }, data: { passwordHash } });
+    // También levanta el bloqueo por intentos fallidos: el mensaje de "cuenta
+    // bloqueada" manda justamente a "Olvidé mi contraseña", y antes ese flujo
+    // dejaba lockedUntil intacto (la persona restablecía y seguía bloqueada).
+    const user = await this.prisma.user.update({
+      where: { id: sub },
+      data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
+    });
     await this.startNewSession(user);
   }
 

@@ -5,6 +5,7 @@ import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { ReportsService } from "./reports/reports.service";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import type { RequestUser } from "../../common/guards/jwt-auth.guard";
@@ -88,6 +89,7 @@ export class AdminController {
     private readonly enrollmentService: EnrollmentService,
     private readonly companiesService: CompaniesService,
     private readonly scormService: ScormService,
+    private readonly reports: ReportsService,
   ) {}
 
   @Get("dashboard/kpis")
@@ -1072,10 +1074,11 @@ export class AdminController {
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Amplía (o quita) el vencimiento de acceso de una matrícula puntual" })
   extendEnrollmentAccess(
+    @CurrentUser() user: RequestUser,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(extendEnrollmentAccessSchema)) dto: { accessExpiresAt: Date | null },
   ) {
-    return this.adminService.extendEnrollmentAccess(id, dto.accessExpiresAt);
+    return this.adminService.extendEnrollmentAccess(id, dto.accessExpiresAt, user.id);
   }
 
   // "El administrador debería tener la facultad de resetear un avance a 0%
@@ -1085,10 +1088,11 @@ export class AdminController {
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Fuerza el avance de una matrícula a 0% o 100% (caso extremo)" })
   resetEnrollmentProgress(
+    @CurrentUser() user: RequestUser,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(resetEnrollmentProgressSchema)) dto: { target: "ZERO" | "FULL" },
   ) {
-    return this.enrollmentService.adminSetProgress(id, dto.target);
+    return this.enrollmentService.adminSetProgress(id, dto.target, user.id);
   }
 
   // --- Finanzas ---
@@ -1124,6 +1128,7 @@ export class AdminController {
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Descarga el estado financiero del periodo como PDF" })
   async downloadFinancialReport(
+    @CurrentUser() user: RequestUser,
     @Res() res: Response,
     @Query("from") from?: string,
     @Query("to") to?: string,
@@ -1138,6 +1143,7 @@ export class AdminController {
       year: year ? Number(year) : undefined,
       months: months ? Number(months) : undefined,
     });
+    await this.reports.auditExport(user.id, "finanzas", "pdf", { from, to, period, year, months });
     res.set({
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="inkademy-finanzas-${periodLabel.replace(/\s+/g, "-")}.pdf"`,
@@ -1149,6 +1155,7 @@ export class AdminController {
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Descarga el estado financiero del periodo en Excel (mismos datos que el PDF)" })
   async downloadFinancialReportXlsx(
+    @CurrentUser() user: RequestUser,
     @Res() res: Response,
     @Query("from") from?: string,
     @Query("to") to?: string,
@@ -1160,6 +1167,7 @@ export class AdminController {
     const { periodLabel } = await reportCollector.run(contexts, () =>
       this.adminService.getFinancialReportPdf({ from, to, period, year: year ? Number(year) : undefined, months: months ? Number(months) : undefined }),
     );
+    await this.reports.auditExport(user.id, "finanzas", "xlsx", { from, to, period, year, months });
     res.set({
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="inkademy-finanzas-${periodLabel.replace(/\s+/g, "-")}.xlsx"`,
@@ -1226,8 +1234,8 @@ export class AdminController {
   @Post("users")
   @Roles("ADMIN")
   @ApiOperation({ summary: "Crea una cuenta directamente (docente/soporte/otro admin) — devuelve una contraseña temporal una sola vez" })
-  createUser(@Body(new ZodValidationPipe(createUserSchema)) dto: any) {
-    return this.adminService.createUser(dto);
+  createUser(@CurrentUser() user: RequestUser, @Body(new ZodValidationPipe(createUserSchema)) dto: any) {
+    return this.adminService.createUser(dto, user.id);
   }
 
   @Patch("users/:id")

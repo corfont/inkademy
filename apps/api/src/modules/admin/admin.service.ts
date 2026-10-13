@@ -2917,16 +2917,27 @@ export class AdminService {
    * ACTIVE — de lo contrario el alumno seguiría bloqueado pese a la nueva
    * fecha.
    */
-  async extendEnrollmentAccess(id: string, newAccessExpiresAt: Date | null) {
+  async extendEnrollmentAccess(id: string, newAccessExpiresAt: Date | null, actorId?: string) {
     const enrollment = await this.prisma.enrollment.findUnique({ where: { id } });
     if (!enrollment) throw new NotFoundException("Matrícula no encontrada");
-    return this.prisma.enrollment.update({
+    const updated = await this.prisma.enrollment.update({
       where: { id },
       data: {
         accessExpiresAt: newAccessExpiresAt,
         status: enrollment.status === "EXPIRED" ? "ACTIVE" : enrollment.status,
       },
     });
+    // Ampliar o quitar el vencimiento de acceso es una concesión (también la
+    // puede hacer SUPPORT): queda constancia de quién y de cuánto a cuánto.
+    await logAudit(this.prisma, {
+      actorId,
+      action: "ENROLLMENT_ACCESS_EXTEND",
+      entity: "Enrollment",
+      entityId: id,
+      before: { accessExpiresAt: enrollment.accessExpiresAt, status: enrollment.status },
+      after: { accessExpiresAt: updated.accessExpiresAt, status: updated.status },
+    });
+    return updated;
   }
 
   // ==========================================================================
@@ -3025,7 +3036,7 @@ export class AdminService {
    * a la persona; el usuario puede cambiarla luego con "¿Olvidaste tu
    * contraseña?" si lo prefiere.
    */
-  async createUser(input: { email: string; firstName: string; lastName: string; globalRole: string; password?: string }) {
+  async createUser(input: { email: string; firstName: string; lastName: string; globalRole: string; password?: string }, actorId?: string) {
     const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
     if (existing) throw new BadRequestException("Ya existe una cuenta con ese correo");
 
@@ -3044,6 +3055,14 @@ export class AdminService {
         passwordHash,
         emailVerifiedAt: new Date(), // creada directamente por un admin — se confía en el correo
       },
+    });
+    // Sin contraseña ni hash en el log: solo quién creó qué cuenta y con qué rol.
+    await logAudit(this.prisma, {
+      actorId,
+      action: "USER_CREATE",
+      entity: "User",
+      entityId: user.id,
+      after: { email: user.email, globalRole: user.globalRole },
     });
     return {
       id: user.id,
@@ -3168,7 +3187,10 @@ export class AdminService {
     // cualquier dispositivo (mismo mecanismo que AuthService.changePassword/
     // resetPassword). El admin que lo ejecuta no es el afectado, así que
     // no hace falta reemitirle tokens a nadie acá.
-    await this.prisma.user.update({ where: { id }, data: { passwordHash, currentSessionId: randomUUID() } });
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash, currentSessionId: randomUUID(), failedLoginAttempts: 0, lockedUntil: null },
+    });
     // Nunca se guarda la contraseña en el log — solo que se restableció y quién lo hizo.
     await logAudit(this.prisma, { actorId, action: "USER_PASSWORD_RESET", entity: "User", entityId: id });
     return { id, email: user.email, tempPassword };

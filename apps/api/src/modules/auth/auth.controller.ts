@@ -118,10 +118,12 @@ export class AuthController {
     return { accessToken };
   }
 
+  @Public()
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Cierra sesión (limpia la cookie de refresh)" })
-  logout(@Res({ passthrough: true }) res: Response) {
+  @ApiOperation({ summary: "Cierra sesión: invalida la sesión en el servidor y limpia la cookie de refresh" })
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    await this.authService.logout(req.cookies?.[REFRESH_COOKIE]);
     res.clearCookie(REFRESH_COOKIE, { path: "/auth" });
   }
 

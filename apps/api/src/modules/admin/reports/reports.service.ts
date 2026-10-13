@@ -5,6 +5,7 @@ import { AdminService } from "../admin.service";
 import { createReport, drawBarChart, drawParagraph, drawSubtitle, drawTable, drawTitle, finalizeReport, reportCollector, type ReportContext } from "./report-kit";
 import { buildXlsx } from "./report-xlsx";
 import { buildFinancialReportPdf } from "../finance-report.pdf";
+import { logAudit } from "../audit-log.util";
 
 const fullName =(u: { firstName?: string | null; lastName?: string | null; email?: string } | null | undefined) =>
   u ? [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "—" : "—";
@@ -33,6 +34,22 @@ export class ReportsService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly adminService: AdminService,
   ) {}
+
+  /**
+   * Toda descarga de un reporte deja constancia en AuditLog (quién, qué, en
+   * qué formato y con qué filtros) — los reportes contienen datos personales
+   * (correos, documentos, montos) y antes cualquier ADMIN o SUPPORT los
+   * bajaba sin dejar rastro (COMPLETITUD.md: REP-08, TBL-62).
+   */
+  auditExport(actorId: string | undefined, key: string, format: "pdf" | "xlsx", filters: Record<string, unknown>) {
+    return logAudit(this.prisma, {
+      actorId,
+      action: "REPORT_EXPORT",
+      entity: "Report",
+      entityId: key,
+      after: { format, filters },
+    }).catch(() => undefined); // un fallo de auditoría no debe impedir la descarga ya generada
+  }
 
   static readonly CATALOG: ReportDefinition[] = [
     { key: "alumnos-registrados", label: "Alumnos registrados", description: "Listado completo de alumnos con su fecha de registro y cursos matriculados." },
