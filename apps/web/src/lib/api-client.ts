@@ -360,6 +360,28 @@ export interface AdminOrderRowDTO {
   createdAt: string;
 }
 
+export interface AdminCompaniesPage {
+  rows: {
+    id: string;
+    legalName: string;
+    taxIdType: string;
+    taxId: string;
+    country: string;
+    size: string | null;
+    sector: string | null;
+    status: string;
+    createdAt: string;
+    members: number;
+    seatsUsed: number;
+    seatsPurchased: number;
+  }[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: string;
+  dir: "asc" | "desc";
+}
+
 export interface AdminComplaintsPage {
   rows: any[];
   total: number;
@@ -1071,6 +1093,10 @@ export const adminApi = {
   removeCourseRoyalty: (id: string, accessToken?: string | null) =>
     apiFetch<{ deleted: boolean }>(`/admin/royalty-recipients/course-royalties/${id}`, { method: "DELETE", accessToken }),
   companies: (accessToken?: string | null) => apiFetch<any[]>("/admin/companies", { accessToken }),
+  companiesSearch: (params: Record<string, string>, accessToken?: string | null) =>
+    apiFetch<AdminCompaniesPage>("/admin/companies/search", { accessToken, query: params, cache: "no-store" }),
+  companiesSummary: (accessToken?: string | null) =>
+    apiFetch<{ total: number; active: number; suspended: number }>("/admin/companies/summary", { accessToken, cache: "no-store" }),
   // --- Pipeline comercial (cotizaciones B2B) ---
   quotes: (accessToken?: string | null) => apiFetch<any[]>("/admin/quotes", { accessToken, cache: "no-store" }),
   complaints: (params: Record<string, string>, accessToken?: string | null) =>

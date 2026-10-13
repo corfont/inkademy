@@ -2252,6 +2252,121 @@ export class AdminService {
     }));
   }
 
+  // ---- Empresas: búsqueda, filtros, orden y paginación en el servidor, resumen y exportación ----
+
+  static readonly COMPANY_SORTS = ["name", "country", "size", "status", "created"] as const;
+  private static readonly COMPANY_SIZE_ES: Record<string, string> = { MICRO: "Micro", SMALL: "Pequeña", MEDIUM: "Mediana", LARGE: "Grande", ENTERPRISE: "Corporativo" };
+
+  private companiesWhere(f: { q?: string; status?: string; size?: string; country?: string; from?: string; to?: string }): Prisma.CompanyWhereInput {
+    const and: Prisma.CompanyWhereInput[] = [];
+    // Cada palabra debe estar en la razón social o en el número de documento (RUC): «minera sur» o «20123456789».
+    for (const token of (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
+      and.push({ OR: [{ legalName: { contains: token, mode: "insensitive" } }, { taxId: { contains: token } }] });
+    }
+    if (f.status === "active" || f.status === "suspended") and.push({ status: f.status });
+    if (["MICRO", "SMALL", "MEDIUM", "LARGE", "ENTERPRISE"].includes(String(f.size))) and.push({ size: f.size as never });
+    if (f.country && /^[A-Za-z]{2}$/.test(f.country)) and.push({ country: f.country.toUpperCase() });
+    const range = limaDayRange(f.from, f.to);
+    if (range.gte || range.lte) and.push({ createdAt: range });
+    return and.length ? { AND: and } : {};
+  }
+
+  private companiesOrderBy(sort: (typeof AdminService.COMPANY_SORTS)[number], dir: "asc" | "desc"): Prisma.CompanyOrderByWithRelationInput[] {
+    const primary: Prisma.CompanyOrderByWithRelationInput =
+      sort === "country" ? { country: dir } : sort === "size" ? { size: { sort: dir, nulls: "last" } } : sort === "status" ? { status: dir } : sort === "created" ? { createdAt: dir } : { legalName: dir };
+    return [primary, { id: "asc" }];
+  }
+
+  /** Cupos y colaboradores SOLO de las empresas pedidas (la página), no de toda la tabla. */
+  private async companyAggregates(ids: string[]) {
+    const [seatSums, members] = await Promise.all([
+      ids.length ? this.prisma.companySeatPool.groupBy({ by: ["companyId"], where: { companyId: { in: ids } }, _sum: { seatsUsed: true, seatsPurchased: true } }) : [],
+      ids.length ? this.prisma.companyMembership.groupBy({ by: ["companyId"], where: { companyId: { in: ids }, status: { not: "REMOVED" } }, _count: { _all: true } }) : [],
+    ]);
+    const seats = new Map(seatSums.map((x) => [x.companyId, x._sum]));
+    const people = new Map(members.map((x) => [x.companyId, x._count._all]));
+    return (id: string) => ({
+      seatsUsed: seats.get(id)?.seatsUsed ?? 0,
+      seatsPurchased: seats.get(id)?.seatsPurchased ?? 0,
+      members: people.get(id) ?? 0,
+    });
+  }
+
+  async searchCompanies(
+    filter: { q?: string; status?: string; size?: string; country?: string; from?: string; to?: string },
+    rawQuery: { page?: unknown; pageSize?: unknown; sort?: unknown; dir?: unknown },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.COMPANY_SORTS, defaultSort: "name", defaultDir: "asc" });
+    const where = this.companiesWhere(filter);
+    const [total, companies] = await Promise.all([
+      this.prisma.company.count({ where }),
+      this.prisma.company.findMany({ where, orderBy: this.companiesOrderBy(query.sort, query.dir), skip: query.skip, take: query.take }),
+    ]);
+    const agg = await this.companyAggregates(companies.map((c) => c.id));
+    return {
+      rows: companies.map((c) => ({
+        id: c.id, legalName: c.legalName, taxIdType: c.taxIdType, taxId: c.taxId, country: c.country, size: c.size, sector: c.sector, status: c.status,
+        createdAt: c.createdAt.toISOString(), ...agg(c.id),
+      })),
+      total, page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir,
+    };
+  }
+
+  async getCompaniesSummary() {
+    const byStatus = await this.prisma.company.groupBy({ by: ["status"], _count: { status: true } });
+    const n = Object.fromEntries(byStatus.map((r) => [r.status, r._count.status]));
+    return { total: byStatus.reduce((sum, r) => sum + r._count.status, 0), active: n.active ?? 0, suspended: n.suspended ?? 0 };
+  }
+
+  async exportCompanies(
+    filter: { q?: string; status?: string; size?: string; country?: string; from?: string; to?: string },
+    rawQuery: { sort?: unknown; dir?: unknown },
+    format: "xlsx" | "csv",
+    actor: { id: string; email?: string },
+  ) {
+    const query = parseListQuery(rawQuery, { sortable: AdminService.COMPANY_SORTS, defaultSort: "name", defaultDir: "asc" });
+    const where = this.companiesWhere(filter);
+    const count = await this.prisma.company.count({ where });
+    if (count > AdminService.EXPORT_MAX_ROWS) {
+      throw new BadRequestException(`El filtro devuelve ${count.toLocaleString("es-PE")} empresas y el máximo por descarga es ${AdminService.EXPORT_MAX_ROWS.toLocaleString("es-PE")}. Acota los filtros.`);
+    }
+    const found = await this.prisma.company.findMany({ where, orderBy: this.companiesOrderBy(query.sort, query.dir) });
+    const agg = await this.companyAggregates(found.map((c) => c.id));
+    const rows = found.map((c) => ({ ...c, ...agg(c.id) }));
+    const sheet: ExportSheet<(typeof rows)[number]> = {
+      sheetName: "Empresas",
+      rows,
+      columns: [
+        { header: "Razón social", width: 38, value: (r) => r.legalName },
+        { header: "Tipo de documento", width: 12, value: (r) => r.taxIdType },
+        { header: "Documento", width: 16, value: (r) => r.taxId },
+        { header: "País", width: 7, value: (r) => r.country },
+        { header: "Sector", width: 22, value: (r) => r.sector },
+        { header: "Tamaño", width: 12, value: (r) => (r.size ? AdminService.COMPANY_SIZE_ES[r.size] ?? r.size : null) },
+        { header: "Estado", width: 12, value: (r) => (r.status === "active" ? "Activa" : "Suspendida") },
+        { header: "Colaboradores", type: "number", width: 14, value: (r) => r.members },
+        { header: "Cupos comprados", type: "number", width: 16, value: (r) => r.seatsPurchased },
+        { header: "Cupos usados", type: "number", width: 13, value: (r) => r.seatsUsed },
+        { header: "Registrada el", type: "datetime", width: 18, value: (r) => r.createdAt },
+      ],
+      criteria: [
+        ["Listado", "Empresas"],
+        ["Generado el", new Date().toLocaleString("es-PE", { timeZone: "America/Lima" }) + " (hora de Lima)"],
+        ["Generado por", actor.email ?? actor.id],
+        ["Búsqueda", filter.q?.trim() || "—"],
+        ["Estado", filter.status === "active" ? "Activa" : filter.status === "suspended" ? "Suspendida" : "todos"],
+        ["Tamaño", filter.size ? AdminService.COMPANY_SIZE_ES[filter.size] ?? filter.size : "todos"],
+        ["País", filter.country?.toUpperCase() || "todos"],
+        ["Registrada desde", filter.from || "—"],
+        ["Registrada hasta", filter.to || "—"],
+        ["Orden", `${query.sort} (${query.dir === "asc" ? "ascendente" : "descendente"})`],
+        ["Filas", String(rows.length)],
+      ],
+    };
+    await logAudit(this.prisma, { actorId: actor.id, action: "LIST_EXPORT", entity: "Company", after: { format, rows: rows.length, filters: filter } });
+    return { buffer: format === "csv" ? buildCsv(sheet) : buildSimpleXlsx(sheet), rows: rows.length };
+  }
+
   // --- Órdenes (para poder ubicar una orden y cancelarla — ver
   // CommerceService.cancelOrder — sin tener que consultar la BD a mano) ---
 

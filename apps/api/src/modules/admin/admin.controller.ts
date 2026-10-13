@@ -1003,6 +1003,37 @@ export class AdminController {
     return this.adminService.listCompanies();
   }
 
+  @Get("companies/search")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Empresas con búsqueda (razón social o RUC), filtros, orden y paginación en el servidor" })
+  searchCompanies(@Query() query: Record<string, string>) {
+    return this.adminService.searchCompanies(
+      { q: query.q, status: query.status, size: query.size, country: query.country, from: query.from, to: query.to },
+      { page: query.page, pageSize: query.pageSize, sort: query.sort, dir: query.dir },
+    );
+  }
+
+  @Get("companies/summary")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Totales de empresas: activas y suspendidas (tarjetas de /admin/empresas)" })
+  getCompaniesSummary() {
+    return this.adminService.getCompaniesSummary();
+  }
+
+  @Get("companies/export.:format")
+  @Roles("ADMIN", "SUPPORT")
+  @ApiOperation({ summary: "Descarga las empresas filtradas en Excel (.xlsx) o CSV" })
+  async exportCompanies(@CurrentUser() user: RequestUser, @Param("format") format: string, @Query() query: Record<string, string>, @Res() res: Response) {
+    if (format !== "xlsx" && format !== "csv") throw new NotFoundException();
+    const { buffer } = await this.adminService.exportCompanies(
+      { q: query.q, status: query.status, size: query.size, country: query.country, from: query.from, to: query.to },
+      { sort: query.sort, dir: query.dir },
+      format,
+      { id: user.id, email: user.email },
+    );
+    this.sendExport(res, format, buffer, "empresas");
+  }
+
   @Get("courtesy-grants")
   @Roles("ADMIN", "SUPPORT")
   @ApiOperation({ summary: "Historial de accesos gratuitos otorgados (cortesías) — filtrable por año/curso/área" })

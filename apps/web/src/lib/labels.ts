@@ -46,3 +46,6 @@ export const ENROLLMENT_SOURCE_LABEL: Record<string, string> = {
   FREE: "Gratis",
   ADMIN_GRANTED: "Cortesía del admin",
 };
+
+export const COMPANY_STATUS_LABEL: Record<string, string> = { active: "Activa", suspended: "Suspendida" };
+export const COMPANY_SIZE_LABEL: Record<string, string> = { MICRO: "Micro", SMALL: "Pequeña", MEDIUM: "Mediana", LARGE: "Grande", ENTERPRISE: "Corporativo" };
